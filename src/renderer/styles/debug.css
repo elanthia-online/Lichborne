@@ -12,7 +12,8 @@
      per-tab A+/A− override AND the global game font both reach the Debug
      panel (rem ignored both — it's pinned to the 16px html root). Children
      converted rem → em below (em = rem × 16/12 preserves default sizes). */
-  font-size: var(--panel-font-size, var(--game-font-size));
+  --debug-font: var(--panel-font-size, var(--game-font-size));
+  font-size: var(--debug-font);
   flex-shrink: 0;
 }
 
@@ -66,18 +67,34 @@
   gap: 0;
 }
 
+/* B344: the tabs and the Copy all / Export CSV… / Clear / ✕ buttons share ONE
+   metrics rule (pitfall #113). The buttons set no font-family, so they drew in
+   Chromium's default UI font beside the game-font tabs.
+   B395: a strip is text-height + minimal padding (UX standard #7) — this used
+   to inherit a 1.3 line-height, which ballooned the toolbar. Heights still
+   match: a tab is 3px + text + 1px + its 2px bottom border (transparent until
+   active, so selecting a tab no longer grows it); a button is 1px border + 2px
+   + text + 2px + 1px border. Both = text + 6px. */
+.debug-tab,
+.debug-copy,
+.debug-clear,
+.debug-close {
+  font-family: inherit;
+  font-size: 1.05em;
+  line-height: 1;
+}
+
 .debug-tab {
   background: transparent;
   border: none;
   border-right: 1px solid var(--border);
+  border-bottom: 2px solid transparent;
   color: var(--text-muted);
-  padding: 4px 10px;
-  font-size: 1.05em;
+  padding: 3px 10px 1px;
   cursor: pointer;
-  font-family: var(--game-font-family);
 }
 
-.debug-tab:hover {
+.debug-tab:not(.debug-tab--active):hover {
   background: var(--bg-sunken);
   color: var(--text-secondary);
 }
@@ -93,11 +110,20 @@
   background: var(--bg-btn);
   border: 1px solid var(--border);
   color: var(--text-secondary);
-  padding: 1px 8px;
-  border-radius: 3px;
-  font-size: 1.05em;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   margin-left: 6px;
+}
+
+/* B345: "Export CSV…" turns into the shorter "Saved ✓" for two seconds after a
+   save. Reserve room for the longer label so the buttons beside it don't move.
+   Measured in em so it follows the font; 8.6em fits "Export CSV…" plus padding
+   and border even in a monospace game font. */
+.debug-export {
+  box-sizing: border-box;
+  min-width: 8.6em;
+  text-align: center;
 }
 
 .debug-copy:hover,
@@ -112,10 +138,8 @@
   background: var(--bg-btn);
   border: 1px solid var(--border);
   color: var(--text-muted);
-  padding: 1px 7px;
-  border-radius: 3px;
-  font-size: 1.05em;
-  line-height: 1.3;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   margin-left: 6px;
 }
@@ -138,10 +162,15 @@
 
 /* ── Events panel ───────────────────────────────────────────────────────────── */
 /* Grid (not flex) so the header's Type column lines up exactly with the rows. */
+/* B386: the Type column follows the panel font (it was a fixed 160px that
+   clipped "exp-component" / "stream-text" at large fonts). Sized off
+   --debug-font, NOT em: the header row sets its own 0.93em font-size, and an
+   em column there would be 7% narrower than the rows' and misalign them
+   (pitfall #58b). 13.33 × the default 12px = the old 160px. */
 .debug-event-header,
 .debug-event {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1fr);
+  grid-template-columns: calc(var(--debug-font) * 13.33) minmax(0, 1fr);
   gap: 8px;
   padding: 1px 8px;
   line-height: 1.4;
@@ -164,6 +193,7 @@
 
 .debug-body {
   color: var(--text-secondary);
+  font-family: var(--code-font-family);   /* B406: the payload is JSON — code */
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -243,28 +273,37 @@
   word-break: break-all;
 }
 
+/* B406: raw XML is code, so it takes the code font rather than the prose
+   game font (which may not be monospace). */
 .rawxml-body {
   color: var(--syntax-key);
-  font-family: var(--game-font-family);
+  font-family: var(--code-font-family);
 }
 
 /* ── Fire log panel ─────────────────────────────────────────────────────────── */
 
-.fire-log-empty {
-  padding: 12px 8px;
-  color: var(--text-muted);
-  font-style: italic;
-}
+/* (The empty line is the shared .ui-empty from ui.css — B385.) */
 
 /* Header + rows share ONE column template so they line up. Each text cell is
    single-line ellipsis (full text in the title tooltip), so every row is the
    same height and the columns stay aligned no matter how long a match is.
    The trailing goto column is fixed-width and last, so the Edit button is
-   always visible at the right edge and can never be pushed off-screen. */
+   always visible at the right edge and can never be pushed off-screen.
+   B386: every track is a multiple of --debug-font (old px ÷ 12) instead of
+   fixed px, which overflowed at large fonts — the Time column truncated and
+   "Edit →" spilled out of its 60px track. Not em, for the header-vs-row
+   reason on .debug-event above. */
 .fire-log-header,
 .fire-log-entry {
   display: grid;
-  grid-template-columns: 76px 64px 70px minmax(90px, 1.1fr) minmax(120px, 2fr) minmax(90px, 1.3fr) 60px;
+  grid-template-columns:
+    calc(var(--debug-font) * 6.33)
+    calc(var(--debug-font) * 5.33)
+    calc(var(--debug-font) * 5.83)
+    minmax(calc(var(--debug-font) * 7.5), 1.1fr)
+    minmax(calc(var(--debug-font) * 10), 2fr)
+    minmax(calc(var(--debug-font) * 7.5), 1.3fr)
+    calc(var(--debug-font) * 5);
   gap: 8px;
   align-items: center;
   padding: 2px 8px;
@@ -309,7 +348,7 @@
   font-size: 0.96em;
   font-weight: bold;
   padding: 0 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   text-align: center;
@@ -366,7 +405,7 @@
   background: var(--bg-btn);
   border: 1px solid var(--border);
   color: var(--text-secondary);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 1px 4px;
   font-family: inherit;
   font-size: 0.91em;
@@ -374,7 +413,8 @@
   line-height: 1.3;
   white-space: nowrap;
   cursor: pointer;
-  transition: all 0.15s;
+  /* B409: the properties that change, not `all`. */
+  transition: color var(--ui-transition), background var(--ui-transition), border-color var(--ui-transition);
 }
 .fire-log-goto:hover:not(:disabled) {
   border-color: var(--accent-dim);

@@ -256,7 +256,7 @@ export default function FloatingWindow({ win, container, focused, onFocus, onCha
   // experience..."). So on a tabbed window it closes the ACTIVE STREAM, and the
   // window only goes with it if that was the last tab. An Experience has no
   // tabs and IS the content, so there Close closes it. Right-clicking an
-  // individual TAB keeps PanelFrame's own richer menu (Clear / Close tab),
+  // individual TAB keeps PanelFrame's own richer menu (Timestamps / Clear / Close),
   // which already targets that specific stream.
   //
   // CHROME BARS AND THE GAME WINDOW ARE EXCLUDED ENTIRELY (Sekmeht) — see
@@ -342,7 +342,9 @@ export default function FloatingWindow({ win, container, focused, onFocus, onCha
               onBlur={commitRename}
               onKeyDown={e => {
                 if (e.key === 'Enter') commitRename()
-                if (e.key === 'Escape') setRenaming(false)
+                // preventDefault: a consumed Esc must not also reach
+                // useEscapeClose and close a dialog underneath (B341).
+                if (e.key === 'Escape') { e.preventDefault(); setRenaming(false) }
                 e.stopPropagation()
               }}
               maxLength={40}
@@ -368,7 +370,11 @@ export default function FloatingWindow({ win, container, focused, onFocus, onCha
       ) : (
         <div
           className="fl-grip"
-          title="Drag to move — double-click to show the name bar · right-click to close"
+          // B383: only promise the right-click Close where there IS one —
+          // `noCloseMenu` strips it from the chrome bars and the game window.
+          title={noCloseMenu
+            ? 'Drag to move — double-click to show the name bar'
+            : 'Drag to move — double-click to show the name bar · right-click to close'}
           onMouseDown={beginDrag}
           onDoubleClick={() => onChange(win.id, { showTitle: true })}
         />

@@ -744,13 +744,6 @@ function ridgePath(w: number, scale: number, offset: number): string {
   return d + ` L ${w} ${HORIZON_Y} Z`
 }
 
-function ageLabel(reportedAt: number, now: number): string {
-  const mins = Math.floor((now - reportedAt) / 60_000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  return `${Math.floor(mins / 60)}h ${mins % 60}m ago`
-}
-
 // Slow expanding (rising) / contracting (setting) horizon rings — rendered
 // while a body sits near a transition. Gated on epilepsy-safe upstream.
 function TransitionRings({ x, y, r, color, kind }: { x: number; y: number; r: number; color: string; kind: 'rise' | 'set' }) {
@@ -1292,10 +1285,21 @@ function MoonsExperience({ moons, hidden, settings, weather, calendar, serverClo
   // session's silent pulls) so the data-honesty signal (§32.4 — stale must never
   // read as live) is one hover away without cluttering the strips with three
   // competing "just now"s. moons.reportedAt always exists here.
+  // B412: clock TIMES, not "12s ago". A native tooltip can't update while it's
+  // showing — Chromium hides it when its text changes — and this scene
+  // re-renders every 2s, so a relative age made the tooltip blink for as long as
+  // you hovered it (pitfall #145). The ⟳ turning amber still says when the data
+  // is old. The date is added only for a reading from an earlier day.
+  const clock = (ts: number) => {
+    const d = new Date(ts)
+    return d.toDateString() === new Date(now).toDateString()
+      ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
   const freshnessTitle = 'Last data received —\n' + [
-    `Moonwatch (moons/sun): ${ageLabel(moons.reportedAt, now)}`,
-    weather ? `Weather: ${ageLabel(weather.observedAt, now)}` : null,
-    calendar ? `Date: ${ageLabel(calendar.observedAt, now)}` : null,
+    `Moonwatch (moons/sun): ${clock(moons.reportedAt)}`,
+    weather ? `Weather: ${clock(weather.observedAt)}` : null,
+    calendar ? `Date: ${clock(calendar.observedAt)}` : null,
   ].filter(Boolean).join('\n')
   // "Stale" = the game-pull data (weather + date — what ⟳ refreshes; the
   // moonwatch moons extrapolate live from orbital math, so THEIR age doesn't make

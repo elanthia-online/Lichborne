@@ -49,7 +49,9 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
       if (!menuRef.current?.contains(e.target as Node)) onClose()
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      // preventDefault marks Esc as consumed, so the Esc-to-close hook leaves
+      // the dialog this menu was opened from alone (B341).
+      if (e.key === 'Escape') { e.preventDefault(); onClose() }
     }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)

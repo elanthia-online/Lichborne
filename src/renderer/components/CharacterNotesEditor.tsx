@@ -1,4 +1,4 @@
-// CharacterNotesEditor — the launcher's "Edit Profile — <name>" modal for the
+// CharacterNotesEditor — the launcher's "Edit profile — <name>" modal for the
 // three LAUNCHER-OWNED profile fields: guild (from the canonical `GUILDS` list
 // exported here), circle, and free-form notes.
 //
@@ -10,9 +10,16 @@
 // also holds Esc / backdrop-close until the write settles. Portaled to
 // `document.body`. `guildLabel()` is the display-side helper the Launcher's
 // card pills use; the `.cne-*` markup is mirrored there too.
+//
+// B368: closing with an unsaved edit (✕, Cancel, backdrop, Esc) asks first —
+// `dirty` compares the patch Save WOULD write against the same normalisation
+// of the initial values, so it means exactly "Save would change something".
 
-import { useState, useEffect } from 'react'
+import { useId, useState, type KeyboardEvent } from 'react'
 import { backdropHandlers } from "../utils/backdropClose"
+import { useEscapeClose } from '../hooks/useEscapeClose'
+import { differs } from '../hooks/useUnsaved'
+import { confirmDiscard } from '../confirm'
 import { createPortal } from 'react-dom'
 import '../styles/character-notes-editor.css'
 
@@ -39,12 +46,27 @@ export function guildLabel(key: string | undefined): string | null {
   return GUILDS.find(g => g.key === key)?.label ?? null
 }
 
+type ProfilePatch = { guild: string | undefined; circle: number | undefined; notes: string | undefined }
+
+// The form fields → what gets written. Empty string → undefined for guild and
+// notes so the YAML doesn't accumulate empty fields. Circle parses as a
+// number; non-numeric or empty stays undefined. Shared by Save and the dirty
+// check, so the two can't disagree about what counts as a change.
+function toPatch(guild: string, circle: string, notes: string): ProfilePatch {
+  const circleNum = circle.trim() === '' ? undefined : Number(circle)
+  return {
+    guild:  guild.trim() === '' ? undefined : guild,
+    circle: typeof circleNum === 'number' && !Number.isNaN(circleNum) ? circleNum : undefined,
+    notes:  notes.trim() === '' ? undefined : notes,
+  }
+}
+
 interface Props {
   characterName: string
   initialGuild: string | undefined
   initialCircle: number | undefined
   initialNotes: string | undefined
-  onSave: (patch: { guild: string | undefined; circle: number | undefined; notes: string | undefined }) => Promise<void>
+  onSave: (patch: ProfilePatch) => Promise<void>
   onCancel: () => void
 }
 
@@ -60,50 +82,63 @@ export default function CharacterNotesEditor({
   const [circle, setCircle] = useState<string>(initialCircle == null ? '' : String(initialCircle))
   const [notes,  setNotes]  = useState(initialNotes ?? '')
   const [busy,   setBusy]   = useState(false)
+  const titleId = useId()
 
-  // Esc to cancel — same convention as QuickSend and the other modals.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !busy) { e.preventDefault(); onCancel() }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [busy, onCancel])
+  // The baseline, captured once at open. Save unmounts the editor on success
+  // (Launcher clears `editingNotes`), so it never needs re-basing.
+  const [baseline] = useState(() =>
+    toPatch(initialGuild ?? '', initialCircle == null ? '' : String(initialCircle), initialNotes ?? ''))
+  const dirty = differs(toPatch(guild, circle, notes), baseline)
+
+  // Every way out goes through here. While a save is in flight it does
+  // nothing, like the disabled ✕.
+  function requestClose() {
+    if (busy) return
+    confirmDiscard(dirty, onCancel, `${characterName}'s profile`)
+  }
+
+  // Esc to cancel (B341: through the shared topmost-dialog hook). Still
+  // CONSUMED while busy rather than `enabled: false`, which would let the key
+  // fall through and close the dialog underneath (the + window, when opened
+  // from there).
+  useEscapeClose(requestClose)
 
   async function handleSave() {
+    if (busy) return
     setBusy(true)
     try {
-      // Empty string → undefined for guild and notes so the YAML doesn't
-      // accumulate empty fields. Circle parses as a number; non-numeric or
-      // empty stays undefined.
-      const circleNum = circle.trim() === '' ? undefined : Number(circle)
-      await onSave({
-        guild:  guild.trim() === '' ? undefined : guild,
-        circle: typeof circleNum === 'number' && !Number.isNaN(circleNum) ? circleNum : undefined,
-        notes:  notes.trim() === '' ? undefined : notes,
-      })
+      await onSave(toPatch(guild, circle, notes))
     } finally {
       setBusy(false)
     }
   }
 
+  // B389: Enter in a single-line field (the circle input, the guild select)
+  // saves. The notes textarea is multi-line and keeps Enter for newlines.
+  function onFieldKeyDown(e: KeyboardEvent<HTMLInputElement | HTMLSelectElement>) {
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); void handleSave() }
+  }
+
   return createPortal(
-    <div className="cne-backdrop" {...backdropHandlers(() => onCancel(), !busy)}>
-      <div className="cne-modal">
+    <div className="cne-backdrop" {...backdropHandlers(requestClose, !busy)}>
+      <div className="cne-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="cne-header">
-          <span className="cne-title">Edit Profile — {characterName}</span>
-          <button className="cne-close" onClick={onCancel} disabled={busy} title="Cancel">×</button>
+          <span className="cne-title" id={titleId}>Edit profile — {characterName}</span>
+          <button type="button" className="ui-close" onClick={requestClose} disabled={busy} title="Close" aria-label="Close">✕</button>
         </div>
 
         <div className="cne-body">
           <div className="cne-row">
             <label className="cne-label">
               Guild
+              {/* B397: the first field takes focus on open. */}
               <select
                 value={guild}
                 onChange={e => setGuild(e.target.value)}
+                onKeyDown={onFieldKeyDown}
                 disabled={busy}
                 className="cne-input"
+                autoFocus
               >
                 <option value="">— None —</option>
                 {GUILDS.map(g => (
@@ -117,6 +152,7 @@ export default function CharacterNotesEditor({
                 type="number"
                 value={circle}
                 onChange={e => setCircle(e.target.value)}
+                onKeyDown={onFieldKeyDown}
                 min={0}
                 max={500}
                 disabled={busy}
@@ -140,11 +176,15 @@ export default function CharacterNotesEditor({
         </div>
 
         <div className="cne-footer">
-          <button className="cne-btn cne-btn-cancel" onClick={onCancel} disabled={busy}>
+          <button type="button" className="ui-btn" onClick={requestClose} disabled={busy}>
             Cancel
           </button>
-          <button className="cne-btn cne-btn-save" onClick={handleSave} disabled={busy}>
-            {busy ? 'Saving…' : 'Save'}
+          {/* B345: both labels are always rendered in one grid cell, so the
+              button keeps the wider one's width and Save → Saving… never
+              resizes it (character-notes-editor.css). */}
+          <button type="button" className="ui-btn ui-btn--primary cne-btn--stable" onClick={handleSave} disabled={busy}>
+            <span className={`cne-btn-label${busy ? ' cne-btn-label--off' : ''}`}>Save</span>
+            <span className={`cne-btn-label${busy ? '' : ' cne-btn-label--off'}`} aria-hidden={!busy}>Saving…</span>
           </button>
         </div>
       </div>

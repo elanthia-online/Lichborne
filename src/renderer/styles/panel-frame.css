@@ -45,11 +45,22 @@
 .panel-frame-body:hover .panel-font-controls { opacity: 0.6; pointer-events: auto; }
 .panel-font-controls:hover { opacity: 1; pointer-events: auto; }
 
+/* B372 (docked half): an Experience tab's cluster is THREE buttons (A− / A+ /
+   ⚙), and stacked in a column it needed ~55px above its 28px lift — more than
+   a short panel tab has (the Spell Monitor is a strip), so the top buttons
+   clipped off the panel body. One horizontal row instead, the same shape as
+   the floating Experience window's `.exp-inst-controls` (experiences.css) —
+   keep the two identical. The lift (`--exp-ctl-lift`, clamped so the row
+   stays visible in a short strip) and the ⚙ popover's placement live with the
+   floating rule in experiences.css. Ordinary stream panels keep the 2-button
+   column above. */
+.panel-font-controls--exp { flex-direction: row; }
+
 .panel-font-btn {
   background: var(--bg-raised);
   border: 1px solid var(--border-subtle);
   color: var(--text-muted);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 1px 5px;
   font-family: inherit;
   /* DELIBERATELY fixed-size, not game-font scaled (Sekmeht, 2026-08-23 — B305):
@@ -155,7 +166,10 @@
   border-top: 2px solid transparent;
 }
 
-.panel-tab:hover {
+/* B340: `:not(--active)` — .panel-tab:hover (0,2,0) used to beat
+   .panel-tab--active (0,1,0), so the active tab lost its look under the mouse
+   and a hovered inactive tab looked active (pitfall #107). */
+.panel-tab:not(.panel-tab--active):hover {
   color: var(--text-secondary);
   background: var(--bg-hover);
 }
@@ -186,11 +200,18 @@
   padding: 0 1px;
   border-radius: 2px;
   transition: color 0.12s, background 0.12s;
+  /* B335: now a real <button> (keyboard-reachable) — reset the UA button
+     chrome so it looks exactly like the old span. */
+  background: none;
+  border: none;
+  margin: 0;
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .panel-tab-close:hover {
   color: var(--color-danger);
-  background: rgba(200, 60, 60, 0.15);
+  background: color-mix(in srgb, var(--color-danger) 15%, transparent);
 }
 
 /* ============================================================
@@ -231,10 +252,17 @@
   position: fixed;
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   min-width: 140px;
-  box-shadow: 0 -6px 16px rgba(0, 0, 0, 0.6);
-  z-index: 9999;
+  box-shadow: var(--popover-shadow);
+  /* B403: PORTALED to document.body (PanelFrame), so this z decides its paint
+     order alone. It was 9999 — above every modal, confirm and context menu,
+     outside the tier map. It only ever opens from a game-area panel strip, so
+     it joins the other game-area portaled popovers at 500 (ContactPopover,
+     ModeSwitcher — pitfall #118(b)): clear of the floating windows (≤61), the
+     Overview (65) and the app bar (70) it can open over, and below the Add
+     Account wizard (600) and everything modal above that. */
+  z-index: 500;
   display: flex;
   flex-direction: column;
   max-height: 240px;
@@ -328,7 +356,7 @@
   flex: 1;
   background: var(--bg-sunken);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 1em; /* B290: was 0.75rem = 12px — identical at default, now scales */
@@ -343,7 +371,7 @@
   background: var(--bg-btn);
   border: 1px solid var(--border);
   color: var(--accent-dim);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 3px 7px;
   font-family: inherit;
   font-size: 1.13em; /* B290: was 0.85rem */
@@ -356,9 +384,6 @@
   border-color: var(--accent-dim);
 }
 
-.stream-panel-empty {
-  padding: 12px;
-  color: var(--text-faint);
-  font-size: 1.07em;
-  font-style: italic;
-}
+/* (B385: `.stream-panel-empty` is gone — StreamPanel's empty line now uses the
+   shared .ui-empty from ui.css, which is --text-muted rather than the 2.3:1
+   --text-faint this rule had.) */

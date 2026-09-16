@@ -437,11 +437,22 @@
   height: 100%;
   background: var(--map-bg);
   overflow: hidden;
-  font-family: var(--font-family, inherit);
+  /* B406: was `var(--font-family, inherit)` — --font-family is defined nowhere,
+     so it always fell through to inherit. The game font is what body carries
+     (global.css), so this is what the rule meant. */
+  font-family: var(--game-font-family);
   color: var(--map-text);
+  /* B338: the panel font anchor (pitfall #58a) — the READING text below (room
+     details, search results, empty states) sizes in em off it, so Settings →
+     Font Size and the panel's A−/A+ reach it. em values = old px ÷ 12. */
+  font-size: var(--panel-font-size, var(--game-font-size));
 }
 
 /* ── Toolbar ──────────────────────────────────────────────── */
+/* Toolbar / subbar / bottom-bar chrome (.map-btn, .map-select, .map-chip,
+   .map-search, .map-zlevel-*, .map-room-id-badge, .map-status-text…) is
+   DELIBERATELY fixed px (B201) — toolbar chrome, not reading text. Only the
+   reading surfaces follow the panel font (B338). */
 
 .map-toolbar {
   display: flex;
@@ -459,14 +470,17 @@
   background: var(--map-btn-bg);
   border: 1px solid var(--map-btn-border);
   color: var(--map-text);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 13px;
   line-height: 1.4;
   transition: background 0.12s, border-color 0.12s;
 }
 
-.map-btn:hover {
+/* B340: `:not(--active)` so hovering an ON toolbar button (◆ following, ▤
+   legend, the Lich/Genie view tab) doesn't swap its active border/fill for the
+   hover look (pitfall #107). */
+.map-btn:not(.map-btn--active):hover {
   background: var(--bg-hover);
   border-color: var(--accent-dim);
   color: var(--map-select-color);
@@ -520,7 +534,7 @@
   background: var(--map-select-bg);
   border: 1px solid var(--map-btn-border);
   color: var(--map-text);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 2px 5px;
   font-size: 11px;
 }
@@ -562,7 +576,7 @@
   background: var(--map-select-bg);
   border: 1px solid var(--map-btn-border);
   color: var(--map-text);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 2px 6px;
   font-size: 11px;
   font-family: inherit;
@@ -603,7 +617,7 @@
   background: var(--map-btn-bg);
   border: 1px solid var(--map-btn-border);
   color: var(--map-text-muted);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 1px 6px;
   font-size: 11px;
   font-family: inherit;
@@ -614,7 +628,8 @@
   transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 
-.map-chip:hover {
+/* B340: the showing level keeps its active chip under the mouse. */
+.map-chip:not(.map-chip--active):hover {
   border-color: var(--accent-dim);
   color: var(--map-text);
   background: var(--bg-hover);
@@ -643,8 +658,8 @@
   padding: 4px 8px;
   background: var(--map-chrome-bg);
   border: 1px solid var(--map-border);
-  border-radius: 4px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--popover-shadow);
   max-width: calc(100% - 8px);
   max-height: 50%;
   overflow-y: auto;
@@ -693,7 +708,7 @@
   font-size: 10px;
   color: var(--map-text-muted);
   font-variant-numeric: tabular-nums;
-  font-family: monospace;
+  font-family: var(--code-font-family);
   flex: 1;
 }
 
@@ -743,7 +758,7 @@
   background: transparent;
   color: var(--map-current-color);
   border: 1px solid var(--map-btn-border);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 1px 6px;
   cursor: pointer;
   font-family: inherit;
@@ -944,7 +959,7 @@
   flex-shrink: 0;
   font-size: 10px;
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
 }
@@ -1008,10 +1023,11 @@
   color: var(--map-text-muted);
   border-radius: 10px;
   cursor: pointer;
-  transition: all 0.12s;
+  transition: color var(--ui-transition), background var(--ui-transition), border-color var(--ui-transition), box-shadow var(--ui-transition);
 }
 
-.map-zlevel-chip:hover {
+/* B340: hover no longer strips the active chip's accent border/colour. */
+.map-zlevel-chip:not(.map-zlevel-chip--active):hover {
   border-color: var(--map-btn-border);
   color: var(--map-text);
 }
@@ -1025,8 +1041,10 @@
 
 /* ── Search results ───────────────────────────────────────── */
 
+/* B338: search RESULTS are reading text — em off the .map-panel anchor
+   (px ÷ 12), so they follow Font Size / A+. The search INPUT stays toolbar px. */
 .map-search-results {
-  max-height: 130px;
+  max-height: 10.83em;
   overflow-y: auto;
   background: var(--map-bg);
   border-bottom: 1px solid var(--map-border);
@@ -1051,7 +1069,7 @@
 }
 
 .map-search-name {
-  font-size: 11px;
+  font-size: 0.92em;
   color: var(--map-select-color);
   flex: 1;
   min-width: 0;
@@ -1061,14 +1079,14 @@
 }
 
 .map-search-note {
-  font-size: 10px;
+  font-size: 0.83em;
   color: var(--map-text-muted);
   font-style: italic;
   flex-shrink: 0;
 }
 
 .map-search-id {
-  font-size: 10px;
+  font-size: 0.83em;
   color: var(--map-text-muted);
   flex-shrink: 0;
 }
@@ -1117,7 +1135,9 @@
 
 .map-location-unknown--needs-mapping .map-location-unknown-text {
   font-size: 11px;
-  color: color-mix(in srgb, var(--color-danger) 70%, white);
+  /* B325: toward the theme's text, not white — mixing toward white LIGHTENED
+     the text on light themes (~2.5:1). */
+  color: color-mix(in srgb, var(--color-danger) 70%, var(--text-primary));
   font-style: normal;
   font-weight: 600;
   letter-spacing: 0.3px;
@@ -1143,22 +1163,26 @@
   text-transform: uppercase;
 }
 
+/* B326: these were baked rust browns (#c06040 / #a05040 / #7a4030 / #5a2820)
+   — dark-on-dark on every DARK theme. The danger hue stays the signal; mixing
+   toward the theme's text self-corrects contrast on dark and light alike
+   (pitfall #63). */
 .map-location-unknown-icon {
   font-size: 11px;
-  color: #c06040;
+  color: var(--color-danger);
   flex-shrink: 0;
 }
 
 .map-location-unknown-text {
   font-size: 11px;
-  color: #a05040;
+  color: color-mix(in srgb, var(--color-danger) 70%, var(--text-primary));
   font-style: italic;
   flex-shrink: 0;
 }
 
 .map-location-unknown-room {
   font-size: 10px;
-  color: #7a4030;
+  color: color-mix(in srgb, var(--color-danger) 35%, var(--text-secondary));
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1172,7 +1196,7 @@
   margin-left: 22px;
   padding: 4px 8px;
   background: var(--bg-sunken);
-  border-left: 2px solid #5a2820;
+  border-left: 2px solid color-mix(in srgb, var(--color-danger) 45%, var(--border));
   border-radius: 0 3px 3px 0;
 }
 
@@ -1194,7 +1218,7 @@
 }
 
 .map-location-unknown-candidate-id {
-  font-family: monospace;
+  font-family: var(--code-font-family);
   color: var(--accent);
   flex-shrink: 0;
 }
@@ -1255,8 +1279,10 @@
   z-index: 10;
 }
 
-.map-overlay--error { background: rgba(20,6,6,0.85); }
-.map-overlay--error span { color: #e06060; font-size: 12px; }
+/* B326: was a baked near-black veil + #e06060 — the same dark-only literal the
+   .map-overlay comment above describes. Tinted from the theme instead. */
+.map-overlay--error { background: color-mix(in srgb, var(--map-bg) 85%, var(--color-danger)); }
+.map-overlay--error span { color: var(--color-danger); font-size: 12px; }
 
 .map-loading {
   color: var(--map-select-color);
@@ -1275,15 +1301,19 @@
   pointer-events: none;
 }
 
-.map-empty-icon  { font-size: 32px; opacity: 0.3; }
-.map-empty-msg   { font-size: 13px; color: var(--map-text-muted); }
-.map-empty-sub   { font-size: 11px; color: var(--map-text-muted); opacity: 0.6; }
+/* B338: empty states are reading text — em off the .map-panel anchor (px ÷ 12). */
+.map-empty-icon  { font-size: 2.67em; opacity: 0.3; }
+.map-empty-msg   { font-size: 1.08em; color: var(--map-text-muted); }
+.map-empty-sub   { font-size: 0.92em; color: var(--map-text-muted); opacity: 0.6; }
 
 /* ── Room detail ──────────────────────────────────────────── */
+/* B338: the room detail is READING text, so everything below sizes in em off
+   the .map-panel anchor (old px ÷ 12 — identical at the default 12px) and
+   follows Font Size / A+. The max-height scales with it (it scrolls). */
 
 .map-detail {
   flex-shrink: 0;
-  max-height: 170px;
+  max-height: 14.17em;
   overflow-y: auto;
   padding: 6px 8px;
   background: var(--map-chrome-bg);
@@ -1300,14 +1330,14 @@
 }
 
 .map-detail-name {
-  font-size: 12px;
+  font-size: 1em;
   font-weight: bold;
   color: var(--map-text);
   flex: 1;
 }
 
 .map-detail-id {
-  font-size: 10px;
+  font-size: 0.83em;
   color: var(--map-text-muted);
   flex-shrink: 0;
 }
@@ -1320,13 +1350,17 @@
   border: none;
   color: var(--map-text-muted);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 0.92em;
   line-height: 1;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   transition: color 0.1s, background 0.1s;
 }
 
-.map-detail-close:hover { color: #e06060; background: #2e1a1a; }
+/* B326: was a baked #e06060 on #2e1a1a — a dark chip on light themes. */
+.map-detail-close:hover {
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 15%, transparent);
+}
 
 .map-detail-aliases {
   display: flex;
@@ -1336,7 +1370,7 @@
 }
 
 .map-detail-alias {
-  font-size: 10px;
+  font-size: 0.83em;
   padding: 1px 5px;
   background: var(--map-btn-bg);
   border: 1px solid var(--map-btn-border);
@@ -1345,13 +1379,13 @@
 }
 
 .map-detail-here-badge {
-  font-size: 9px;
+  font-size: 0.75em;
   color: var(--map-current-color);
   flex-shrink: 0;
 }
 
 .map-detail-zone-badge {
-  font-size: 10px;
+  font-size: 0.83em;
   color: var(--map-text-muted);
   font-style: italic;
   opacity: 0.7;
@@ -1363,7 +1397,7 @@
 }
 
 .map-detail-desc {
-  font-size: 10px;
+  font-size: 0.83em;
   color: var(--map-text-muted);
   line-height: 1.45;
   margin-bottom: 5px;
@@ -1386,11 +1420,11 @@
 }
 
 .map-detail-exit {
-  font-size: 10px;
+  font-size: 0.83em;
   padding: 1px 5px;
   background: var(--map-chrome-bg);
   border: 1px solid;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   color: var(--map-text-muted);
   cursor: pointer;
   transition: background 0.1s;
@@ -1401,36 +1435,41 @@
   color: var(--map-select-color);
 }
 
+/* B326: was baked near-black green chips (#0e1e0e / #2a5a2a / #60c060) — a
+   dark slab on light themes. The success/danger HUE is the signal; fill,
+   border and text derive from theme vars so contrast self-corrects (the
+   .map-room-id-badge recipe, pitfall #63). */
 .map-walk-btn {
   width: 100%;
   padding: 4px 8px;
-  background: #0e1e0e;
-  border: 1px solid #2a5a2a;
-  color: #60c060;
-  border-radius: 3px;
-  font-size: 11px;
+  background: color-mix(in srgb, var(--color-success) 12%, var(--map-chrome-bg));
+  border: 1px solid color-mix(in srgb, var(--color-success) 45%, var(--map-btn-border));
+  color: color-mix(in srgb, var(--color-success) 75%, var(--text-primary));
+  border-radius: var(--radius-sm);
+  font-size: 0.92em; /* B338: was 11px — reading text inside the room detail */
+  font-family: inherit;
   cursor: pointer;
   text-align: center;
-  transition: all 0.15s;
+  transition: color var(--ui-transition), background var(--ui-transition), border-color var(--ui-transition), box-shadow var(--ui-transition);
   margin-top: 2px;
 }
 
 .map-walk-btn:hover {
-  background: #122012;
-  border-color: #50a050;
-  color: #80e080;
-  box-shadow: 0 0 6px rgba(80,192,80,0.2);
+  background: color-mix(in srgb, var(--color-success) 20%, var(--map-chrome-bg));
+  border-color: color-mix(in srgb, var(--color-success) 70%, var(--map-btn-border));
+  color: color-mix(in srgb, var(--color-success) 85%, var(--text-primary));
+  box-shadow: 0 0 6px color-mix(in srgb, var(--color-success) 25%, transparent);
 }
 
 .map-walk-btn--walking {
-  background: #200e0e;
-  border-color: #6a2020;
-  color: #e06060;
+  background: color-mix(in srgb, var(--color-danger) 12%, var(--map-chrome-bg));
+  border-color: color-mix(in srgb, var(--color-danger) 45%, var(--map-btn-border));
+  color: var(--color-danger);
   animation: map-stop-pulse 1s ease-in-out infinite;
 }
 
 .map-detail-here {
-  font-size: 10px;
+  font-size: 0.83em;
   color: var(--map-current-color);
   text-align: center;
   padding: 3px 0 1px;
@@ -1449,23 +1488,26 @@
   align-items: baseline;
   gap: 5px;
   padding: 2px 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background 0.1s;
 }
 
 .map-detail-crosszone-row:hover { background: var(--map-btn-bg); }
 
+/* B326: the cross-zone gold was a baked #c8a030 (~2.2:1 on white). The hue is
+   the cue, so it stays — mixed toward the theme's text so it holds on light
+   and dark alike (pitfall #63). */
 .map-detail-crosszone-diamond {
-  font-size: 9px;
-  color: #c8a030;
+  font-size: 0.75em;
+  color: color-mix(in srgb, #c8a030 70%, var(--text-primary));
   flex-shrink: 0;
 }
 
 
 .map-detail-crosszone-zone {
-  font-size: 10px;
-  color: #c8a030;
+  font-size: 0.83em;
+  color: color-mix(in srgb, #c8a030 70%, var(--text-primary));
   font-style: italic;
   flex: 1;
   min-width: 0;
@@ -1478,11 +1520,12 @@
 .map-detail-crosszone-zone:hover { text-decoration: underline; }
 
 .map-detail-crosszone-room {
-  font-size: 10px;
+  font-size: 0.83em;
   color: var(--map-text-muted);
   opacity: 0.7;
   flex-shrink: 0;
-  max-width: 90px;
+  /* em of this element's OWN font (pitfall #58b): 90px ÷ 10px = 9em. */
+  max-width: 9em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1513,9 +1556,9 @@
   pointer-events: none;
   background: var(--map-chrome-bg);
   border: 1px solid var(--map-border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 6px 9px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.65);
+  box-shadow: var(--popover-shadow);
   min-width: 130px;
   max-width: 240px;
 }
@@ -1523,7 +1566,7 @@
 .map-tooltip-id {
   font-size: 10px;
   color: var(--map-text-muted);
-  font-family: monospace;
+  font-family: var(--code-font-family);
   margin-bottom: 2px;
 }
 
@@ -1619,7 +1662,7 @@
 
 .map-tooltip-reach-anchor-id {
   font-size: 9px;
-  font-family: monospace;
+  font-family: var(--code-font-family);
   color: var(--map-text-muted);
 }
 
@@ -1638,9 +1681,9 @@
   color: var(--text-secondary);
   background: var(--bg-sunken);
   border: 1px solid var(--border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 1px 6px;
-  font-family: monospace;
+  font-family: var(--code-font-family);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1655,7 +1698,7 @@
   letter-spacing: 0.5px;
   text-transform: uppercase;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
@@ -1716,7 +1759,7 @@
   background: var(--map-select-bg);
   border: 1px solid var(--map-btn-border);
   color: var(--map-text);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 2px 4px;
   font-size: 11px;
   cursor: pointer;
@@ -1767,61 +1810,20 @@
 
 /* ── Full-screen Maps overlay ──────────────────────────────── */
 
+/* B400: the About look. The structure and chrome come from ui.css — the
+   backdrop is .ui-modal-backdrop (the --modal-scrim), the window .ui-modal
+   .ui-modal--standard (--modal-bg / border / radius / shadow, 88vw × 86vh),
+   the header .ui-modal-head + .ui-modal-title (the accent band) and the ✕
+   .ui-close — so only what those don't cover lives here. Don't restate their
+   properties on these classes (pitfall #113): ui.css loads first, so an
+   equal-specificity rule here would silently win.
+   B403: a per-session dialog, so it sits in the 100–400 tier. At 200 it TIED
+   six other dialogs (Automations, Contacts, Highlights, Macros, Theme Picker,
+   Triggers) and stacking fell to DOM order. 250 is free — above the 200
+   group (the map opens from the View menu over whatever is up), below the 300
+   group (Import, Transfer, Theme Editor). */
 .map-overlay-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.72);
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.map-overlay-window {
-  width: 88vw;
-  height: 86vh;
-  background: var(--map-chrome-bg);
-  border: 1px solid var(--map-border);
-  border-radius: 4px;
-  box-shadow: 0 8px 48px rgba(0,0,0,0.8), 0 0 0 1px rgba(0,0,0,0.08);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.map-overlay-titlebar {
-  display: flex;
-  align-items: center;
-  padding: 6px 10px;
-  background: var(--map-chrome-bg);
-  border-bottom: 1px solid var(--map-border);
-  flex-shrink: 0;
-}
-
-.map-overlay-title {
-  flex: 1;
-  font-size: 12px;
-  font-weight: bold;
-  color: var(--map-select-color);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.map-overlay-close {
-  padding: 1px 6px;
-  background: transparent;
-  border: 1px solid var(--map-btn-border);
-  color: var(--map-text-muted);
-  border-radius: 3px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: all 0.12s;
-}
-
-.map-overlay-close:hover {
-  background: #2e1a1a;
-  border-color: #8a4040;
-  color: #e06060;
+  z-index: 250;
 }
 
 .map-overlay-body {

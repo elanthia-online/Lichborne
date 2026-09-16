@@ -1,113 +1,7 @@
-/* ── Macros Panel ─────────────────────────────────────────────────────────── */
-
-.ma-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--modal-scrim);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
-}
-
-.ma-modal {
-  background: var(--modal-bg);
-  border: 1px solid var(--modal-border);
-  border-radius: var(--modal-radius);
-  width: var(--modal-w-standard);
-  max-width: 96vw;
-  height: var(--modal-h-standard);
-  max-height: var(--modal-h-standard);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: var(--modal-shadow);
-}
-
-/* ── Header ──────────────────────────────────────────────────────────────── */
-
-.ma-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--modal-head-bg);
-  border-bottom: 1px solid var(--modal-head-border);
-  flex-shrink: 0;
-}
-
-.ma-title {
-  font-weight: 700;
-  color: var(--modal-head-color);
-  font-size: 0.9rem;
-  letter-spacing: 1px;
-  flex: 1;
-}
-
-/* Tab switcher — individual pill buttons matching Contacts style */
-.ma-tab-group {
-  display: flex;
-  gap: 2px;
-}
-
-.ma-tab {
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-dim);
-  font-family: inherit;
-  font-size: 0.78rem;
-  padding: 3px 12px;
-  cursor: pointer;
-  transition: all 0.15s;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.ma-tab:hover {
-  border-color: var(--accent-dim);
-  color: var(--text-secondary);
-}
-
-.ma-tab--active {
-  border-color: var(--accent-bg);
-  background: var(--bg-sunken);
-  color: var(--accent);
-}
-
-.ma-tab-count {
-  background: var(--bg-sunken);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  font-size: 0.65rem;
-  padding: 0 5px;
-  color: var(--text-muted);
-  line-height: 1.6;
-}
-
-.ma-tab--active .ma-tab-count {
-  border-color: var(--accent-dim);
-  color: var(--accent-dim);
-}
-
-.ma-close {
-  width: 1.7rem;
-  height: 1.7rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  color: var(--text-muted);
-  font-size: 0.95rem;
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
-}
-
-.ma-close:hover { background: var(--modal-ctl-hover); color: var(--text-primary); }
+/* ── Macros Panel ───────────────────────────────────────────────────────────────
+   Hosted only inside the Automations dialog (once as Macros, once as Aliases),
+   which owns the chrome; the standalone .ma-backdrop / .ma-modal / .ma-header /
+   .ma-tab set was never rendered and was removed in v0.19.7 (B408). */
 
 /* ── Body — two-pane ─────────────────────────────────────────────────────── */
 
@@ -140,7 +34,7 @@
   text-align: left;
   cursor: pointer;
   flex-shrink: 0;
-  transition: color 0.15s, background 0.15s;
+  transition: color var(--ui-transition), background var(--ui-transition);
 }
 
 .ma-new-btn:hover {
@@ -154,9 +48,10 @@
   padding: 4px 0;
 }
 
+/* B385: --text-muted — --text-faint is ~2.3:1 on Classic Light. */
 .ma-empty {
   padding: 14px;
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: 0.78rem;
   font-style: italic;
   line-height: 1.6;
@@ -172,7 +67,7 @@
   transition: background 0.1s;
 }
 
-.ma-list-item:hover    { background: var(--bg-hover); }
+.ma-list-item:not(.ma-list-item--active):hover { background: var(--bg-hover); }
 .ma-list-item--active  { background: var(--bg-sunken); }
 .ma-list-item--disabled { opacity: 0.45; }
 .ma-list-item--pending { opacity: 0.7; font-style: italic; }
@@ -249,7 +144,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: 0.85rem;
   font-style: italic;
 }
@@ -289,18 +184,20 @@
 .ma-input {
   background: var(--modal-input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 0.85rem;
   padding: 5px 9px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color var(--ui-transition);
 }
 
 .ma-input:focus  { border-color: var(--accent-dim); }
 .ma-input--flex  { flex: 1; }
 .ma-input--cmd   { flex: 1; font-family: var(--game-font-family, monospace); font-size: 0.82rem; }
+/* B406: an alias trigger is matched literally — shown in the code font. */
+.ma-input--code  { font-family: var(--code-font-family); }
 
 /* Delay input — compact number field */
 .ma-delay-input {
@@ -320,7 +217,7 @@
 .ma-case-btn {
   background: transparent;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-dim);
   font-family: inherit;
   font-size: 0.78rem;
@@ -328,10 +225,10 @@
   cursor: pointer;
   flex-shrink: 0;
   font-style: italic;
-  transition: all 0.12s;
+  transition: background var(--ui-transition), color var(--ui-transition), border-color var(--ui-transition);
 }
 
-.ma-case-btn:hover     { background: var(--bg-hover); color: var(--text-secondary); }
+.ma-case-btn:not(.ma-case-btn--active):hover { background: var(--bg-hover); color: var(--text-secondary); }
 .ma-case-btn--active   { background: var(--bg-sunken); color: var(--accent); border-color: var(--accent-dim); }
 
 /* ── Key binding field ───────────────────────────────────────────────────── */
@@ -346,7 +243,7 @@
   flex: 1;
   background: var(--modal-input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 5px 12px;
   font-family: var(--game-font-family, monospace);
   font-size: 0.9rem;
@@ -359,7 +256,7 @@
 }
 
 .ma-key-display--empty {
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-family: inherit;
   font-style: italic;
   font-size: 0.82rem;
@@ -389,17 +286,17 @@
   background: var(--bg-btn);
   border: 1px solid var(--border);
   color: var(--text-muted);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 5px 12px;
   font-family: inherit;
   font-size: 0.78rem;
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.15s;
+  transition: background var(--ui-transition), color var(--ui-transition), border-color var(--ui-transition);
   white-space: nowrap;
 }
 
-.ma-record-btn:hover {
+.ma-record-btn:not(.ma-record-btn--active):hover {
   border-color: var(--accent-dim);
   color: var(--accent);
 }
@@ -414,12 +311,12 @@
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-faint);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 5px 7px;
   font-size: 0.8rem;
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.15s;
+  transition: color var(--ui-transition), border-color var(--ui-transition);
   line-height: 1;
 }
 
@@ -460,7 +357,7 @@
   justify-content: center;
   flex-shrink: 0;
   line-height: 1;
-  transition: all 0.12s;
+  transition: color var(--ui-transition), border-color var(--ui-transition);
 }
 
 .ma-cmd-remove:hover {
@@ -472,13 +369,13 @@
   background: transparent;
   border: 1px dashed var(--border);
   color: var(--accent-dim);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 4px 10px;
   font-family: inherit;
   font-size: 0.78rem;
   cursor: pointer;
   text-align: left;
-  transition: all 0.12s;
+  transition: background var(--ui-transition), color var(--ui-transition), border-color var(--ui-transition);
   flex-shrink: 0;
 }
 
@@ -494,10 +391,10 @@
   background: var(--bg-btn);
   border: 1px solid var(--border);
   color: var(--text-dim);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   width: 26px;
   height: 26px;
-  font-family: monospace;
+  font-family: var(--code-font-family);
   font-size: 0.9rem;
   font-weight: 700;
   cursor: pointer;
@@ -506,7 +403,7 @@
   justify-content: center;
   flex-shrink: 0;
   padding: 0;
-  transition: all 0.12s;
+  transition: color var(--ui-transition), border-color var(--ui-transition);
 }
 
 .ma-var-btn:hover {
@@ -514,19 +411,25 @@
   color: var(--accent);
 }
 
+/* Portaled to <body> over the Automations dialog (z 200). B403: 450 sits it
+   just above the per-session dialog tier (100–400) and below the Add-Account
+   wizard (600) — pitfall #118(d). */
 .ma-var-menu {
   position: fixed;
   background: var(--bg-base);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-  z-index: 400;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--popover-shadow);
+  z-index: 450;
   min-width: 180px;
   max-height: 240px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 3px 0;
 }
 
+/* B380: a real <button> per item (keyboard-reachable), with the button
+   chrome reset so it reads as a menu row. */
 .ma-var-item {
   display: flex;
   /* baseline (not center) so a long token like {ReturnOrRepeatLast} whose
@@ -535,24 +438,31 @@
      description floating vertically-centered against the 1-line token. */
   align-items: baseline;
   gap: 10px;
+  width: 100%;
   padding: 5px 10px;
+  background: none;
+  border: none;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
   cursor: pointer;
   font-size: 0.8rem;
-  transition: background 0.1s;
+  transition: background var(--ui-transition);
 }
 
-.ma-var-item:hover { background: var(--bg-hover); }
+.ma-var-item:hover,
+.ma-var-item:focus-visible { background: var(--bg-hover); }
 
 .ma-var-item code {
   color: var(--accent);
-  font-family: monospace;
+  font-family: var(--code-font-family);
   font-size: 0.82rem;
   min-width: 56px;
   flex-shrink: 0;
 }
 
 .ma-var-item span {
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: 0.75rem;
   flex: 1;
   line-height: 1.45;
@@ -616,77 +526,21 @@
 
 .ma-hint {
   font-size: 0.74rem;
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-style: italic;
   line-height: 1.5;
 }
 
 /* ── Actions bar ─────────────────────────────────────────────────────────── */
 
+/* The footer buttons are the shared ui-btn (ui.css); the old .ma-btn /
+   --save / --delete / --danger set was retired in v0.19.7 (B399). */
 .ma-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   padding-top: 2px;
   flex-shrink: 0;
-}
-
-.ma-confirm-text {
-  flex: 1;
-  font-size: 0.82rem;
-  color: var(--color-danger);
-}
-
-.ma-btn {
-  background: var(--bg-btn);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: 4px;
-  padding: 5px 14px;
-  font-family: inherit;
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.ma-btn:hover {
-  border-color: var(--accent-dim);
-  color: var(--text-secondary);
-}
-
-.ma-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.ma-btn--save {
-  margin-left: auto;
-  border-color: var(--accent-bg);
-  color: var(--accent);
-}
-
-.ma-btn--save:hover:not(:disabled) {
-  background: var(--accent-bg);
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-.ma-btn--delete {
-  background: transparent;
-  border-color: var(--border);
-  color: var(--text-dim);
-}
-
-.ma-btn--delete:hover {
-  border-color: var(--color-danger-border);
-  color: var(--color-danger);
-}
-
-.ma-btn--danger {
-  border-color: var(--color-danger-border);
-  color: var(--color-danger);
-}
-
-.ma-btn--danger:hover {
-  background: var(--color-danger-bg);
+  /* The armed InlineConfirm (question + two buttons) can need a second row. */
+  flex-wrap: wrap;
 }

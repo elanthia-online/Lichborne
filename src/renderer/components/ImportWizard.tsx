@@ -26,8 +26,10 @@
 // `unsupported` row. Variables / scripts / alert highlights / quick buttons
 // are counted and reported as "belong in Lich", never imported.
 
-import { useRef, useState } from 'react'
+import { Fragment, useEffect, useId, useRef, useState } from 'react'
 import { backdropHandlers } from '../utils/backdropClose'
+import { useEscapeClose } from '../hooks/useEscapeClose'
+import { pressable } from '../utils/pressable'
 import { createPortal } from 'react-dom'
 import { ImportResult, ImportSource } from '../import/types'
 import { parseGenieFiles } from '../import/parsers/genie'
@@ -156,9 +158,19 @@ interface Props {
   onClose:       () => void
   onSaved?:      () => void
   onThemeSaved?: (themeId: string) => void   // called after a custom theme is created from presets
+  // B405: set when opened OVER another dialog (Automations). The backdrop then
+  // stays transparent — it still catches the outside click — so the screen
+  // isn't darkened twice.
+  nested?:       boolean
 }
 
-export default function ImportWizard({ onClose, onSaved, onThemeSaved }: Props) {
+export default function ImportWizard({ onClose, onSaved, onThemeSaved, nested = false }: Props) {
+  useEscapeClose(onClose)
+  const titleId = useId()
+  // B397: open with focus INSIDE the dialog. Step 1 has no field, so the panel
+  // itself takes it (tabIndex -1); Tab then reaches the source cards.
+  const panelRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { panelRef.current?.focus() }, [])
   const character = useCharacter()
   const [step, setStep]         = useState<Step>('source')
   const [source, setSource]     = useState<ImportSource | null>(null)
@@ -711,16 +723,17 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved }: Props) 
           const idx = order.indexOf(s.id)
           const active = step === s.id
           const done   = cur > idx
+          // A keyed Fragment: the bare `<>` in this map carried no key, so
+          // React warned on every render of the header.
           return (
-            <>
-              {i > 0 && <div key={`sep-${i}`} className="iw-step-sep" />}
+            <Fragment key={s.id}>
+              {i > 0 && <div className="iw-step-sep" />}
               <div
-                key={s.id}
                 className={`iw-step-dot${active ? ' iw-step-dot--active' : done ? ' iw-step-dot--done' : ''}`}
               >
                 {done ? '✓' : s.label}
               </div>
-            </>
+            </Fragment>
           )
         })}
       </div>
@@ -763,7 +776,9 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved }: Props) 
             <div
               key={c.id}
               className={`iw-source-card${source === c.id ? ' iw-source-card--selected' : ''}`}
-              onClick={() => {
+              // B335: a clickable card was unreachable by Tab, although its
+              // :focus-visible ring was already styled.
+              {...pressable(() => {
                 setSource(c.id)
                 setFileTexts({})
                 // B131 (v0.8.9): force merge to 'append' when switching
@@ -771,7 +786,7 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved }: Props) 
                 // self-imports, but the wizard's `merge` state could
                 // carry over from a prior legacy-client selection.
                 if (c.id === 'lichborne') setMerge('append')
-              }}
+              }, { selected: source === c.id })}
             >
               <div className="iw-source-card-name">{c.name}</div>
               <div className="iw-source-card-desc">{c.desc}</div>
@@ -794,7 +809,8 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved }: Props) 
                       : <span className="iw-file-none">Not loaded</span>
                     }
                     <button
-                      className="iw-file-btn"
+                      type="button"
+                      className="ui-btn ui-btn--sm"
                       onClick={() => fileInputRefs.current[slot.key]?.click()}
                     >
                       Browse…
@@ -830,17 +846,20 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved }: Props) 
       { id: 'triggers',   label: 'Triggers',      count: result.triggers.length   },
       { id: 'mutes',      label: 'Mutes',         count: (result.mutes ?? []).length },
       { id: 'substitutes', label: 'Substitutes',  count: (result.substitutes ?? []).length },
-      { id: 'theme',      label: 'Theme Colors',  count: themeVarCount            },
+      { id: 'theme',      label: 'Theme colors',  count: themeVarCount            },
     ]
     const tabs = allTabs.filter(t => t.count > 0)
 
     return (
       <>
-        <div className="iw-preview-tabs">
+        <div className="ui-tabs iw-preview-tabs" role="tablist">
           {tabs.map(t => (
             <button
               key={t.id}
-              className={`iw-preview-tab${previewTab === t.id ? ' iw-preview-tab--active' : ''}`}
+              type="button"
+              role="tab"
+              aria-selected={previewTab === t.id}
+              className={`ui-tab${previewTab === t.id ? ' ui-tab--active' : ''}`}
               onClick={() => setPreviewTab(t.id)}
             >
               {t.label}
@@ -976,7 +995,7 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved }: Props) 
                             onChange={() => toggleSel(selM, i, setSelM)}
                           />
                         </td>
-                        <td style={{ fontFamily: 'monospace', fontSize: '0.78rem' }}>{m.key}</td>
+                        <td style={{ fontFamily: 'var(--code-font-family)', fontSize: '0.78rem' }}>{m.key}</td>
                         <td><span className="iw-pattern" title={m.commands.join('; ')}>{m.commands.join('; ')}</span></td>
                         <td>{isDup ? <span className="iw-exists-badge" title="Already in your profile">EXISTS</span> : renderStatusBadge(m.status, m.statusNote)}</td>
                       </tr>
@@ -1012,7 +1031,7 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved }: Props) 
                             onChange={() => toggleSel(selA, i, setSelA)}
                           />
                         </td>
-                        <td style={{ fontFamily: 'monospace', fontSize: '0.78rem' }}>{a.input}</td>
+                        <td style={{ fontFamily: 'var(--code-font-family)', fontSize: '0.78rem' }}>{a.input}</td>
                         <td><span className="iw-pattern" title={a.commands.join('; ')}>{a.commands.join('; ')}</span></td>
                         <td>{isDup ? <span className="iw-exists-badge" title="Already in your profile">EXISTS</span> : renderStatusBadge(a.status, a.statusNote)}</td>
                       </tr>
@@ -1145,8 +1164,8 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved }: Props) 
                       <th style={{ width: 28 }}></th>
                       <th>Name</th>
                       <th>Template</th>
-                      <th>Text Color</th>
-                      <th>BG Color</th>
+                      <th>Text color</th>
+                      <th>Background</th>
                       <th>Status</th>
                     </tr>
                   </thead>
@@ -1196,7 +1215,7 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved }: Props) 
                   <tr>
                     <th>Element</th>
                     <th>Color</th>
-                    <th style={{ fontFamily: 'monospace', fontWeight: 400 }}>CSS Variable</th>
+                    <th>CSS variable</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1210,11 +1229,11 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved }: Props) 
                           ? <span className="iw-color-none">transparent</span>
                           : <span className="iw-color-swatch" style={{ background: color }} title={color} />
                         }
-                        <span style={{ marginLeft: 8, fontSize: '0.72rem', color: 'var(--text-dim)', fontFamily: 'monospace' }}>
+                        <span style={{ marginLeft: 8, fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--code-font-family)' }}>
                           {color}
                         </span>
                       </td>
-                      <td style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+                      <td style={{ fontFamily: 'var(--code-font-family)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                         {cssVar}
                       </td>
                     </tr>
@@ -1364,23 +1383,26 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved }: Props) 
   // ── Footer ───────────────────────────────────────────────────────────────────
 
   function renderFooter() {
+    // Footer rail order (UX standard #10): info …spacer… [Cancel/Back] [Primary].
     if (step === 'done') {
       return (
-        <div className="iw-footer">
-          <button className="iw-btn iw-btn--primary" onClick={onClose}>Close</button>
+        <div className="ui-modal-foot">
+          <button type="button" className="ui-btn ui-btn--primary" onClick={onClose}>Close</button>
         </div>
       )
     }
     if (step === 'source') {
       return (
-        <div className="iw-footer">
+        <div className="ui-modal-foot">
           <span className="iw-footer-info">
             {source ? `${Object.keys(fileTexts).length} file(s) loaded` : 'Select a client above'}
           </span>
-          <button className="iw-btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="ui-btn" onClick={onClose}>Cancel</button>
           <button
-            className="iw-btn iw-btn--primary"
+            type="button"
+            className="ui-btn ui-btn--primary"
             disabled={!source || !hasAnyFile}
+            title={!source ? 'Pick the client you are importing from' : !hasAnyFile ? 'Load at least one file' : undefined}
             onClick={goToPreview}
           >
             Preview →
@@ -1392,16 +1414,18 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved }: Props) 
       const hasThemeVars = !!(result?.themeVars && Object.keys(result.themeVars).length > 0)
       const canContinue  = totalSelected > 0 || (selTheme && hasThemeVars)
       return (
-        <div className="iw-footer">
+        <div className="ui-modal-foot">
           <span className="iw-footer-info">
             {totalSelected - selC.size} rule{(totalSelected - selC.size) !== 1 ? 's' : ''}
             {selC.size > 0 ? `, ${selC.size} contact${selC.size !== 1 ? 's' : ''}` : ''}
             {selTheme && hasThemeVars ? ' + theme' : ''} selected
           </span>
-          <button className="iw-btn" onClick={() => setStep('source')}>← Back</button>
+          <button type="button" className="ui-btn" onClick={() => setStep('source')}>← Back</button>
           <button
-            className="iw-btn iw-btn--primary"
+            type="button"
+            className="ui-btn ui-btn--primary"
             disabled={!canContinue}
+            title={!canContinue ? 'Tick at least one item to import' : undefined}
             onClick={() => setStep('confirm')}
           >
             Confirm →
@@ -1411,9 +1435,9 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved }: Props) 
     }
     if (step === 'confirm') {
       return (
-        <div className="iw-footer">
-          <button className="iw-btn" onClick={() => setStep('preview')}>← Back</button>
-          <button className="iw-btn iw-btn--primary" onClick={doImport}>
+        <div className="ui-modal-foot">
+          <button type="button" className="ui-btn" onClick={() => setStep('preview')}>← Back</button>
+          <button type="button" className="ui-btn ui-btn--primary" onClick={doImport}>
             Import
           </button>
         </div>
@@ -1424,14 +1448,30 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved }: Props) 
 
   // ── Main render ──────────────────────────────────────────────────────────────
 
+  // B378: a backdrop click closes only when nothing would be lost — the first
+  // step and the finished screen. It used to pass `step !== 'done'`, which is
+  // backwards: a stray click dropped a preview or a confirm on the floor, and
+  // the one screen with nothing left to lose ignored the click.
+  const backdropCloses = step === 'source' || step === 'done'
+
   const modal = (
-    <div className="iw-backdrop" {...backdropHandlers(() => onClose(), step !== 'done')}>
-      <div className="iw-modal">
+    <div
+      className={`iw-backdrop${nested ? ' iw-backdrop--nested' : ''}`}
+      {...backdropHandlers(() => onClose(), backdropCloses)}
+    >
+      <div
+        ref={panelRef}
+        className="iw-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+      >
 
         <div className="iw-header">
-          <span className="iw-title">Import from Legacy Client</span>
+          <span className="iw-title" id={titleId}>Import from another client</span>
           {step !== 'done' && renderStepDots()}
-          <button className="iw-close" onClick={onClose}>✕</button>
+          <button type="button" className="ui-close" onClick={onClose} title="Close" aria-label="Close">✕</button>
         </div>
 
         <div className="iw-body">

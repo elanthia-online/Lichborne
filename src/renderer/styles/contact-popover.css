@@ -23,6 +23,11 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
   display: flex;
   flex-direction: column;
+  /* B332: long notes make it taller than a short window. ContactPopover clamps
+     its position into the viewport, which only works if the box fits. */
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
@@ -135,12 +140,12 @@
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-dim);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 3px 12px;
   font-family: inherit;
   font-size: 1.04em;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: border-color var(--ui-transition), color var(--ui-transition);
 }
 
 .cpop-edit-btn:hover {

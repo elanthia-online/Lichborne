@@ -233,6 +233,12 @@ export class StormFrontParser {
   private isDead      = false
   private isPoisoned  = false
   private isDiseased  = false
+  // UNCONSCIOUS has no indicator tag — DR signals it ONLY as the `U` in the
+  // status prompt (`SUP>` = stunned + unconscious + prone), confirmed by Binu
+  // (2026-09-15): it needs `set statusprompt` on, and the letter disappears the
+  // moment you wake. Neither Genie, Frostbite nor Profanity surfaces it, and
+  // Lich's ICONMAP has no entry for it, so the prompt letter is the only source.
+  private isUnconscious = false
 
   // Prompt dedup — DR fires a <prompt> after every server transaction. We show
   // the FIRST prompt after any activity and suppress only EXACT repeats that
@@ -292,6 +298,7 @@ export class StormFrontParser {
     this.isDead        = false
     this.isPoisoned    = false
     this.isDiseased    = false
+    this.isUnconscious = false
   }
 
   // Single chokepoint for every emitted event. Tracks whether the LAST event was
@@ -1121,13 +1128,32 @@ export class StormFrontParser {
         this.colorStack    = []
         this.linkCmd       = undefined
         this.linkCmdIsText = false
+        // UNCONSCIOUS comes from the prompt LETTERS, because DR sends no
+        // indicator tag for it (see isUnconscious). Only `U` is decoded — the
+        // one letter a tester has confirmed; the rest of the alphabet is
+        // unverified and guessing it would invent state the game never stated.
+        // With statusprompt OFF the text is a bare ">", which carries no
+        // letters and therefore never sets this — and never wrongly clears it,
+        // since it could not have been set in the first place.
+        const gt = prompt.indexOf('>')
+        const unconscious = gt > 0 && prompt.slice(0, gt).includes('U')
+        // The flag the dedup below reads must be sampled BEFORE the emit:
+        // an indicator derived from THIS prompt is not "something happened
+        // since the last prompt", so it must not let a repeat `>` through.
+        const wasPrompt = this.lastEmitWasPrompt
+        if (unconscious !== this.isUnconscious) {
+          this.isUnconscious = unconscious
+          // Same shape as a real indicator, so it lands in the renderer's
+          // indicator map and the `$unconscious` variable with no extra wiring.
+          this.emit({ type: 'indicator', id: 'unconscious', visible: unconscious })
+        }
         // Show this prompt UNLESS it's an exact repeat of the immediately
         // preceding prompt (i.e. the last emitted event was that same prompt and
         // nothing happened since). Any non-prompt event — main OR a sub-stream
         // (room title/exits/also-here on a move) — clears lastEmitWasPrompt via
         // emit(), so the post-activity `>` shows. A statusprompt state change
         // ("H>"→"R>") differs in text, so it's never an exact repeat and shows.
-        if (!(this.lastEmitWasPrompt && prompt === this.lastPromptText)) {
+        if (!(wasPrompt && prompt === this.lastPromptText)) {
           this.lastPromptText = prompt
           this.emit({
             type: 'stream-text',

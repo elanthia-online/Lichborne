@@ -4,69 +4,10 @@
   border-radius: 2px;
 }
 
-/* ── Highlights Panel ─────────────────────────────────────────────────────── */
-
-.hp-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--modal-scrim);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
-}
-
-.hp-modal {
-  background: var(--modal-bg);
-  border: 1px solid var(--modal-border);
-  border-radius: var(--modal-radius);
-  width: var(--modal-w-standard);
-  max-width: 95vw;
-  height: var(--modal-h-standard);
-  max-height: var(--modal-h-standard);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: var(--modal-shadow);
-}
-
-/* ── Header ──────────────────────────────────────────────────────────────── */
-
-.hp-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--modal-head-bg);
-  border-bottom: 1px solid var(--modal-head-border);
-  flex-shrink: 0;
-}
-
-.hp-title {
-  flex: 1;
-  font-weight: 700;
-  color: var(--modal-head-color);
-  font-size: 0.9rem;
-  letter-spacing: 1px;
-}
-
-.hp-close {
-  width: 1.7rem;
-  height: 1.7rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  color: var(--text-muted);
-  font-size: 0.95rem;
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
-}
-
-.hp-close:hover { background: var(--modal-ctl-hover); color: var(--text-primary); }
+/* ── Highlights Panel ─────────────────────────────────────────────────────────
+   Hosted only inside the Automations dialog, which owns the chrome; the
+   standalone .hp-backdrop / .hp-modal / .hp-header set was never rendered and
+   was removed in v0.19.7 (B408). Mutes and Substitutes share these .hp-* rules. */
 
 /* ── Body — two-pane ─────────────────────────────────────────────────────── */
 
@@ -100,7 +41,7 @@
   text-align: left;
   cursor: pointer;
   flex-shrink: 0;
-  transition: color 0.15s, background 0.15s;
+  transition: color var(--ui-transition), background var(--ui-transition);
 }
 
 .hp-new-btn:hover {
@@ -114,9 +55,10 @@
   padding: 4px 0;
 }
 
+/* B385: --text-muted — --text-faint is ~2.3:1 on Classic Light. */
 .hp-empty {
   padding: 14px 14px;
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: 0.78rem;
   font-style: italic;
   line-height: 1.5;
@@ -132,7 +74,7 @@
   transition: background 0.1s;
 }
 
-.hp-list-item:hover { background: var(--bg-hover); }
+.hp-list-item:not(.hp-list-item--active):hover { background: var(--bg-hover); }
 .hp-list-item--active { background: var(--bg-sunken); }
 .hp-list-item--disabled { opacity: 0.45; }
 .hp-list-item--pending { opacity: 0.7; font-style: italic; }
@@ -159,7 +101,9 @@
   height: 10px;
   border-radius: 2px;
   flex-shrink: 0;
-  border: 1px solid rgba(255,255,255,0.08);
+  /* From the text colour, not white-alpha: a white hairline vanished on light
+     themes, where a white or pale swatch then had no edge at all (B326). */
+  border: 1px solid color-mix(in srgb, var(--text-primary) 25%, transparent);
 }
 
 .hp-list-label {
@@ -194,7 +138,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: 0.85rem;
   font-style: italic;
 }
@@ -232,25 +176,27 @@
 .hp-input {
   background: var(--modal-input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 0.85rem;
   padding: 5px 9px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color var(--ui-transition);
 }
 
 .hp-input:focus { border-color: var(--accent-dim); }
 select.hp-input { cursor: pointer; }
 
+/* B406: patterns, replacements and hex values are code, in the code font. */
 .hp-input--hex {
   width: 100px;
-  font-family: monospace;
+  font-family: var(--code-font-family);
   font-size: 0.8rem;
 }
 
-.hp-input--pattern { flex: 1; }
+.hp-input--pattern { flex: 1; font-family: var(--code-font-family); }
+.hp-input--code    { font-family: var(--code-font-family); }
 
 .hp-input--error {
   border-color: var(--color-danger-border) !important;
@@ -279,7 +225,7 @@ select.hp-input { cursor: pointer; }
 
 .hp-mode-btn--case {
   margin-left: 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   font-style: italic;
 }
@@ -287,7 +233,7 @@ select.hp-input { cursor: pointer; }
 .hp-mode-toggle {
   display: flex;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -301,12 +247,12 @@ select.hp-input { cursor: pointer; }
   font-size: 0.75rem;
   padding: 4px 9px;
   cursor: pointer;
-  transition: all 0.12s;
+  transition: background var(--ui-transition), color var(--ui-transition);
 }
 
 .hp-mode-btn:last-child { border-right: none; }
 
-.hp-mode-btn:hover {
+.hp-mode-btn:not(.hp-mode-btn--active):hover {
   background: var(--bg-hover);
   color: var(--text-secondary);
 }
@@ -391,7 +337,7 @@ select.hp-input { cursor: pointer; }
   height: 28px;
   padding: 1px 2px;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: var(--modal-input-bg);
   cursor: pointer;
   flex-shrink: 0;
@@ -442,7 +388,7 @@ select.hp-input { cursor: pointer; }
   min-height: 48px;
   background: var(--bg-sunken);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
   font-family: var(--game-font-family, monospace);
   font-size: 0.88rem;
@@ -466,67 +412,12 @@ select.hp-input { cursor: pointer; }
   padding: 8px 18px;
   border-top: 1px solid var(--border-subtle);
   background: var(--bg-base);
+  /* The armed InlineConfirm (question + two buttons) can need a second row. */
+  flex-wrap: wrap;
 }
 
-.hp-confirm-text {
-  flex: 1;
-  font-size: 0.82rem;
-  color: var(--color-danger);
-}
-
-.hp-btn {
-  background: var(--bg-btn);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: 4px;
-  padding: 5px 14px;
-  font-family: inherit;
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.hp-btn:hover {
-  border-color: var(--accent-dim);
-  color: var(--text-secondary);
-}
-
-.hp-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.hp-btn--save {
-  margin-left: auto;
-  border-color: var(--accent-bg);
-  color: var(--accent);
-}
-
-.hp-btn--save:hover:not(:disabled) {
-  background: var(--accent-bg);
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-.hp-btn--delete {
-  background: transparent;
-  border-color: var(--border);
-  color: var(--text-dim);
-}
-
-.hp-btn--delete:hover {
-  border-color: var(--color-danger-border);
-  color: var(--color-danger);
-}
-
-.hp-btn--danger {
-  border-color: var(--color-danger-border);
-  color: var(--color-danger);
-}
-
-.hp-btn--danger:hover {
-  background: var(--color-danger-bg);
-}
+/* The footer and sound-row buttons are the shared ui-btn (ui.css); the old
+   .hp-btn / --save / --delete / --danger set was retired in v0.19.7 (B399). */
 
 .hp-sound-row {
   display: flex;
@@ -537,22 +428,6 @@ select.hp-input { cursor: pointer; }
 .hp-input--sound {
   flex: 1;
   font-size: 0.8rem;
-}
-
-.hp-btn--browse,
-.hp-btn--play,
-.hp-btn--clear {
-  flex-shrink: 0;
-  padding: 3px 10px;
-  font-size: 0.75rem;
-}
-
-.hp-btn--play {
-  font-size: 0.7rem;
-}
-
-.hp-btn--clear {
-  color: var(--text-dim);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

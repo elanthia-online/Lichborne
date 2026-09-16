@@ -19,14 +19,14 @@
      The deferred half of the modal unification (the size tokens above were
      the safe first slice). These encode the About-modal recipe — the look
      Sekmeht picked as the house style — so a dialog opts in by USING THE
-     TOKENS instead of hand-rolling a variant. Converted so far: About (the
-     reference), Edit Profile (.cne-*), the launcher's account/favorites panels,
-     and the whole Automations family (.at- shell + .hp- highlights/mutes/subs,
-     .trg- triggers, .ma- macros/aliases, .gm- groups), and Contacts (.cp-).
-     Remaining dialogs still carry their own chrome — Panel Manager, Settings,
-     Lich Dashboard, Session Log, Theme Picker/Editor, Import Wizard, Profile
-     Transfer, Quick Send, AI Consent. Convert them to these tokens rather than
-     copying literals.
+     TOKENS instead of hand-rolling a variant. As of v0.19.7 (B400) EVERY
+     dialog wears them: About (the reference), Edit Profile / Attach / Team
+     Login (.cne-*), the launcher panels, the Automations family, Contacts, the
+     + modal, Settings, the Layout Manager, the Lich Dashboard, the Session Log,
+     the Theme Picker / Editor, the Import Wizard, Profile Transfer, the Add
+     Account wizard / Lich Setup, Quick Send, AI Consent, the Experiences shelf
+     and the Maps overlay. The controls inside them come from the shared
+     primitives in ui.css (B399). A new dialog uses both, never copied literals.
      Note on resolution: a custom property's `var()` references are substituted
      at computed-value time ON THE DECLARING ELEMENT (`:root`), and the RESOLVED
      value is what inherits. That's correct here because applyTheme writes every
@@ -103,9 +103,9 @@ strong, b {
 
 /* Smooth interaction transitions on chrome controls (never the game-text rows —
    those tags aren't matched here). Elements with their own transition override. */
-button, input, select, textarea, .ld-tab, .lp-filter-tab, .sp-nav-item, [role="tab"] {
-  transition: background-color 0.13s ease, border-color 0.13s ease,
-              color 0.13s ease, box-shadow 0.13s ease, opacity 0.13s ease;
+button, input, select, textarea, .sp-nav-item, [role="tab"] {
+  transition: background-color var(--ui-transition), border-color var(--ui-transition),
+              color var(--ui-transition), box-shadow var(--ui-transition), opacity var(--ui-transition);
 }
 
 /* One consistent, accessible keyboard-focus ring. Mouse clicks don't trigger
@@ -184,9 +184,12 @@ button:not(:disabled):active {
 .sidebar-search-input {
   flex: 1;
   min-width: 0;
-  background: var(--bg-sunken);
+  /* --modal-input-bg, not --bg-sunken: every sidebar search lives in a dialog,
+     and --bg-sunken is #fafafa on Classic Light's white panel — a field with
+     almost no fill (pitfall #55, B399). */
+  background: var(--modal-input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-size: 0.78rem;
   font-family: inherit;
@@ -250,7 +253,9 @@ button:not(:disabled):active {
   padding: 6px 14px;
   background: color-mix(in srgb, var(--color-success) 12%, var(--bg-base));
   border-bottom: 1px solid color-mix(in srgb, var(--color-success) 35%, var(--bg-base));
-  color: color-mix(in srgb, var(--color-success) 70%, white);
+  /* B325: mixed toward --text-primary, never `white` — on a near-white light
+     theme a white mix makes the text LIGHTER and it washes out (pitfall #63). */
+  color: color-mix(in srgb, var(--color-success) 70%, var(--text-primary));
   font-size: 0.8rem;
 }
 
@@ -259,7 +264,7 @@ button:not(:disabled):active {
   border-radius: 4px;
   border: 1px solid color-mix(in srgb, var(--color-success) 35%, var(--bg-base));
   background: color-mix(in srgb, var(--color-success) 15%, var(--bg-base));
-  color: color-mix(in srgb, var(--color-success) 70%, white);
+  color: color-mix(in srgb, var(--color-success) 70%, var(--text-primary));
   font-size: 0.78rem;
   cursor: pointer;
   font-family: inherit;
@@ -278,7 +283,7 @@ button:not(:disabled):active {
   margin-left: auto;
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--color-success) 70%, white);
+  color: color-mix(in srgb, var(--color-success) 70%, var(--text-primary));
   font-size: 0.85rem;
   cursor: pointer;
   padding: 2px 6px;

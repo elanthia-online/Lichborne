@@ -37,8 +37,10 @@
 // bottom of the render; `useGroups()` comes from the per-session provider App
 // wraps around this component.
 
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { backdropHandlers } from "../utils/backdropClose"
+import { useEscapeClose } from '../hooks/useEscapeClose'
+import { pressable } from '../utils/pressable'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { GameEvent, StreamTextEvent, TextLine, RoomState, TextSegment, InjuryState, FireLogEntry, SessionLogRecord, SimuCoinStatus } from '../../shared/types'
 import { normalizeStreamId } from '../../shared/streamAliases'
@@ -49,9 +51,9 @@ import { buildNameRegex } from '../utils/renderWithContacts'
 import { ContactsContext } from '../ContactsContext'
 import { HighlightsContext, useCompiledHighlights } from '../HighlightsContext'
 import { loadContacts, loadContactTemplates, saveContacts, saveContactTemplates, type Contact } from '../contacts'
-import { loadHighlights, saveHighlights, newHighlight, type HighlightRule } from '../highlights'
-import { loadMutes, saveMutes, compileMutes, applyMutesToSegments, newMute, type MuteRule, type CompiledMute } from '../mutes'
-import { loadSubstitutes, saveSubstitutes, compileSubstitutes, applySubstitutesToSegments, newSubstitute, type SubstituteRule, type CompiledSubstitute } from '../substitutes'
+import { loadHighlights, saveHighlights, type HighlightRule } from '../highlights'
+import { loadMutes, saveMutes, compileMutes, applyMutesToSegments, type MuteRule, type CompiledMute } from '../mutes'
+import { loadSubstitutes, saveSubstitutes, compileSubstitutes, applySubstitutesToSegments, type SubstituteRule, type CompiledSubstitute } from '../substitutes'
 import { runSlash, slashLineText, simucoinRowText, type SlashContext, type SlashEditorTab } from '../slashCommands'
 import { loadCustomColors, saveCustomColors, contrastBackingFor } from '../colors'
 import { loadAIConfig, saveAIConfig, AI_STREAM, streamLabel, modelLabel } from '../aiConfig'
@@ -86,7 +88,9 @@ import '../styles/free-layout.css'
 import ThemePicker from './ThemePicker'
 import SettingsPanel from './SettingsPanel'
 import SessionLogModal from './SessionLogModal'
-import ContextMenu, { type CtxItem } from './ContextMenu'
+import ContextMenu from './ContextMenu'
+// B391: the one text context-menu builder, shared with every stream panel.
+import { buildTextMenu } from './panels/StreamPanel'
 import ContactsPanel from './ContactsPanel'
 import AutomationsPanel from './AutomationsPanel'
 import LichDashboard, { type DashTab } from './LichDashboard'
@@ -585,6 +589,13 @@ function removeFromZone(
   if (activeId === tab.id && next.length > 0) setActiveId(next[Math.max(0, idx - 1)].id)
 }
 
+// B333: what each command-bar timer strip IS — they differ only by colour.
+const TIMER_TITLE = {
+  rt:  'Roundtime — you can\'t act again until it runs out',
+  ct:  'Cast time — your spell is still being prepared',
+  aim: 'Aim — your ranged weapon is still taking aim',
+} as const
+
 const TimerDisplay = memo(function TimerDisplay({ rtExpires, ctExpires, aimExpires, timerStyle }: {
   rtExpires: number; ctExpires: number; aimExpires: number; timerStyle: string
 }) {
@@ -598,21 +609,27 @@ const TimerDisplay = memo(function TimerDisplay({ rtExpires, ctExpires, aimExpir
   // max. Render order rt → aim → ct so CT paints on top of aim at equal z-index.
   const aimScaleMax = ctMax > 0 ? ctMax : aimMax
   const aimBarPct = aimScaleMax > 0 ? Math.min(100, (aim / aimScaleMax) * 100) : 0
+  // B333: the three strips differ only by colour, so each names itself
+  // (title for hover, aria-label for a screen reader). They are HIT-TESTABLE so
+  // that title can show — `.cmd-bar` and `.cmd-chip` take the pointer in
+  // game.css (the full-width `.cmd-chips` row does not) — and a click still
+  // reaches the input because `.cmd-input-wrap`'s mousedown preventDefaults and
+  // focuses it. The pre-B333 comment here said the opposite.
   if (timerStyle === 'chips') return (<>
-    {rt > 0 && <div className="cmd-chips cmd-chips--rt">
+    {rt > 0 && <div className="cmd-chips cmd-chips--rt" title={TIMER_TITLE.rt} aria-label={TIMER_TITLE.rt} role="img">
       {Array.from({ length: Math.min(Math.ceil(rt), Math.round(rtMax)) }, (_, i) => <div key={i} className="cmd-chip cmd-chip--rt" />)}
     </div>}
-    {aim > 0 && <div className="cmd-chips cmd-chips--aim">
+    {aim > 0 && <div className="cmd-chips cmd-chips--aim" title={TIMER_TITLE.aim} aria-label={TIMER_TITLE.aim} role="img">
       {Array.from({ length: Math.min(Math.ceil(aim), Math.round(aimMax)) }, (_, i) => <div key={i} className="cmd-chip cmd-chip--aim" />)}
     </div>}
-    {ct > 0 && <div className="cmd-chips cmd-chips--ct">
+    {ct > 0 && <div className="cmd-chips cmd-chips--ct" title={TIMER_TITLE.ct} aria-label={TIMER_TITLE.ct} role="img">
       {Array.from({ length: Math.min(Math.ceil(ct), Math.round(ctMax)) }, (_, i) => <div key={i} className="cmd-chip cmd-chip--ct" />)}
     </div>}
   </>)
   return (<>
-    {rt > 0 && <div className="cmd-bar cmd-bar--rt" style={{ width: `${rtPct}%` }} />}
-    {aim > 0 && <div className="cmd-bar cmd-bar--aim" style={{ width: `${aimBarPct}%` }} />}
-    {ct > 0 && <div className="cmd-bar cmd-bar--ct" style={{ width: `${ctPct}%` }} />}
+    {rt > 0 && <div className="cmd-bar cmd-bar--rt" style={{ width: `${rtPct}%` }} title={TIMER_TITLE.rt} aria-label={TIMER_TITLE.rt} role="img" />}
+    {aim > 0 && <div className="cmd-bar cmd-bar--aim" style={{ width: `${aimBarPct}%` }} title={TIMER_TITLE.aim} aria-label={TIMER_TITLE.aim} role="img" />}
+    {ct > 0 && <div className="cmd-bar cmd-bar--ct" style={{ width: `${ctPct}%` }} title={TIMER_TITLE.ct} aria-label={TIMER_TITLE.ct} role="img" />}
   </>)
 })
 
@@ -704,7 +721,7 @@ export default function GameWindow({
   // AppShell, so reading them here is not the pitfall-#57 trap of reaching into
   // per-session state from app chrome; it is the reverse and perfectly legal.
   // They gate the card menu's window-move entries exactly as they gate the tab's.
-  const { updateStatus, updateCharacterName, sessions: allSessions } = useSessions()
+  const { updateStatus, updateCharacterName, setActive, sessions: allSessions } = useSessions()
   const { isPrimary } = useRoster()
   const characterId = useMemo(
     () => makeCharacterId(session.account, session.character, session.game),
@@ -1126,7 +1143,10 @@ export default function GameWindow({
   }, [layoutMode, freeWindows, mainTopAdded, mainTopTabs, topAdded, topTabs, midAdded, midTabs, bottomAdded, bottomTabs])
   // "Any Experience live" = a floating instance OR a hosted tab — this drives
   // the §35.6 scene-work gate, so a tab-hosted Tableau still gets its feed.
-  const expAnyOpen = experiences.some(i => i.open) || expTabIds.size > 0
+  // Only instances the registry still knows count: ExperienceLayer skips an
+  // unknown id (kept on disk for a future build, never deleted), so counting
+  // it would hold scene work on for a window nobody can see or close (B346).
+  const expAnyOpen = experiences.some(i => i.open && !!experienceById(i.id)) || expTabIds.size > 0
   // §35: the typed cast from main's SceneParser (scene-cast events) — the
   // Experiences' "who is here" source of truth (replaces any renderer-side
   // text re-parsing). Replay-snapshotted in main, so a window handoff or
@@ -1405,6 +1425,11 @@ export default function GameWindow({
   // v0.8.2: open EXISTING trigger by id (drives the Fires-log → GOTO button).
   // Distinct from prefillPattern, which always creates a new trigger.
   const [triggerOpenId,        setTriggerOpenId]        = useState<string | undefined>(undefined)
+  // Fires → Edit on a HIGHLIGHT opens it by id, the way triggers do. It used to
+  // go through highlightPrefill, which in "All characters" scope couldn't tell
+  // an existing rule from a new one and copied the character rule into the
+  // global store under the same id.
+  const [highlightOpenFireId,  setHighlightOpenFireId]  = useState<string | undefined>(undefined)
 
   const [contacts,  setContacts]  = useState(() => loadContacts(session.character))
   const [contactTemplates, setContactTemplates] = useState(() => loadContactTemplates(session.character))
@@ -2065,18 +2090,19 @@ export default function GameWindow({
   useEffect(() => {
     anyModalOpenRef.current = showDebug || showPanelManager || showThemePicker ||
       showSettings || showContacts || showAutomations || showMapOverlay ||
-      showLichDash || showSessionLog || showExpShelf
+      showLichDash || showSessionLog || showExpShelf || aiConsent !== null
     // showMapOverlay + showLichDash were computed above but MISSING from the
     // deps until v0.15.2 — opening ONLY the map overlay or Lich dashboard left
     // the ref stale (macros kept firing into them). Found while wiring F60's
-    // type-to-focus onto this same guard.
-  }, [showDebug, showPanelManager, showThemePicker, showSettings, showContacts, showAutomations, showMapOverlay, showLichDash, showSessionLog, showExpShelf])
+    // type-to-focus onto this same guard. AI Consent joined in v0.19.7 (B375):
+    // it opens from `/ai catchup` + Enter, with the caret still in the bar.
+  }, [showDebug, showPanelManager, showThemePicker, showSettings, showContacts, showAutomations, showMapOverlay, showLichDash, showSessionLog, showExpShelf, aiConsent])
 
   // Surface open-overlay state so the app-level app-bar can glow the matching
   // button for the ACTIVE session (the old per-session toolbar showed this via
-  // btn-*--active; removed in 2c). Only the four buttons that had an active
-  // state: Debug, Logs, Maps, Lich. Per-session via SessionsContext, so tab
-  // switching reflects the right character automatically.
+  // btn-*--active; removed in 2c). Every toggle button reports here, and each
+  // is lit only while the thing IT toggles is open (B346). Per-session via
+  // SessionsContext, so tab switching reflects the right character automatically.
   useEffect(() => {
     updateStatus(characterId, {
       panelDebug:       debugOpen,
@@ -2088,11 +2114,22 @@ export default function GameWindow({
       panelSettings:    showSettings,
       panelContacts:    showContacts,
       panelTheme:       showThemePicker,
-      // §34.5: the Experiences button glows while the shelf OR any Experience
-      // is open (the open surface is the durable state worth reflecting).
-      panelExperiences: showExpShelf || expAnyOpen,
+      // B346 (Sekmeht): lit while the SHELF is open, like every other button —
+      // "lit" means "clicking this closes what it opened". It used to be lit
+      // whenever any Experience was showing, and an Experience docked as a
+      // panel tab is permanent layout, so the button never went dark; the
+      // B345 open-state ring made that read as stuck.
+      panelExperiences: showExpShelf,
     })
-  }, [characterId, updateStatus, debugOpen, showSessionLog, showMapOverlay, showLichDash, showPanelManager, showAutomations, showSettings, showContacts, showThemePicker, showExpShelf, expAnyOpen])
+  }, [characterId, updateStatus, debugOpen, showSessionLog, showMapOverlay, showLichDash, showPanelManager, showAutomations, showSettings, showContacts, showThemePicker, showExpShelf])
+
+  // Surface this character's app-bar wordmark effect (v0.19.7). Separate from
+  // the effect above because it changes on a completely different cadence — a
+  // settings edit, not a panel toggle — and `updateStatus` bails when nothing
+  // moved, so the write costs nothing on the renders where it hasn't changed.
+  useEffect(() => {
+    updateStatus(characterId, { brandEffect: settings.brandEffect })
+  }, [characterId, updateStatus, settings.brandEffect])
 
   // Native-menu / app-bar action bridge (Phase 2a/2b). App re-dispatches
   // session actions as 'lichborne:session-action'; every mounted GameWindow
@@ -2101,6 +2138,12 @@ export default function GameWindow({
   // (pitfall #31 pattern) so each case sees current state/handlers — needed
   // because e.g. the Logs case branches on the live `showSessionLog`. Every
   // case mirrors exactly what the corresponding toolbar button does.
+  // B368: toggling a dialog CLOSED from the app bar or the native menu must go
+  // through that dialog's own guarded close — it may hold an unsaved draft — so
+  // instead of unmounting it we bump its `closeRequest` and let it ask.
+  const [closeRequests, setCloseRequests] = useState<Record<string, number>>({})
+  const requestDialogClose = (key: string) =>
+    setCloseRequests(r => ({ ...r, [key]: (r[key] ?? 0) + 1 }))
   const runSessionActionRef = useRef<(action: string) => void>(() => {})
   useEffect(() => {
     runSessionActionRef.current = (action: string) => {
@@ -2122,10 +2165,22 @@ export default function GameWindow({
         case 'toggle-panels':      setShowPanelManager(v => !v); break
         case 'toggle-maps':        setShowMapOverlay(v => !v); break
         case 'toggle-experiences': setShowExpShelf(v => !v); break
-        case 'toggle-contacts':    setOpenContactId(null); setShowContacts(v => !v); break
-        case 'toggle-automations': setShowAutomations(v => !v); break
-        case 'toggle-lich':        setLichDashTab('scripts'); setShowLichDash(v => !v); break
-        case 'toggle-theme':       setShowThemePicker(v => !v); break
+        case 'toggle-contacts':
+          if (showContacts) requestDialogClose('contacts')
+          else { setOpenContactId(null); setShowContacts(true) }
+          break
+        case 'toggle-automations':
+          if (showAutomations) requestDialogClose('automations')
+          else setShowAutomations(true)
+          break
+        case 'toggle-lich':
+          if (showLichDash) requestDialogClose('lich')
+          else { setLichDashTab('scripts'); setShowLichDash(true) }
+          break
+        case 'toggle-theme':
+          if (showThemePicker) requestDialogClose('theme')
+          else setShowThemePicker(true)
+          break
         case 'toggle-settings':    setShowSettings(v => !v); break
         case 'disconnect':         if (!dropped && !disconnecting) handleDisconnect(); break
         case 'move-to-new-window': window.api.moveSessionToWindow(session.sessionId, 'new'); break
@@ -3804,8 +3859,10 @@ export default function GameWindow({
         // window when focus is anywhere else. Ctrl+Home / Ctrl+End reach
         // the story even while typing: Ctrl+Home in a single-line input
         // is identical to plain Home natively, so nothing is lost by
-        // repurposing the modified combo.
-        const homeEndScrollsStory = !inCommandInput || e.ctrlKey
+        // repurposing the modified combo. B350: Cmd+Home / Cmd+End too on a
+        // Mac (Fn+Cmd+←/→ on a laptop keyboard) — additive, Ctrl still works.
+        // No macro can claim it: meta chords are never bindable (macros.ts).
+        const homeEndScrollsStory = !inCommandInput || e.ctrlKey || (IS_MAC && e.metaKey)
         if (homeEndScrollsStory) {
           if (e.key === 'End')  { e.preventDefault(); scrollToBottom() }
           if (e.key === 'Home') { e.preventDefault(); pinnedRef.current = false; if (el) el.scrollTop = 0 }
@@ -3815,14 +3872,15 @@ export default function GameWindow({
       if (!anyModalOpenRef.current) {
         // Mode hotkeys
         for (const mode of modesRef.current) {
-          if (mode.hotkey && matchKeyCombo(mode.hotkey, e)) {
+          if (mode.hotkey && matchKeyCombo(mode.hotkey, e, { mac: IS_MAC })) {
             e.preventDefault()
             applyModeRef.current(mode.id)
             return
           }
         }
         const activeMacros = macrosRef.current.filter(r => isRuleActive(r.groupIds ?? [], activeGroupStatesRef.current, r.allGroups ?? false))
-        const resolved = resolveMacro(e, activeMacros, buildMacroVars())
+        // B347: mac Option chords are matched by physical key (macros.ts).
+        const resolved = resolveMacro(e, activeMacros, buildMacroVars(), { mac: IS_MAC })
         if (resolved && analyticsEnabledRef.current) recordFire(session.character, resolved.ruleId)
         if (resolved && resolved.commands.length > 0) {
           e.preventDefault()
@@ -4169,6 +4227,8 @@ export default function GameWindow({
       poisoned:      s.indicators.poisoned  ? 'true' : 'false',
       diseased:      s.indicators.diseased  ? 'true' : 'false',
       stunned:       s.indicators.stunned   ? 'true' : 'false',
+      // Kept in lockstep with buildVars in useTriggerEngine.
+      unconscious:   s.indicators.unconscious ? 'true' : 'false',
       webbed:        s.indicators.webbed    ? 'true' : 'false',
       joined:        s.indicators.joined    ? 'true' : 'false',
       hidden:        s.indicators.hidden    ? 'true' : 'false',
@@ -4956,6 +5016,11 @@ export default function GameWindow({
   }, [])
 
   function handleCommandKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    // B349: mid-composition the keys belong to the input method (macOS/Linux
+    // IME) — Esc cancels the candidate, ↑/↓ choose one. Acting on them wiped the
+    // line / swapped in history. keyCode 229 catches a composing keydown that
+    // arrives without isComposing set.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
     // Slash palette first (DESIGN §37.3): while it's open, ↑/↓ move its
     // selection, Tab completes, Esc dismisses — consumed keys never reach the
     // history logic. Enter is deliberately NOT consumed (submits as typed).
@@ -5050,6 +5115,7 @@ export default function GameWindow({
     setHighlightPrefill(rule)
     setHighlightTestText(testText)
     setTriggerOpenId(undefined) // v0.8.2: clear stale Fires-GOTO state from prior open
+    setHighlightOpenFireId(undefined)
     setAutomationsTab('highlights')
     setShowAutomations(true)
   }, [])
@@ -5061,8 +5127,36 @@ export default function GameWindow({
                                 // the TriggersPanel's openRuleId effect fires after
                                 // the prefillPattern effect and overwrites the new
                                 // trigger draft with the old goto target.
+    setHighlightOpenFireId(undefined)
     setAutomationsTab('triggers')
     setShowAutomations(true)
+  }, [])
+
+  // B381: stable (setters only, [] deps) so they can reach the memoized
+  // StreamPanel through sharedFrameProps too — stream panels now offer Mute /
+  // Substitute / Show in Log from their own text, like the game window.
+  const openMuteEditor = useCallback((rule: MuteRule) => {
+    setHighlightPrefill(undefined)
+    setTriggerPrefillPattern(undefined)
+    setMutePrefill(rule)
+    setAutomationsTab('mutes')
+    setShowAutomations(true)
+  }, [])
+
+  const openSubstituteEditor = useCallback((rule: SubstituteRule) => {
+    setHighlightPrefill(undefined)
+    setTriggerPrefillPattern(undefined)
+    setSubstitutePrefill(rule)
+    setAutomationsTab('substitutes')
+    setShowAutomations(true)
+  }, [])
+
+  // "Show in Log": open the Session Log straight into a search for this line
+  // (query + remount nonce + open — the find-in-log pattern).
+  const showInLog = useCallback((text: string) => {
+    setSessionLogSearch(text)
+    setSessionLogKey(k => k + 1)
+    setShowSessionLog(true)
   }, [])
 
   const sharedFrameProps = {
@@ -5080,6 +5174,10 @@ export default function GameWindow({
     onHighlight: openHighlightEditor,
     lichMapVersion,
     onTrigger: openTriggerEditor,
+    // B381: stream panels' Modify Text ▸ Mute / Substitute and Show in Log.
+    onMute: openMuteEditor,
+    onSubstitute: openSubstituteEditor,
+    onShowInLog: showInLog,
     discoveredStreams,
     streamTitles,
     injuryState,
@@ -5536,25 +5634,10 @@ export default function GameWindow({
     return el?.closest('.text-line')?.textContent?.trim() || null
   }
 
-  // openHighlightEditor / openTriggerEditor live ABOVE as useCallbacks (B172:
+  // openHighlightEditor / openTriggerEditor / openMuteEditor /
+  // openSubstituteEditor / showInLog live ABOVE as useCallbacks (B172/B381:
   // they feed the memoized StreamPanel via sharedFrameProps, so they need
   // stable identities — and sharedFrameProps is built before this point).
-
-  function openMuteEditor(rule: MuteRule) {
-    setHighlightPrefill(undefined)
-    setTriggerPrefillPattern(undefined)
-    setMutePrefill(rule)
-    setAutomationsTab('mutes')
-    setShowAutomations(true)
-  }
-
-  function openSubstituteEditor(rule: SubstituteRule) {
-    setHighlightPrefill(undefined)
-    setTriggerPrefillPattern(undefined)
-    setSubstitutePrefill(rule)
-    setAutomationsTab('substitutes')
-    setShowAutomations(true)
-  }
 
   // v0.8.2: drives the "→" GOTO button on Fires log entries. Looks up the
   // rule by id and opens it for EDIT in the Automations panel. Highlights
@@ -5565,12 +5648,20 @@ export default function GameWindow({
     if (kind === 'highlight') {
       const rule = highlights.find(r => r.id === ruleId)
       if (!rule) return
-      openHighlightEditor(rule)
+      // By id, like the trigger branch below — see highlightOpenFireId.
+      setHighlightPrefill(undefined)
+      setHighlightTestText(undefined)
+      setTriggerPrefillPattern(undefined)
+      setTriggerOpenId(undefined)
+      setHighlightOpenFireId(ruleId)
+      setAutomationsTab('highlights')
+      setShowAutomations(true)
     } else {
       const rule = triggers.find(r => r.id === ruleId)
       if (!rule) return
       setHighlightPrefill(undefined)
       setTriggerPrefillPattern(undefined)
+      setHighlightOpenFireId(undefined)
       setTriggerOpenId(ruleId)
       setAutomationsTab('triggers')
       setShowAutomations(true)
@@ -5773,13 +5864,21 @@ export default function GameWindow({
         title="Quick Send (Ctrl+Shift+Enter)"
         onClick={() => document.dispatchEvent(new CustomEvent('lichborne:open-quick-send'))}
       >&gt;</button>
-      <div className="cmd-input-wrap">
+      {/* B333: the timer strips take the pointer so their tooltips show on
+          hover; a press on one still focuses the input, as it did when the
+          strips were pointer-events: none. */}
+      <div className="cmd-input-wrap" onMouseDown={e => {
+        if (e.target !== inputRef.current) { e.preventDefault(); focusCommandInput() }
+      }}>
         <TimerDisplay rtExpires={rtExpires} ctExpires={ctExpires} aimExpires={aimExpires} timerStyle={settings.timerStyle} />
         {/* autoFocus is a MOUNT-time DOM attribute, so it cannot go through
             focusCommandInput — gate it on the same condition instead. */}
         <input ref={inputRef} type="text" autoFocus={!overviewOpen} value={command}
           onChange={e => { historyIdxRef.current = -1; setSlashDismissed(false); setCommand(e.target.value) }}
           onKeyDown={handleCommandKey} className="command-input" autoComplete="off" spellCheck={false}
+          // B336: an accessible name that survives past the first session —
+          // the placeholder below only shows while history is empty (F58).
+          aria-label="Command"
           placeholder={showCmdHint ? 'Type a game command — or / for Lichborne client commands' : undefined} />
         {/* Slash palette (DESIGN §37) — mounted only while the input holds a
             client command; portals itself above the input, so it works in the
@@ -6000,7 +6099,6 @@ export default function GameWindow({
           game={session.game}
           useLich={session.useLich}
           connected={!dropped}
-          isActive={isActive}
           index={overviewIndex}
           settings={settings}
           options={overviewOptions}
@@ -6027,8 +6125,14 @@ export default function GameWindow({
           streamChoices={overviewStreamChoices}
           onStreamChange={setOverviewStream}
           stats={overviewStats}
-          onSelect={() => setOverviewTarget(characterId)}
-          selected={overviewTarget === characterId}
+          /* B320: a card click is ONE selection — the input bar's target AND the
+             active tab, while staying in the Overview. `setActive` from here is
+             the same path a tab click already takes (DESIGN §47). */
+          onSelect={() => { setOverviewTarget(characterId); setActive(characterId) }}
+          /* Selected = one of the input bar's targets: this card alone, or —
+             under All characters (target null) — every CONNECTED card, since
+             that is exactly who a send reaches. */
+          selected={overviewTarget === characterId || (overviewTarget === null && !dropped)}
           onOpen={() => onOpenInSession?.()}
           onMenu={(x, y) => setCardMenu({ x, y })}
         />,
@@ -6063,70 +6167,36 @@ export default function GameWindow({
         />
       )}
 
-      {mainCtxMenu && (() => {
-        const sep = { label: null as null }
-        const hlGroup = [
-          ...(mainCtxMenu.word ? [{ label: `Highlight "${mainCtxMenu.word}"`, onClick: () => openHighlightEditor(newHighlight(mainCtxMenu.word!, 'match'), mainCtxMenu.lineText ?? undefined) }] : []),
-          ...(mainCtxMenu.lineText ? [{ label: 'Highlight this line', onClick: () => openHighlightEditor(newHighlight(mainCtxMenu.lineText!, 'line'), mainCtxMenu.lineText ?? undefined) }] : []),
-        ]
-        const trGroup = [
-          ...(mainCtxMenu.word ? [{ label: `Trigger for "${mainCtxMenu.word}"`, onClick: () => openTriggerEditor(mainCtxMenu.word!) }] : []),
-          ...(mainCtxMenu.lineText ? [{ label: 'Trigger for this line', onClick: () => openTriggerEditor(mainCtxMenu.lineText!) }] : []),
-        ]
-        const muGroup = [
-          ...(mainCtxMenu.word ? [{ label: `Mute "${mainCtxMenu.word}"`, onClick: () => openMuteEditor({ ...newMute(mainCtxMenu.word!, 'phrase'), scope: 'match' }) }] : []),
-          ...(mainCtxMenu.lineText ? [{ label: 'Mute this line', onClick: () => openMuteEditor({ ...newMute(mainCtxMenu.lineText!, 'phrase'), scope: 'line' }) }] : []),
-        ]
-        const subGroup = [
-          ...(mainCtxMenu.word ? [{ label: `Substitute "${mainCtxMenu.word}"`, onClick: () => openSubstituteEditor(newSubstitute(mainCtxMenu.word!, '')) }] : []),
-          ...(mainCtxMenu.lineText ? [{ label: 'Substitute this line', onClick: () => openSubstituteEditor(newSubstitute(mainCtxMenu.lineText!, '')) }] : []),
-        ]
-        const logGroup = mainCtxMenu.lineText
-          ? [{ label: 'Show in Log', onClick: () => { setSessionLogSearch(mainCtxMenu.lineText!); setSessionLogKey(k => k + 1); setShowSessionLog(true) } }]
-          : []
-        // Per-character timestamp toggle for the MAIN stream — same mechanism the
-        // panels use (streamTimestamps map → toggleStreamTimestamp), keyed 'main'.
-        // Default OFF (the map is empty on a new character) and persisted to YAML
-        // via toggleStreamTimestamp's saveProfile (Morress). Always available,
-        // like Clear — not gated on word/lineText.
-        const tsGroup = [{ label: streamTimestamps['main'] ? 'Disable Timestamps' : 'Enable Timestamps', onClick: () => toggleStreamTimestamp('main') }]
-        const clGroup = [{ label: 'Clear', onClick: clearLines }]
-        // Two sibling submenus: "Modify Text" (Highlight / Mute / Substitute —
-        // change how text displays) and "Trigger" (automation off the text),
-        // then Show in Log / Clear. Keeps the root menu to four short rows.
-        const join = (gs: CtxItem[][]) => {
-          const ne = gs.filter(g => g.length > 0)
-          return ne.flatMap((g, i) => i < ne.length - 1 ? [...g, sep] : g)
-        }
-        const modifyItems = join([hlGroup, muGroup, subGroup])
-        const tail = [...logGroup, ...tsGroup, ...clGroup]
-        const items: CtxItem[] = [
-          ...(modifyItems.length ? [{ label: 'Modify Text', submenu: modifyItems }] : []),
-          ...(trGroup.length     ? [{ label: 'Trigger',     submenu: trGroup }]     : []),
-          ...((modifyItems.length || trGroup.length) && tail.length ? [sep] : []),
-          ...tail,
-        ]
-        return (
-          <ContextMenu x={mainCtxMenu.x} y={mainCtxMenu.y} onClose={() => setMainCtxMenu(null)} items={items} />
-        )
-      })()}
+      {/* B391: the one text-menu shape, built by the SAME function the stream
+          panels use (StreamPanel.tsx buildTextMenu) so the two can't drift:
+          Modify Text ▸ / Trigger ▸ / Show in Log — Timestamps — Clear. No
+          Close: this is the game text itself.
+          Timestamps: the per-character toggle for the MAIN stream — the same
+          mechanism the panels use (streamTimestamps → toggleStreamTimestamp),
+          keyed 'main'. Default OFF (the map is empty on a new character) and
+          persisted to YAML via toggleStreamTimestamp's saveProfile (Morress).
+          Always offered, like Clear — not gated on word/lineText. */}
+      {mainCtxMenu && (
+        <ContextMenu
+          x={mainCtxMenu.x}
+          y={mainCtxMenu.y}
+          onClose={() => setMainCtxMenu(null)}
+          items={buildTextMenu(
+            mainCtxMenu,
+            { onHighlight: openHighlightEditor, onTrigger: openTriggerEditor, onMute: openMuteEditor, onSubstitute: openSubstituteEditor, onShowInLog: showInLog },
+            { timestamps: { shown: !!streamTimestamps['main'], toggle: () => toggleStreamTimestamp('main') }, clear: clearLines },
+          )}
+        />
+      )}
 
       {/* Docked strip is panels-mode only (B166) — in free mode it would render
           UNDER the WindowLayer; Debug opens as a floating window there. */}
       {showDebug && layoutMode === 'panels' && <DebugPanel events={debugEvents} onClear={clearDebugEvents} rawXmlLines={rawXmlLines} onClearRawXml={clearRawXmlLines} fireLog={fireLog} onClearFireLog={clearFireLog} onGotoFireRule={gotoFireRule} onClose={() => setShowDebug(false)} resizable character={session.character} />}
 
       {showMapOverlay && (
-        <div className="map-overlay-backdrop" {...backdropHandlers(() => setShowMapOverlay(false))}>
-          <div className="map-overlay-window">
-            <div className="map-overlay-titlebar">
-              <span className="map-overlay-title">Maps</span>
-              <button className="map-overlay-close" onClick={() => setShowMapOverlay(false)}>✕</button>
-            </div>
-            <div className="map-overlay-body">
-              <MapPanel roomTitle={roomState.title} roomDesc={roomState.desc} roomExits={roomState.exits} roomId={roomState.roomId} lichMapVersion={lichMapVersion} onSendCommand={sendCommand} mapAnimations={settings.mapAnimations} large />
-            </div>
-          </div>
-        </div>
+        <MapOverlay onClose={() => setShowMapOverlay(false)}>
+          <MapPanel roomTitle={roomState.title} roomDesc={roomState.desc} roomExits={roomState.exits} roomId={roomState.roomId} lichMapVersion={lichMapVersion} onSendCommand={sendCommand} mapAnimations={settings.mapAnimations} large />
+        </MapOverlay>
       )}
 
       {showPanelManager && (
@@ -6166,6 +6236,7 @@ export default function GameWindow({
       {showThemePicker && (
         <ThemePicker
           currentThemeId={currentThemeId}
+          closeRequest={closeRequests.theme}
           myThemes={myThemes}
           onThemeChange={id => {
             setCurrentThemeId(id)
@@ -6226,6 +6297,7 @@ export default function GameWindow({
       {showContacts && (
         <ContactsPanel
           openContactId={openContactId}
+          closeRequest={closeRequests.contacts}
           onClose={() => { setShowContacts(false); setOpenContactId(null) }}
           onSaved={() => {
             setContacts(loadContacts(session.character))
@@ -6257,13 +6329,14 @@ export default function GameWindow({
       {showAutomations && (
         <AutomationsPanel
           initialTab={automationsTab}
+          closeRequest={closeRequests.automations}
           highlightPrefill={highlightPrefill}
           highlightTestText={highlightTestText}
           triggerPrefillPattern={triggerPrefillPattern}
           triggerOpenId={triggerOpenId ?? (slashOpenRule?.tab === 'triggers' ? slashOpenRule.id : undefined)}
           mutePrefill={mutePrefill}
           substitutePrefill={substitutePrefill}
-          highlightOpenId={slashOpenRule?.tab === 'highlights' ? slashOpenRule.id : undefined}
+          highlightOpenId={highlightOpenFireId ?? (slashOpenRule?.tab === 'highlights' ? slashOpenRule.id : undefined)}
           muteOpenId={slashOpenRule?.tab === 'mutes' ? slashOpenRule.id : undefined}
           substituteOpenId={slashOpenRule?.tab === 'substitutes' ? slashOpenRule.id : undefined}
           aliasOpenId={slashOpenRule?.tab === 'aliases' ? slashOpenRule.id : undefined}
@@ -6290,6 +6363,10 @@ export default function GameWindow({
             setShowAutomations(false)
             setHighlightPrefill(undefined)
             setHighlightTestText(undefined)
+            // A Fires → Edit target left set would re-open that rule the next
+            // time Automations (or that tab) mounts.
+            setTriggerOpenId(undefined)
+            setHighlightOpenFireId(undefined)
             setTriggerPrefillPattern(undefined)
             setMutePrefill(undefined)
             setSubstitutePrefill(undefined)
@@ -6310,6 +6387,7 @@ export default function GameWindow({
           session={session}
           initialTab={lichDashTab}
           onClose={() => setShowLichDash(false)}
+          closeRequest={closeRequests.lich}
           onSendCommand={cmd => { setCommand(cmd); focusCommandInput() }}
           onRunCommand={cmd => window.api.sendCommand(sessionIdRef.current, cmd)}
         />
@@ -6326,10 +6404,42 @@ export default function GameWindow({
 // "Available Streams". Kept intentionally tiny — this is a placeholder,
 // not a feature surface.
 function EmptyPanelSlot({ label, onOpenManager }: { label: string; onOpenManager: () => void }) {
+  // B335: pressable — Tab reaches it and Enter/Space opens the manager.
   return (
-    <div className="empty-panel-slot" onClick={onOpenManager}>
+    <div className="empty-panel-slot" {...pressable(onOpenManager)}>
       <div className="empty-panel-slot-label">{label}</div>
       <div className="empty-panel-slot-hint">Empty panel — click to add a stream</div>
+    </div>
+  )
+}
+
+// B341: the Maps overlay as its own component so it can register with
+// useEscapeClose — a hook can't sit inside GameWindow's conditional JSX, and
+// the Esc stack is mount-ordered, so it has to mount WITH the overlay. It is
+// rendered inline (not portaled), so the root ref lets a hidden character
+// tab's overlay be skipped rather than closed behind the user (pitfall #24).
+// The MapPanel arrives as `children`, so its props are untouched.
+//
+// B400/B404: wears the one modal look — ui.css's ui-modal-* structure (token
+// scrim / surface / radius / shadow, the accent header band) and the shared
+// ui-close ✕ — and is announced as a modal dialog titled by its own header.
+// useId, not a literal id: every character's GameWindow can hold an overlay
+// (hidden tabs stay mounted), and a duplicate id would label the wrong one.
+function MapOverlay({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  const rootRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+  useEscapeClose(onClose, { ref: rootRef })
+  return (
+    <div ref={rootRef} className="ui-modal-backdrop map-overlay-backdrop" {...backdropHandlers(onClose)}>
+      <div className="ui-modal ui-modal--standard map-overlay-window" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        <div className="ui-modal-head">
+          <span className="ui-modal-title" id={titleId}>Maps</span>
+          <button type="button" className="ui-close" title="Close" aria-label="Close" onClick={onClose}>✕</button>
+        </div>
+        <div className="map-overlay-body">
+          {children}
+        </div>
+      </div>
     </div>
   )
 }

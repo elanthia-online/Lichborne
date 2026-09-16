@@ -29,9 +29,12 @@ if (!token) {
 // electron-updater's Squirrel.Mac consumes once builds are signed; the dmg is
 // for humans. Extra assets (e.g. .blockmap files) never fail verification —
 // only MISSING expected ones do.
+// Linux carries NO version in its name (B357, v0.19.7): electron-updater
+// replaces a version-less AppImage in place, but moves a versioned one to the
+// new versioned name — breaking every desktop shortcut on each update.
 const PLATFORM_ARTIFACTS = {
   win: [`Lichborne-${version}-setup.exe`, `Lichborne-${version}-setup.exe.blockmap`, 'latest.yml'],
-  linux: [`Lichborne-${version}.AppImage`, 'latest-linux.yml'],
+  linux: ['Lichborne.AppImage', 'latest-linux.yml'],
   mac: [`Lichborne-${version}-mac-arm64.dmg`, `Lichborne-${version}-mac-arm64.zip`, 'latest-mac.yml'],
 }
 

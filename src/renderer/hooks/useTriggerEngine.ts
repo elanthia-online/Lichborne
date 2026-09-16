@@ -34,6 +34,7 @@ import {
 } from '../triggers'
 import { isRuleActive } from '../groups'
 import { literalGate } from '../regexLiteral'
+import { IS_MAC } from '../lichSettings'
 
 export interface TriggerGameState {
   vitals: Record<string, { current: number; max: number }>
@@ -209,6 +210,9 @@ function buildVars(
     poisoned:      state.indicators.poisoned  ? 'true' : 'false',
     diseased:      state.indicators.diseased  ? 'true' : 'false',
     stunned:       state.indicators.stunned   ? 'true' : 'false',
+    // From the status prompt's `U`, not an indicator tag — so it stays 'false'
+    // for a player without `set statusprompt` (see StormFrontParser).
+    unconscious:   state.indicators.unconscious ? 'true' : 'false',
     webbed:        state.indicators.webbed    ? 'true' : 'false',
     joined:        state.indicators.joined    ? 'true' : 'false',
     hidden:        state.indicators.hidden    ? 'true' : 'false',
@@ -278,6 +282,13 @@ function executeAction(
           if (p === 'granted') new Notification(title, { body })
         })
       }
+      // B359: macOS may silently drop notifications from our ad-hoc-signed
+      // build (unverified — nothing fails, it just doesn't appear). Also take
+      // the flash action's path (main's flashFrame), which bounces the Dock
+      // there. Harmless if the notification DID show — macOS ignores an
+      // attention request from the active app (Apple's documented behaviour,
+      // not verified here). Windows/Linux unchanged.
+      if (IS_MAC) cbs.flashWindow()
       break
     }
     case 'sound':

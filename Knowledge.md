@@ -681,6 +681,26 @@ DR encodes each body part's state in the `<image name>` inside `<dialogData id='
 
 A part with none of these markers is HEALTHY. **Derive healthy from the ABSENCE of `/^(injury|scar|nsys)(\d)/i`, never from `name === partId`** (the sentinel for an unhurt part varies). Reading any non-id name as a wound and scraping its digit for severity is exactly the B224 bug (a `Scar2` shown as a permanent "Moderate" wound while `HEAL` correctly reports no injuries).
 
+**The dialog is CHANGE-DRIVEN, so receiving nothing is a normal reading (verified 2026-09-15).** DR pushes `<dialogData id='injuries'>` when a part's state changes — not on a schedule, and not as part of the login burst. A full captured DR-through-Lich session (the B165 corpus, `<playerID>` and `<app char=…>` included) contains **zero** injuries dialogs, against 25 `minivitals` and 3 `spellChoose`. A front-end that has received none therefore knows only "nothing has been reported", which for an unhurt character is the whole session.
+
+- **Lichborne consequence (B422):** an empty part map reads as "No active wounds.", not "waiting for data" — a waiting state there would never resolve. The caveat lives in the panel's tooltip.
+- **Still unverified, and the reason pitfall #97 wants one capture around a heal:** whether DR ever sends an EMPTY injuries dialog to mean "all clear". Lichborne's parser only emits `injury-update` for a dialog carrying at least one `<image>`, so today such a signal would be dropped.
+
+### The status prompt carries state that NO indicator tag reports (verified 2026-09-15)
+
+With `set statusprompt` on, DR writes the character's current state as letters before the `>` in `<prompt>` — `SUP>` is stunned + unconscious + prone, and the letters track live (Binu: the `S` vanished the moment `<indicator id='IconSTUNNED' visible='n'/>` arrived, and the `U` went as soon as the waking message printed).
+
+**UNCONSCIOUS exists only here.** There is no `IconUNCONSCIOUS`:
+
+- Lich's `ICONMAP` (`lib/constants.rb:72-84`) lists 11 icons — kneeling, prone, sitting, standing, stunned, hidden, invisible, dead, webbed, joined, bleeding — and no unconscious.
+- Genie handles 13 `case "IconX"` labels (those 11 plus poisoned and diseased); Frostbite's DR status indicator handles the same 11; Profanity accepts any `Icon[A-Z]+` generically, so it enumerates nothing.
+- The word "unconscious" appears **zero** times across all three sibling clients. None of them surfaces this state, and none decodes the prompt letters.
+
+**Consequences for a front-end:**
+- The only way to show unconscious is to decode the prompt letter, which is what Lichborne does (B426) — and it is therefore blank for any player who has not enabled `statusprompt`.
+- **Only `U` is confirmed.** The rest of the alphabet is unverified here: `H`, `R` and `s` appear in captures, and `J` is believed to be joined, but nothing has been tested. Don't map a letter on a guess — the game states it plainly or we don't claim it.
+- The letters are a mirror of state DR reports elsewhere, so decoding one that ALSO has an indicator tag would duplicate a signal we already receive.
+
 ### Combat — position / balance / range / assess (mirrored in `combatExtract.ts`)
 
 - **Assess:** `xmlparser.rb`'s `parse_assess_line` (upstream PR #1413) yields per-creature records — relation (facing/flank/behind/advancing) + range + status + creature id. The creature **id is identity; the small targeting NUMBER is a reusable slot** (a dead creature's slot recycles). Assess is on-demand/script-driven (no passive push); it's cleared by `clearStream 'assess'`.
@@ -763,6 +783,64 @@ A running record of Lich releases we've reviewed: **what changed, whether it aff
 - **NEW opt-in title placements** (#1491 + #1500). Defaults are unchanged — nothing is embedded in the title unless the player opts in — but `;display roomid title` can now produce shapes no earlier Lich emitted:
   - `[Town Square - 1234] (230008)` — Lich's own id in the dash slot, the game's RealID in parens.
   - `[Town Square - 1234 - (u230008)]` — **the UID INSIDE the brackets**, which is the one that broke Lichborne's subtitle parser (the dash pattern needs digits at the end; this ends with `)`, and the parens pattern needs them after the `]`). Fixed in v0.19.1; all 8 shapes are covered.
+
+### Lich 5.20.1 — verified 2026-09-14 (no break; one fix that HELPS Lichborne)
+
+- **#1530 / #1532: `quiet:` output no longer strands the front-end in mono.** `Lich::Util.issue_command(…, quiet: true)` drops the matched range in a DownstreamHook, and that hook runs on the raw, unsplit socket chunk. DR can bundle the mono-closing `<output class=""/>` onto a chunk being discarded (Lich's example: after `spell active`), so every front-end was left in mono until some unrelated later mono tag. Now `preserve_quiet_state_tags` forwards just that tag, newline-terminated (`lib/util/util.rb`, `QUIET_STATE_TAGS`; today only the `<output class="…"/>` pattern).
+  - **Lichborne impact:** the tag arrives on a line of its own. `StormFrontParser` toggles `monoMode` and emits nothing, so there is no spacer row: `isBlankLine` tests the raw line, and a tag-only line leaves no pending segments.
+  - **On Lich < 5.20.1, Lichborne was exposed too:** `monoMode` only resets on another `<output>` tag or `parser.reset()`. **Tester support: "text went monospaced/columnar after a script ran" on older Lich ⇒ update to 5.20.1+.**
+  - Corpus note (2026-09-14): 39 mono blocks in the Frostbite `mock.xml` capture, none containing a `<prompt>`, which suggests a prompt-time `monoMode` reset would be safe. That is one session's evidence, not proof.
+- **#1502:** EAccess auth is now bounded by a timeout. Lichborne's own `SGEConnection` already bounds connect and read at 5s, so there is nothing to adopt.
+- **#1517:** Linux WINE / Wrayth front-end detection, which only matters when Lich launches the front-end. The rest of the release is GemStone combat work.
+
+### Lich 5.21.0 (+ unreleased main through f8ea1f20) — verified 2026-09-14 (integration holds unchanged)
+
+**Integration surface, all unchanged:**
+- `--stormfront` is still matched with `a =~ /^--stormfront$/i` → `$frontend='stormfront'` (`lib/main/argv_options.rb:277-351`).
+- **Force-mode front-end listener:** every `main.rb` change sits in the path where LICH launches a front-end (`custom_launch` can now be an argv array; `FrontendLauncher.render_connection` substitutes `%host%`/`%port%`/`%key%`), not the listener Lichborne connects to. A stormfront-style front-end still sends exactly two lines, the login key then the client ID (`main.rb:837-842`), which is what `LichConnection` sends (`loginKey` + `CLIENT_ID`).
+- The `inventory_boxes_off` hook and the `_flag Display Inventory Boxes 1` disarm are unchanged (`main.rb:793-835`).
+- **Untouched:** `vars.rb`, and the `;listall` output (`script.rb` only gained `File.join` paths and pause enforcement).
+- **`xmlparser.rb`:** the percWindow, assess and injuries branches are unchanged. The one edit makes DR hand tags evict that item from Lich's own worn/container model (`xmlparser.rb:1045-1059`), which is internal to Lich.
+- **`drparser.rb`:** the PositionValue, BalanceValue and NameRaceGuild rules Lichborne mirrors are unchanged. What did change, none of it mirrored by Lichborne: INV LIST vs INV SEARCH scraping (`InventoryGetStart` split into `InventoryListStart` / `InventorySearchStart`); `DRSkill.clear_mind` now pins capped skills (rank ≥ 1750) to 34; three new `VOL_MAP` sizes (`colossal` / `gigantic` / `immense`).
+- **Map JSON** is unchanged; `dijkstra(…, static_only: true)` is additive (#1577, `docs/static-map-routing.md`).
+- **Capability registry:** moved from `front-end.rb` to `frontend.rb` plus per-front-end definition files in `lib/common/frontend/`. `saga` is still stormfront's capabilities plus `sentinel` (`frontend/saga.rb`), so the do-not-adopt decision below stands.
+
+**New things a front-end can use:**
+- **#1524, the Saga "extended feed" `inventoryManager`:** confirmed live on GS AND DR. See the subsection below.
+- **#1558, a configurable front-end registry in `DATA_DIR/frontends.yml`** (schema v1, kept out of `entry.yaml`):
+  - `builtins:` overrides a built-in front-end's `executable` / `arguments`.
+  - `custom:` defines a new front-end, with a `command` template using `%host%` / `%port%` / `%key%`.
+  - **Trap:** a custom front-end's id becomes `$frontend`, because `Frontend.client=` is a plain `$frontend =` (`frontend.rb:573-579`). A custom id like `lichborne` would therefore fail every script that checks `$frontend == 'stormfront'` by name. Lich's GUI "Custom" launch option deliberately keeps the stormfront protocol identity (`docs/saved-frontend-editing.md`), and so does overriding the `stormfront` built-in's executable.
+  - On Windows the built-in stormfront launch passes Wrayth-style arguments: `/G<code>/Hlocalhost/P<port>/K<key>`.
+- **#1570, an HTTPS web-login fallback for when eaccess.play.net:7910 is unreachable** (`lib/common/authentication/web_login.rb`; protocol notes in `docs/web-login-protocol-analysis.md`). It returns the same GAMEHOST/GAMEPORT/KEY shape as EAccess. Lich states these caveats itself:
+  - There is no character-list endpoint; the list is scraped from `home.asp`, which is fragile.
+  - Game codes differ from EAccess's (GS Prime is `GS4` here, `GS3` over EAccess).
+  - DRX and DRF are enabled but unconfirmed live.
+  - play.net's WAF returns 500 for any request without a browser-like User-Agent.
+- **#1520, `--active-session-dir=PATH`:** points Lich's ActiveSessions coordination at a shared directory, and for that process implies the otherwise-off `active_sessions_api` feature flag. The coordination is a discovery file, `lich-active-sessions.json`, plus an ownership lock; the owning process binds an ephemeral port and publishes `{owner_pid, port, auth_token}`. Sessions register with a name and a role, and a detachable-client port sets the role (`main.rb:887-895`). This is groundwork for discovering running headless sessions; nobody has explored it for Lichborne's Attach mode yet.
+- **Script-side only, no front-end effect:**
+  - bounded `fput` (`max_resends` / `interrupt` / `failures: :symbol`, #1587) and `waitrt?(interrupt:, cap:)`
+  - `Script#pause` enforced at every blocking checkpoint (#1537)
+  - `Spell.results_regex` (#1590) and player-supplied custom prep/cast messages (#1528)
+  - `Lich::Common::UserDefs`, extracted from DR CustomSubstitutions (#1605). This is scroll/creature name normalization, not display substitutions.
+
+### The Saga extended feed: `inventoryManager` (5.21.0, #1524)
+
+A Simutronics server feature built for Saga, "confirmed live on both GemStone and DragonRealms" (`lib/common/inventory.rb:8-9`). One request returns the player's **whole nested item tree**: every container's contents, weights, container load and closed/locked state. The ordinary stream only shows hands, worn items and whatever container was just opened.
+
+- **Request:** `_inventory manager <id>`, where `<id>` is a request id the client mints (`inventory.rb:907`).
+- **Pagination:** a large tree is split. The response carries `<continuation root=… last=…>` markers, and each branch is fetched with `_inventory manager <id> continue <room> <root> <last>`. Lich keeps at most 4 in flight, matching Saga.
+- **Response:** a single line of **attributes only, with no text nodes**, so a front-end that strips tags displays nothing. A real 418-item DR capture (`spec/fixtures/inventory/dr_full_inventory.xml`, 49KB, one line) starts:
+  `<inventoryManager id='…' room='230007'><i id='40236126' loc='worn,player' name="a,leather,lootpouch" long="a punka leather lootpouch" weight='10' in_max='1700'/>…</inventoryManager>`
+- **Fields:**
+  - `loc`: one of `worn,player` / `in,<id>` / `on,<id>` / `righthand,player` / `lefthand,player` / `room` / `atfeet,player`.
+  - `name`: comma-separated name parts ending in the noun.
+  - `long`: the full description, which may contain `$_…$_` highlight markers.
+  - `weight` and `in_max` are in **tenths of a pound** (`in_max='1700'` = 170 lb); `in_max='99990'` means no weight limit.
+  - Optional: `in_encum` (container load) and `flags='closed,locked'`.
+- **Edge cases:** a locked container reports zero children, so don't read that as empty. `state='stale'` on the envelope marks an interrupted exchange.
+- **Passive capture:** Lich's `Inventory.observe` taps every downstream line without modifying it (`games.rb:937-940`), so whenever any script calls `Inventory.refresh`, the same line reaches the front-end too.
+- **Unverified for Lichborne:** whether the server honours `_inventory manager` on a direct-SGE session that identifies as Wrayth. Settle it with one live test before building on it.
 
 ### ⚠️ Lich room `id` and game `uid` are DIFFERENT NUMBER SPACES
 

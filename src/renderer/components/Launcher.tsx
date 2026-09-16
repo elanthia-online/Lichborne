@@ -5,7 +5,9 @@
 // `loadCharacterCards()`, the tile shape everything else reads.
 //
 // Rendered by App as the full logon screen, and again in `compact` mode
-// embedded in the Add Character modal (no logo, no Teams, no account Remove).
+// embedded in the + tab's Add Character modal: no logo, no account Remove, and
+// an action row trimmed to Reconnect Last / Team Login / Attach. Teams and
+// pinned teams show in both (v0.19.7 — + is how you bring more characters in).
 // It never connects anything itself: every launch goes UP through `onConnect`
 // / `onBulkConnect` / `onReconnectLast` / `onConnectSet` (names→characters are
 // resolved HERE, one per account, then App runs the plan). What it OWNS is
@@ -24,13 +26,15 @@
 // deleting them; deleting a character deletes only its profile. Teams
 // re-read on `BULK_SETS_CHANGED_EVENT` (this window) and `storage` (others).
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { backdropHandlers } from "../utils/backdropClose"
+import { useEscapeClose } from '../hooks/useEscapeClose'
+import { confirmAction, confirmDelete, confirmDiscard } from '../confirm'
 import type { CharacterProfile } from '../profile-types'
 import { loadLastSessionCharacters, exportSharedProfile } from '../profile'
 import { loadBulkSets, saveBulkSets, removeBulkSet, upsertBulkSet, BULK_SET_NAME_MAX, BULK_SETS_KEY, BULK_SETS_CHANGED_EVENT } from '../bulkSets'
-import ContextMenu from './ContextMenu'
+import ContextMenu, { type CtxItem } from './ContextMenu'
 import CharacterNotesEditor, { guildLabel } from './CharacterNotesEditor'
 import '../styles/launcher.css'
 
@@ -119,6 +123,28 @@ const GAME_SECTIONS: { key: 'DR' | 'DRX' | 'DRF'; label: string; matches: (game:
 // dead padding is cropped in CSS (.launcher-logo-art), not by editing the art.
 const LOGO_SRC = 'lichborne_logo_green.png'
 
+/** The launcher's action row.
+ *
+ *  COMPACT is the + tab's Add Character modal, shown while characters are
+ *  already connected. It carries only the ways to bring MORE characters in —
+ *  Reconnect Last, Team Login, Attach — so logging in from + is the same
+ *  experience as the full logon screen (Sekmeht, v0.19.7). The launch paths
+ *  behind those buttons already assume a live roster: planReconnect skips
+ *  anyone already on, keeps one character per account, and raises the
+ *  Keep/Switch chooser. Deliberately NOT in compact: Add account (both
+ *  launchers have the "+ Add account" row below), Transfer and Lich Setup — setup tools, not
+ *  ways to log someone in, and still on the full screen and in the menus.
+ *
+ *  History: compact once rendered NO bar at all, and that cost more than
+ *  chrome — attaching a second character meant closing every open session to
+ *  get the full launcher back (the bug Kahlen hit). Compact then regained an
+ *  Attach-only row, which this replaces. */
+/** B336: ONE tooltip for both "+ Add account" controls (the top-bar button and
+ *  the dashed row under the accounts), so they cannot explain the same action
+ *  two different ways. It says what happens, not the label again (UX #8). */
+const ADD_ACCOUNT_TIP =
+  'Sign in with a Simutronics account — Lichborne lists its characters and adds a tile for each'
+
 function LauncherTopBar({
   onOpenLichSetup,
   onAddNew,
@@ -127,6 +153,7 @@ function LauncherTopBar({
   bulkConnectEnabled,
   onReconnectLast,
   reconnectCount = 0,
+  compact = false,
 }: {
   onOpenLichSetup: () => void
   onAddNew?: () => void
@@ -135,9 +162,10 @@ function LauncherTopBar({
   bulkConnectEnabled: boolean
   onReconnectLast?: () => void
   reconnectCount?: number
+  compact?: boolean
 }) {
   return (
-    <div className="launcher-topbar">
+    <div className={`launcher-topbar${compact ? ' launcher-topbar--compact' : ''}`}>
       {/* F62: leads the bar — the most likely first action on a fresh launch.
           Rendered only when the saved last-session set matches existing tiles,
           so a first-run launcher never shows it (quiet by default). */}
@@ -170,8 +198,11 @@ function LauncherTopBar({
           is worse than one good one, so this is gone rather than duplicated:
           Team Login is where you BUILD a team, the section is where you use
           one. Don't re-add it. */}
-      {onAddNew && (
-        <button className="launcher-topbar-btn launcher-topbar-btn--add" onClick={onAddNew} title="Add account">
+      {/* Add account, Transfer and Lich Setup are full-screen only (see the
+          header note): both launchers have the "+ Add account" row below the
+          accounts, and the other two are setup tools rather than ways in. */}
+      {!compact && onAddNew && (
+        <button className="launcher-topbar-btn launcher-topbar-btn--add" onClick={onAddNew} title={ADD_ACCOUNT_TIP}>
           + Add account
         </button>
       )}
@@ -184,42 +215,24 @@ function LauncherTopBar({
           ⇋ Attach
         </button>
       )}
-      <button
-        className="launcher-topbar-btn"
-        onClick={() => document.dispatchEvent(new CustomEvent('lichborne:open-profile-transfer'))}
-        title="Export or import a character's full setup (settings, layout, theme, automations)"
-      >
-        ⇄ Transfer
-      </button>
-      <button className="launcher-topbar-btn" onClick={onOpenLichSetup} title="Lich Setup">
-        ⚙ Lich Setup
-      </button>
-    </div>
-  )
-}
-
-/** Attach entry point for the COMPACT launcher (the Add Character modal shown
- *  while characters are already connected).
- *
- *  The full top bar is `!compact` only — deliberately, since compact drops the
- *  logo, headings and the rest of the chrome. But that also dropped the one
- *  control that adds a character Lichborne has never seen: a tile whose target
- *  is saved can be attached from its own Connect button, and a brand-new
- *  attach needs the modal. Without this row, attaching a SECOND character
- *  while the first is connected meant closing every open session to get the
- *  full launcher back — the bug Kahlen hit. So compact keeps exactly one
- *  button, not the whole bar. */
-function CompactAttachRow({ onAttach }: { onAttach?: () => void }) {
-  if (!onAttach) return null
-  return (
-    <div className="launcher-topbar launcher-topbar--compact">
-      <button
-        className="launcher-topbar-btn"
-        onClick={onAttach}
-        title="Attach to a Lich session that is already running and logged in (started with --headless / --detachable-client)"
-      >
-        ⇋ Attach to a running Lich
-      </button>
+      {!compact && (
+        <>
+          <button
+            className="launcher-topbar-btn"
+            onClick={() => document.dispatchEvent(new CustomEvent('lichborne:open-profile-transfer'))}
+            title="Export or import a character's full setup (settings, layout, theme, automations)"
+          >
+            ⇄ Transfer
+          </button>
+          <button
+            className="launcher-topbar-btn"
+            onClick={onOpenLichSetup}
+            title="Set where Ruby and Lich are installed, and how Lichborne launches Lich"
+          >
+            ⚙ Lich Setup
+          </button>
+        </>
+      )}
     </div>
   )
 }
@@ -282,6 +295,7 @@ function TeamRow({ team, onConnect, onToggleFavorite, onMenu }: {
         type="button"
         className="launcher-team-menu"
         aria-label={`More options for ${team.name}`}
+        title={`Options for ${team.name} — edit its name and notes, change members, or delete it`}
         onClick={e => onMenu(e, team.name)}
       >⋯</button>
     </div>
@@ -298,16 +312,30 @@ function TeamEditor({ team, existingNames, onCancel, onSave }: {
 }) {
   const [name, setName] = useState(team.name)
   const [notes, setNotes] = useState(team.notes ?? '')
+  const titleId = useId()
   const trimmed = name.trim()
   // Renaming onto another team would silently merge two teams into one.
   const clash = existingNames.some(n =>
     n.toLowerCase() !== team.name.toLowerCase() && n.toLowerCase() === trimmed.toLowerCase())
+  const canSave = !!trimmed && !clash
+  // B368: dirty = "Save would change something". Compared in the SAVED form
+  // (saveTeamEdit trims the name and stores blank notes as absent), so a
+  // stray trailing space doesn't count as an edit worth warning about.
+  const dirty = trimmed !== team.name || notes.trim() !== (team.notes ?? '').trim()
+  // Every way out — ✕, Cancel, backdrop, Esc — asks first when there is an
+  // unsaved edit. Save unmounts the editor, so it never needs the guard.
+  const requestClose = () => confirmDiscard(dirty, onCancel, 'this team')
+  function save() {
+    if (canSave) onSave(team.name, trimmed, notes)
+  }
+  // B341: Esc cancels, as it does in Edit Profile, which this mirrors.
+  useEscapeClose(requestClose)
   return createPortal(
-    <div className="cne-backdrop" {...backdropHandlers(onCancel)}>
-      <div className="cne-modal">
+    <div className="cne-backdrop" {...backdropHandlers(requestClose)}>
+      <div className="cne-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="cne-header">
-          <span className="cne-title">Edit Team — {team.name}</span>
-          <button className="cne-close" onClick={onCancel} title="Cancel">×</button>
+          <span className="cne-title" id={titleId}>Edit team — {team.name}</span>
+          <button type="button" className="ui-close" onClick={requestClose} title="Close" aria-label="Close">✕</button>
         </div>
         <div className="cne-body">
           {/* Markup mirrors CharacterNotesEditor exactly — `.cne-label` wraps
@@ -323,6 +351,11 @@ function TeamEditor({ team, existingNames, onCancel, onSave }: {
                 maxLength={BULK_SET_NAME_MAX}
                 value={name}
                 onChange={e => setName(e.target.value)}
+                onKeyDown={e => {
+                  // B389: Enter saves from the single-line name field (the
+                  // notes textarea keeps Enter for newlines).
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); save() }
+                }}
               />
             </label>
           </div>
@@ -343,11 +376,13 @@ function TeamEditor({ team, existingNames, onCancel, onSave }: {
           )}
         </div>
         <div className="cne-footer">
-          <button className="cne-btn cne-btn-cancel" onClick={onCancel}>Cancel</button>
+          <button type="button" className="ui-btn" onClick={requestClose}>Cancel</button>
           <button
-            className="cne-btn cne-btn-save"
-            disabled={!trimmed || clash}
-            onClick={() => onSave(team.name, trimmed, notes)}
+            type="button"
+            className="ui-btn ui-btn--primary"
+            disabled={!canSave}
+            title={!trimmed ? 'Give the team a name first' : clash ? 'Another team already has this name' : undefined}
+            onClick={save}
           >Save</button>
         </div>
       </div>
@@ -610,8 +645,8 @@ function CharacterCard({ character: c, busy, onConnect, onMenu, onToggleTest, on
             type="button"
             className="launcher-card-menu"
             onClick={e => { e.stopPropagation(); onMenu(e, c) }}
-            title="Tile options"
-            aria-label="Tile options"
+            title={`Options for ${c.name} — edit its profile, hide it, or delete it`}
+            aria-label={`More options for ${c.name}`}
           >
             ⋯
           </button>
@@ -681,8 +716,19 @@ function CharacterCard({ character: c, busy, onConnect, onMenu, onToggleTest, on
   )
 }
 
+// The last character list this window loaded (B323, v0.19.7). The + tab's Add
+// Character modal MOUNTS a fresh Launcher every time it opens, so every open
+// began in the "Loading characters…" state and popped the list in a moment
+// later. Seeding from the last list shows it at once; the mount-time refresh()
+// still runs and corrects anything that changed. Module scope is per window —
+// each BrowserWindow has its own renderer.
+let lastLoadedCards: LauncherCharacter[] | null = null
+
 export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharacter, onRefreshAccount, onOpenLichSetup, compact = false, connectingName = null, connectError = '', onDismissError, refreshKey = 0, onBulkConnect, onReconnectLast, onConnectSet, connectedNames = [], onEditSet }: Props) {
-  const [characters, setCharacters] = useState<LauncherCharacter[] | null>(null)
+  const [characters, setCharacters] = useState<LauncherCharacter[] | null>(() => lastLoadedCards)
+  // Keep the seed current, including optimistic edits (favourite, hide) that
+  // change `characters` without a reload.
+  useEffect(() => { if (characters) lastLoadedCards = characters }, [characters])
   const [menu, setMenu] = useState<{ x: number; y: number; character: LauncherCharacter } | null>(null)
   // F85 — saved sets, re-read on refresh so a set created in the picker shows
   // up here without a restart.
@@ -733,6 +779,22 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
     exportSharedProfile().catch(console.error)
     setEditingTeam(null)
   }
+
+  /** B370: Delete team used to run on one click from the ⋯ menu — it now asks
+   *  first, like every other destructive action that isn't an editor's own
+   *  footer Delete. */
+  async function deleteTeam(name: string) {
+    if (!(await confirmDelete('team', name,
+      "The characters on it aren't affected — only the saved line-up goes. This can't be undone."))) return
+    // Same write path the picker uses, then re-read so the section updates
+    // without waiting for a refreshKey bump. Flushed to _shared.yaml like every
+    // other team write: without it the deletion lived only in the localStorage
+    // working copy, and the next launch re-seeded the team from the YAML.
+    const next = removeBulkSet(loadBulkSets(), name)
+    saveBulkSets(next)
+    setBulkSets(next)
+    exportSharedProfile().catch(console.error)
+  }
   const connectedSet = useMemo(
     () => new Set(connectedNames.map(n => n.toLowerCase())), [connectedNames])
   // A team member is one of three things, and the row says which: ON (already
@@ -752,12 +814,12 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
       favorite: !!set.favorite, notes: set.notes,
     }
   }), [bulkSets, characters, connectedSet])
-  // Empty in COMPACT (the launcher embedded in Add Character) for the same
-  // reason the Teams section is hidden there: you came to add an account, not
-  // to launch a team. Zeroed HERE rather than at the render site so the
+  // Pinned teams join Favorites in BOTH launchers. Compact (the + tab's Add
+  // Character modal) used to zero this on the theory that you came to add an
+  // account, not to launch a team — but + says "Pick a character to connect",
+  // and bringing a team in is exactly that (v0.19.7). Derived HERE so the
   // Favorites count can't disagree with what the block actually shows.
-  const favoriteTeams = useMemo(
-    () => (compact ? [] : teamRows.filter(t => t.favorite)), [teamRows, compact])
+  const favoriteTeams = useMemo(() => teamRows.filter(t => t.favorite), [teamRows])
 
   // Favorites is the QUICK-SELECT block (Sekmeht: "think of favorites as their
   // quick select to things"), so it holds characters AND pinned teams. The
@@ -792,12 +854,6 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
     if (perAccount.size > 0) onConnectSet?.([...perAccount.values()])
   }
 
-  const [pendingDelete, setPendingDelete] = useState<LauncherCharacter | null>(null)
-  // Removing a whole ACCOUNT — its characters AND its saved password. Held as
-  // the account name plus the character names captured at click time, so the
-  // confirm dialog states exactly what it is about to delete rather than
-  // re-deriving it from a list that may have refreshed underneath it.
-  const [pendingAccountDelete, setPendingAccountDelete] = useState<{ account: string; names: string[] } | null>(null)
   const [showHidden, setShowHidden] = useState(false)
   const [editingNotes, setEditingNotes] = useState<LauncherCharacter | null>(null)
   // Favorites discoverability hint — shows above the first account section
@@ -878,14 +934,19 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
     } catch { /* keep current state */ }
   }, [refreshKey])
 
-  async function confirmDelete() {
-    if (!pendingDelete) return
+  // B401: both launcher confirmations go through the ONE themed confirm
+  // (confirm.ts / ConfirmHost) instead of a private modal of their own.
+  async function handleDeleteCharacter(c: LauncherCharacter) {
+    const ok = await confirmDelete('profile', c.name,
+      `Deletes ${c.name}'s saved profile — themes, layout, automations and contacts. ` +
+      `The saved password for account ${c.account} is kept, since other characters may share it. ` +
+      `To keep the profile but take the tile off this screen, use Hide profile instead. This can't be undone.`)
+    if (!ok) return
     try {
-      await window.api.deleteCharacterProfile(pendingDelete.name)
+      await window.api.deleteCharacterProfile(c.name)
     } catch (err) {
       console.error('Failed to delete character profile', err)
     }
-    setPendingDelete(null)
     refresh()
   }
 
@@ -903,9 +964,26 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
   //
   // Sequential rather than Promise.all: a handful of small file moves, and a
   // partial failure is far easier to reason about when the order is fixed.
-  async function confirmDeleteAccount() {
-    if (!pendingAccountDelete) return
-    const { account, names } = pendingAccountDelete
+  //
+  // `names` is captured at CLICK time and passed in, so the confirmation states
+  // exactly what it is about to remove rather than re-deriving it from a list
+  // that may have refreshed underneath it. Naming them is the point of the
+  // confirmation: the section may be collapsed, so a count alone doesn't say
+  // what goes.
+  async function handleRemoveAccount(account: string, names: string[]) {
+    const n = names.length
+    const who = n > 0 ? ` (${names.join(', ')})` : ''
+    const ok = await confirmAction({
+      title: 'Remove account?',
+      message: account,
+      detail:
+        `Takes ${n} ${n === 1 ? 'character' : 'characters'}${who} off this screen and forgets the ` +
+        `account's saved password. Nothing is deleted — each character's settings and logs are kept, ` +
+        `and adding the account again restores them exactly as they were.`,
+      confirmLabel: 'Remove account',
+      danger: true,
+    })
+    if (!ok) return
     for (const name of names) {
       try {
         await window.api.archiveCharacterProfile(name)
@@ -918,7 +996,6 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
     } catch (err) {
       console.error(`Failed to delete saved password for ${account}`, err)
     }
-    setPendingAccountDelete(null)
     refresh()
   }
 
@@ -998,9 +1075,14 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
     }
   }
 
+  // Both early returns carry `launcher--compact` too (B323). Without it the
+  // loading state inside the + modal skipped the compact panel chrome
+  // (`.add-character-modal .launcher--compact` in launcher.css) and drew with the
+  // FULL-PAGE logon background instead — a dark unframed box that then snapped
+  // into the real panel once the list arrived.
   if (characters === null) {
     return (
-      <div className="launcher launcher--loading">
+      <div className={`launcher launcher--loading${compact ? ' launcher--compact' : ''}`}>
         <div className="launcher-spinner" />
         <span>Loading characters…</span>
       </div>
@@ -1010,7 +1092,7 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
   // First-run: no saved characters → friendly welcome card
   if (characters.length === 0) {
     return (
-      <div className="launcher launcher--empty">
+      <div className={`launcher launcher--empty${compact ? ' launcher--compact' : ''}`}>
         {!compact && (
           <div className="launcher-logo">
             {/* The logo art CARRIES the wordmark, so it replaces the old
@@ -1025,18 +1107,18 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
             </div>
           </div>
         )}
-        {!compact && (
-          <LauncherTopBar
-            onOpenLichSetup={onOpenLichSetup}
-            onAddNew={onAddNew}
-            onAttach={onAttach}
-            onBulkConnect={onBulkConnect && characters && characters.length > 0 ? handleBulkConnectClick : undefined}
-            bulkConnectEnabled={!!characters && bulkConnectIsEnabled(characters)}
-            onReconnectLast={handleReconnectLastClick}
-            reconnectCount={lastSessionTiles.length}
-          />
-        )}
-        {compact && <CompactAttachRow onAttach={onAttach} />}
+        {/* One bar in both launchers; `compact` trims it to the ways of
+            bringing more characters in (see LauncherTopBar). */}
+        <LauncherTopBar
+          compact={compact}
+          onOpenLichSetup={onOpenLichSetup}
+          onAddNew={onAddNew}
+          onAttach={onAttach}
+          onBulkConnect={onBulkConnect && characters && characters.length > 0 ? handleBulkConnectClick : undefined}
+          bulkConnectEnabled={!!characters && bulkConnectIsEnabled(characters)}
+          onReconnectLast={handleReconnectLastClick}
+          reconnectCount={lastSessionTiles.length}
+        />
         <div className="launcher-welcome">
           <h2>Welcome to Lichborne</h2>
           <p>
@@ -1083,19 +1165,13 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
             {/* The instruction is the THIRD LINE OF THE LOCKUP (Sekmeht's
                 mockup), not a separate row beneath it — so the hero reads as
                 one block: wordmark art | hairline | what this is, what version,
-                what to do. Compact mode has no lockup at all, so it renders its
-                own copy below; without that branch compact users would lose the
-                instruction entirely. */}
+                what to do. Compact mode has no lockup: there the + modal's own
+                header band says "Connect a character" (F113, App.tsx), so the
+                launcher renders no heading of its own. */}
             <p className="launcher-heading launcher-heading--inline">
               Pick a character to connect
             </p>
           </div>
-        </div>
-      )}
-
-      {compact && (
-        <div className="launcher-heading">
-          Pick a character to connect
         </div>
       )}
       {/* ORDER: the logo lockup comes FIRST, the action row beneath it
@@ -1104,24 +1180,24 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
           connect"); the buttons are what you do about it, so they read second.
           It also puts the actions directly above the character tiles they act
           on, instead of separated from them by the whole hero block. */}
-      {!compact && (
-        <LauncherTopBar
-          onOpenLichSetup={onOpenLichSetup}
-          onAddNew={onAddNew}
-          onAttach={onAttach}
-          onBulkConnect={onBulkConnect && characters && characters.length > 0 ? handleBulkConnectClick : undefined}
-          bulkConnectEnabled={!!characters && bulkConnectIsEnabled(characters)}
-          onReconnectLast={handleReconnectLastClick}
-          reconnectCount={lastSessionTiles.length}
-        />
-      )}
-      {compact && <CompactAttachRow onAttach={onAttach} />}
+      {/* One bar in both launchers; `compact` trims it to the ways of bringing
+          more characters in (see LauncherTopBar). */}
+      <LauncherTopBar
+        compact={compact}
+        onOpenLichSetup={onOpenLichSetup}
+        onAddNew={onAddNew}
+        onAttach={onAttach}
+        onBulkConnect={onBulkConnect && characters && characters.length > 0 ? handleBulkConnectClick : undefined}
+        bulkConnectEnabled={!!characters && bulkConnectIsEnabled(characters)}
+        onReconnectLast={handleReconnectLastClick}
+        reconnectCount={lastSessionTiles.length}
+      />
 
       {connectError && (
         <div className="launcher-error">
           <span className="launcher-error-text">{connectError}</span>
           {onDismissError && (
-            <button className="launcher-error-dismiss" onClick={onDismissError} title="Dismiss">×</button>
+            <button type="button" className="launcher-error-dismiss" onClick={onDismissError} title="Dismiss this message" aria-label="Dismiss">×</button>
           )}
         </div>
       )}
@@ -1181,9 +1257,10 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
             team?" without help text. Renders NOTHING at zero teams (standard
             #1), so it costs space only once you have one. Same collapsible
             shape as the account blocks, so there's no new interaction. */}
-        {/* Not in COMPACT — that's the launcher embedded in the Add Character
-            modal, where you came to add an account, not to launch a team. */}
-        {!compact && onConnectSet && teamRows.length > 0 && (
+        {/* In BOTH launchers (v0.19.7): the + tab's compact launcher is how you
+            bring more characters in mid-session, and a team is exactly that.
+            Launching skips anyone already on (planReconnect). */}
+        {onConnectSet && teamRows.length > 0 && (
           <div className={`launcher-section launcher-section--teams${teamsCollapsed ? ' launcher-section--collapsed' : ''}`}>
             <button
               type="button"
@@ -1233,7 +1310,8 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
                 setFavTipDismissed(true)
                 try { localStorage.setItem('lichborne.launcher.favTipDismissed', '1') } catch {}
               }}
-              title="Dismiss"
+              title="Dismiss this tip — it won't come back"
+              aria-label="Dismiss"
             >×</button>
           </div>
         )}
@@ -1297,7 +1375,7 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
                   <button
                     type="button"
                     className="launcher-account-remove"
-                    onClick={() => setPendingAccountDelete({
+                    onClick={() => void handleRemoveAccount(
                       account,
                       // From the FULL character list, not this group's sections:
                       // `groups` is built from `visibleCharacters`, so with
@@ -1307,8 +1385,8 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
                       // orphaned hidden profiles that could never sign in again,
                       // and an account section that reappears the moment you
                       // toggle Show hidden. Removing an account removes ALL of it.
-                      names: characters.filter(c => c.account === account).map(c => c.name),
-                    })}
+                      characters.filter(c => c.account === account).map(c => c.name),
+                    )}
                     title={`Remove ${account} and its characters from this screen`}
                   >
                     ✕ Remove
@@ -1342,14 +1420,20 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
           )
         })}
 
-        {/* Add-account tile + Show Hidden toggle. v0.8.0: the wizard's new
-            account-discovery flow creates one tile per character on an
-            account in a single pass; renamed from "Add character" since
-            you're adding an account's worth of tiles. */}
+        {/* Add-account row + Show Hidden toggle. v0.8.0: the wizard's
+            account-discovery flow creates one tile per character on an account
+            in a single pass, hence "Add account". v0.19.7: a full-width,
+            account-row-height dashed row rather than a grid tile, so it reads as
+            the next account slot under the account rows (Sekmeht). */}
         <div className="launcher-add-row">
-          <button className="launcher-card launcher-card--add" onClick={onAddNew}>
-            <span className="launcher-card-add-plus">+</span>
-            <span className="launcher-card-add-label">Add account</span>
+          <button
+            type="button"
+            className="launcher-add-account"
+            onClick={onAddNew}
+            title={ADD_ACCOUNT_TIP}
+          >
+            <span className="launcher-add-account-plus" aria-hidden="true">+</span>
+            <span className="launcher-add-account-label">Add account</span>
           </button>
         </div>
         {hiddenCount > 0 && (
@@ -1381,19 +1465,14 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
           y={teamMenu.y}
           onClose={() => setTeamMenu(null)}
           items={[
-            { label: 'Edit Team…', onClick: () => setEditingTeam(teamRows.find(t => t.name === teamMenu.name) ?? null) },
-            ...(onEditSet ? [{ label: 'Change Members…', onClick: () => onEditSet(teamMenu.name) }] : []),
-            {
-              label: 'Delete Team',
-              onClick: () => {
-                // Same write path the picker uses, then re-read so the section
-                // updates without waiting for a refreshKey bump.
-                const next = removeBulkSet(loadBulkSets(), teamMenu.name)
-                saveBulkSets(next)
-                setBulkSets(next)
-              },
-            },
-          ]}
+            { label: 'Edit team…', onClick: () => setEditingTeam(teamRows.find(t => t.name === teamMenu.name) ?? null) },
+            ...(onEditSet ? [{ label: 'Change members…', onClick: () => onEditSet(teamMenu.name) }] : []),
+            // B391: the destructive item goes LAST, after a divider, so it is
+            // never the row under a reflexive click. No "…" — it acts (after a
+            // confirmation), it doesn't open somewhere you still have to work.
+            { label: null },
+            { label: 'Delete team', onClick: () => { void deleteTeam(teamMenu.name) } },
+          ] satisfies CtxItem[]}
         />
       )}
       {menu && (
@@ -1411,76 +1490,16 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
                   onClick: () => onAttachCharacter(menu.character),
                 }]
               : []),
-            { label: 'Edit Profile…', onClick: () => setEditingNotes(menu.character) },
+            { label: 'Edit profile…', onClick: () => setEditingNotes(menu.character) },
             menu.character.hidden
-              ? { label: 'Unhide Profile', onClick: () => handleToggleHidden(menu.character, false) }
-              : { label: 'Hide Profile',   onClick: () => handleToggleHidden(menu.character, true) },
-            { label: 'Delete Profile…',    onClick: () => setPendingDelete(menu.character) },
-          ]}
+              ? { label: 'Unhide profile', onClick: () => handleToggleHidden(menu.character, false) }
+              : { label: 'Hide profile',   onClick: () => handleToggleHidden(menu.character, true) },
+            // B391: destructive last, after a divider (Hide is reversible, so
+            // it stays above it).
+            { label: null },
+            { label: 'Delete profile',    onClick: () => { void handleDeleteCharacter(menu.character) } },
+          ] satisfies CtxItem[]}
         />
-      )}
-
-      {pendingDelete && (
-        <div className="launcher-connecting" {...backdropHandlers(() => setPendingDelete(null))}>
-          <div className="launcher-connecting-card launcher-dialog">
-            <div className="launcher-dialog-head">Delete character?</div>
-            <div className="launcher-dialog-body">
-              <div>
-                Delete <span className="launcher-connecting-name">{pendingDelete.name}</span>?
-              </div>
-              <div className="launcher-dialog-note">
-                Removes the character's saved profile (themes, layout, automations, contacts).
-                The saved password for account <strong>{pendingDelete.account}</strong> is kept since other characters may share it.
-              </div>
-            </div>
-            <div className="launcher-dialog-foot">
-              <button className="launcher-connecting-cancel" onClick={() => setPendingDelete(null)}>Cancel</button>
-              <button
-                className="launcher-connecting-cancel launcher-connecting-cancel--danger"
-                onClick={confirmDelete}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {pendingAccountDelete && (
-        <div className="launcher-connecting" {...backdropHandlers(() => setPendingAccountDelete(null))}>
-          <div className="launcher-connecting-card launcher-dialog">
-            <div className="launcher-dialog-head">Remove account?</div>
-            <div className="launcher-dialog-body">
-              <div>
-                Remove <span className="launcher-connecting-name">{pendingAccountDelete.account}</span>?
-              </div>
-              <div className="launcher-dialog-note">
-                Takes{' '}
-                <strong>
-                  {pendingAccountDelete.names.length}{' '}
-                  {pendingAccountDelete.names.length === 1 ? 'character' : 'characters'}
-                </strong>{' '}
-                off this screen and forgets the account's saved password.
-                {/* Naming them is the point of the confirmation: the section may
-                    be collapsed, so the count alone does not tell you what goes. */}
-                {pendingAccountDelete.names.length > 0 && (
-                  <div className="launcher-dialog-list">{pendingAccountDelete.names.join(', ')}</div>
-                )}
-                Nothing is deleted — each character's settings and logs are kept, and adding the
-                account again restores them exactly as they were.
-              </div>
-            </div>
-            <div className="launcher-dialog-foot">
-              <button className="launcher-connecting-cancel" onClick={() => setPendingAccountDelete(null)}>Cancel</button>
-              <button
-                className="launcher-connecting-cancel launcher-connecting-cancel--danger"
-                onClick={confirmDeleteAccount}
-              >
-                Remove account
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {editingNotes && (

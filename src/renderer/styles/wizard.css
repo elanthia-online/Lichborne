@@ -1,82 +1,79 @@
-/* ── Add Character Wizard ───────────────────────────────────────────────── */
+/* ── Add Account wizard + Lich Setup ─────────────────────────────────────────
+   The About-modal chrome (UX standard #10, B400, v0.19.7): every surface comes
+   from the --modal-* tokens in global.css and the buttons / close button from
+   ui.css. This supersedes the v0.9.2 alignment with the old Settings recipe
+   (a neutral --bg-hover header band over a --bg-sunken footer). Pitfall #55
+   still governs the inner elements: --modal-bg is --bg-base, which is #ffffff
+   on Classic Light along with --bg-app and --bg-input, so every tile, field and
+   pill below was re-read against that surface when it moved. */
 
 .wiz-backdrop {
   position: fixed;
   inset: 0;
-  background: color-mix(in srgb, var(--bg-app) 80%, transparent);
+  /* B384: was --bg-app at 80% plus a 2px blur. --bg-app is WHITE on the light
+     themes, so the "scrim" whitened the screen behind the dialog instead of
+     dimming it. The shared scrim dims on every theme. */
+  background: var(--modal-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 600;
-  backdrop-filter: blur(2px);
 }
 
+/* B405: Lich Setup opened over another dialog (Settings). That dialog's scrim
+   already dims the screen, so this backdrop stays transparent and only catches
+   the outside click. */
+.wiz-backdrop--nested { background: transparent; }
+
 .wiz-modal {
-  /* 460px could not fit the footer's widest row on one line: Back + Lich Setup
-     + Cancel + "Add 8 characters" needs ~466px of button, and the flex row then
-     SHRANK the buttons until their labels wrapped (Sekmeht: "different sizes,
-     word-wrap issues"). The step-2 finish label is the long one and it is
+  /* 460px could not fit the footer's widest row on one line: Lich Setup +
+     Cancel + Back + "Add 8 characters" needs ~420px of button, and the flex row
+     then SHRANK the buttons until their labels wrapped (Sekmeht: "different
+     sizes, word-wrap issues"). The step-2 finish label is the long one and it is
      count-dependent, so the row has to be sized for its worst case, not its
-     typical one. If you add another footer button, re-check this. */
-  width: 520px;
+     typical one. If you add another footer button, re-check this.
+     B328: capped to the window — the window floor is 480px, so a bare 520px
+     clipped the dialog (and its ✕) in a narrow window. 16px keeps an 8px
+     gutter each side. Lich Setup gets its width from here too; it no longer
+     sets its own. */
+  width: min(520px, calc(100vw - 16px));
   max-height: 92vh;
-  /* Match the Settings modal chrome (.sp-modal / .sp-header) so themed dialogs
-     read consistently: white body on light themes via --bg-base, with the
-     header band on --bg-hover below. (Was --bg-raised + a --bg-sunken header,
-     which on light themes like Classic Light collapsed both to near-white —
-     no visible title bar and a greyed body.) */
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  background: var(--modal-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--modal-border);
+  border-radius: var(--modal-radius);
+  box-shadow: var(--modal-shadow);
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-/* ── Header ─────────────────────────────────────────────────────────── */
+/* ── Header: the accent band ────────────────────────────────────────── */
 
 .wiz-header {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 16px 10px;
-  background: var(--bg-hover);
-  border-bottom: 1px solid var(--border-subtle);
+  padding: var(--modal-head-pad);
+  background: var(--modal-head-bg);
+  border-bottom: 1px solid var(--modal-head-border);
 }
 
 .wiz-title {
   flex: 1;
-  font-size: 0.95rem;
-  font-weight: 600;
-  letter-spacing: 1px;
-  color: var(--accent);
+  min-width: 0;
+  font-size: var(--modal-title-size);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--modal-head-color);
 }
 
 .wiz-step {
-  font-size: 0.72rem;
+  font-size: var(--modal-label-size);
   text-transform: uppercase;
-  letter-spacing: 1.5px;
+  letter-spacing: 0.09em;
   color: var(--text-muted);
-}
-
-.wiz-close {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 1.3rem;
-  line-height: 1;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.wiz-close:hover {
-  /* Translucent overlay, not var(--bg-hover): the header band is now
-     var(--bg-hover), so a --bg-hover fill here would be invisible. A text-tinted
-     overlay darkens on light themes / lightens on dark ones — always visible. */
-  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
-  color: var(--text-primary);
 }
 
 /* ── Body ───────────────────────────────────────────────────────────── */
@@ -85,22 +82,26 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px 20px;
+  overscroll-behavior: contain;
+  padding: var(--modal-body-pad);
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
+/* Section labels INSIDE the body stay small, uppercase and muted — only the
+   top header is an accent band (UX standard #10). */
 .wiz-section-label {
-  font-size: 0.7rem;
+  font-size: var(--modal-label-size);
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 1.5px;
+  letter-spacing: 0.09em;
   color: var(--text-muted);
   margin-top: 4px;
 }
 
 .wiz-hint {
-  font-size: 0.78rem;
+  font-size: var(--modal-hint-size);
   color: var(--text-muted);
   line-height: 1.5;
 }
@@ -118,16 +119,18 @@
 .wiz-label input[type="text"],
 .wiz-label input[type="password"],
 .wiz-input {
-  background: var(--bg-input);
+  /* --modal-input-bg, not a bare --bg-input: on Classic Light --bg-input and
+     the dialog surface are both #ffffff, so the field was a framed void. */
+  background: var(--modal-input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 0.85rem;
   padding: 7px 10px;
   height: 32px;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color var(--ui-transition);
   text-transform: none;
   letter-spacing: 0;
 }
@@ -150,9 +153,9 @@
    an error, it is a missing prerequisite, and a red box would read as a
    failure the user caused. */
 .wiz-reason {
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg-base));
+  background: color-mix(in srgb, var(--accent) 10%, var(--modal-bg));
   border: 1px solid var(--accent-dim);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
   font-size: 0.8rem;
   line-height: 1.5;
@@ -177,19 +180,22 @@
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  /* --bg-raised so the tiles sit ABOVE the modal body (now var(--bg-base)).
-     Were var(--bg-base) back when .wiz-modal was --bg-raised; that inversion
-     flipped in v0.9.2 when the modal body was aligned to the Settings chrome. */
+  /* --bg-raised so the tiles sit ABOVE the dialog surface (--modal-bg =
+     --bg-base; #efefef on #ffffff on Classic Light). */
   background: var(--bg-raised);
   border: 1px solid var(--border-subtle);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color var(--ui-transition), background var(--ui-transition);
 }
 
-.wiz-radio:hover,
-.wiz-game:hover,
-.wiz-char:hover {
+/* B340: `:not(--active)` — a bare `:hover` (0,2,0) outranks the (0,1,0)
+   selected class and swapped the selected tile's --accent border for the
+   dimmer hover one under the cursor (pitfall #107). A character that is
+   already added can't be picked, so it doesn't light on hover either. */
+.wiz-radio:not(.wiz-radio--active):hover,
+.wiz-game:not(.wiz-game--active):hover,
+.wiz-char:not(.wiz-char--active):not(.wiz-char--existing):hover {
   border-color: var(--accent-dim);
 }
 
@@ -239,9 +245,25 @@
   letter-spacing: 1.5px;
   color: var(--text-muted);
   padding: 2px 8px;
-  border-radius: 10px;
-  background: var(--bg-sunken);
+  border-radius: 999px;
+  background: var(--modal-bg);
   border: 1px solid var(--border-subtle);
+}
+
+/* An account character that already has a profile: shown so the roster is
+   complete, but not selectable. The badge rendered unstyled until v0.19.7. */
+.wiz-char--existing {
+  cursor: default;
+}
+.wiz-char--existing .wiz-char-name { color: var(--text-muted); }
+.wiz-char-existing-badge {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--modal-bg);
+  white-space: nowrap;
 }
 
 /* ── Error display ───────────────────────────────────────────────────── */
@@ -250,112 +272,22 @@
   background: var(--color-danger-bg);
   border: 1px solid var(--color-danger-border);
   color: var(--color-danger);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
   font-size: 0.8rem;
   line-height: 1.45;
 }
 
-/* ── Footer / nav buttons ────────────────────────────────────────────── */
+/* ── Footer rail ─────────────────────────────────────────────────────── */
 
+/* The rail itself is `ui-modal-foot` (padding, hairline, gap) and every button
+   in it is `ui-btn` + a modifier, so the metrics come from ONE rule and can't
+   drift the way `.wiz-btn-lich-setup` once did — it rendered in the browser's
+   default font because it never joined the old shared group (pitfall #113).
+   This adds only the wrap safety net: if a label ever outgrows the width
+   above, the ROW wraps instead of the buttons shrinking and their labels
+   wrapping inside them (buttons of different heights read as broken). */
 .wiz-footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  /* Safety net: if a label ever outgrows the width above (a longer translation,
-     a new button), the ROW wraps to a second line instead of the buttons
-     shrinking and their text wrapping inside them. Wrapping chrome is untidy;
-     wrapping a label makes buttons different heights, which reads as broken. */
   flex-wrap: wrap;
   row-gap: 8px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--border-subtle);
-  background: var(--bg-sunken);
-}
-
-/* EVERY footer button belongs here. `.wiz-btn-lich-setup` was added later and
-   never joined the list, so it rendered with no radius, no padding and the
-   BROWSER'S default UI font while its neighbours had all three — the cramped,
-   wrong-typeface button Sekmeht reported. Nothing warns about this: a selector
-   omitted from a shared group is silent, and the button still "works".
-   Adding a footer button? Add it to this list in the same edit. */
-.wiz-btn-back,
-.wiz-btn-lich-setup,
-.wiz-btn-cancel,
-.wiz-btn-next,
-.wiz-btn-finish {
-  border-radius: 4px;
-  padding: 7px 14px;
-  font-family: inherit;
-  font-size: 0.82rem;
-  /* Pinned so every footer button is the same HEIGHT even though Lich Setup is
-     deliberately a smaller font — without it, an inherited line-height scales
-     each box by its own font-size and they end up visibly mismatched
-     (the pitfall #75b/#77 trap, in a button row). */
-  line-height: 1;
-  /* Buttons keep their natural width: a flex item shrinks by DEFAULT, and a
-     shrunken button wraps its label into two lines and grows taller than its
-     neighbours. Never wrap a button label. */
-  white-space: nowrap;
-  flex-shrink: 0;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-
-.wiz-btn-back {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-}
-.wiz-btn-back:hover:not(:disabled) {
-  border-color: var(--accent-dim);
-  color: var(--text-primary);
-}
-.wiz-btn-back:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.wiz-btn-lich-setup {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  margin-left: 8px;
-  font-size: 0.78rem;
-}
-.wiz-btn-lich-setup:hover:not(:disabled) {
-  border-color: var(--accent-dim);
-  color: var(--accent);
-}
-.wiz-btn-lich-setup:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.wiz-btn-cancel {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  margin-left: auto;
-}
-.wiz-btn-cancel:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.wiz-btn-next,
-.wiz-btn-finish {
-  background: var(--accent-dim);
-  border: 1px solid var(--accent);
-  color: #fff;
-  font-weight: 600;
-}
-.wiz-btn-next:hover:not(:disabled),
-.wiz-btn-finish:hover:not(:disabled) {
-  background: var(--accent);
-}
-.wiz-btn-next:disabled,
-.wiz-btn-finish:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }

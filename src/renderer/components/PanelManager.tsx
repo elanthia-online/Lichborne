@@ -1,24 +1,30 @@
 // PanelManager — the "Layout Manager" modal (the app-bar Layout button): the
 // mode chooser (Windowed Panels, recommended · Static Panels, legacy), and
 // then a per-mode body. Windowed: a Windows section (Lock windows · Fit bars
-// to content · Rebuild from panels) + Add Window. Static: Panel Locations
-// (the four docked slots, each independently added/removed), each slot's
-// Streams (move / reorder / remove), and the Available Streams pool.
+// to content · Rebuild from panels) + Add window. Static: Panel locations
+// (the four docked slots, each independently added/removed, plus Reset
+// panels), each slot's streams (move / reorder / remove), and the Available
+// streams pool.
 //
 // Pure view over the zone arrays + `*Added` flags; every mutation is a
 // callback into GameWindow. The one derivation it owns matters: `allTabs` is
 // built ONLY from zones that are added — a tab parked in an un-added zone must
-// not block its stream id from appearing under Available Streams (the same
+// not block its stream id from appearing under Available streams (the same
 // gate as GameWindow's `watchedStreamsRef`; the v0.8.3 "Moons" fix), and a
 // discovered id that matches a builtin PanelType stays in the builtin column,
-// never as a duplicate custom row. Static-only controls (Reset Panels, the
+// never as a duplicate custom row. Static-only controls (Reset panels, the
 // zone manager) are hidden in Windowed mode rather than left as invisible
-// no-ops; Add Window stays available while LOCKED, because the lock freezes
+// no-ops; Add window stays available while LOCKED, because the lock freezes
 // window geometry, not what lives inside a window. Add/remove of a SLOT is
-// independent of the streams inside it.
+// independent of the streams inside it. The two actions that throw a layout
+// away — Reset panels and Rebuild — ask first (B370). Chrome is the shared
+// About look (ui.css); the mode cards are styled in free-layout.css.
 
+import { useEffect, useId, useRef } from 'react'
 import type { TabDef, PanelType } from './PanelFrame'
 import { backdropHandlers } from '../utils/backdropClose'
+import { useEscapeClose } from '../hooks/useEscapeClose'
+import { confirmAction } from '../confirm'
 import { streamLabel } from '../aiConfig'
 import '../styles/panel-manager.css'
 
@@ -99,6 +105,40 @@ export default function PanelManager({
   layoutMode, onToggleLayoutMode, onRebuildFromPanels, onFitChromeWindows, freeLayoutLocked, onToggleFreeLock, freeAddItems, onAddFreeWindow,
   onClose,
 }: Props) {
+  // Rendered inline by GameWindow rather than portaled, so the hook gets the
+  // backdrop: a hidden character tab keeps its Layout Manager mounted, and one
+  // with no layout box must not take an Esc meant for the visible tab.
+  const backdropRef = useRef<HTMLDivElement>(null)
+  useEscapeClose(onClose, { ref: backdropRef })
+  const panelRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+  // B397: open with focus inside the dialog, not left on the app-bar button it
+  // covers. The panel itself — the first control depends on the mode.
+  useEffect(() => { panelRef.current?.focus({ preventScroll: true }) }, [])
+
+  // B370: both of these throw a layout away and used to run in one click.
+  async function resetPanels() {
+    const ok = await confirmAction({
+      title: 'Reset panels to defaults?',
+      message: 'The four docked slots go back to their default streams and sizes.',
+      detail: "Streams you've added or moved come out of the slots and return to Available streams.",
+      confirmLabel: 'Reset panels',
+      danger: true,
+    })
+    if (ok) onResetLayout()
+  }
+  async function rebuildWindows() {
+    if (!onRebuildFromPanels) return
+    const ok = await confirmAction({
+      title: 'Rebuild windows from panels?',
+      message: 'Your current window arrangement is replaced by fresh windows laid out from your docked-panels layout.',
+      detail: "Where you've placed and sized your windows is lost. This can't be undone.",
+      confirmLabel: 'Rebuild',
+      danger: true,
+    })
+    if (ok) onRebuildFromPanels()
+  }
+
   // v0.8.3: Only count tabs from zones that are actually added to the
   // layout. A tab sitting in an un-added zone is invisible to the user,
   // so it must not block its stream id from appearing under Available
@@ -136,20 +176,20 @@ export default function PanelManager({
   const addedZones = ALL_ZONES.filter(z => addedByZone[z])
 
   return (
-    <div className="pm-backdrop" {...backdropHandlers(() => onClose())}>
-      <div className="pm-modal">
-        <div className="pm-header">
-          <span className="pm-title">Layout Manager</span>
-          {/* Resets the DOCKED zone layout, which is a no-op you can't see while
-              in Windowed mode -- so it only appears where it does something. The
-              windowed equivalent is "Rebuild from panels" below. */}
-          {layoutMode !== 'free' && (
-            <button className="pm-reset" onClick={onResetLayout}
-                    title="Restore the four docked panel slots and their streams to defaults">
-              Reset Panels
-            </button>
-          )}
-          <button className="pm-close" onClick={onClose}>×</button>
+    <div className="pm-backdrop ui-modal-backdrop" ref={backdropRef} {...backdropHandlers(() => onClose())}>
+      <div
+        className="pm-modal ui-modal ui-modal--standard"
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
+        {/* Title and ✕ only (the About look). Reset panels used to sit here,
+            8px from the ✕; it is now a described row in Panel locations. */}
+        <div className="ui-modal-head">
+          <span className="ui-modal-title" id={titleId}>Layout Manager</span>
+          <button type="button" className="ui-close" onClick={onClose} title="Close" aria-label="Close">✕</button>
         </div>
 
         <div className="pm-body">
@@ -198,13 +238,13 @@ export default function PanelManager({
               {!freeLayoutLocked && onFitChromeWindows && (
                 <Row label="Fit bars to content"
                      desc="Resizes the vitals / status / command windows to exactly the height of the bar inside. Usually shrinks them, but it will also grow one you had shrunk so far the bar was cut off. Positions do not move, so a neighbour below may be left with a gap or an overlap to drag closed.">
-                  <button onClick={onFitChromeWindows}>Fit</button>
+                  <button type="button" className="ui-btn ui-btn--sm" onClick={onFitChromeWindows}>Fit</button>
                 </Row>
               )}
               {onRebuildFromPanels && (
                 <Row label="Rebuild from panels"
                      desc="Discards the current window arrangement and lays fresh windows out from your docked-panels layout. Use it to start over.">
-                  <button onClick={onRebuildFromPanels}>Rebuild</button>
+                  <button type="button" className="ui-btn ui-btn--sm ui-btn--danger" onClick={() => { void rebuildWindows() }}>Rebuild</button>
                 </Row>
               )}
             </Section>
@@ -216,50 +256,58 @@ export default function PanelManager({
               Close), so hiding the only way to add one back would let you
               destroy but never rebuild. */}
           {layoutMode === 'free' && onAddFreeWindow && freeAddItems && freeAddItems.length > 0 && (
-            <Section label="Add Window">
+            <Section label="Add window">
               {freeAddItems.map(it => (
                 <Row key={it.kind} label={it.label}>
-                  <button onClick={() => onAddFreeWindow(it.kind)}>Add</button>
+                  <button type="button" className="ui-btn ui-btn--sm" onClick={() => onAddFreeWindow(it.kind)}>Add</button>
                 </Row>
               ))}
             </Section>
           )}
-          {/* The zone manager below (Panel Locations / per-zone Streams /
-              Available Streams) is PANELS-mode only — in Free Layout it's
+          {/* The zone manager below (Panel locations / per-zone streams /
+              Available streams) is PANELS-mode only — in Free Layout it's
               hidden to avoid confusion, and returns when you switch back. */}
           {layoutMode !== 'free' && (<>
-          {/* Panel Locations: the 4 fixed slots, each independently added
+          {/* Panel locations: the 4 fixed slots, each independently added
               to or removed from the layout. Removing a slot clears its
-              streams (they reappear under Available Streams below) and
+              streams (they reappear under Available streams below) and
               hides the slot from the game window. Adding leaves the slot
-              empty for the user to fill from Available Streams. */}
-          <Section label="Panel Locations">
+              empty for the user to fill from Available streams. */}
+          <Section label="Panel locations">
             {ALL_ZONES.map(z => (
               <Row key={z} label={ZONE_LABELS[z]}>
                 {addedByZone[z]
                   ? <>
                       <span className="pm-zone-status pm-zone-status--added">In layout</span>
-                      <button className="pm-btn-remove" onClick={() => onRemovePanelZone(z)}
-                              title="Hide this panel and return its streams to Available Streams">
-                        Remove Panel
+                      <button type="button" className="ui-btn ui-btn--sm" onClick={() => onRemovePanelZone(z)}
+                              title="Hide this panel and return its streams to Available streams">
+                        Remove panel
                       </button>
                     </>
                   : <>
                       <span className="pm-zone-status pm-zone-status--removed">Not in layout</span>
-                      <button className="pm-btn-add-panel" onClick={() => onAddPanelZone(z)}
+                      <button type="button" className="ui-btn ui-btn--sm ui-btn--primary" onClick={() => onAddPanelZone(z)}
                               title="Snap this panel into the game window so it can hold streams">
-                        Add Panel
+                        Add panel
                       </button>
                     </>}
               </Row>
             ))}
+            {/* Resets the DOCKED zone layout, which is a no-op you can't see
+                while in Windowed mode -- so it only appears here, in the
+                static-only part of the manager. The windowed equivalent is
+                "Rebuild from panels". */}
+            <Row label="Reset panels"
+                 desc="Puts the four docked slots back to their default streams and sizes.">
+              <button type="button" className="ui-btn ui-btn--sm ui-btn--danger" onClick={() => { void resetPanels() }}>Reset</button>
+            </Row>
           </Section>
 
           {/* Each added zone's stream contents. Removed zones don't get a
               section — their streams already went back to Available
-              Streams below. */}
+              streams below. */}
           {addedZones.map(z => (
-            <Section key={z} label={`${ZONE_LABELS[z]} — Streams`}>
+            <Section key={z} label={`${ZONE_LABELS[z]} — streams`}>
               {tabsByZone[z].map((tab, idx) => {
                 const tabs = tabsByZone[z]
                 const isFirst = idx === 0
@@ -270,35 +318,42 @@ export default function PanelManager({
                         slot within its current zone — that's the tab order
                         the user sees in the PanelFrame tab bar. Disabled at
                         the ends so there's no silent no-op. */}
-                    <button className="pm-btn-reorder" disabled={isFirst}
+                    <button type="button" className="ui-btn ui-btn--sm pm-btn-reorder" disabled={isFirst}
                             title={isFirst ? 'Already at the start' : 'Move left'}
+                            aria-label="Move left"
                             onClick={() => onReorderTab(tab, 'left')}>◀</button>
-                    <button className="pm-btn-reorder" disabled={isLast}
+                    <button type="button" className="ui-btn ui-btn--sm pm-btn-reorder" disabled={isLast}
                             title={isLast ? 'Already at the end' : 'Move right'}
+                            aria-label="Move right"
                             onClick={() => onReorderTab(tab, 'right')}>▶</button>
                     {addedZones.filter(other => other !== z).map(other => (
-                      <button key={other} onClick={() => onMoveTab(tab, other)}>
+                      <button type="button" key={other} className="ui-btn ui-btn--sm" onClick={() => onMoveTab(tab, other)}
+                              title={`Move this stream to the ${ZONE_BUTTON_LABELS[other]} panel`}>
                         → {ZONE_BUTTON_LABELS[other]}
                       </button>
                     ))}
-                    <button className="pm-btn-remove" onClick={() => onRemoveTab(tab)}>Remove</button>
+                    <button type="button" className="ui-btn ui-btn--sm" onClick={() => onRemoveTab(tab)}
+                            title="Take this stream out of the panel — it goes back to Available streams">
+                      Remove
+                    </button>
                   </Row>
                 )
               })}
               {tabsByZone[z].length === 0 && (
-                <div className="pm-empty">Empty — add a stream from Available Streams below.</div>
+                <div className="pm-empty">Empty — add a stream from Available streams below.</div>
               )}
             </Section>
           ))}
 
           {hasAvailable && (
-            <Section label="Available Streams">
+            <Section label="Available streams">
               {availableBuiltin.map(type => (
                 <Row key={type} label={labels[type]}>
                   {addedZones.length === 0
                     ? <span className="pm-empty-inline">Add a panel above first.</span>
                     : addedZones.map(z => (
-                        <button key={z} onClick={() => onAddToZone(type, z)}>
+                        <button type="button" key={z} className="ui-btn ui-btn--sm" onClick={() => onAddToZone(type, z)}
+                                title={`Add this stream to the ${ZONE_BUTTON_LABELS[z]} panel`}>
                           + {ZONE_BUTTON_LABELS[z]}
                         </button>
                       ))}
@@ -311,7 +366,8 @@ export default function PanelManager({
                     {addedZones.length === 0
                       ? <span className="pm-empty-inline">Add a panel above first.</span>
                       : addedZones.map(z => (
-                          <button key={z} onClick={() => onAddToZone(id, z)}>
+                          <button type="button" key={z} className="ui-btn ui-btn--sm" onClick={() => onAddToZone(id, z)}
+                                  title={`Add this stream to the ${ZONE_BUTTON_LABELS[z]} panel`}>
                             + {ZONE_BUTTON_LABELS[z]}
                           </button>
                         ))}
@@ -379,7 +435,7 @@ function ModeCard({ name, current, badge, badgeKind, desc, note, onSwitch }: {
           move (UX standard #2 -- same shape, different content). */}
       <div className="pm-mode-foot">
         {onSwitch
-          ? <button className="pm-mode-switch" onClick={onSwitch}>Use {name}</button>
+          ? <button type="button" className="pm-mode-switch" onClick={onSwitch}>Use {name}</button>
           : <span className="pm-mode-here">This is your current layout.</span>}
       </div>
     </div>

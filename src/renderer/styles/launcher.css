@@ -17,18 +17,15 @@
   background: transparent;
 }
 
-/* When the launcher is rendered inside the Add Character modal (logged-in
-   user clicks +), the modal's flex centering means the launcher's height
-   is content-driven; `overflow-y: auto` from .launcher above never gets
-   to kick in because the element isn't bounded. Cap the height to the
-   viewport so it can actually scroll. v0.8.0 (B97 follow-up). */
+/* Inside the + modal the PANEL (.add-character-panel, character-tabs.css) owns
+   the chrome and the height cap, so the launcher is only the scrolling body —
+   no background, border or radius of its own. `flex: 1` + `min-height: 0`
+   (from .launcher) let it shrink into the space under the header band, which
+   is what makes `overflow-y: auto` engage. v0.8.0 capped the launcher itself
+   (B97 follow-up); since F113 the themed panel does. */
 .add-character-modal .launcher--compact {
   width: 100%;
-  max-width: 760px;
-  max-height: calc(100vh - 48px);  /* modal has 24px padding top + bottom */
-  background: var(--bg-base);
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  background: transparent;
 }
 
 /* ── Top bar (Lich Setup access in disconnected state) ───────────────── */
@@ -45,11 +42,12 @@
   padding: 0 4px 24px;
 }
 
-/* Attach mode: the single-button row the COMPACT launcher shows in
-   place of the full top bar (see CompactAttachRow). The full bar's 24px of
-   bottom padding separates it from the character groups below a hero lockup
-   that compact never renders, so inside the modal it reads as dead space —
-   tightened here, with a hairline doing the separating instead. */
+/* The COMPACT launcher's action row (the + tab's Add Character modal):
+   Reconnect Last, Team Login and Attach — the full bar trimmed to the ways of
+   bringing more characters in (LauncherTopBar's `compact` mode, v0.19.7). The
+   full bar's 24px of bottom padding separates it from the character groups
+   below a hero lockup that compact never renders, so inside the modal it reads
+   as dead space — tightened here, with a hairline doing the separating. */
 .launcher-topbar--compact {
   padding: 0 4px 10px;
   margin-bottom: 10px;
@@ -88,15 +86,17 @@
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-muted);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 5px 12px;
   font-family: inherit;
   font-size: 0.78rem;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  transition: border-color var(--ui-transition), color var(--ui-transition), background var(--ui-transition);
 }
 
-.launcher-topbar-btn:hover {
+/* :not(:disabled) — a disabled Team Login used to pick up the accent wash on
+   hover and look live. */
+.launcher-topbar-btn:hover:not(:disabled) {
   border-color: var(--accent-dim);
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 6%, transparent);
@@ -237,7 +237,7 @@
   background: var(--color-danger-bg);
   border: 1px solid var(--color-danger-border);
   color: var(--color-danger);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 10px 14px;
   margin-bottom: 14px;
   font-size: 0.82rem;
@@ -357,7 +357,7 @@
   color: var(--text-primary);
   font-family: inherit;
   cursor: pointer;
-  transition: background 0.12s;
+  transition: background var(--ui-transition);
 }
 
 /* Matches the About modal's control hover (a neutral wash, not more accent —
@@ -424,13 +424,59 @@
   width: 100%;
 }
 
-/* The bottom Add-character row gets the same grid so it lines up with the
-   character grids above (the + tile picks up minmax(260px) sizing). */
+/* "+ Add account" — a full-width, header-height row that reads as the NEXT
+   account slot: the same width, radius and padding as the account panels'
+   header row above it, drawn with a dashed accent outline instead of a panel
+   (Sekmeht, v0.19.7). It used to be a 110px-tall grid tile that filled one
+   cell of a character grid, which sat oddly under a stack of full-width
+   account rows. Same in the full launcher and the + tab's compact one — they
+   are one component. */
 .launcher-add-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 14px;
   width: 100%;
+}
+
+.launcher-add-account {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  /* Matches .launcher-account-header-toggle, so the row is exactly as tall. */
+  padding: 0.6rem 0.9rem;
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--accent) 32%, transparent);
+  border-radius: var(--modal-radius);
+  color: var(--accent);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--ui-transition), background var(--ui-transition);
+}
+
+.launcher-add-account:hover {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.launcher-add-account:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
+/* Sits where an account row's ▶ chevron sits, at the account name's size, so
+   the line box — and therefore the row's height — matches an account row. */
+.launcher-add-account-plus {
+  width: 0.9em;
+  display: inline-block;
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.launcher-add-account-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
 }
 
 /* Test Server pill — v0.8.0 redesign. Was a labelled checkbox; now a
@@ -471,7 +517,7 @@
   gap: 8px;
   background: var(--accent-bg);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
   font-size: 0.78rem;
   color: var(--text-secondary);
@@ -517,7 +563,7 @@
 .launcher-card-mode {
   cursor: pointer;
   font-family: inherit;
-  transition: filter 0.12s ease-out, opacity 0.12s ease-out;
+  transition: filter var(--ui-transition), opacity var(--ui-transition);
   border: 1px solid transparent;
 }
 
@@ -554,7 +600,7 @@
   line-height: 1;
   padding: 0 4px;
   cursor: pointer;
-  transition: color 0.12s, transform 0.12s;
+  transition: color var(--ui-transition), transform var(--ui-transition);
 }
 
 .launcher-card-favorite:hover {
@@ -624,7 +670,7 @@
   text-transform: uppercase;
   text-align: left;
   cursor: pointer;
-  transition: background 0.12s;
+  transition: background var(--ui-transition);
 }
 
 /* Neutral wash, not more accent — the band is already accent-tinted (same
@@ -662,10 +708,10 @@
   font-size: 1rem;
   line-height: 1;
   padding: 2px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   margin-left: 2px;
-  transition: color 0.12s, background 0.12s, border-color 0.12s;
+  transition: color var(--ui-transition), background var(--ui-transition), border-color var(--ui-transition);
 }
 
 .launcher-card-menu:hover {
@@ -676,17 +722,6 @@
 
 /* Refresh-from-account button — sibling of the toggle button, not nested.
    v0.8.0 (bug 1 fix). */
-
-/* The character names inside the confirm dialog — a quiet block, since the
-   sentence around it already carries the weight. */
-.launcher-dialog-list {
-  margin-top: 6px;
-  margin-bottom: 6px;
-  color: var(--text-secondary);
-  font-size: 0.78rem;
-  line-height: 1.5;
-  word-break: break-word;
-}
 
 /* Account-header actions — ONE metrics rule for both buttons so they cannot
    drift apart. Remove started as its own block and immediately did: it omitted
@@ -705,14 +740,14 @@
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-muted);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 3px 9px;
   font-family: inherit;
   font-size: 0.72rem;
   white-space: nowrap;
   flex-shrink: 0;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  transition: border-color var(--ui-transition), color var(--ui-transition), background var(--ui-transition);
 }
 
 /* Destructive, so it is quiet at rest and unmistakable once you reach for it
@@ -749,12 +784,12 @@
   background: transparent;
   border: 1px solid var(--border-subtle);
   color: var(--text-muted);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 5px 12px;
   font-family: inherit;
   font-size: 0.74rem;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  transition: border-color var(--ui-transition), color var(--ui-transition), background var(--ui-transition);
 }
 
 .launcher-hidden-toggle:hover {
@@ -777,10 +812,10 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+  transition: border-color var(--ui-transition), background var(--ui-transition);
 }
 
-.launcher-card:not(.launcher-card--add):not(.launcher-card--busy):hover {
+.launcher-card:not(.launcher-card--busy):hover {
   border-color: var(--accent-dim);
   background: color-mix(in srgb, var(--accent) 4%, var(--bg-raised));
 }
@@ -855,14 +890,14 @@
   background: var(--accent-dim);
   color: #fff;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 6px 14px;
   font-family: inherit;
   font-size: 0.8rem;
   font-weight: 600;
   letter-spacing: 0.5px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--ui-transition);
 }
 
 .launcher-card-connect:hover:not(:disabled) {
@@ -872,39 +907,6 @@
 .launcher-card-connect:disabled {
   cursor: not-allowed;
   opacity: 0.7;
-}
-
-/* ── Add card ────────────────────────────────────────────────────────── */
-
-/* Add card — the About chip language (accent tint + accent hairline), kept
-   DASHED so it still reads as "empty slot, click to fill" rather than as a
-   populated character tile. */
-.launcher-card--add {
-  background: color-mix(in srgb, var(--accent) 5%, transparent);
-  border: 1px dashed color-mix(in srgb, var(--accent) 32%, transparent);
-  border-radius: 10px;
-  align-items: center;
-  justify-content: center;
-  min-height: 110px;
-  cursor: pointer;
-  color: var(--accent);
-  font-family: inherit;
-}
-
-.launcher-card--add:hover {
-  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-}
-
-.launcher-card-add-plus {
-  font-size: 1.6rem;
-  line-height: 1;
-}
-
-.launcher-card-add-label {
-  font-size: 0.85rem;
-  letter-spacing: 1px;
-  text-transform: uppercase;
 }
 
 /* ── Welcome state (no characters yet) ──────────────────────────────── */
@@ -1015,9 +1017,15 @@
   padding: 0;
   overflow: hidden;          /* lets the band meet the rounded corners */
   width: min(520px, 92vw);
+  /* B332: bounded to the window. The Keep/Switch chooser and the Team Login
+     summary grow a row per account / character and had no ceiling, so a big
+     team ran the Confirm / Done buttons off the bottom of the screen. The title
+     and the actions stay put; the BODY scrolls (pitfall #109). */
+  max-height: calc(100vh - 32px);
 }
 
 .launcher-dialog-head {
+  flex: none;
   padding: 0.85rem 1.1rem;
   font-size: 1rem;
   font-weight: 700;
@@ -1035,6 +1043,11 @@
   font-size: 0.9rem;
   color: var(--text-primary);
   line-height: 1.5;
+  /* B332: the scrolling part of a bounded dialog. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* Secondary explanatory copy inside a dialog body. */
@@ -1045,6 +1058,7 @@
 }
 
 .launcher-dialog-foot {
+  flex: none;
   display: flex;
   justify-content: flex-end;
   gap: 8px;
@@ -1149,7 +1163,7 @@
   background: var(--bg-raised);
   border: 1px solid var(--border-faint);
   color: var(--text-primary);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 6px 14px;
   font-family: inherit;
   font-size: 0.85rem;
@@ -1160,16 +1174,9 @@
 .launcher-connecting-cancel:hover:not(:disabled) { background: var(--bg-hover); }
 .launcher-connecting-cancel:disabled { opacity: 0.55; cursor: default; }
 
-/* Destructive action — same chip shape, danger hue. */
-.launcher-connecting-cancel--danger {
-  border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
-  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
-  color: color-mix(in srgb, var(--color-danger) 80%, var(--text-primary));
-  font-weight: 600;
-}
-.launcher-connecting-cancel--danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-danger) 20%, transparent);
-}
+/* (`--danger` was only the launcher's own Delete profile / Remove account
+   dialogs; those go through the shared confirm (confirm.ts) since v0.19.7,
+   B401, so the modifier had no consumer left.) */
 
 /* Primary action = the About accent chip. */
 .launcher-connecting-cancel--primary {
@@ -1237,7 +1244,7 @@
 .launcher-team-connect {
   flex: none;
   padding: 4px 12px;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--modal-border));
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--text-primary);
@@ -1266,7 +1273,7 @@
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
   font-family: inherit;
@@ -1290,7 +1297,7 @@
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-faint);
   font-family: inherit;
@@ -1327,7 +1334,7 @@
 .launcher-team-editor-warn {
   margin-top: 8px;
   padding: 6px 10px;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
   color: var(--text-primary);
   background: color-mix(in srgb, var(--color-danger) 16%, transparent);

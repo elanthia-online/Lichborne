@@ -25,13 +25,20 @@
 // detects monospace with a canvas width test; `LEGACY_KEYS` migrates retired
 // preset keys, and `cascadia` is deliberately NOT one of them (see below).
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useId } from 'react'
 import { loadCommandHistorySettings, saveCommandHistorySettings, CMD_HISTORY_MIN_MAX } from '../commandHistorySettings'
 import { useOverviewOptions, setOverviewOptions, MAX_FEED_LINES, type OverviewOptions } from '../overviewStore'
 import { backdropHandlers } from '../utils/backdropClose'
+import { useEscapeClose } from '../hooks/useEscapeClose'
+import { pressable } from '../utils/pressable'
+import { confirmAction } from '../confirm'
 import { createPortal } from 'react-dom'
 import type { SessionLogDiskUsage, SimuCoinStatus } from '../../shared/types'
-import { FONT_FAMILIES, FONT_FAMILY_LABELS, DEFAULT_SETTINGS, type AppSettings } from '../settings'
+import { FONT_FAMILIES, FONT_FAMILY_LABELS, DEFAULT_SETTINGS, resolveFontFamily, type AppSettings } from '../settings'
+import { HIGHLIGHT_EFFECTS, type HighlightEffect } from '../highlights'
+// The preview is painted by the SAME builder the app bar uses, so what you
+// pick here is exactly what you get up there (pitfall #127 / B281).
+import { paintBrandMark } from '../utils/brandMark'
 import { type SessionLogSettings, loadSessionLogSettings, saveSessionLogSettings } from '../sessionLogSettings'
 import { type AIConfig, loadAIConfig, saveAIConfig, AI_TEXT_MODELS } from '../aiConfig'
 import { aiSessionUsage } from '../ai/aiClient'
@@ -62,7 +69,10 @@ declare global {
 // font visibly flip from Consolas to generic monospace the moment a fresh
 // user opened Settings. The 'cascadia' key stays through the FONT_FAMILIES
 // lookup forever; only the other three preset keys (which were truly retired)
-// migrate to a real font name.
+// migrate to a real font name. B348: those names are Windows fonts, so off
+// Windows they rely on settings.ts `resolveFontFamily` giving each the right
+// tail (Segoe UI → system sans, Georgia → serif, Lucida Console → Menlo/DejaVu)
+// rather than generic monospace.
 const LEGACY_KEYS: Record<string, string> = {
   terminal: 'Lucida Console',
   sansserif: 'Segoe UI',
@@ -114,15 +124,26 @@ function Toggle({ label, checked, onChange, description }: {
   onChange: (v: boolean) => void
   description?: string
 }) {
+  // B335: a real <button role="switch">, so Tab reaches it and Space/Enter
+  // flip it. A <button> is labelable, so the wrapping <label> now forwards a
+  // click on the label text to it (the old div made that click do nothing). A
+  // click on the button itself activates it once, and the label adds no second
+  // click, so it can never toggle twice.
   return (
     <label className="sp-toggle-row">
       <div className="sp-toggle-text">
         <span className="sp-toggle-label">{label}</span>
         {description && <span className="sp-toggle-desc">{description}</span>}
       </div>
-      <div className={`sp-toggle${checked ? ' sp-toggle--on' : ''}`} onClick={() => onChange(!checked)}>
-        <div className="sp-toggle-thumb" />
-      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        className={`sp-toggle${checked ? ' sp-toggle--on' : ''}`}
+        onClick={() => onChange(!checked)}
+      >
+        <span className="sp-toggle-thumb" />
+      </button>
     </label>
   )
 }
@@ -171,6 +192,14 @@ function rowVisible(q: string, section: string, ...labels: string[]): boolean {
 }
 
 export default function SettingsPanel({ settings, character, onChange, layoutMode, onClose, simucoin, jumpToSection }: Props) {
+  // Esc closes (B327/B341). While the search box holds text it consumes the
+  // first Esc to clear itself; an empty search lets Esc fall through here.
+  useEscapeClose(onClose)
+  const titleId = useId()
+  // B397: open with the caret in the search box — the first thing you reach
+  // for in a long settings list — instead of nowhere.
+  const searchRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { searchRef.current?.focus({ preventScroll: true }) }, [])
   const inWindowed = layoutMode === 'free'
   const [systemFonts, setSystemFonts] = useState<string[]>([])
   const [monoFonts,   setMonoFonts]   = useState<Set<string>>(new Set())
@@ -230,6 +259,20 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
 
   function set<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
     onChange({ ...settings, [key]: value })
+  }
+
+  // B370: this ran in one click, from a button 8px from the ✕. The detail
+  // names what DEFAULT_SETTINGS actually covers — the per-character
+  // AppSettings, per-panel text sizes included — and what it leaves alone.
+  async function resetToDefaults() {
+    const ok = await confirmAction({
+      title: 'Reset settings to defaults?',
+      message: `Display, accessibility, layout and behavior settings for ${character} go back to their defaults.`,
+      detail: 'That includes the font, line height, text weight and any per-panel text sizes. Settings shared by every character — Overview, command history, Session Log, AI and SimuCoins — are not changed.',
+      confirmLabel: 'Reset',
+      danger: true,
+    })
+    if (ok) onChange({ ...DEFAULT_SETTINGS })
   }
 
   // ── Session Log settings (app-wide — _shared.yaml, not per-character) ────
@@ -365,6 +408,15 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
     document.dispatchEvent(new CustomEvent('lichborne:ai-key-changed'))
   }
   async function clearAiKey() {
+    // B370: deleting the saved key used to take one click.
+    const ok = await confirmAction({
+      title: 'Delete the saved API key?',
+      message: 'Your Anthropic API key is removed from this machine.',
+      detail: "AI features stop working until you save a key again. This can't be undone.",
+      confirmLabel: 'Delete key',
+      danger: true,
+    })
+    if (!ok) return
     await window.api.aiClearKey('text')
     setAiKeyPresent(false)
     setAiTestMsg(null)
@@ -452,19 +504,24 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
   const vLineHeight    = vis('Display', 'Line height')
   const vTextWeight    = vis('Display', 'Text weight')
   const vPreview       = vis('Display', 'Preview', 'font')
-  const secDisplay     = vFontFamily || vFontSize || vLineHeight || vTextWeight || vPreview
+  const vBrandEffect   = vis('Display', 'Wordmark effect', 'lichborne', 'brand', 'logo', 'title', 'app bar', 'rainbow', 'glow')
+  const secDisplay     = vFontFamily || vFontSize || vLineHeight || vTextWeight || vPreview || vBrandEffect
+  // Live wordmark preview for the row below — same builder as the app bar.
+  const brandPreview   = paintBrandMark(settings.brandEffect)
 
-  const vLargePrint    = vis('Accessibility', 'Large Print')
-  const vHighContrast  = vis('Accessibility', 'High Contrast')
-  const vEpilepsy      = vis('Accessibility', 'Epilepsy Safe Mode', 'animations')
-  const vColorBlind    = vis('Accessibility', 'Color Blind Mode', 'deuteranopia', 'protanopia', 'tritanopia')
+  const vLargePrint    = vis('Accessibility', 'Large print')
+  const vHighContrast  = vis('Accessibility', 'High contrast')
+  const vEpilepsy      = vis('Accessibility', 'Epilepsy safe mode', 'animations')
+  const vColorBlind    = vis('Accessibility', 'Color blind mode', 'deuteranopia', 'protanopia', 'tritanopia')
   const secAccess      = vLargePrint || vHighContrast || vEpilepsy || vColorBlind
 
-  const vVitalsPos     = vis('Layout', 'Vitals Bar Position')
-  const vCompactVitals = vis('Layout', 'Compact Vitals')
-  const vCompactExp    = vis('Layout', 'Compact Experience Panel')
-  const vIconBarPos    = vis('Layout', 'Icon Bar Position', 'status bar', 'compass')
-  const vTimerStyle    = vis('Layout', 'RT / CT Timer Style', 'roundtime')
+  const vVitalsPos     = vis('Layout', 'Vitals bar position')
+  const vCompactVitals = vis('Layout', 'Compact vitals')
+  const vCompactExp    = vis('Layout', 'Compact experience panel')
+  const vIconBarPos    = vis('Layout', 'Icon bar position', 'status bar', 'compass')
+  // B336: the label spells out roundtime / cast time; the old "RT / CT" stays
+  // as a search term for anyone who knows it by the abbreviation.
+  const vTimerStyle    = vis('Layout', 'Roundtime / cast time timer style', 'RT / CT', 'roundtime')
   const secLayout      = vVitalsPos || vCompactVitals || vCompactExp || vIconBarPos || vTimerStyle
 
   // Views (v0.19.0). App-wide, like Session Log / AI / SimuCoins — the Overview
@@ -480,9 +537,12 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
   const secOverview    = vOvFeed || vOvDensity || vOvSort || vOvSections || vOvIdle || vOvSpeech || vOvPulse || vOvTiles
 
   const vAutoLink      = vis('Behavior', 'Auto-link URLs')
-  const vWebSafety     = vis('Behavior', 'Web Link Safety', 'bounce')
-  const vMapAnim       = vis('Behavior', 'Genie Map Animations')
-  const secBehavior    = vAutoLink || vWebSafety || vMapAnim
+  const vWebSafety     = vis('Behavior', 'Web link safety', 'bounce')
+  const vMapAnim       = vis('Behavior', 'Genie map animations')
+  // The command-history row used to render whenever Behavior did, so a search
+  // for "history" found nothing — and a search for "links" showed it anyway.
+  const vCmdHist       = vis('Behavior', 'Remember commands of at least', 'command history', 'up-arrow', 'recall')
+  const secBehavior    = vAutoLink || vWebSafety || vMapAnim || vCmdHist
 
   const vAiEnable      = vis('AI', 'Enable AI features', 'artificial intelligence', 'byok')
   const vAiKey         = vis('AI', 'Anthropic API key', 'claude', 'byok')
@@ -506,7 +566,7 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
   const vLogRetention  = vis('Session Log', 'Keep logs for', 'retention')
   const vLogMaxRaw     = vis('Session Log', 'Cap uncompressed logs')
   const vLogUsage      = vis('Session Log', 'Disk usage')
-  const vLogFiles      = vis('Session Log', 'Log files', 'Open Logs Folder')
+  const vLogFiles      = vis('Session Log', 'Log files', 'Open logs folder')
   const anyLogSub      = vLogMain || vLogStreams || vLogCommands || vLogSystem
                       || vLogCompress || vLogRetention || vLogMaxRaw || vLogUsage || vLogFiles
   const showLogBlock   = vLogOptions || anyLogSub
@@ -536,31 +596,37 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
     'Lich Setup': secLichSetup,
   }
 
-  const noMatches = searching
-    && !secDisplay && !secAccess && !secLayout && !secBehavior && !secSessionLog && !secAI && !secLichSetup
+  // Derived from the same map as the nav rail, so a section can't render
+  // while the "No settings match" line also shows — Overview and SimuCoins
+  // were missing from a hand-written list, so searching "overview" said
+  // nothing matched directly above the Overview section.
+  const noMatches = searching && !Object.values(sectionRendered).some(Boolean)
 
   return createPortal(
-    <div className="sp-backdrop" {...backdropHandlers(() => onClose())}>
-      <div className="sp-modal">
+    <div className="sp-backdrop ui-modal-backdrop" {...backdropHandlers(() => onClose())}>
+      <div className="sp-modal ui-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
 
-        <div className="sp-header">
-          <span className="sp-title">Settings</span>
-          <button className="sp-reset" onClick={() => onChange({ ...DEFAULT_SETTINGS })}>Reset to defaults</button>
-          <button className="sp-close" onClick={onClose}>×</button>
+        <div className="ui-modal-head">
+          <span className="ui-modal-title" id={titleId}>Settings</span>
+          <button type="button" className="ui-close" onClick={onClose} title="Close" aria-label="Close">✕</button>
         </div>
 
         {/* F61: global settings filter — separate from the font list's sp-font-search */}
         <div className="sp-searchbar">
           <input
+            ref={searchRef}
             type="text"
             className="sp-search-input"
+            aria-label="Search settings"
             placeholder="Search settings…"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Escape' && query) setQuery('') }}
+            // Esc with text clears the search and is consumed (preventDefault), so
+            // Settings stays open. An empty search lets Esc through to close it.
+            onKeyDown={e => { if (e.key === 'Escape' && query) { e.preventDefault(); setQuery('') } }}
           />
           {query !== '' && (
-            <button className="sp-search-clear" onClick={() => setQuery('')} title="Clear search">×</button>
+            <button className="sp-search-clear" onClick={() => setQuery('')} title="Clear search" aria-label="Clear search">×</button>
           )}
         </div>
 
@@ -604,9 +670,14 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
               <span className="sp-field-label">Font family</span>
               <span className="sp-font-current">{FONT_FAMILY_LABELS[settings.fontFamily] ?? settings.fontFamily}</span>
             </div>
-            <div className="sp-font-filters">
-              <button className={`sp-font-filter${fontFilter === 'all'  ? ' sp-font-filter--active' : ''}`} onClick={() => setFontFilter('all')}>All</button>
-              <button className={`sp-font-filter${fontFilter === 'mono' ? ' sp-font-filter--active' : ''}`} onClick={() => setFontFilter('mono')}>Monospace</button>
+            <div className="sp-font-filters ui-tabs" role="group" aria-label="Show fonts">
+              <button type="button" aria-pressed={fontFilter === 'all'}
+                      className={`ui-tab${fontFilter === 'all' ? ' ui-tab--active' : ''}`}
+                      onClick={() => setFontFilter('all')}>All</button>
+              <button type="button" aria-pressed={fontFilter === 'mono'}
+                      className={`ui-tab${fontFilter === 'mono' ? ' ui-tab--active' : ''}`}
+                      onClick={() => setFontFilter('mono')}
+                      title="Only fonts where every character is the same width — keeps columns in game tables lined up">Monospace</button>
             </div>
             <input
               type="text"
@@ -615,12 +686,13 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
               value={fontQuery}
               onChange={e => setFontQuery(e.target.value)}
             />
-            <div className="sp-font-list" ref={fontListRef}>
+            <div className="sp-font-list" ref={fontListRef} role="listbox" aria-label="Font family">
               {filteredFonts.map(name => (
                 <div
                   key={name}
                   className={`sp-font-item${name === activeFontName ? ' sp-font-item--active' : ''}`}
-                  onClick={() => { set('fontFamily', name); setFontQuery('') }}
+                  {...pressable(() => { set('fontFamily', name); setFontQuery('') },
+                    { role: 'option', selected: name === activeFontName })}
                   // Render each entry in its own face so the picker doubles as
                   // a visual preview — Binu's request (v0.7.1). No fallback
                   // family: the list is sourced from `queryLocalFonts()` so
@@ -712,7 +784,8 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
             <div
               className="sp-preview-body"
               style={{
-                fontFamily: FONT_FAMILIES[settings.fontFamily] ?? `'${settings.fontFamily}'`,
+                // B348: the same resolver the game text uses, tail included.
+                fontFamily: resolveFontFamily(settings.fontFamily),
                 fontSize: `${settings.largePrint ? 18 : settings.fontSize}px`,
                 lineHeight: settings.largePrint ? 1.8 : settings.lineHeight,
                 // B113: mirror the live text-weight tuning into the
@@ -733,6 +806,43 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
           </div>
 
           )}
+
+          {/* v0.19.7: the app-bar wordmark's text effect. Per character, so a
+              multi-boxer can tell at a glance which one is in front. The
+              effect vocabulary is shared with highlights and contact
+              templates, so there is one effect system and one stylesheet. */}
+          {vBrandEffect && (<>
+          <div className="sp-field-row">
+            <label className="sp-field-label" htmlFor="sp-brand-effect">Wordmark effect</label>
+            {/* Deliberately reuses `.app-bar-brand` rather than a lookalike
+                class: same rule, so the preview cannot drift from the bar
+                (pitfall #113). The content comes from the shared painter. */}
+            <span className="app-bar-brand">
+              <span
+                className={brandPreview.className ? `app-bar-wordmark ${brandPreview.className}` : 'app-bar-wordmark'}
+                style={brandPreview.style}
+              >{brandPreview.content}</span>
+            </span>
+            <select
+              id="sp-brand-effect"
+              className="sp-select"
+              value={settings.brandEffect}
+              onChange={e => set('brandEffect', e.target.value as HighlightEffect)}
+            >
+              {HIGHLIGHT_EFFECTS.map(fx => (
+                <option key={fx.value} value={fx.value}>
+                  {fx.value === 'none' ? 'Static (theme colours)' : fx.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="sp-field-desc">
+            Styles the <strong>Lichborne</strong> wordmark in the top-left corner. <strong>Static</strong> takes
+            its colours from your theme, the way it always has; anything else paints over it. This is
+            per character, so each one can look a little different — the bar shows the effect of the
+            character you're currently on. Animated effects hold still under Epilepsy safe mode.
+          </div>
+          </>)}
           </section>}
 
           {/* ── Accessibility ────────────────────────────────────── */}
@@ -741,28 +851,28 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
           <div className="sp-section-label">Accessibility</div>
 
           {vLargePrint && <Toggle
-            label="Large Print"
+            label="Large print"
             description="Larger game text and more spacing throughout the interface"
             checked={settings.largePrint}
             onChange={v => set('largePrint', v)}
           />}
 
           {vHighContrast && <Toggle
-            label="High Contrast"
+            label="High contrast"
             description="Black background, white text, yellow accent — overrides theme colors"
             checked={settings.highContrast}
             onChange={v => set('highContrast', v)}
           />}
 
           {vEpilepsy && <Toggle
-            label="Epilepsy Safe Mode"
+            label="Epilepsy safe mode"
             description="Disables all pulsing animations (RT bar, status indicators)"
             checked={settings.epilepsySafe}
             onChange={v => set('epilepsySafe', v)}
           />}
 
           {vColorBlind && <RadioGroup
-            label="Color Blind Mode"
+            label="Color blind mode"
             value={settings.colorBlind}
             onChange={v => set('colorBlind', v)}
             options={[
@@ -780,7 +890,7 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
           <div className="sp-section-label">Layout</div>
 
           {vVitalsPos && <RadioGroup
-            label="Vitals Bar Position"
+            label="Vitals bar position"
             value={settings.vitalsBarPosition}
             onChange={v => set('vitalsBarPosition', v)}
             disabled={inWindowed}
@@ -792,21 +902,21 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
           />}
 
           {vCompactVitals && <Toggle
-            label="Compact Vitals"
+            label="Compact vitals"
             description="Slimmer half-height bars with short labels (H: 100%) — frees up ~half a line of game text"
             checked={settings.compactVitals}
             onChange={v => set('compactVitals', v)}
           />}
 
           {vCompactExp && <Toggle
-            label="Compact Experience Panel"
+            label="Compact experience panel"
             description="Text-forward Exp panel: Skill · Ranks · % · learning-rate, with simple summary bars — no progress bars or pickers"
             checked={settings.compactExp}
             onChange={v => set('compactExp', v)}
           />}
 
           {vIconBarPos && <RadioGroup
-            label="Icon Bar Position"
+            label="Icon bar position"
             value={settings.iconBarPosition}
             onChange={v => set('iconBarPosition', v)}
             disabled={inWindowed}
@@ -818,7 +928,7 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
           />}
 
           {vTimerStyle && <RadioGroup
-            label="RT / CT Timer Style"
+            label="Roundtime / cast time timer style"
             value={settings.timerStyle}
             onChange={v => set('timerStyle', v)}
             options={[
@@ -947,14 +1057,14 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
           />}
 
           {vWebSafety && <Toggle
-            label="Web Link Safety"
+            label="Web link safety"
             description="Route external URL clicks through Simu's bounce page (play.net/bounce/redirect.asp) — shows a 'you are leaving Play.net' warning before opening any link from game text or a script. Matches Genie's behavior."
             checked={settings.webLinkSafety}
             onChange={v => set('webLinkSafety', v)}
           />}
 
           {vMapAnim && <Toggle
-            label="Genie Map Animations"
+            label="Genie map animations"
             description="Genie Maps motion — per-room effects (shop glints, water ripples, sparkles) and the camera glide as it follows you. Turn off if the map feels sluggish; the map then snaps instantly with no effects."
             checked={settings.mapAnimations}
             onChange={v => set('mapAnimations', v)}
@@ -964,6 +1074,7 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
               this section. The hint says so, because a Behavior section that
               silently mixes scopes is the kind of thing that surprises people
               later. */}
+          {vCmdHist && (<>
           <div className="sp-field-row">
             <label className="sp-field-label" htmlFor="sp-cmdhist-min">
               Remember commands of at least{' '}
@@ -987,6 +1098,7 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
               ? 'Every command you type is kept for up-arrow recall.'
               : `Commands under ${cmdHist.minLength} characters — "n", "se" and the like — are no longer kept, so up-arrow reaches the ones you actually want. Slash commands are always kept, and existing history is left alone.`}
           </div>
+          </>)}
           </section>}
 
           {/* ── Session Log ─────────────────────────────────────── */}
@@ -1119,10 +1231,11 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
               <div className="sp-field-row">
                 <span className="sp-field-label">Log files</span>
                 <button
-                  className="sp-button"
+                  type="button"
+                  className="ui-btn ui-btn--sm"
                   onClick={() => window.api.sessionLogOpenFolder(character)}
                 >
-                  Open Logs Folder
+                  Open logs folder
                 </button>
               </div>
               )}
@@ -1163,9 +1276,15 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
                 onChange={e => setAiKeyInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') saveAiKey() }}
               />
-              <button className="sp-button" disabled={!aiKeyInput.trim()} onClick={saveAiKey}>Save</button>
-              <button className="sp-button" disabled={!aiKeyPresent || aiTesting} onClick={testAiKey}>{aiTesting ? 'Testing…' : 'Test'}</button>
-              <button className="sp-button" disabled={!aiKeyPresent} onClick={clearAiKey}>Clear</button>
+              <button type="button" className="ui-btn ui-btn--sm ui-btn--primary" disabled={!aiKeyInput.trim()} onClick={saveAiKey}
+                      title={aiKeyInput.trim() ? undefined : 'Type or paste a key first'}>Save</button>
+              <button type="button" className="ui-btn ui-btn--sm" disabled={!aiKeyPresent || aiTesting} onClick={testAiKey}
+                      title={!aiKeyPresent ? 'Save a key first' : aiTesting ? 'Already testing' : 'Check that the saved key works'}>
+                {aiTesting ? 'Testing…' : 'Test'}
+              </button>
+              {/* "Delete", not "Clear" (B407): it destroys the saved key, and asks first. */}
+              <button type="button" className="ui-btn ui-btn--sm ui-btn--danger" disabled={!aiKeyPresent} onClick={() => { void clearAiKey() }}
+                      title={aiKeyPresent ? 'Remove the saved key from this machine' : 'No key is saved'}>Delete</button>
             </div>
             {aiTestMsg
               ? <div className={`sp-ai-status ${aiTestMsg.ok ? 'sp-ai-status--ok' : 'sp-ai-status--err'}`}>{aiTestMsg.text}</div>
@@ -1275,7 +1394,8 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
                     />
                     <div className="sp-field-row">
                       <span className="sp-field-hint">Checked once per launch — no background polling.</span>
-                      <button className="sp-button" disabled={isBusy}
+                      <button type="button" className="ui-btn ui-btn--sm" disabled={isBusy}
+                        title={isBusy ? 'Already checking this account' : undefined}
                         onClick={() => { void simucoin.run(account, false) }}>
                         {isBusy ? 'Checking…' : 'Check now'}
                       </button>
@@ -1304,7 +1424,7 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
               Lich path, port &amp; mode
               <span className="sp-field-hint"> · how Lichborne launches and connects to Lich</span>
             </span>
-            <button className="sp-button" onClick={() => setShowLichSetup(true)}>
+            <button type="button" className="ui-btn ui-btn--sm" onClick={() => setShowLichSetup(true)}>
               Open Lich Setup…
             </button>
           </div>
@@ -1312,9 +1432,22 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
 
           </div>
         </div>
+
+        {/* B370: Reset to defaults used to sit in the header 8px from the ✕
+            and ran in one click. It lives at the foot now, in the house footer
+            order — [destructive] … [Close] — and asks first. */}
+        <div className="ui-modal-foot">
+          <button type="button" className="ui-btn ui-btn--danger" onClick={() => { void resetToDefaults() }}
+                  title={`Font, accessibility, layout and behavior settings for ${character}`}>
+            Reset to defaults
+          </button>
+          <span className="ui-modal-foot-spacer" />
+          <button type="button" className="ui-btn" onClick={onClose}>Close</button>
+        </div>
       </div>
 
-      {showLichSetup && <LichSetupDialog onClose={() => setShowLichSetup(false)} />}
+      {/* B405: Settings' scrim already dims the screen, so Lich Setup's stays clear. */}
+      {showLichSetup && <LichSetupDialog nested onClose={() => setShowLichSetup(false)} />}
     </div>,
     document.body,
   )

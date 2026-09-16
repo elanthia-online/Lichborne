@@ -176,7 +176,7 @@
   min-width: 0;
   background: var(--bg-sunken);
   border: 1px solid var(--accent-dim);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: inherit;
   font-size: inherit;
@@ -199,7 +199,7 @@
      hangs over the content below instead of moving anything. Purely a hit
      target — the glyph is unchanged. */
   padding: 4px 0.3em;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   /* QUIET BY DEFAULT (CLAUDE.md polish #1): the collapse/close controls are
      hidden until you hover or focus the window, so an idle window is just its
@@ -327,7 +327,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-faint);
+  color: var(--text-muted);   /* B385: not --text-faint (2.3:1 on Classic Light) */
   font-style: italic;
 }
 
@@ -406,7 +406,7 @@
   gap: 6px;
   padding: 11px 12px;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--bg-base);
 }
 /* The ACTIVE card is the only accented surface here, so "where am I" is a
@@ -440,15 +440,18 @@
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   border: 1px solid var(--accent-dim);
 }
+/* B402: the status tokens, not hand-picked greens/ambers. --color-warning is
+   already mixed toward --text-primary in darkBase, so it's used as the text
+   colour directly; --color-success is mixed here the same way. */
 .pm-mode-chip--rec {
-  color: color-mix(in srgb, #3fb950 70%, var(--text-primary));
-  background: color-mix(in srgb, #3fb950 14%, transparent);
-  border: 1px solid color-mix(in srgb, #3fb950 40%, transparent);
+  color: color-mix(in srgb, var(--color-success) 70%, var(--text-primary));
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-success) 40%, transparent);
 }
 .pm-mode-chip--legacy {
-  color: color-mix(in srgb, #d29922 70%, var(--text-primary));
-  background: color-mix(in srgb, #d29922 14%, transparent);
-  border: 1px solid color-mix(in srgb, #d29922 40%, transparent);
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
 }
 
 .pm-mode-desc {
@@ -471,11 +474,11 @@
   background: var(--bg-btn);
   border: 1px solid var(--accent-dim);
   color: var(--accent);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 6px 12px;
   font-family: inherit;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  transition: background var(--ui-transition), color var(--ui-transition), border-color var(--ui-transition);
 }
 .pm-mode-switch:hover { background: var(--bg-hover); border-color: var(--accent); }
 .pm-mode-here { color: var(--text-dim); font-size: 0.78rem; }

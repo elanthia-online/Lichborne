@@ -8,7 +8,13 @@
   position: fixed;
   right: 14px;
   bottom: 14px;
-  z-index: 200; /* above WindowLayer (60) / ExperienceLayer (61) / overlays (>=100) */
+  /* B329: ABOVE EVERY MODAL. At 200 a toast tied the Automations / Contacts
+     dialogs, which are portaled later in the document and so won the tie — the
+     quota warning and the "moved to All Characters" toast rendered UNDER the
+     dialog that raised them, and clicking one clicked the backdrop instead.
+     Tiers: modals ≤ 1600, Quick Send 2000, About 2010, toasts 2050, context
+     menus 2100, the Quit confirmation 10000. */
+  z-index: 2050;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -21,17 +27,18 @@
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 8px 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--popover-shadow);
   cursor: pointer;
   font-size: 0.8rem; /* app chrome — deliberately NOT game-font scaled (Principle #9 exception) */
   color: var(--text-primary);
   animation: toast-in 160ms ease-out;
 }
 
-.toast--success { border-left-color: color-mix(in srgb, #3fae5a 75%, var(--text-primary)); }
-.toast--error   { border-left-color: color-mix(in srgb, #e04a3f 75%, var(--text-primary)); }
+/* B402: the palette's status tokens, mixed toward theme text as before. */
+.toast--success { border-left-color: color-mix(in srgb, var(--color-success) 75%, var(--text-primary)); }
+.toast--error   { border-left-color: color-mix(in srgb, var(--color-danger) 75%, var(--text-primary)); }
 
 .toast-title {
   font-weight: 600;

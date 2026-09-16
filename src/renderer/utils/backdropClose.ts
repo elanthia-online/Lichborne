@@ -4,8 +4,8 @@
 // Closing requires BOTH the mousedown and the click to land on the backdrop
 // element itself, so a text-selection drag that starts inside the dialog and
 // ends on the backdrop can never dismiss it (the full reasoning is the comment
-// below). Pure DOM-event logic with one module-level flag — no React state, no
-// dependency on which modal is hosting it.
+// below). Pure DOM-event logic with one module-level variable — no React state,
+// no dependency on which modal is hosting it.
 import type { MouseEvent } from 'react'
 
 // Spread onto a modal's backdrop div: `<div className="…-backdrop" {...backdropHandlers(onClose)}>`.
@@ -17,15 +17,25 @@ import type { MouseEvent } from 'react'
 // We now close ONLY when the mousedown ALSO started on the backdrop itself — an
 // actual click on the empty area, never a drag that ended there.
 //
-// One module-level flag is safe: only one mousedown→click sequence is ever in
-// flight (the user has one mouse), and it's set on every backdrop mousedown.
-let downOnBackdrop = false
+// It records the ELEMENT the press started on, not a "was it a backdrop?"
+// boolean. A dialog can be rendered as a React child of another dialog's
+// backdrop (Lich Setup inside Settings, the Add Account wizard's prompts), and
+// then one mousedown bubbles through BOTH backdrops' handlers: a boolean was set
+// true by the inner handler and immediately reset false by the outer one, so a
+// click outside the inner dialog did nothing (visible once nested backdrops
+// went transparent, B405). The target is the same for every handler the event
+// passes through, so recording it is idempotent, and the outer backdrop's click
+// check fails on its own because the target is not the outer element.
+//
+// One module-level variable is safe: only one mousedown→click sequence is ever
+// in flight (the user has one mouse).
+let downTarget: EventTarget | null = null
 
 export function backdropHandlers(onClose: () => void, enabled = true) {
   return {
-    onMouseDown: (e: MouseEvent) => { downOnBackdrop = e.target === e.currentTarget },
+    onMouseDown: (e: MouseEvent) => { downTarget = e.target },
     onClick: (e: MouseEvent) => {
-      if (enabled && downOnBackdrop && e.target === e.currentTarget) onClose()
+      if (enabled && downTarget === e.currentTarget && e.target === e.currentTarget) onClose()
     },
   }
 }

@@ -14,7 +14,13 @@
   font-size: calc(var(--game-font-size, 12px) * 0.95);
   color: var(--text-primary);
   overflow: hidden;
+  /* B332: SlashPalette sets an inline max-height from the space it has, so the
+     parts are a column the list/args can shrink inside (they scroll). */
+  display: flex;
+  flex-direction: column;
 }
+
+.slash-palette-head { flex-shrink: 0; }
 
 .slash-palette-head {
   padding: 4px 10px;
@@ -29,7 +35,9 @@
 
 .slash-palette-list {
   max-height: 16em;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 3px 0;
 }
 
@@ -67,7 +75,13 @@
 
 /* ── Argument-hint mode ── */
 
-.slash-palette-args { padding: 6px 10px 7px; }
+.slash-palette-args {
+  padding: 6px 10px 7px;
+  /* B332: scrolls when the palette's inline max-height is tight. */
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 
 .slash-palette-sig {
   font-weight: 600;
@@ -101,9 +115,10 @@
   color: var(--text-dim);
 }
 
-/* Semantic status hues via color-mix toward theme text (pitfall #55 pattern). */
-.slash-palette-valid--ok  { color: color-mix(in srgb, #3fae5a 70%, var(--text-primary)); }
-.slash-palette-valid--err { color: color-mix(in srgb, #e04a3f 70%, var(--text-primary)); }
+/* Semantic status hues from the palette tokens (B402), still mixed toward theme
+   text so they read on themes that don't set their own (pitfall #55 pattern). */
+.slash-palette-valid--ok  { color: color-mix(in srgb, var(--color-success) 75%, var(--text-primary)); }
+.slash-palette-valid--err { color: color-mix(in srgb, var(--color-danger) 75%, var(--text-primary)); }
 
 /* Phase 2 value-completion chips (e.g. template names for /contact add). */
 .slash-palette-chips {

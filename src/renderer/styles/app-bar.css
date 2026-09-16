@@ -66,16 +66,15 @@
   background: var(--color-success, #4caf7d);
   box-shadow: 0 0 4px color-mix(in srgb, var(--color-success) 55%, transparent);
 }
-/* AMBER — this tab is connected but another open one is not. There is no
-   `--color-warning` in the palette (only danger/success), so the hue is fixed
-   and mixed toward --text-primary the way every other semantic cue here is, so
-   it keeps its meaning and self-corrects on light themes (Principle #4 / UX
-   standard #6). Colour only, no pulse: motion is decoration, colour is signal,
-   and a blinking dot in the chrome would be the kind of glyph you learn to
-   ignore (polish standards #1 and #9b). */
+/* AMBER — this tab is connected but another open one is not. --color-warning
+   (B402, v0.19.7) is a fixed amber mixed toward --text-primary, so it keeps its
+   meaning and self-corrects on light themes (Principle #4 / UX standard #6).
+   Colour only, no pulse: motion is decoration, colour is signal, and a blinking
+   dot in the chrome would be the kind of glyph you learn to ignore (polish
+   standards #1 and #9b). */
 .app-bar-status-dot--warn {
-  background: color-mix(in srgb, #d29922 80%, var(--text-primary));
-  box-shadow: 0 0 4px color-mix(in srgb, #d29922 55%, transparent);
+  background: var(--color-warning);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--color-warning) 55%, transparent);
 }
 
 .app-bar-actions {
@@ -85,37 +84,11 @@
   flex-shrink: 0;
 }
 
-/* Active-state glow for the app-bar buttons that didn't already have one in
-   game.css (Maps/Lich/Debug/Logs do). Matches the accent style of
-   .btn-map--active so every toggle button glows consistently when its panel is
-   open on the active session. */
-.btn-panel-manager--active,
-.btn-automations--active,
-.btn-settings--active,
-.btn-experiences--active {
-  border-color: var(--accent-dim);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-
-/* The Experiences button (§34.5) is new with the app-bar era, so its base +
-   hover live here rather than game.css (which styles the legacy-toolbar
-   button family). Recipe matches that family exactly. */
-.btn-experiences {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: 4px;
-  padding: 4px 10px;
-  font-family: inherit;
-  font-size: 1.0em;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.btn-experiences:hover {
-  border-color: var(--accent-dim);
-  color: var(--accent);
-}
+/* The toggle buttons' base, closed-hover and OPEN states — including
+   .btn-experiences and the ⋯ .btn-app-bar-more — all live in ONE place,
+   game.css's button family (B345). They used to be split between the two
+   files at EQUAL specificity, where the bundle order decides which wins
+   (pitfall #111); don't restate any of them here. */
 
 /* Vertical separator before Disconnect/Login — extra breathing room plus a
    hairline so the destructive button isn't flush against the ⋯ More button
@@ -135,27 +108,8 @@
   align-items: center;
 }
 
-.btn-app-bar-more {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: 4px;
-  padding: 4px 8px;
-  font-family: inherit;
-  font-size: 1.0em;
-  line-height: 1;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.btn-app-bar-more:hover {
-  border-color: var(--accent-dim);
-  color: var(--accent);
-}
-.btn-app-bar-more--active {
-  border-color: var(--accent-dim);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
+/* The ⋯ button's rules are in game.css with the rest of the family (see the
+   note above). */
 
 .app-bar-more-menu {
   position: absolute;
@@ -184,12 +138,22 @@
   cursor: pointer;
   transition: background 0.1s, color 0.1s;
 }
-.app-bar-more-item:hover {
+/* B340: hover excludes the open item — a bare `:hover` (0,2,0) replaced the
+   open item's accent with --text-primary under the cursor (pitfall #107). */
+.app-bar-more-item:not(.app-bar-more-item--active):hover {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
+/* B345: an OPEN item (its panel is showing) wears a mark that survives hover —
+   accent text, a faint accent fill and an accent bar on the leading edge, the
+   inset-shadow form so it never shifts the label. */
 .app-bar-more-item--active {
   color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.app-bar-more-item--active:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 /* ── B178: narrow-window degradation ladder (Morress — tiling 4 windows on

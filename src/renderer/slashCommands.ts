@@ -1595,6 +1595,6 @@ export function runSlash(input: string, ctx: SlashContext): SlashResult {
     return p.cmd.run(ctx, p.parsed)
   } catch (e) {
     console.error('[slash] command failed:', input, e)
-    return err('That command hit an internal error — check the console (Ctrl+Shift+I) and report it.')
+    return err('That command hit an internal error — check the console (View → Toggle Developer Tools) and report it.') // B351: the chord differs per OS
   }
 }

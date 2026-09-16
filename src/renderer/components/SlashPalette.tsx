@@ -244,6 +244,8 @@ const SlashPalette = forwardRef<SlashPaletteHandle, Props>(function SlashPalette
 
   useImperativeHandle(ref, () => ({
     handleKey(e) {
+      // B349: keys during IME composition belong to the input method.
+      if (e.nativeEvent.isComposing || e.keyCode === 229) return false
       if (e.key === 'Escape') { onDismiss(); return true }
       if (!cmd && filtered.length > 0) {
         if (e.key === 'ArrowDown') { setSel(s => (s + 1) % filtered.length); return true }
@@ -257,11 +259,20 @@ const SlashPalette = forwardRef<SlashPaletteHandle, Props>(function SlashPalette
   if (!anchor) return null
   const rect = anchor.getBoundingClientRect()
   if (rect.width === 0) return null // hidden tab (pitfall #24) — don't paint garbage
-  const style: React.CSSProperties = {
-    left: Math.max(8, rect.left),
-    width: Math.min(560, Math.max(260, rect.width)),
-    bottom: window.innerHeight - rect.top + 6,
-  }
+  // B332: clamp into the viewport. Horizontally the palette used to trust
+  // rect.left and could run off the right edge; vertically it always opened
+  // UP, so a command bar near the top of the screen (a floating command
+  // window, §33) left it no room. Open up when there's reasonable room above
+  // (or more than below), otherwise down — and cap the height either way.
+  const MARGIN = 8, GAP = 6
+  const width = Math.min(560, Math.max(260, rect.width), window.innerWidth - 2 * MARGIN)
+  const left = Math.max(MARGIN, Math.min(rect.left, window.innerWidth - width - MARGIN))
+  const spaceAbove = rect.top - GAP - MARGIN
+  const spaceBelow = window.innerHeight - rect.bottom - GAP - MARGIN
+  const openUp = spaceAbove >= 160 || spaceAbove >= spaceBelow
+  const style: React.CSSProperties = openUp
+    ? { left, width, bottom: window.innerHeight - rect.top + GAP, maxHeight: Math.max(0, spaceAbove) }
+    : { left, width, top: rect.bottom + GAP, maxHeight: Math.max(0, spaceBelow) }
 
   return createPortal(
     <div className="slash-palette" style={style} onMouseDown={e => e.preventDefault() /* keep input focus */}>

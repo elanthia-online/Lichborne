@@ -1,120 +1,38 @@
-.te-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 300;
-}
+/* Theme Editor — the About look (B400, v0.19.7). The backdrop, panel, header
+   band, ✕, chip tabs, footer rail and buttons come from ui.css (.ui-modal*,
+   .ui-tab, .ui-btn); this file keeps only the editor's own layout and its
+   field rows. */
 
-.te-modal {
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  width: var(--modal-w-standard);
-  max-width: 95vw;
-  height: var(--modal-h-standard);
-  max-height: var(--modal-h-standard);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
-}
+.te-backdrop { z-index: 300; }
 
-/* ── Header ─────────────────────────────────────────────────────── */
+/* B405: opened from the Theme Picker, whose scrim already dims the app — a
+   second scrim darkened it twice. Transparent, but it still catches clicks. */
+.te-backdrop--nested { background: transparent; }
 
-.te-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  background: var(--bg-hover);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
+/* ── Header: title, name field, ✕ ────────────────────────────────── */
 
 .te-name-input {
-  flex: 1;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  color: var(--text-primary);
-  border-radius: 4px;
-  padding: 5px 10px;
-  font-family: inherit;
-  font-size: 0.9rem;
-  font-weight: 600;
-  outline: none;
-}
-
-.te-name-input:focus { border-color: var(--accent-dim); }
-
-.te-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
-
-.te-btn-save,
-.te-btn-cancel {
-  border-radius: 4px;
-  padding: 5px 14px;
-  font-family: inherit;
-  font-size: 0.78rem;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.te-btn-save {
-  background: var(--accent-bg);
-  border: 1px solid var(--accent-dim);
-  color: var(--accent);
+  flex: 1 1 auto;
+  min-width: 6rem;
+  max-width: 26rem;
   font-weight: 600;
 }
 
-.te-btn-save:hover { background: var(--accent-dim); color: #fff; }
-
-.te-btn-cancel {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-}
-
-.te-btn-cancel:hover { border-color: var(--color-danger-dim); color: var(--color-danger); }
-
-/* ── Tab bar ─────────────────────────────────────────────────────── */
+/* ── Tab bar (chips, UX standard #10) ────────────────────────────── */
 
 .te-tabs {
-  display: flex;
-  gap: 0;
-  background: var(--bg-sunken);
-  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  overflow-x: auto;
-}
-
-.te-tab {
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-muted);
-  padding: 8px 16px;
-  font-family: inherit;
-  font-size: 0.78rem;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s;
-}
-
-.te-tab:hover { color: var(--text-secondary); }
-
-.te-tab--active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  background: var(--bg-base);
+  padding: 8px 1.1rem;
+  border-bottom: 1px solid var(--modal-foot-border);
 }
 
 /* ── Body / scroll ───────────────────────────────────────────────── */
 
 .te-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 8px 0 16px;
 }
 
@@ -125,11 +43,11 @@
 }
 
 .te-group-label {
-  font-size: 0.7rem;
+  font-size: var(--modal-label-size);
   font-weight: 700;
   color: var(--text-dim);
   text-transform: uppercase;
-  letter-spacing: 1.5px;
+  letter-spacing: 0.09em;
   padding: 8px 16px 4px;
 }
 
@@ -183,7 +101,7 @@
   width: 28px;
   height: 22px;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   padding: 1px;
   background: var(--bg-btn);
@@ -193,21 +111,23 @@
 .te-color-swatch::-webkit-color-swatch-wrapper { padding: 0; }
 .te-color-swatch::-webkit-color-swatch { border: none; border-radius: 2px; }
 
+/* The two small typed fields sit on --modal-input-bg, never a bare
+   --bg-input (white-on-white on Classic Light, pitfall #55). */
 .te-hex-text {
   width: 72px;
-  background: var(--bg-input);
+  background: var(--modal-input-bg);
   border: 1px solid var(--border);
   color: var(--text-muted);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 2px 6px;
-  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-family: var(--code-font-family);
   font-size: 0.75rem;
   outline: none;
 }
 
-.te-hex-text:focus { border-color: var(--border-subtle); color: var(--text-secondary); }
+.te-hex-text:focus { border-color: var(--accent-dim); color: var(--text-secondary); }
 
-.te-hex-text::placeholder { color: var(--text-faint); font-family: inherit; font-size: 0.72rem; }
+.te-hex-text::placeholder { color: var(--text-dim); font-family: inherit; font-size: 0.72rem; }
 
 .te-arrow {
   color: var(--text-faint);
@@ -218,17 +138,17 @@
 .te-gradient-preview {
   width: 48px;
   height: 10px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
   border: 1px solid var(--border-subtle);
 }
 
 .te-opacity-input {
   width: 52px;
-  background: var(--bg-input);
+  background: var(--modal-input-bg);
   border: 1px solid var(--border);
   color: var(--text-muted);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 2px 6px;
   font-family: inherit;
   font-size: 0.78rem;
@@ -236,11 +156,11 @@
   text-align: right;
 }
 
-.te-opacity-input:focus { border-color: var(--border-subtle); }
+.te-opacity-input:focus { border-color: var(--accent-dim); }
 
 .te-opacity-label {
   font-size: 0.7rem;
-  color: var(--text-faint);
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
@@ -260,4 +180,3 @@
 .te-color-swatch--none {
   opacity: 0.3;
 }
-

@@ -6,6 +6,265 @@
 
 ---
 
+## v0.19.7 — One-click Reconnect · windows that remember · the full login experience in + · an Overview that shows who you're typing to · an Unconscious indicator · a wordmark that can wear a text effect · a 22-bug UI/UX pass · one control system for every dialog (B367–B409) · Lich 5.21 review
+
+- **F114 (Sekmeht): the app-bar wordmark can wear a text effect, per character.** Settings → Display → **Wordmark effect**, default **Static**, which renders exactly what the bar rendered before.
+  - It reuses the `HighlightEffect` vocabulary highlights and contact templates already use, so there is one effect system and one stylesheet — and the wordmark inherits the epilepsy-safe freeze for free (verified by script: 10 animated classes, 10 frozen).
+  - **Asked whether it belonged in the THEME instead** (Sekmeht), since the theme owns the brand's colours. It doesn't: `lichborne.theme` is a single unscoped global, so a theme-owned effect would be identical for every character and defeat the point. The line drawn instead — the theme decides what colour the brand is, the setting decides what it does with that colour. The effect vars are fed `var(--accent)` / `var(--accent-dim)`, so it follows the theme and the high-contrast overlay anyway. DESIGN §8.3.
+  - The app bar is app-level chrome, so the value rides `SessionStatus.brandEffect` (pitfall #57's route) and was added to the equality gate (pitfall #130). Persistence is free — a field on `settings`, so it rides `state:` → YAML and the Display & Accessibility Transfer category.
+  - **One painter, two callers:** the Settings row shows a live preview through the same `paintBrandMark` the bar calls, so the preview cannot drift from the real thing (the B281 lesson).
+  - **No slash command, by design** — a one-time cosmetic dropdown, matching the `timerStyle` precedent (recorded per Principle #11).
+  - **B427 (Sekmeht), fixed in the same pass:** Wave and Bounce rendered white instead of taking the theme. They are not colour-replacing, so collapsing them to a bare run left them with no colour to inherit. Fixed by keeping the two-tone spans and carrying the stagger across them with a new optional `startIndex` on `effectContent`. New pitfall #147.
+  - Both type-checks clean; tmp-rules-harness 319/1 (the known GemStone case), tmp-cmd-harness 58/0. **Not run in the app** — the visual claims come from the CSS and the built bundle.
+- **B426 (Sekmeht): an Unconscious indicator, decoded from the status prompt.** A capture showed `SUP>` — stunned, unconscious, prone — with the `S` clearing in the same breath as `<indicator id='IconSTUNNED' visible='n'/>`, which is what made the letters worth trusting. Binu supplied the meaning: `U` is unconscious, it needs `set statusprompt`, and it cleared the moment he woke.
+  - **DR has no unconscious indicator tag, and no sibling client decodes the prompt letters.** Lich's ICONMAP lists 11 icons, Genie handles 13, Frostbite 11, and the word appears zero times across all three. The status prompt is the only source that exists.
+  - The parser decodes ONLY the confirmed `U` and emits a synthetic `unconscious` indicator on change. The prompt-dedup flag is sampled BEFORE that emit, so `>` handling is unchanged (pitfall #98).
+  - The icon bar's combat slot ranks bleeding > unconscious > stunned > dead, reusing the stunned styling rather than minting theme vars.
+  - `$unconscious` joins both variable builders and both editor lists, carrying the statusprompt caveat in its description.
+  - It stays blank for a player without statusprompt — inherent to the source, not a gap to fix.
+  - Both type-checks clean; tmp-rules-harness 319/1 (the known GemStone case), tmp-cmd-harness 58/0. **Live confirmation is a tester step** — the chip appearing while out and clearing on waking is not something I can exercise from here.
+- **Final bug check (2026-09-15) — B413–B424 fixed, B425 logged open.** Six read-only reviewers went over the whole uncommitted change by area: the shared foundation and game-window wiring, the Automations family, Contacts and the launcher, the Settings / theme / transfer dialogs, Lich and the Experiences and Overview, and a stylesheet-wide sweep. Each finding was re-checked against the code before any fix.
+  - **Regressions from this session:** a repeated "open this rule" did nothing (B416); the Injuries panel could say "waiting" all session (B422); the vitals bars could be pushed off a narrow window at large fonts (B424).
+  - **Pre-existing bugs the new work exposed:** Fires → Edit copying a character highlight into the global store (B418); a deleted default contact template coming back (B419); a click outside a nested dialog doing nothing (B420, CLAUDE.md pitfall #146).
+  - **Foundation behaviour:** the confirm's focus return no longer undoes what the confirmed action focused (B413); one discard question at a time (B414); the Team Login progress overlay counts as a dialog, so focus can't land in the command bar beneath it (B415).
+  - **Editors:** a colour box no longer counts as an edit on blur (B417), and the Theme Editor no longer freezes palette-following colours into hex (B421).
+  - **Left open:** the Experience ⚙ popover is unusable in a 48px strip (B425) — the real fix is portaling it, too big for a final check.
+  - **Stylesheet sweep: no blocking bugs.** Scripted checks confirmed every class the TSX uses is styled, the ui.css → components → global.css load order holds (no primitive is overridden by accident), no new `rem` in game-area CSS, no `transition: all` left in a changed file, and no undefined custom property anywhere in the renderer. Fixed alongside it: a stale comment claiming the command-bar timer strips ignore the pointer (B333 reversed that so their tooltips work), and the two legacy app-bar hover rules (`.btn-contacts`, `.btn-theme`) that lacked the pitfall #107 active-state exclusion. `.app-bar-more-menu` and `.map-tooltip` keep their 9999 inside their own stacking contexts — recorded in the tier map as benign, not a precedent.
+  - Both type-checks clean; tmp-rules-harness 319/1 (the known GemStone case), tmp-cmd-harness 58/0, check-workflow 11/11. Still not run in the app.
+- **B412 (Sekmeht): an ended Spell Monitor card's hover text no longer blinks.**
+  - Its tooltip carried the live clear-out countdown. A native tooltip can't update while it's showing, so Chromium hid it every second.
+  - It looked like the RT/CT/aim chips (same one-second beat). Sekmeht's test showed only ended cards did it.
+  - The tooltip now says the card clears when its bar runs out; the card still shows the seconds.
+  - The Moons ⟳ had the same bug ("12s ago" ages, re-rendered every 2s) and now lists clock times. Pitfall #145.
+- **B411 (Sekmeht): a Spell Monitor card no longer grows its whole row.** A spent cell kept its last reading ("Fading") as a second row. A grid row takes the height of its tallest cell, so every card beside it stretched.
+  - Every cell is now one line plus a reserved bar slot.
+  - The note goes wherever it adds something:
+    - in the time slot, for fading, percent and unknown readings (`spellSlotText`);
+    - for a timed effect, the minutes stay in the slot and any charge level becomes a small aside (`spellSlotAside`);
+    - a spent cell keeps "ended" and its clear-out countdown, and the stale reading moves to the tooltip.
+  - Kept as they were, on purpose:
+    - DR's "fading" stays separate from our own `<1m` countdown, under the two-stage honesty rule.
+    - The ended countdown Sekmeht asked for in v0.19.6 is unchanged.
+  - 9 new harness cases.
+- **UI/UX consistency pass (2026-09-15): B367–B409 fixed, B410 open.** A second audit logged 44 findings, covering bugs and quality of life plus the question "do similar windows look and behave alike?". The order of work, as agreed with Sekmeht: real bugs, then shared primitives, then dialog conversions, then a label style guide.
+  - **Foundation first, written before any fixer started (DESIGN §43.7):**
+    - `ui.css`: the control classes and tokens. It is imported FIRST in main.tsx so components refine it (pitfall #144). This was found when the first wiring imported it from global.css, which loads last.
+    - `confirm.ts` + `ConfirmHost` + `InlineConfirm`: one confirm, in two shapes.
+    - `useUnsaved.ts`: the draft guard.
+    - Focus ownership in `useEscapeClose`: the covered command bar is blurred when a dialog opens, and home focus returns when the last one closes (pitfall #141(e)).
+    - `--color-warning`.
+  - **Eight parallel fixers, split by FILE:** the Automations family; Contacts; Lich Dashboard / Scripts / Session Log; Settings / Layout / Theme / AI Consent; Transfer / Import / wizard / Quick Send; game window / panels / debug / maps; Experiences / Overview / vitals; launcher / teams.
+  - **Cross-file needs came back as notes and were integrated afterwards:**
+    - GameWindow's app-bar and menu toggles bump a `closeRequest` counter. Automations, Contacts, the Lich Dashboard and the Theme Picker answer it with their guarded close.
+    - `nested` is passed wherever Import, Lich Setup or the Theme Editor opens over another dialog.
+    - The Overview card uses the new `formatUptime`.
+  - **Bugs found beyond the audit:**
+    - Saving any rule snapped an editor back to the rule opened by jump.
+    - A Debug Fires → Edit save duplicated the highlight.
+    - A Contacts save rewound every contact's tracking stats.
+    - Delete team never flushed `_shared.yaml`, so a deleted team could come back.
+    - Settings search said "No settings match" directly above a matching section.
+  - **Behaviour changes, confirmed by Sekmeht (2026-09-15):**
+    - A macro now needs a recorded key before it can be saved.
+    - Settings' Reset to defaults moved from beside the ✕ to the footer.
+    - The AI key's Clear button is now Delete.
+    - The launcher's icon toolbar buttons keep no "…" (recorded in the DESIGN §43.7 label table).
+  - **Removed:** LichScriptsPanel.tsx, LichProfileModal.tsx, the standalone rule-editor modal branches, the launcher's private confirm modal, and dead login.css / lich-panels.css rules.
+  - **Verification:**
+    - Check zero clean in both configs. tmp-rules-harness 310/1 (the known GemStone case), tmp-cmd-harness 58/0, check-workflow 11/11.
+    - **Not run in the app yet.** Every visual claim comes from the CSS, and the test plan's new section lists the Classic Light and keyboard checks.
+- **Dependency patches (2026-09-15):** four updates, all within their existing majors, with the package.json floors raised.
+  - electron 43.4.1 → 43.7.0
+  - @types/node 24.13.3 → 24.13.4
+  - js-yaml 4.3.1 → 4.3.2
+  - react-virtuoso 4.18.12 → 4.18.13
+
+  Details:
+  - Electron 43.7.0 is Node 24.21.0 / Chrome 150 / ABI 148. That is the same ABI, so better-sqlite3 needed no rebuild. This was verified by loading it under the new runtime and running a query.
+  - `npm install -D electron@43.7.0` again skipped Electron's postinstall, leaving an empty `dist/` (the documented gotcha). Fixed with `node node_modules/electron/install.js`.
+  - Both builds, both type-checks and the harnesses re-ran clean.
+  - `npm audit` reports 4 findings, none in the patched packages: xmldom and fast-uri via the build tooling, and vite/esbuild's dev server. Vite's fix is the held Vite 8 major.
+  - I didn't launch the app as a smoke test, because starting it runs the SimuCoin startup pass against store.play.net. The launch check is on the test plan.
+- **B320 (Sekmeht): clicking an Overview card now selects that character
+  everywhere.** Opening the Overview marked the active tab's card "current"
+  with an accent border while the input bar read All characters, and a card
+  click moved the bar's target but not the tab (a tab click moved both).
+  - A card click now sets the input target AND calls `setActive`, and you stay
+    in the Overview. Tab click → card already worked (F101), so the two
+    gestures are mirror images and there is one selection.
+  - The card's `--active` accent border/tint and the "current" chip are gone.
+    The target ring is the only marker — a border only, with no background
+    tint (Sekmeht: the colour change read as the character itself changing).
+    Under All characters every connected card wears it (see F112). The tab
+    strip, visible above the overlay, answers "which tab".
+  - Why remove rather than rename the chip: once clicks sync both ways it could
+    only duplicate the ring or, under All, contradict the bar.
+  - Safe by construction: `setActive` from the Overview is the path a tab click
+    already takes (theme ownership frozen in the view, refocus guarded — DESIGN
+    §47). The card hover tint now applies to every card: with no state setting
+    a background there is nothing for it to dim, and excluding selected cards
+    would have left no hover at all under All characters.
+  - Accepted side effect: leaving the Overview lands on the last card clicked.
+- **F113 (Sekmeht): the + window wears the Lichborne dialog look.** The house
+  modal chrome (UX #10) via the `--modal-*` tokens: themed scrim, the About
+  surface/border/radius/shadow on `.add-character-panel`, and an accent header
+  band titled "Connect a character" with the ✕ (the `.cne-*` recipe). The
+  compact Launcher is now only the scrolling body — its own panel styling,
+  height cap and "Pick a character to connect" heading are gone. Inner contrast
+  is unchanged, since `--modal-bg` is the `--bg-base` it already used.
+- **UI/UX bug sweep (2026-09-15) — B324–B345, all 22 fixed.** Five read-only
+  reviewers (theme safety, overflow and layering, font scaling,
+  self-explanation and accessibility, interaction consistency) logged the
+  findings. Three parallel fixers then took them by FILE rather than by bug, so
+  no two could touch the same file, on top of two shared helpers written first:
+  - **`useEscapeClose`** ([hooks/useEscapeClose.ts](src/renderer/hooks/useEscapeClose.ts)):
+    Esc closes exactly the topmost dialog. A mount-ordered stack is served by
+    one window-level bubble-phase listener, so a search box, a dropdown or the
+    Quit confirm handles Esc first. About 30 dialogs are registered, including
+    every one that had no Esc. About's backdrop 300 → 2010 and toasts
+    200 → 2050 (B341, B329). CLAUDE.md pitfall #141.
+  - **`pressable()`** ([utils/pressable.ts](src/renderer/utils/pressable.ts)):
+    role, tab stop and Enter/Space for clickable rows, tabs and cards; the
+    Settings switches became real `role="switch"` buttons (B335). Pitfall #142.
+  - Theme: undefined variables, `, white)` mixes and literals now come from
+    theme vars (B324–B326). Overflow and layering: width caps on Settings and
+    the wizard, menu-opened dialogs close the + window, bounded and flipped
+    menus and popovers (B327, B328, B330–B332). Explanation: icon-bar chips,
+    compact vitals and timer strips explain themselves, every ✕ is labelled,
+    clearer labels (B333, B334, B336). Font scaling: the Exp bars, the Lich
+    Map's reading text, loose badges (B337–B339). Interaction: about 40 hovers
+    that erased a selected state (B340, pitfall #107 rider), drag-release
+    backdrops (B342), Quick Send's focus return (B343), matched header buttons
+    (B344), and the smaller items (B345).
+  - Two corrections made while fixing. The sweep's B337 values were wrong (the
+    track inherits a 0.82em font, so 1.33em is not 16px; 1.63em is). And a
+    focusable tab would swallow the Space that type-anywhere used to route to
+    the command bar, so a MOUSE click on a panel or character tab now drops
+    focus afterwards (`e.detail > 0`).
+  - Left alone: eight dead CSS rules the fixers edited alongside their live
+    twins (`.btn-debug`, `.btn-session-log`, `.exp-bar-toggle`,
+    `.grp-filter-pill`, `.map-detail-close`, `.map-overlay--error`,
+    `.map-zlevel-chip`, `.wiz-radio` — no markup uses them). Nothing has been
+    eyeballed on a light theme yet.
+- **macOS / Linux bug check (2026-09-15) — 20 findings, 19 fixed.** Three
+  read-only reviewers (main process and OS integration, renderer assumptions,
+  packaging and first run) logged them as **B347–B366**; the key claims were
+  re-read in the code before logging. Two parallel fixers then took the main
+  process and the renderer, and the packaging/CI share was done directly. Fixes
+  that rest on OS behaviour we can't observe from Windows were written to be
+  safe either way (e.g. the Linux window correction applies only a small
+  measured offset, so it changes nothing when there's no creep), and are marked
+  for a tester. **B358** (the AppImage's FUSE 2 runtime) stays open as a
+  decision: the docs now name the package, but switching electron-builder to
+  its static runtime needs a test release first. Both type-checks are now
+  clean — the main one's long-standing baseline error is gone — and CI runs
+  them on Windows and Ubuntu. What the findings were:
+  - The two that matter most: **B352**, the trigger `log` action writes into the
+    install folder (silently lost on a Linux AppImage, wiped by upgrades
+    everywhere), and **B347**, Option/Alt macros on macOS.
+  - Lifecycle: a decoupled window's character logged out even when the Quit is
+    cancelled (B353), macOS restart interrupted (B354).
+  - First run and updates: an old system Ruby saved on a clean Mac (B355), a
+    silent Check for Updates on macOS (B356), the AppImage renamed by every
+    update (B357), FUSE 2 on newer Ubuntu (B358), a stuck check in an extracted
+    AppImage (B364).
+  - This release's window memory (F109): Linux position creep (B360) and macOS
+    fullscreen (B362), both unverified.
+  - Smaller items: fonts (B348), IME keys (B349), Home/End (B350), the devtools
+    hint (B351), macOS notifications (B359), menu and Dock polish (B361), the
+    Linux window icon (B363), CI coverage (B365), hardening (B366).
+  - Docs fixed in the same pass: README and the User Guide now give the
+    AppImage rename and FUSE 2 steps; the Guide's settings appendix and
+    AINOTICE no longer describe Windows-only paths and encryption.
+  - Nothing in this release's new renderer code breaks on Mac or Linux. The
+    bare emoji-capable glyphs (⚙ ⚠ ⚔ ⚡ ▶) remain the pitfall #125 set that B262
+    left waiting on a Mac screenshot.
+- **B346 (Sekmeht): the Experiences button no longer stays highlighted.** It
+  was lit whenever any Experience was showing, and an Experience docked as a
+  panel tab counts — permanent layout, so the button never went dark. B345's
+  stronger open state made it read as stuck. It now follows the rule every
+  other app-bar button follows: lit while its shelf is open. `expAnyOpen` still
+  drives the scene-work gate, and now counts only Experiences the registry
+  knows (an unknown saved id is skipped by the layer, so it could have held
+  scene work on for a window nobody could see or close).
+- **Bug check of the launcher + Overview work (this release).** Two fixes:
+  the tab strip declares `aria-multiselectable` while the Overview is open,
+  since All characters puts `aria-selected` on several tabs at once; and an
+  orphaned "Add card" comment that the F111 rule removal left in launcher.css
+  is gone. Verified: a team run started from + closes it and its result
+  summary still shows (that dialog is App-level); every cne-* dialog clears the
+  + modal; the loading and empty states wear the compact chrome; the remaining
+  `!compact` checks (logo, heading, account Remove) are intended. Known and
+  accepted: under All characters every connected tab is `--active` and tab
+  hover excludes active tabs (pitfall #107), so lit tabs show no hover there —
+  Sekmeht kept the tab styling as-is; and the tabs read connection from
+  SessionsContext while the input bar reads the roster, which can disagree for
+  a moment mid-reconnect.
+- **B323 (Sekmeht): the + window no longer flashes a dark box before the
+  panel.** The Launcher's loading and empty-state early returns lacked
+  `launcher--compact`, so inside the modal they drew with the full-page logon
+  background and no panel frame; and the modal mounts a fresh Launcher per
+  open, so it hit that state every time. Both early returns now carry the
+  compact class, and the list is seeded from the last one this window loaded
+  (`lastLoadedCards`), with the mount-time refresh still correcting it.
+- **F110 (Sekmeht): the + window has the full login experience.** Teams,
+  pinned teams in Favorites, and an action row trimmed to ⟲ Reconnect Last ·
+  ⚡ Team Login · ⇋ Attach now appear in the compact launcher too.
+  `LauncherTopBar` gained a `compact` mode, replacing the Attach-only
+  `CompactAttachRow`, and the `!compact` checks on Teams and `favoriteTeams`
+  are gone. Account Remove, Transfer and Lich Setup stay full-screen only.
+  `runBulkConnect` — the funnel for every team launch — now closes the + window.
+- **B322: dialogs opened from the + window no longer render behind it.** All
+  four `.cne-backdrop` dialogs (Edit Profile, Attach, Team Login, the team
+  editor) are portaled to `document.body`, so they escape the + modal's
+  stacking context, and at `z-index: 100` they painted under its 1000. Attach
+  alone had an override and Edit Profile was a noted latent bug; showing Teams
+  in + would have added the team editor. Fixed at the shared rule
+  (`.cne-backdrop` → 1600) with the per-dialog override removed.
+- **F111 (Sekmeht): "+ Add account" is a slim full-width row** — dashed, the
+  height of an account header row — instead of a grid tile, in both launchers.
+- **F112 (Sekmeht): in the Overview, highlighting shows who a send reaches.**
+  Tabs and cards highlight the input bar's targets: the selected card and its
+  tab, or every CONNECTED card and tab under All characters (the bar's All
+  skips disconnected characters). The first cut lit nothing under All; Sekmeht
+  preferred all-lit. `activeId` is untouched, so Session view still returns
+  where it was.
+- **B321 (Sekmeht): the + modal's close ✕ now sits on the panel.** The ✕ was
+  positioned against the full-window backdrop, so it lived in the window's
+  corner, far from the launcher, and read as missing. The launcher is now
+  wrapped in `.add-character-panel` (position: relative) with the ✕ pinned to
+  its top-right in the house modal-close style (`--modal-ctl-hover`). It sits
+  on the wrapper, not inside the Launcher, because the launcher scrolls. Also
+  drops a `var(--text, #ccc)` that no theme defined. F113 (above) then made
+  that panel the themed dialog and moved the ✕ into its header band.
+- **F108: the app bar offers Reconnect after a drop.** With the active
+  character disconnected, the button used to read **Login**: it destroyed the
+  session, removed the tab (and its scrollback) and opened the picker. The
+  in-place reconnect already existed but only in the tab's right-click menu.
+  The button now calls that same `handleReconnectTab` (Attach re-attaches;
+  failure falls back to the picker with the error) and reads "Reconnecting…"
+  while in flight. `handleLoginActive` is deleted; the + tab covers logging in
+  someone else. The Offline attention chip's tooltip now points at it.
+- **F109: windows remember their size, position and maximized state.** Every
+  window opened at 1400×900. New `src/main/windowState.ts` (I/O) +
+  `src/shared/windowBounds.ts` (pure resolver, rules harness §M).
+  - Machine-local `{userData}/window-state.json`, never a profile: it describes
+    this machine's monitors. Keys `main` and `char:<characterId>` for a
+    decoupled window.
+  - Validated against the monitors attached now: the title bar must land on a
+    display with ≥100px showing, or the window reopens centred with its size
+    kept; a window bigger than its display is clamped; straddling two monitors
+    is left alone on purpose.
+  - Capture on every move/resize/(un)maximize, debounced write, flush on quit.
+    Shutdown and re-home DESTROY windows, and `destroy()` emits no `close`, so
+    reading bounds at close time would have missed them.
+  - `getNormalBounds()`, not `getBounds()`, so a minimized or maximized window
+    saves its restore rect.
+- **Lich 5.20.1 / 5.21.0 compatibility review — no Lichborne change needed.**
+  Recorded in Knowledge.md §17 (plus the new `inventoryManager` feed
+  reference), and the periodic Lich upstream review is now a documented
+  standing exercise in CLAUDE.md.
+
 ## v0.19.6 — Spell Monitor: the end of a spell, made visible; Katamba loses its glow
 
 - **Spell Monitor: "Ended effects" (Sekmeht) — a new ⚙ layer, ON by default.**

@@ -2423,9 +2423,13 @@ export default function GenieMapView({
     <div className="map-canvas-wrap" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* Toolbar */}
       <div className="map-toolbar" style={{ flexShrink: 0 }}>
-        <button className="map-btn" onClick={onPickGenieFolder} title={genieMapsDir}>📁</button>
+        <button className="map-btn" onClick={onPickGenieFolder}
+          title={`Choose the Genie maps folder (current: ${genieMapsDir})`}
+          aria-label="Choose the Genie maps folder">📁</button>
         <select
           className="map-select"
+          aria-label="Zone"
+          title="Zone — follows you automatically as you move; pick one to browse it"
           value={currentZoneId}
           onChange={e => {
             setCurrentZoneId(e.target.value)
@@ -2455,26 +2459,34 @@ export default function GenieMapView({
           className={`map-btn${followPlayer && currentLocation ? ' map-btn--active' : ''}`}
           onClick={centerOnCurrent}
           disabled={!currentLocation}
-          title={followPlayer ? 'Following — manual pan or zoom to release' : 'Take me to my current room (enables follow)'}
+          // B336: a disabled button says WHY it's disabled.
+          title={!currentLocation
+            ? 'Take me to my current room — unavailable until your room is matched on these Genie maps (move or LOOK)'
+            : followPlayer ? 'Following — manual pan or zoom to release' : 'Take me to my current room (enables follow)'}
         >◆</button>
         <button className="map-btn" onClick={fitToView} title="Fit zone to view">⊡</button>
         <button
           className={`map-btn${showLegend ? ' map-btn--active' : ''}`}
           onClick={() => setShowLegend(s => !s)}
           disabled={zoneColors.length === 0 && arcCategories.length === 0 && !hasStubs}
-          title="Toggle legend"
+          title={zoneColors.length === 0 && arcCategories.length === 0 && !hasStubs
+            ? 'Legend — nothing to explain on this level (no coloured rooms, path types or cross-zone exits)'
+            : showLegend ? 'Hide the legend' : 'Show the legend (room colours, path types, cross-zone exits)'}
         >▤</button>
         {walking && (
           <button className="map-btn" onClick={stopWalk} title="Stop walk">■</button>
         )}
         {zoneLevels.length > 1 && (
-          <span className="map-level-chips">
+          <span className="map-level-chips"
+            title="Map levels — this zone stacks some areas (upstairs, underground) on separate levels">
             z:
             {zoneLevels.map(z => (
               <button
                 key={z}
                 className={`map-chip${z === currentLevel ? ' map-chip--active' : ''}`}
                 onClick={() => setCurrentLevel(z)}
+                title={z === currentLevel ? `Showing level ${z}` : `Show level ${z} of this zone`}
+                aria-pressed={z === currentLevel}
               >{z}</button>
             ))}
           </span>
@@ -2908,7 +2920,9 @@ export default function GenieMapView({
         )}
       </div>
 
-      {/* Footer status */}
+      {/* Footer status. fontSize is deliberately fixed px (B201) — toolbar
+          chrome, not reading text; the reading surfaces (tooltip, legend) sit
+          on the panel font via PANEL_FONT. Don't "fix" this to em. */}
       <div style={{
         flexShrink: 0, padding: '4px 8px', fontSize: 11,
         color: 'var(--map-text-muted, #888)',

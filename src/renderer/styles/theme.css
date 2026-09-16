@@ -187,7 +187,8 @@
   /* ── Game text font (overridden by settings) ─────────────────── */
   --game-font-size:   14px;
   --game-line-height: 1.5;
-  --game-font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  /* B348: Menlo (macOS) / DejaVu Sans Mono (Linux) before the generic. */
+  --game-font-family: 'Cascadia Code', 'Fira Code', 'Consolas', 'Menlo', 'DejaVu Sans Mono', monospace;
 
   /* B113: text weight scale. `--game-text-weight` is the body font-weight
      (set by Settings → Text weight; defaults to 400). `--ui-bold-weight`

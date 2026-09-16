@@ -51,10 +51,10 @@ And if you already run Lich, Lichborne sits alongside it. Same install, same pat
 **1. Download and install.** Grab the [latest release](https://github.com/SekmehtDR/Lichborne/releases/latest).
 
 - **Windows** — run the installer. SmartScreen may warn you (the app isn't code-signed yet): **More info → Run anyway**.
-- **Linux** — download the `.AppImage`, `chmod +x` it, run it.
+- **Linux** — download `Lichborne.AppImage`, `chmod +x` it, run it. On Ubuntu 22.04 or newer you may need FUSE 2 first: `sudo apt install libfuse2t64` (24.04) or `libfuse2` (22.04). If you have an older download with a version number in its name, rename it once to `Lichborne.AppImage` so updates keep the same name.
 - **macOS** — open the `.dmg` and drag Lichborne to Applications. macOS will call it *"damaged"* on first launch; it isn't — that's how Apple Silicon phrases *"not notarized"*. Clear it once with `xattr -cr /Applications/Lichborne.app`.
 
-**2. Set up Lich (recommended).** If you already run [Lich5](https://github.com/elanthia-online/lich-5), point Lichborne at it: **⚙ Lich Setup → Auto Detect**. On macOS and Linux you'll need Ruby 4 installed too. Skipping this is fine — pick **Direct** on a character tile and you'll connect straight to the game without Lich's features.
+**2. Set up Lich (recommended).** If you already run [Lich5](https://github.com/elanthia-online/lich-5), point Lichborne at it: **⚙ Lich Setup → Auto-detect**. On macOS and Linux you'll need Ruby 4 installed too. Skipping this is fine — pick **Direct** on a character tile and you'll connect straight to the game without Lich's features.
 
 **3. Add your account.** Click **+ Add account** and sign in. Lichborne finds your characters and makes a tile for each one. You do this once per account.
 

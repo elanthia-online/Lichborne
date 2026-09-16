@@ -1,66 +1,7 @@
-/* ── Triggers Panel ────────────────────────────────────────────────────────── */
-
-.trg-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--modal-scrim);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
-}
-
-.trg-modal {
-  background: var(--modal-bg);
-  border: 1px solid var(--modal-border);
-  border-radius: var(--modal-radius);
-  width: var(--modal-w-standard);
-  max-width: 96vw;
-  height: var(--modal-h-standard);
-  max-height: var(--modal-h-standard);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: var(--modal-shadow);
-}
-
-/* ── Header ──────────────────────────────────────────────────────────────── */
-
-.trg-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--modal-head-bg);
-  border-bottom: 1px solid var(--modal-head-border);
-  flex-shrink: 0;
-}
-
-.trg-title {
-  flex: 1;
-  font-weight: 700;
-  color: var(--modal-head-color);
-  font-size: 0.9rem;
-  letter-spacing: 1px;
-}
-
-.trg-close {
-  width: 1.7rem;
-  height: 1.7rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  color: var(--text-muted);
-  font-size: 0.95rem;
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
-}
-
-.trg-close:hover { background: var(--modal-ctl-hover); color: var(--text-primary); }
+/* ── Triggers Panel ────────────────────────────────────────────────────────────
+   Hosted only inside the Automations dialog, which owns the chrome; the
+   standalone .trg-backdrop / .trg-modal / .trg-header set was never rendered
+   and was removed in v0.19.7 (B408). */
 
 /* ── Body — two-pane ─────────────────────────────────────────────────────── */
 
@@ -93,7 +34,7 @@
   text-align: left;
   cursor: pointer;
   flex-shrink: 0;
-  transition: color 0.15s, background 0.15s;
+  transition: color var(--ui-transition), background var(--ui-transition);
 }
 
 .trg-new-btn:hover {
@@ -107,9 +48,10 @@
   padding: 4px 0;
 }
 
+/* B385: --text-muted — --text-faint is ~2.3:1 on Classic Light. */
 .trg-empty {
   padding: 14px;
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: 0.78rem;
   font-style: italic;
   line-height: 1.5;
@@ -125,7 +67,7 @@
   transition: background 0.1s;
 }
 
-.trg-list-item:hover         { background: var(--bg-hover); }
+.trg-list-item:not(.trg-list-item--active):hover { background: var(--bg-hover); }
 .trg-list-item--active       { background: var(--bg-sunken); }
 .trg-list-item--disabled     { opacity: 0.45; }
 .trg-list-item--pending      { opacity: 0.7; font-style: italic; }
@@ -184,7 +126,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: 0.85rem;
   font-style: italic;
 }
@@ -250,16 +192,19 @@
 .trg-input {
   background: var(--modal-input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 0.85rem;
   padding: 5px 9px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color var(--ui-transition);
 }
 
 .trg-input:focus { border-color: var(--accent-dim); }
+
+/* B406: the pattern is code, in the code font. */
+.trg-input--pattern { flex: 1; font-family: var(--code-font-family); }
 
 .trg-input--hex {
   width: 100px;
@@ -272,7 +217,7 @@
   width: 28px;
   height: 28px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 0;
   cursor: pointer;
   flex-shrink: 0;
@@ -314,7 +259,7 @@
 .trg-select {
   background: var(--modal-input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 0.83rem;
@@ -336,7 +281,7 @@
 .trg-mode-toggle {
   display: flex;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -350,12 +295,12 @@
   font-size: 0.75rem;
   padding: 4px 9px;
   cursor: pointer;
-  transition: all 0.12s;
+  transition: background var(--ui-transition), color var(--ui-transition);
 }
 
 .trg-mode-btn:last-child { border-right: none; }
 
-.trg-mode-btn:hover {
+.trg-mode-btn:not(.trg-mode-btn--active):hover {
   background: var(--bg-hover);
   color: var(--text-secondary);
 }
@@ -367,7 +312,7 @@
 
 .trg-mode-btn--case {
   margin-left: 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   font-style: italic;
 }
@@ -429,7 +374,7 @@
   padding: 2px 8px;
   cursor: pointer;
   margin-left: 4px;
-  transition: all 0.15s;
+  transition: border-color var(--ui-transition), color var(--ui-transition);
 }
 
 .trg-gate-connector-btn:hover {
@@ -477,7 +422,7 @@
   padding: 0 3px;
   line-height: 1;
   flex-shrink: 0;
-  transition: color 0.15s;
+  transition: color var(--ui-transition);
 }
 
 .trg-gate-remove:hover { color: var(--color-danger); }
@@ -485,13 +430,13 @@
 .trg-add-gate-btn {
   background: transparent;
   border: 1px dashed var(--border);
-  border-radius: 4px;
-  color: var(--text-faint);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
   font-family: inherit;
   font-size: 0.75rem;
   padding: 4px 10px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: border-color var(--ui-transition), color var(--ui-transition);
   align-self: flex-start;
 }
 
@@ -510,7 +455,7 @@
 
 .trg-action-card {
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--bg-sunken);
 }
@@ -551,7 +496,7 @@
   padding: 0 10px;
   line-height: 1;
   height: 100%;
-  transition: color 0.15s, background 0.15s;
+  transition: color var(--ui-transition), background var(--ui-transition);
   flex-shrink: 0;
 }
 
@@ -592,7 +537,7 @@
 .trg-sound-pills {
   display: flex;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
   flex: 1;
 }
@@ -607,12 +552,12 @@
   padding: 5px 12px;
   cursor: pointer;
   flex: 1;
-  transition: all 0.12s;
+  transition: background var(--ui-transition), color var(--ui-transition);
 }
 
 .trg-sound-pill:last-child { border-right: none; }
 
-.trg-sound-pill:hover { background: var(--bg-hover); color: var(--text-secondary); }
+.trg-sound-pill:not(.trg-sound-pill--active):hover { background: var(--bg-hover); color: var(--text-secondary); }
 
 .trg-sound-pill--active {
   background: var(--bg-sunken);
@@ -624,7 +569,7 @@
 .trg-var-select {
   background: var(--modal-input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--accent-dim);
   font-family: inherit;
   font-size: 0.78rem;
@@ -632,7 +577,7 @@
   cursor: pointer;
   flex-shrink: 0;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color var(--ui-transition);
 }
 
 .trg-var-select:hover,
@@ -646,13 +591,13 @@
 .trg-add-action-btn {
   background: transparent;
   border: 1px dashed var(--border);
-  border-radius: 5px;
-  color: var(--text-faint);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
   font-family: inherit;
   font-size: 0.78rem;
   padding: 7px 14px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: border-color var(--ui-transition), color var(--ui-transition);
   text-align: center;
 }
 
@@ -676,22 +621,24 @@
 .trg-test-result {
   font-size: 0.8rem;
   padding: 5px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
+/* The success token mixed toward the text colour (pitfall #63), so it stays
+   green and readable on every theme (B326; B402 — was a hand-picked #50c864). */
 .trg-test-result--match {
-  background: rgba(80, 200, 100, 0.1);
-  border: 1px solid rgba(80, 200, 100, 0.3);
-  color: #50c864;
+  background: color-mix(in srgb, var(--color-success) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-success) 35%, transparent);
+  color: color-mix(in srgb, var(--color-success) 60%, var(--text-primary));
 }
 
 .trg-test-result--no-match {
   background: var(--bg-sunken);
   border: 1px solid var(--border);
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 
 .trg-test-actions {
@@ -700,6 +647,8 @@
   margin-top: 2px;
   line-height: 1.5;
 }
+/* The action summary is a <pre> when it matched — code, not the OS monospace. */
+pre.trg-test-actions { font-family: var(--code-font-family); }
 
 /* ── Footer actions ──────────────────────────────────────────────────────── */
 
@@ -710,73 +659,13 @@
   padding: 10px 18px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+  /* The armed InlineConfirm (question + two buttons) can need a second row. */
+  flex-wrap: wrap;
 }
 
-.trg-confirm-text {
-  flex: 1;
-  font-size: 0.82rem;
-  color: var(--color-danger);
-}
-
-.trg-btn {
-  background: var(--bg-btn);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: 4px;
-  padding: 5px 14px;
-  font-family: inherit;
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.trg-btn:hover {
-  border-color: var(--accent-dim);
-  color: var(--text-secondary);
-}
-
-.trg-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-
-.trg-btn--save {
-  margin-left: auto;
-  border-color: var(--accent-bg);
-  color: var(--accent);
-}
-
-.trg-btn--save:hover:not(:disabled) {
-  background: var(--accent-bg);
-  border-color: var(--accent);
-}
-
-.trg-btn--delete {
-  background: transparent;
-  border-color: var(--border);
-  color: var(--text-dim);
-}
-
-.trg-btn--delete:hover {
-  border-color: var(--color-danger-border);
-  color: var(--color-danger);
-}
-
-.trg-btn--danger {
-  border-color: var(--color-danger-border);
-  color: var(--color-danger);
-}
-
-.trg-btn--danger:hover { background: var(--color-danger-bg); }
-
-.trg-btn--test {
-  font-size: 0.75rem;
-  padding: 4px 10px;
-  border-color: var(--border);
-  color: var(--text-dim);
-}
-
-.trg-btn--test:hover {
-  border-color: var(--accent-dim);
-  color: var(--accent-dim);
-}
+/* The footer and sound-row buttons are the shared ui-btn (ui.css); the old
+   .trg-btn / --save / --delete / --danger / --test set was retired in v0.19.7
+   (B399). */
 
 .trg-sound-pill--dim {
   opacity: 0.4;
@@ -793,15 +682,3 @@
   flex: 1;
   font-size: 0.8rem;
 }
-
-.trg-btn--browse,
-.trg-btn--play,
-.trg-btn--clear {
-  flex-shrink: 0;
-  padding: 3px 10px;
-  font-size: 0.75rem;
-}
-
-.trg-btn--play { font-size: 0.7rem; }
-
-.trg-btn--clear { color: var(--text-dim); }

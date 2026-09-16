@@ -22,7 +22,8 @@ interface Props {
 export default function GroupPicker({ groupIds, onChange }: Props) {
   const { groups } = useGroups()
   const [open, setOpen] = useState(false)
-  const [pos,  setPos]  = useState({ top: 0, left: 0 })
+  // Either `top` (opens down) or `bottom` (opens up) is set, never both.
+  const [pos,  setPos]  = useState<{ top?: number; bottom?: number; left: number; maxHeight?: number }>({ top: 0, left: 0 })
   const btnRef  = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -34,13 +35,36 @@ export default function GroupPicker({ groupIds, onChange }: Props) {
         !menuRef.current?.contains(e.target as Node)
       ) setOpen(false)
     }
+    // Esc closes the menu and stops there. preventDefault tells the dialog's
+    // Esc handler (useEscapeClose) the key was used, so the dialog stays open.
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { e.preventDefault(); setOpen(false) }
+    }
     document.addEventListener('mousedown', onOutside)
-    return () => document.removeEventListener('mousedown', onOutside)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onOutside)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [open])
 
+  // B331 (pitfall #109): the menu's length is the user's group count, and it
+  // used to open DOWN with no clamp, so a low button or a long list ran off the
+  // bottom. Open toward whichever side has more room, cap the height to that
+  // room (.gp-menu scrolls), and keep the left edge on screen. MIN_W is the
+  // CSS min-width, which is as close as we can get before the menu renders.
   function handleOpen() {
     const rect = btnRef.current?.getBoundingClientRect()
-    if (rect) setPos({ top: rect.bottom + 4, left: rect.left })
+    if (rect) {
+      const MARGIN = 8, GAP = 4, MIN_W = 140
+      const vh = window.innerHeight
+      const below = vh - rect.bottom - GAP - MARGIN
+      const above = rect.top - GAP - MARGIN
+      const left = Math.max(MARGIN, Math.min(rect.left, window.innerWidth - MIN_W - MARGIN))
+      setPos(below >= above
+        ? { top: rect.bottom + GAP, left, maxHeight: below }
+        : { bottom: vh - rect.top + GAP, left, maxHeight: above })
+    }
     setOpen(v => !v)
   }
 
@@ -75,7 +99,7 @@ export default function GroupPicker({ groupIds, onChange }: Props) {
         <div
           ref={menuRef}
           className="gp-menu"
-          style={{ top: pos.top, left: pos.left }}
+          style={{ top: pos.top, bottom: pos.bottom, left: pos.left, maxHeight: pos.maxHeight }}
         >
           {groups.length === 0 && (
             <div className="gp-menu-empty">No groups defined yet.</div>

@@ -6,7 +6,11 @@
 .about-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 300;                 /* clears WindowLayer (60) + overlays */
+  /* B341: above the whole modal tier. Help → About can be opened from the
+     native menu over ANY dialog — the + window (1000), a `.cne-backdrop`
+     dialog (1600), Quick Send (2000) — and at the old 300 it opened underneath
+     them, invisible. Below toasts (2050) and context menus (2100). */
+  z-index: 2010;
   display: flex;
   align-items: center;
   justify-content: center;

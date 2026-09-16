@@ -15,10 +15,16 @@ name: CI
 
 jobs:
   check:
-    # windows-latest to match the product's primary platform (esbuild/vite are
-    # OS-agnostic, but better-sqlite3's install step is worth exercising on the
-    # OS users actually run).
-    runs-on: windows-latest
+    # Windows is the primary platform (better-sqlite3's install step is worth
+    # exercising where most users run). Ubuntu joined in v0.19.7 (B365): Linux
+    # has a case-sensitive filesystem, so it catches a wrong-case import or
+    # asset path that Windows silently forgives, and it exercises the native
+    # module install the AppImage build depends on — before release night.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -29,6 +35,10 @@ jobs:
       - run: npm run build:main
       - run: npm run build:renderer
       - run: npx tsc --noEmit
+      # The MAIN process has its own tsconfig — the default one never looks at
+      # src/main (CLAUDE.md Check zero). Added v0.19.7 (B365) once its one
+      # long-standing baseline error was fixed, so this runs clean.
+      - run: npx tsc --noEmit -p tsconfig.main.json
       # Semantic check of release.yml + the artifact-name contract. Not a YAML
       # lint — see the script's header for the incident that motivated it.
       # Runs here (not only in the release workflow) so a broken release

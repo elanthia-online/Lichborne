@@ -4,7 +4,7 @@
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-muted);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 4px 10px;
   font-family: inherit;
   /* v0.8.8: was 0.75rem — that anchors to the browser root (~16px) and
@@ -13,7 +13,7 @@
      button (.btn-debug / .btn-theme / .btn-settings, etc. at game.css:45-64). */
   font-size: 1em;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: border-color var(--ui-transition), color var(--ui-transition);
   /* B178: never wrap "Mode ▾" to two lines or get crushed in a narrow icon
      bar — the button keeps its compact intrinsic size; the chips/empty slots
      are the flexible parts of the strip. */
@@ -21,7 +21,8 @@
   flex-shrink: 0;
 }
 
-.btn-mode-switcher:hover {
+/* B340: hover must not repaint the active state (pitfall #107). */
+.btn-mode-switcher:not(.btn-mode-switcher--active):hover {
   border-color: var(--accent-dim);
   color: var(--accent);
 }
@@ -42,6 +43,12 @@
   padding: 3px 0;
   min-width: 180px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  /* B331: the mode list is user data (pitfall #109). ModeSwitcher sets an
+     inline max-height from the room in the direction it opens; this is the
+     fallback ceiling. */
+  max-height: 70vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* v0.8.8: the popover is portaled to document.body (see ModeSwitcher.tsx)
@@ -91,7 +98,7 @@
 .ms-hotkey {
   font-size: calc(var(--game-font-size) * 0.85);
   color: var(--text-faint);
-  font-family: monospace;
+  font-family: var(--code-font-family);
 }
 
 .ms-modified {

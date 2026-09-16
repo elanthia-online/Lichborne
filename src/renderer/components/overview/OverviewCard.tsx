@@ -7,9 +7,10 @@
 // (the pitfall #57 problem, solved by the tree/DOM split rather than worked
 // around).
 //
-// Read-only by design: the card answers "does this character need me?", and the
-// answer to "yes" is to click it and land in Session view. Quick Send already
-// covers sending a command to another character.
+// Read-only by design: the card answers "does this character need me?". A click
+// selects it (the input bar's target AND the active tab — one selection, B320),
+// and a double-click lands you in its Session view. Quick Send already covers
+// sending a command to another character.
 
 import { memo, useMemo } from 'react'
 import { useTimers } from '../../hooks/useTimers'
@@ -26,7 +27,8 @@ import { compactExpRows, type SortMode } from '../../expParse'
 // comes from its GameWindow — a provider on OverviewShell would never reach it.
 import { useOverviewNow, useFeedCapacity } from '../../overviewStore'
 import { TextLineRow } from '../TextLineRow'
-import VitalsBar from '../VitalsBar'
+import VitalsBar, { healthBand, type HealthBand } from '../VitalsBar'
+import { formatUptime } from '../../utils/formatUptime'
 
 /**
  * Highlight / contact rules, threaded down from GameWindow so a card renders text
@@ -60,7 +62,6 @@ interface Props {
   game: string
   useLich: boolean
   connected: boolean
-  isActive: boolean
   /** Tab position — breaks sort ties so equally-calm cards never reshuffle. */
   index: number
   settings: AppSettings
@@ -104,7 +105,8 @@ interface Props {
   onSelect: () => void
   /** Double click — leave the Overview for this character's session. */
   onOpen: () => void
-  /** True when this card is the input bar's current target. */
+  /** True when this card is one of the input bar's targets: it alone, or —
+   *  under All characters — every connected card. */
   selected: boolean
   /** Opens the per-character action menu at a point. Absent → no menu. */
   onMenu?: (x: number, y: number) => void
@@ -194,13 +196,16 @@ function OverviewCardImpl(p: Props) {
   const pulsing = p.connected && o.alertPulse
     && (!!p.indicators.dead || (healthPct !== null && healthPct < o.healthCritPct))
 
+  // The selected stream's display name, from the same list the dropdown renders
+  // (B385). Falls back to the id only for a stream the list doesn't carry.
+  const streamLabel = p.streamChoices.find(c => c.id === p.streamId)?.label ?? p.streamId
+
   return (
     <div
       className={[
         'ov-card',
         `ov-card--${tone}`,
         pulsing ? 'ov-card--pulse' : '',
-        p.isActive ? 'ov-card--active' : '',
         p.selected ? 'ov-card--selected' : '',
         o.density === 'compact' ? 'ov-card--compact' : '',
       ].filter(Boolean).join(' ')}
@@ -220,12 +225,13 @@ function OverviewCardImpl(p: Props) {
       } as React.CSSProperties}
       role="button"
       tabIndex={0}
-      title={`Open ${p.character} in Session view`}
+      title={`Click to select ${p.character} · double-click to open in Session view`}
       // A single click SELECTS rather than navigates (Sekmeht): the Overview
       // should not bounce you into a session by accident. Double-click and the
-      // card menu are the deliberate ways out. The stray single click a
-      // double-click also fires is harmless — it just aims the input bar at the
-      // character you are about to open anyway.
+      // card menu are the deliberate ways out. Selecting means the input bar's
+      // target AND the active tab (B320) — one selection — without leaving the
+      // view. The stray single click a double-click also fires is harmless: it
+      // selects the character you are about to open anyway.
       onClick={p.onSelect}
       onDoubleClick={p.onOpen}
       onKeyDown={e => {
@@ -239,7 +245,7 @@ function OverviewCardImpl(p: Props) {
     >
       <CardHead
         character={p.character} game={p.game} useLich={p.useLich}
-        connected={p.connected} healthPct={healthPct} isActive={p.isActive}
+        connected={p.connected} healthPct={healthPct}
         thresholds={o} onMenu={p.onMenu}
       />
 
@@ -253,7 +259,8 @@ function OverviewCardImpl(p: Props) {
       />
 
       {o.showTimers && (
-        <CardTimers rtExpires={p.rtExpires} ctExpires={p.ctExpires} aimExpires={p.aimExpires} />
+        <CardTimers rtExpires={p.rtExpires} ctExpires={p.ctExpires} aimExpires={p.aimExpires}
+                    timerStyle={p.settings.timerStyle} />
       )}
 
       {o.showVitals && (
@@ -262,8 +269,11 @@ function OverviewCardImpl(p: Props) {
               ("Concentration", a Barbarian's "Inner Fire") cannot fit across a
               ~300px card at any density — they overran their bars and collided
               with each other in Sekmeht's first screenshot. Density controls the
-              CARD's spacing; it cannot argue with the width of the word. */}
-          <VitalsBar vitals={p.vitals} labels={p.vitalLabels} compact />
+              CARD's spacing; it cannot argue with the width of the word.
+              B382: `thresholds={o}` — the SAME boundaries the header percentage
+              and the Critical/Hurt chips use, so the bar's colour agrees with
+              them instead of running its own hardcoded 30/50/80. */}
+          <VitalsBar vitals={p.vitals} labels={p.vitalLabels} compact thresholds={o} />
         </div>
       )}
 
@@ -312,13 +322,15 @@ function OverviewCardImpl(p: Props) {
       )}
 
       {o.feedLines > 0 && p.streamId !== 'exp' && (
-        <div className="ov-card-feed" aria-label={`${p.streamId} for ${p.character}`}>
+        <div className="ov-card-feed" aria-label={`${streamLabel} for ${p.character}`}>
           {feed.length === 0
             /* Names the stream: on a non-main selection "No text yet" alone
                reads like something is broken, when it usually means nobody has
-               said anything (UX standard #8b — explain the empty state). */
+               said anything (UX standard #8b — explain the empty state).
+               B385: by its DISPLAY label (the one the dropdown shows), never
+               the raw stream id — "Nothing on logons yet" named an internal. */
             ? <div className="ov-card-dim ov-card-feed-empty">
-                {p.streamId === 'main' ? 'No text yet.' : `Nothing on ${p.streamId} yet.`}
+                {p.streamId === 'main' ? 'No text yet.' : `Nothing on ${streamLabel} yet.`}
               </div>
             : feed.map(line => (
               <TextLineRow
@@ -376,24 +388,59 @@ function OverviewCardImpl(p: Props) {
  * Same colour vars as the game command bar (`--rt-end` / `--ct-end` /
  * `--aim-end`), so a lane means the same thing in both places, and the same
  * precedence — aim renders BEHIND cast, because cast is the PvP-critical one.
+ *
+ * B393: it also honours Settings → Timer Style the way the command bar's
+ * TimerDisplay does — one chip per remaining second in `chips`, a draining bar
+ * in `bar` — so a player who reads roundtime as chips reads it the same way on
+ * every card. `timerStyle` is a string primitive, so the memo still holds.
+ *
+ * B393: the bar drains by `transform: scaleX()`, NEVER `width`. It is in a
+ * continuous transition for the whole of every roundtime, and a `width`
+ * transition invalidates layout every animation frame — per lane, per card, per
+ * character in combat. scaleX is compositor-only (the Spell Monitor bar's lesson;
+ * same family as pitfall #126).
  */
-const CardTimers = memo(function CardTimers({ rtExpires, ctExpires, aimExpires }: {
-  rtExpires: number; ctExpires: number; aimExpires: number
+const CardTimers = memo(function CardTimers({ rtExpires, ctExpires, aimExpires, timerStyle }: {
+  rtExpires: number; ctExpires: number; aimExpires: number; timerStyle: string
 }) {
-  const { rt, ct, aim, rtPct, ctPct, ctMax, aimMax } = useTimers(rtExpires, ctExpires, aimExpires)
+  const { rt, ct, aim, rtMax, rtPct, ctPct, ctMax, aimMax } = useTimers(rtExpires, ctExpires, aimExpires)
+
+  if (timerStyle === 'chips') {
+    // One chip per remaining second, capped at the timer's starting length —
+    // the command bar's exact count. Aim and cast share the lower lane as two
+    // stacked rows (aim first, so cast paints over it); chips are fixed-width,
+    // so the n-th second of each row lands at the same x and a longer aim shows
+    // as green sticking out past cast, just as it does in the command bar.
+    const chips = (secs: number, max: number, kind: 'rt' | 'ct' | 'aim') =>
+      Array.from({ length: Math.min(Math.ceil(secs), Math.round(max)) },
+        (_, i) => <div key={i} className={`ov-timer-chip ov-timer-chip--${kind}`} />)
+    return (
+      <div className="ov-card-timers" aria-hidden>
+        <div className="ov-timer-lane">
+          {rt > 0 && <div className="ov-timer-chips">{chips(rt, rtMax, 'rt')}</div>}
+        </div>
+        <div className="ov-timer-lane">
+          {aim > 0 && <div className="ov-timer-chips">{chips(aim, aimMax, 'aim')}</div>}
+          {ct  > 0 && <div className="ov-timer-chips">{chips(ct, ctMax, 'ct')}</div>}
+        </div>
+      </div>
+    )
+  }
+
   // Aim is scaled against CAST's max when cast is running, so the two widths are
   // comparable in absolute seconds rather than each as a share of its own max —
   // the same reasoning as the command bar's TimerDisplay.
   const aimScaleMax = ctMax > 0 ? ctMax : aimMax
   const aimPct = aimScaleMax > 0 ? Math.min(100, (aim / aimScaleMax) * 100) : 0
+  const scale = (pct: number) => ({ transform: `scaleX(${Math.max(0, Math.min(100, pct)) / 100})` })
   return (
     <div className="ov-card-timers" aria-hidden>
       <div className="ov-timer-lane">
-        {rt > 0 && <div className="ov-timer-fill ov-timer-fill--rt" style={{ width: `${rtPct}%` }} />}
+        {rt > 0 && <div className="ov-timer-fill ov-timer-fill--rt" style={scale(rtPct)} />}
       </div>
       <div className="ov-timer-lane">
-        {aim > 0 && <div className="ov-timer-fill ov-timer-fill--aim" style={{ width: `${aimPct}%` }} />}
-        {ct  > 0 && <div className="ov-timer-fill ov-timer-fill--ct"  style={{ width: `${ctPct}%` }} />}
+        {aim > 0 && <div className="ov-timer-fill ov-timer-fill--aim" style={scale(aimPct)} />}
+        {ct  > 0 && <div className="ov-timer-fill ov-timer-fill--ct"  style={scale(ctPct)} />}
       </div>
     </div>
   )
@@ -439,7 +486,12 @@ const CardExp = memo(function CardExp({ skills, pinned, rankUp, mode, desc }: {
         {tdp && <span className="ov-exp-stat"><span className="ov-exp-lbl">TDP</span>{tdp}</span>}
       </div>
       {rows.length === 0
-        ? <div className="ov-card-dim">No skills actively training.</div>
+        // B385: an EMPTY map means no experience data has arrived yet (the map
+        // keeps a key for every component once the game has sent one), so it
+        // must not claim "nothing training" before it could possibly know.
+        ? <div className="ov-card-dim">
+            {Object.keys(skills).length === 0 ? 'Waiting for experience data.' : 'No skills actively training.'}
+          </div>
         : (
           <div className="ov-exp-rows">
             {rows.map(r => (
@@ -458,9 +510,9 @@ const CardExp = memo(function CardExp({ skills, pinned, rankUp, mode, desc }: {
   )
 })
 
-function CardHead({ character, game, useLich, connected, healthPct, isActive, thresholds, onMenu }: {
+function CardHead({ character, game, useLich, connected, healthPct, thresholds, onMenu }: {
   character: string; game: string; useLich: boolean
-  connected: boolean; healthPct: number | null; isActive: boolean
+  connected: boolean; healthPct: number | null
   thresholds: AttentionThresholds
   onMenu?: (x: number, y: number) => void
 }) {
@@ -473,7 +525,8 @@ function CardHead({ character, game, useLich, connected, healthPct, isActive, th
       </span>
       <span className="ov-card-game" title="Game shard">{game}</span>
       <span className="ov-card-head-spacer" />
-      {isActive && <span className="ov-card-current" title="The character Session view is showing">current</span>}
+      {/* No "current" chip (B320): which tab is active is the tab strip's job,
+          and on a card it read as "selected" beside the input bar's target. */}
       {connected && healthPct !== null && (
         <span className={`ov-card-hp ${healthClass(healthPct, thresholds)}`} title="Health">{healthPct}%</span>
       )}
@@ -510,12 +563,16 @@ function CardHead({ character, game, useLich, connected, healthPct, isActive, th
  *
  * `warn` keeps a soft band above the low threshold with no flag behind it: a
  * gradient toward trouble, deliberately quieter than anything that chips.
+ *
+ * B382: the banding itself is VitalsBar's `healthBand`, the same function the
+ * card's vitals bar colours its fill with — so the percentage and the bar
+ * beneath it can no longer disagree either. Only the class names differ.
  */
+const HP_CLASS: Record<HealthBand, string> = {
+  crit: 'ov-hp--crit', low: 'ov-hp--bad', mid: 'ov-hp--warn', ok: 'ov-hp--ok',
+}
 function healthClass(pct: number, t: AttentionThresholds): string {
-  if (pct < t.healthCritPct) return 'ov-hp--crit'
-  if (pct < t.healthLowPct)  return 'ov-hp--bad'
-  if (pct < 80)              return 'ov-hp--warn'
-  return 'ov-hp--ok'
+  return HP_CLASS[healthBand(pct, t)]
 }
 
 function FlagRow({ flags, idle, connected, wound }: {
@@ -645,9 +702,9 @@ function StatRow({ stats, now, idleMs, connected }: {
   const uptime = stats.startedAt > 0 ? (stats.stoppedAt > 0 ? stats.stoppedAt : now) - stats.startedAt : 0
   return (
     <div className="ov-card-stats">
-      <Stat label="up" value={shortDuration(uptime)}
+      <Stat label="up" value={formatUptime(uptime)}
         title={connected ? 'How long this connection has been up' : 'How long the session ran before it dropped'} />
-      <Stat label="idle" value={connected ? shortDuration(idleMs) : '—'} title="Time since the last game text arrived" />
+      <Stat label="idle" value={connected ? formatUptime(idleMs) : '—'} title="Time since the last game text arrived" />
       {/* Evaluated NOW, not read off the render-time value: a quiet character
           stops re-rendering its GameWindow, so the stored rate would freeze
           instead of decaying. This card re-renders every second. */}
@@ -674,18 +731,6 @@ function Stat({ label, value, title }: { label: string; value: string; title: st
       <span className="ov-stat-value">{value}</span>
     </span>
   )
-}
-
-/** Sub-minute resolution matters for idle, which `formatDuration` collapses to '—'. */
-function shortDuration(ms: number): string {
-  if (!ms || ms < 1000) return '0s'
-  const s = Math.floor(ms / 1000)
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m`
-  const h = Math.floor(m / 60)
-  const rm = m % 60
-  return rm > 0 ? `${h}h ${rm}m` : `${h}h`
 }
 
 // Deliberately NOT memo'd. `stats` comes back as a fresh object from

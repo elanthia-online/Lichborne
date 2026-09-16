@@ -70,6 +70,56 @@ A few ideas shape everything:
 
 ## What's New in the Latest Version
 
+**v0.19.7**
+
+- **One-click Reconnect after a drop.** The button at the right of the top bar
+  now reads **Reconnect** when your character is disconnected, and brings them
+  back in the same tab with the scrollback intact. (It used to say Login, close
+  the tab and send you to the character list.)
+- **Windows remember where you left them** — size, position and maximized, for
+  the main window and any character in its own window. A window whose monitor is
+  gone opens on your main screen instead.
+- **The Lichborne wordmark can wear a text effect.** Pick one per character in
+  **Settings → Display → Wordmark effect** — Glow, Rainbow, Gold, Wave and
+  eight more, with a live preview beside the dropdown. Because it's per
+  character, it's an easy way to tell which one is in front when you're playing
+  several. **Static** is the default and looks exactly as it always has. Your
+  theme still supplies the colours, and Epilepsy safe mode holds every effect
+  still.
+- **An Unconscious marker in the icon bar.** DragonRealms never announces
+  "unconscious" the way it does stunned or bleeding — the only place it says so
+  is the letter **U** in the status prompt. Lichborne now reads that letter, and
+  `$unconscious` is available in triggers, macros and aliases. This one needs the
+  status prompt turned on in game: type `set statusprompt` once. Without it the
+  game sends no letters, so the marker can never appear.
+- **The Overview has one selection.** Clicking a card aims the input bar at that
+  character and makes it the active tab; with **All characters** chosen, every
+  connected card and tab lights up, so you can always see who your next command
+  will reach.
+- **The + window has the full login experience** — your Teams, Reconnect Last,
+  Team Login and Attach are all there, not just single characters.
+- **"+ Add account" is a slim row** under your accounts, instead of a big tile.
+- **The + window is a proper Lichborne dialog** — titled **Connect a
+  character**, in the same style as About Lichborne — opens straight to your
+  characters, and dialogs opened from it (Edit profile, Team Login) no longer
+  hide behind it.
+- **Esc and the keyboard work everywhere.** Esc closes the dialog on top, and
+  only that one, and every tab, list and switch can be reached with Tab. A round
+  of polish also fixed text that was hard to read on light themes, menus that
+  ran off screen, and hover states that hid what was selected — and the
+  **Experiences** button now lights only while its shelf is open, like the other
+  top-bar buttons.
+- **Every window matches, and nothing is lost by accident.**
+  - All dialogs now share the About Lichborne look.
+  - Deleting asks first.
+  - Closing an editor with unsaved changes asks whether to discard them.
+  - The cursor leaves the command bar while a dialog is open, and comes back when it closes.
+- **A round of macOS and Linux fixes.** Option-key macros work on a Mac, the
+  Linux download keeps one name (`Lichborne.AppImage`) so updates no longer
+  break your shortcuts, and trigger "log to file" actions save into a
+  **TriggerLogs** folder in Lichborne's data folder (see
+  [Where your settings live](#appendix-c--where-your-settings-live)).
+
 **v0.19.6**
 
 - **The Spell Monitor now shows an effect ending in two steps.** When your
@@ -150,7 +200,12 @@ All downloads are on the **[Releases page](https://github.com/SekmehtDR/Lichborn
 
 **Windows (stable):** run `Lichborne-X.Y.Z-setup.exe` — no admin rights needed. Windows may show a **SmartScreen** warning (no code-signing certificate yet); click **More info → Run anyway**. It's safe. Auto-updates with one click when a new version lands.
 
-**Linux (beta):** download the `.AppImage`, `chmod +x` it, run it. Auto-update works. If "Remember password" is greyed out, your desktop lacks a keyring service — install GNOME Keyring or KWallet, or just type the password each session.
+**Linux (beta):** download the `.AppImage`, `chmod +x` it, run it. Two tips:
+
+- **It keeps one name: `Lichborne.AppImage`.** Auto-update replaces that file in place, so desktop shortcuts and dock favourites keep working. Downloads before v0.19.7 had the version number in the name (`Lichborne-0.19.6.AppImage`); if yours does, rename it once to `Lichborne.AppImage`. Otherwise the next update switches it to the new name itself, and any shortcut to the old name stops working.
+- **If it won't start on Ubuntu 22.04 or newer**, install FUSE 2, which AppImages need: `sudo apt install libfuse2t64` on 24.04, or `sudo apt install libfuse2` on 22.04. Running it from a terminal shows the FUSE error if that's the cause.
+
+If "Remember password" is greyed out, your desktop lacks a keyring service — install GNOME Keyring or KWallet, or just type the password each session.
 
 **macOS (beta, Apple Silicon):** open the `.dmg`, drag Lichborne to Applications. **The first launch needs one Terminal command** — open Terminal and paste:
 
@@ -168,7 +223,7 @@ Then open Lichborne normally; you'll never need it again. If macOS instead offer
 
 - Install it per the **[official Lich install guide](https://github.com/elanthia-online/lich-5/wiki/Documentation-for-Installing-and-Upgrading-Lich)** — Windows has a one-click installer; Linux/Mac follow the wiki's steps (Lich in `~/Lich5`, Ruby 4.0+ via rbenv or your distro).
 - **Already running Lich** for Genie, Profanity, or another client? You're set — no reinstall.
-- In Lichborne, open **Lich Setup** (the **⚙ Lich Setup** button on the launcher, or **Settings → Lich Setup → Open Lich Setup…**) and hit **↺ Auto Detect**. Green checkmarks mean you're good. It knows each platform's standard install spots (on a Mac, the first detect asks permission to look at your Desktop folder — that's where the wiki's install lands). If your Ruby is older than 4.0, the dialog warns you — current Lich won't start on it.
+- In Lichborne, open **Lich Setup** (the **⚙ Lich Setup** button on the launcher, or **Settings → Lich Setup → Open Lich Setup…**) and hit **↺ Auto-detect**. Green checkmarks mean you're good. It knows each platform's standard install spots (on a Mac, the first detect asks permission to look at your Desktop folder — that's where the wiki's install lands). If your Ruby is older than 4.0, the dialog warns you — current Lich won't start on it.
 
 *Prefer no Lich? You can skip this entirely — see [Connecting](#connecting--playing-your-whole-team).*
 
@@ -234,9 +289,11 @@ This tells DragonRealms to include your full status (hidden, stunned, roundtime,
 - **One app, every character.** Each character is a tab. Switch with `Ctrl+Tab` or `Ctrl+1–9`.
 - **Quick Send** (`Ctrl+Shift+Enter`) fires a command at *another* character without leaving the one you're on.
 - **Pop a character into its own window** — right-click its tab, use the **Window** menu, or tick "open each in its own window" when bulk-connecting. It's still one app, so Quick Send and Lich coordination keep working. (You can also launch the app more than once to keep two teams fully separate.)
+- **Dropped?** The button at the right end of the top bar turns into **Reconnect** — one click logs that character back in, in the same tab, with its scrollback intact.
 - **Right-click any tab** for quick actions — Reconnect a dropped character, Disconnect, or move it between windows (only the choices that apply are shown).
+- **Windows remember where you left them** — size, position, and whether they were maximized, for the main window and for any character you've moved into its own window. If a window's monitor isn't connected any more, it opens on your main screen instead.
 - **⟲ Reconnect Last** on the launcher brings your whole crew back in one click. If an account already has a different character on, Lichborne asks which you want rather than bouncing anyone.
-- **Team Login** logs several characters in at once (DR allows one character per account, so it's one from each). Tick only the accounts you want, and tick **Save this line-up as a team** to remember it. Saved teams appear in a **Teams** section on the logon screen — each one shows who is on it, and a single Connect logs the whole team in, skipping anyone already playing. Pin a team with the heart and it joins **Favorites** at the top; the ⋯ menu edits its name and notes, or deletes it. A long team run can be **stopped** part-way: whoever is connecting finishes, and the rest are skipped and listed so you can start them whenever you like.
+- **Team Login** logs several characters in at once (DR allows one character per account, so it's one from each). Tick only the accounts you want, and tick **Save this line-up as a team** to remember it. Saved teams appear in a **Teams** section on the logon screen and in the **+** window — each one shows who is on it, and a single Connect logs the whole team in, skipping anyone already playing. Pin a team with the heart and it joins **Favorites** at the top; the ⋯ menu edits its name and notes, or deletes it. A long team run can be **stopped** part-way: whoever is connecting finishes, and the rest are skipped and listed so you can start them whenever you like.
 
 ---
 
@@ -298,8 +355,12 @@ looking at — and only when the count is above zero, so a healthy roster shows 
 badge at all. A character with nothing wrong reads a quiet **✓ calm** on its card
 rather than a row of zeroes.
 
-Clicking a card aims the input bar at that character; **double-clicking** it (or
-**Go to … 's game session** in its menu) opens that character full-screen. Cards
+Clicking a card selects that character: the input bar aims at it and its tab
+becomes the active one, while you stay in the Overview. Pick **All characters**
+in the bar (or click empty space) to aim at everyone again — every connected
+card and tab lights up, so you can see exactly who a command will reach. **Double-clicking** a
+card (or **Go to … 's game session** in its menu) opens that character
+full-screen. Cards
 are read-only on
 purpose: to send a command to someone else, use **Quick Send**
 (Ctrl/Cmd+Shift+Enter), which already does exactly that. While the Overview is up,
@@ -652,7 +713,8 @@ Lich is the **recommended** way to play — it unlocks the map, timers, variable
 | `Ctrl+Shift+Enter` | Quick-Send — sends to **all** connected characters by default; untick to pick specific ones (pre-filled from the active command bar) |
 | `Ctrl+F` | Search the live game window |
 | `Ctrl+Enter` / `Alt+Enter` / `NumpadEnter` | Repeat last / second-to-last / send-or-repeat |
-| `Esc` | Clear the command line (or close the slash palette) |
+| `Esc` | Close the dialog on top — only that one. In the command line, clear it (or close the slash palette) |
+| `Tab` / `Shift+Tab` | Move between buttons, tabs, list rows and switches; `Enter` or `Space` uses the one in focus |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom the window in / out / reset |
 
 Plain `Home`/`End` edit the command box (where your cursor usually is); hold `Ctrl` to scroll the story window instead. Macro hotkeys (F1–F12, Ctrl/Alt combos) are set up in the Automations panel.
@@ -718,16 +780,24 @@ Notes: `edit` on any rule jumps straight to it in the editor; your real mode/gro
 
 ## Appendix C — Where your settings live
 
-Your setup is saved as plain **YAML** files you own — back them up, copy them to another machine, or share them. Everything lives under your Windows app-data folder:
+Your setup is saved as plain **YAML** files you own — back them up, copy them to another machine, or share them. Everything lives in Lichborne's app-data folder:
+
+| System | Folder |
+|---|---|
+| Windows | `%APPDATA%\lichborne\` |
+| macOS | `~/Library/Application Support/lichborne/` |
+| Linux | `~/.config/lichborne/` (or `$XDG_CONFIG_HOME/lichborne/` if you've set it) |
 
 ```
-%APPDATA%\lichborne\
-  profiles\
+lichborne/
+  profiles/
     {Character}.yaml   — one file per character (your per-character setup)
     _shared.yaml       — app-wide settings shared by every character
-  Exports\             — Transfer bundles (.lb.yaml) you export
-  Logs\
-    {Character}\        — session logs, one folder per character
+  Exports/             — Transfer bundles (.lb.yaml) you export
+  Logs/
+    {Character}/       — session logs, one folder per character
+  TriggerLogs/         — files written by a trigger's "log to file" action
+  window-state.json    — where each window was last placed (this computer only)
 ```
 
 Because it's all plain text, nothing is locked in. You almost never need to touch these by hand — Lichborne saves automatically, and [Transfer](#transfer-a-setup-between-your-characters) is the friendly way to move a setup between your own characters. But here's what's where:
@@ -752,7 +822,7 @@ One file, for the things that make sense **app-wide** rather than per character:
 - **AI settings** (your model choice and consent flags — *not* your API key; see below).
 - **App preferences** — "open each character in its own window," whether Analytics is on, and the "Reconnect Last" roster.
 
-> Your **API key** (if you use AI) is stored **separately and encrypted** by Windows (DPAPI) — it's never part of these YAML files and never leaves your machine except to talk to Anthropic. See [AINOTICE.md](AINOTICE.md).
+> Your **API key** (if you use AI) is stored **separately and encrypted** by your operating system (DPAPI on Windows, the Keychain on macOS, libsecret or KWallet on Linux) — it's never part of these YAML files and never leaves your machine except to talk to Anthropic. See [AINOTICE.md](AINOTICE.md).
 
 *(Heads up: these are **Lichborne's** profiles. Your **Lich script** profiles are different files, inside your Lich installation — edit those from the [Lich Dashboard → Profiles](#the-lich-dashboard).)*
 
@@ -771,9 +841,9 @@ Lichborne keeps a clean, dated **plain-text log** of every session — the game 
 - **Platforms:** Windows x64 (stable), Linux x64 AppImage (beta), macOS Apple Silicon (beta). Linux/Mac are new in v0.18.0 — report anything odd on Discord.
 - **First-install warnings** — expected on two platforms (no code-signing certs): Windows SmartScreen → **More info → Run anyway**. On macOS the download is quarantined, and Apple Silicon words that as **"Lichborne is damaged and can't be opened"** — it isn't damaged, that's Apple's phrasing for "not notarized". Clear it once with `xattr -cr /Applications/Lichborne.app` (or use **System Settings → Privacy & Security → Open Anyway** if macOS offers that instead).
 - **Mac: no auto-update.** Unsigned builds can't self-update (an Apple rule) — grab new versions from the Releases page. Windows and Linux auto-update normally.
-- **Mac: "Lichborne wants to access your Desktop"?** That's the Lich **Auto Detect** looking for the wiki-standard `~/Desktop/Lich5` install — allow it (or browse to Lich manually).
+- **Mac: "Lichborne wants to access your Desktop"?** That's the Lich **Auto-detect** looking for the wiki-standard `~/Desktop/Lich5` install — allow it (or browse to Lich manually).
 - **Linux: "Remember password" greyed out?** No keyring service found — install GNOME Keyring or KWallet; until then, type the password each session.
-- **Linux/Mac: Lich won't launch from Lichborne but runs in a terminal?** Point the Ruby path at the **full rbenv path** (`~/.rbenv/shims/ruby`) — apps launched from the desktop don't see your shell's PATH. Auto Detect does this for you.
+- **Linux/Mac: Lich won't launch from Lichborne but runs in a terminal?** Point the Ruby path at the **full rbenv path** (`~/.rbenv/shims/ruby`) — apps launched from the desktop don't see your shell's PATH. Auto-detect does this for you.
 - **Map marker stuck?** The Lich Map tracks by room id and is most reliable — turn on DR's room-number display so titles show a number like `[Town Square] (12345)`. The Genie Map matches by room name + description (its data has no ids), so in areas full of identically-named rooms it can briefly lag. A **`LOOK`** resyncs either map.
 - **Hand bar says "Empty" but you're holding something?** The common cause was fixed in v0.13.3. For rare genuine gaps (e.g. spell-summoned items DR doesn't announce), a **`GLANCE`** always resyncs your hands.
 - **Lich won't start after updating Lich?** Recent Lich versions require a newer **Ruby** — check your Ruby version first. And if a very recent Lich shows raw protocol "garbage" instead of the normal game feed, update Lich to its latest patch (a known Lich-side hiccup fixed upstream).

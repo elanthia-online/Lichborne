@@ -1100,12 +1100,13 @@ export function spellEndedCountdownLabel(e: SpellEffect, now: number): string {
 }
 
 /**
- * The note a cell should print UNDER the name, or '' for none.
+ * What the game's parenthetical adds beyond the label, or '' for none. It used
+ * to print as its own row under the name; since v0.19.7 `spellSlotText` decides
+ * where it goes, so a cell never grows a second line.
  *
  * The note exists to add what the LABEL does not already say. For a `fading` or
  * bare-percentage reading the parenthetical IS the label — "Fading" under
- * "fading", "94%" under "94%" — and rendering both repeated the word AND cost
- * the cell an entire extra row, which is what made those cells look oversized
+ * "fading", "94%" under "94%" — and rendering both repeated the word
  * (Sekmeht's `Tenebrous Sense (Fading)` screenshot).
  *
  * The test is a case-insensitive comparison against the label, NOT a switch on
@@ -1117,6 +1118,42 @@ export function spellNoteText(e: SpellEffect, label: string): string {
   const note = e.note?.trim() ?? ''
   if (!note || e.kind === 'permanent') return ''
   return note.toLowerCase() === label.trim().toLowerCase() ? '' : note
+}
+
+/**
+ * The ONE piece of text a cell's time slot shows (v0.19.7).
+ *
+ * A cell is always a single line plus a bar slot. It used to grow a second row
+ * for the note, and because a grid row takes the height of its tallest cell,
+ * one note stretched every cell beside it (Sekmeht's screenshot: a spent cell's
+ * leftover "Fading" grew the whole row).
+ *
+ * So the note no longer gets a row. Where the game's parenthetical says MORE
+ * than our label, it takes the slot instead: for fading, percent and unknown
+ * readings the note is the fuller statement of the same reading ("0%, fading",
+ * "intact, fading").
+ * - A TIMED effect keeps its ticking minutes. Its note is a snapshot beside a
+ *   live countdown, and the one fact it adds (a charge level) goes to
+ *   `spellSlotAside`.
+ * - A SPENT one keeps "ended". Its last reading no longer applies.
+ * Nothing is lost either way: the cell's tooltip carries the full parenthetical.
+ */
+export function spellSlotText(e: SpellEffect, now: number): string {
+  const label = spellRemainingLabel(e, now)
+  if (e.kind === 'timed' || e.kind === 'ended') return label
+  return spellNoteText(e, label) || label
+}
+
+/**
+ * The small secondary reading beside the slot, or '' for none:
+ * - a spent cell's clear-out countdown ("34s");
+ * - a timed effect's stated charge level (`0%, 4 anlaen` → "0%"), the one fact
+ *   its note adds to the minutes.
+ */
+export function spellSlotAside(e: SpellEffect, now: number): string {
+  if (e.kind === 'ended') return spellEndedCountdownLabel(e, now)
+  if (e.kind === 'timed' && e.percent !== null) return e.percent + '%'
+  return ''
 }
 
 /**

@@ -1,0 +1,327 @@
+/* ui.css — the SHARED control and dialog primitives (B399 / B400 / B409, v0.19.7).
+
+   Before this file every dialog hand-rolled its own buttons, fields, tabs,
+   labels and close button under its own prefix, and they drifted: eight
+   "primary" looks, seven tab styles, two input fills, six close buttons. These
+   classes are the one recipe — the About-modal look (UX standard #10) —
+   expressed once. NEW UI USES THESE; a surface that needs something they don't
+   cover adds a MODIFIER here rather than a private copy.
+
+   Imported FIRST in main.tsx — before App, and so before every component
+   stylesheet App pulls in (global.css loads after App). A component rule of
+   equal specificity therefore wins, which is what lets a surface keep its own
+   LAYOUT while taking these for chrome. Don't move this import into
+   global.css: that file loads last, and these would start overriding every
+   component rule they tie with. Never restate a property these set in a
+   component file just to get the same value (pitfall #113).
+
+   All colour is theme vars / color-mix, so light themes self-correct
+   (Principle #4); eyeball any change on Classic Light, where --bg-app,
+   --bg-base and --bg-input are all #ffffff (pitfall #55). App chrome, so rem
+   sizing is deliberate (Principle #9's modal exception). */
+
+:root {
+  /* Dialog type scale — one value per role instead of seven title sizes. */
+  --modal-title-size: 1rem;
+  --modal-text-size:  0.88rem;
+  --modal-label-size: 0.7rem;
+  --modal-hint-size:  0.78rem;
+
+  /* Dialog spacing. */
+  --modal-head-pad:    0.85rem 1.1rem;
+  --modal-body-pad:    1rem 1.1rem;
+  --modal-foot-pad:    0.75rem 1.1rem;
+  --modal-foot-border: color-mix(in srgb, var(--border) 70%, transparent);
+
+  /* Small-scale shape + motion tokens. --modal-radius (10px) stays the dialog
+     radius; these are for controls inside it. */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --popover-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  --ui-transition: 0.13s ease;
+
+  /* Code / file content (Lich scripts, YAML, patterns). A real monospace stack
+     with the cross-platform tail (B348), instead of 41 bare `monospace`s that
+     each fell back to whatever the OS picks. */
+  --code-font-family: Consolas, 'Cascadia Mono', Menlo, 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+}
+
+/* Native checkboxes and radios take the theme accent everywhere, not the OS
+   accent in some dialogs and the theme's in others. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────────
+   One neutral chip, plus primary (the About accent chip), danger (red AT REST,
+   so a destructive button never looks like Edit beside it) and ghost. */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: none;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle, var(--border));
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ui-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text-primary) 8%, var(--bg-raised));
+}
+.ui-btn:disabled { opacity: 0.55; cursor: default; }
+
+.ui-btn--primary {
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.ui-btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.ui-btn--danger {
+  border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  color: color-mix(in srgb, var(--color-danger) 80%, var(--text-primary));
+  font-weight: 600;
+}
+.ui-btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 20%, transparent);
+}
+
+.ui-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+.ui-btn--ghost:hover:not(:disabled) {
+  background: var(--modal-ctl-hover);
+  color: var(--text-primary);
+}
+
+.ui-btn--sm {
+  padding: 4px 10px;
+  font-size: 0.78rem;
+}
+
+/* ── Close button ────────────────────────────────────────────────────────────
+   The About ✕ (about.css .about-close), minus the absolute positioning so it
+   can sit at the end of any header row. Always ✕ (U+2715), always
+   `title="Close" aria-label="Close"`. */
+.ui-close {
+  flex: none;
+  width: 1.7rem;
+  height: 1.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.ui-close:hover {
+  background: var(--modal-ctl-hover);
+  color: var(--text-primary);
+}
+
+/* ── Fields ──────────────────────────────────────────────────────────────────
+   --modal-input-bg, never a bare --bg-input (white-on-white on Classic Light).
+   The global :focus rule in global.css adds the accent glow. */
+.ui-field {
+  min-width: 0;
+  background: var(--modal-input-bg);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  line-height: 1.3;
+}
+.ui-field:focus { outline: none; border-color: var(--accent-dim); }
+.ui-field::placeholder { color: var(--text-dim); }
+textarea.ui-field { resize: vertical; line-height: 1.45; }
+.ui-field--code { font-family: var(--code-font-family); }
+
+/* ── Chip tabs (UX standard #10) ─────────────────────────────────────────────
+   Active = the About chip; hover is neutral and INACTIVE-ONLY (pitfall #107). */
+.ui-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.ui-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-family: inherit;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ui-tab:not(.ui-tab--active):hover {
+  background: var(--modal-ctl-hover);
+  color: var(--text-primary);
+}
+.ui-tab--active {
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  color: var(--accent);
+}
+
+/* ── Labels, hints, empty states ─────────────────────────────────────────── */
+.ui-section-label {
+  font-size: var(--modal-label-size);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  line-height: 1.2;
+}
+/* A labelled hairline divider between two kinds of content (UX standard #5). */
+.ui-section-label--rule {
+  padding-top: 0.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+
+.ui-hint {
+  font-size: var(--modal-hint-size);
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+/* Empty / waiting states. --text-muted, not --text-faint (2.3:1 on Classic
+   Light). em-sized so it follows a scaled panel's font. */
+.ui-empty {
+  padding: 0.8em 1em;
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.9em;
+  line-height: 1.45;
+}
+
+/* ── Dialog structure (the About look) ───────────────────────────────────── */
+.ui-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--modal-scrim);
+}
+
+.ui-modal {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+  max-height: calc(100vh - 32px);
+  overflow: hidden;              /* the header band meets the rounded corners */
+  background: var(--modal-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--modal-border);
+  border-radius: var(--modal-radius);
+  box-shadow: var(--modal-shadow);
+}
+.ui-modal--small    { width: min(440px, 100%); }
+.ui-modal--medium   { width: min(560px, 100%); }
+.ui-modal--standard { width: var(--modal-w-standard); height: var(--modal-h-standard); }
+
+.ui-modal-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: var(--modal-head-pad);
+  background: var(--modal-head-bg);
+  border-bottom: 1px solid var(--modal-head-border);
+}
+.ui-modal-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--modal-title-size);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--modal-head-color);
+}
+.ui-modal-head > .ui-close { margin-left: auto; }
+
+.ui-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: var(--modal-body-pad);
+  font-size: var(--modal-text-size);
+  line-height: 1.5;
+}
+.ui-modal-note {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+/* Footer rail. Order, everywhere: [destructive] …spacer… [Cancel] [Primary]. */
+.ui-modal-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: var(--modal-foot-pad);
+  border-top: 1px solid var(--modal-foot-border);
+}
+.ui-modal-foot-spacer { flex: 1; }
+
+/* The confirm tier (ConfirmHost): above every dialog a confirm can be opened
+   from (About 2010, toasts 2050), below context menus (2100) — pitfall #118(d). */
+.ui-confirm-backdrop { z-index: 2080; }
+.ui-confirm-message {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* InlineConfirm's armed state: the question, then [Delete] [Cancel]. The text
+   is em so it follows a game-area panel's font when one hosts it. */
+.ui-inline-confirm {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.ui-inline-confirm-text {
+  font-size: 0.95em;
+  font-weight: 600;
+  line-height: 1.2;
+  color: color-mix(in srgb, var(--color-danger) 70%, var(--text-primary));
+}
+
+/* The row ✕ in the rule / contact lists is hover-revealed; it must ALSO show
+   when it has keyboard focus, or Tab lands on an invisible control (B370). */
+.list-item-delete:focus-visible { opacity: 1; }

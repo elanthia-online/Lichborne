@@ -4,8 +4,51 @@
 // pure (automationHealth.ts); the usage counts come from automationStats.ts.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { loadStats, resetStats, type AutomationStats } from '../automationStats'
 import type { HealthReport, IssueKind } from '../automationHealth'
+import { pressable } from '../utils/pressable'
+import { confirmAction } from '../confirm'
+
+// ── Shared rule-editor helpers ───────────────────────────────────────────────
+// Every Automations rule editor already imports this module, so the two small
+// keyboard behaviours they share live here rather than in five copies.
+
+/** B396: ↑/↓ in a rule list moves to the previous/next row and SELECTS it, by
+ *  clicking the row — so it goes through the panel's own guarded select (the
+ *  B368 discard prompt included). Spread as `onKeyDown` on the list element;
+ *  rows are the `role="option"` elements `pressable` renders. */
+export function ruleListKeyDown(e: ReactKeyboardEvent<HTMLElement>): void {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+  const opts = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="option"]'))
+  if (opts.length === 0) return
+  e.preventDefault()
+  let from = opts.findIndex(o => o.contains(document.activeElement))
+  if (from < 0) from = opts.findIndex(o => o.getAttribute('aria-selected') === 'true')
+  const step = e.key === 'ArrowDown' ? 1 : -1
+  const next = from < 0 ? 0 : Math.max(0, Math.min(opts.length - 1, from + step))
+  if (next === from) return
+  opts[next].focus()
+  opts[next].click()
+}
+
+/** B389: Enter in a single-line field of a rule form saves, the way the
+ *  Highlights pattern field always has. Spread as `onKeyDown` on the form.
+ *  Textareas, selects, buttons and non-text inputs keep their own Enter, and
+ *  anything inside `data-enter-save="off"` (a Test field) is left alone. The
+ *  macro key recorder never reaches this: it captures keys at the window and
+ *  stops them there. */
+export function enterToSave(save: () => void) {
+  return (e: ReactKeyboardEvent<HTMLElement>) => {
+    if (e.key !== 'Enter' || e.defaultPrevented || e.nativeEvent.isComposing) return
+    const t = e.target
+    if (!(t instanceof HTMLInputElement)) return
+    if (['checkbox', 'radio', 'color', 'button', 'submit', 'file', 'range'].includes(t.type)) return
+    if (t.closest('[data-enter-save="off"]')) return
+    e.preventDefault()
+    save()
+  }
+}
 
 const EMPTY_REPORT: HealthReport = { byRule: {}, duplicateGroups: [], conflictGroups: [], brokenIds: [], noopIds: [], obsolete: [] }
 const EMPTY_STATS: AutomationStats = { trackingSince: 0, rules: {} }
@@ -129,19 +172,44 @@ export function AnalyticsReview<T extends { id: string }>({
   onBulkRemove?: (ids: string[]) => void
 }) {
   // For each duplicate set, keep the FIRST and delete the rest.
+  // B377: the themed confirm, never window.confirm (it froze the whole window
+  // and ignored the theme). The ids are captured before the await.
   const dupCopies = report.duplicateGroups.flatMap(g => g.slice(1))
-  const removeDuplicates = () => {
+  const removeDuplicates = async () => {
     if (!onBulkRemove || dupCopies.length === 0) return
-    if (window.confirm(`Remove ${dupCopies.length.toLocaleString()} duplicate copies? One of each identical set is kept; this can't be undone (your YAML backups still have the old version).`)) {
-      onBulkRemove(dupCopies)
-    }
+    const ids = dupCopies
+    const ok = await confirmAction({
+      title: 'Remove duplicate copies?',
+      message: `${ids.length.toLocaleString()} duplicate ${ids.length === 1 ? 'copy' : 'copies'} will be removed. One of each identical set is kept.`,
+      detail: "This can't be undone here — your YAML profile backups still have the old version.",
+      confirmLabel: 'Remove copies',
+      danger: true,
+    })
+    if (ok) onBulkRemove(ids)
   }
   const obsoleteIds = report.obsolete.map(o => o.id)
-  const removeObsolete = () => {
+  const removeObsolete = async () => {
     if (!onBulkRemove || obsoleteIds.length === 0) return
-    if (window.confirm(`Remove ${obsoleteIds.length.toLocaleString()} rules already matched by a broader regex? Removing may change styling where a rule differs from the regex (color/scope), so review first. This can't be undone — your YAML backups still have the old version.`)) {
-      onBulkRemove(obsoleteIds)
-    }
+    const ids = obsoleteIds
+    const ok = await confirmAction({
+      title: 'Remove obsolete rules?',
+      message: `${ids.length.toLocaleString()} ${ids.length === 1 ? 'rule is' : 'rules are'} already matched by a broader regex and will be removed.`,
+      detail: "Removing can change styling where a rule's color or scope differs from the regex, so review the list first. This can't be undone here — your YAML profile backups still have the old version.",
+      confirmLabel: 'Remove rules',
+      danger: true,
+    })
+    if (ok) onBulkRemove(ids)
+  }
+  // B370: clearing every usage count is destructive, so it asks first.
+  const confirmReset = async () => {
+    const ok = await confirmAction({
+      title: 'Reset usage stats?',
+      message: 'Fire counts and last-fired times for every rule here go back to zero.',
+      detail: "Your rules aren't changed. This can't be undone.",
+      confirmLabel: 'Reset',
+      danger: true,
+    })
+    if (ok) onReset()
   }
   const [open, setOpen] = useState(true)
   const byId = useMemo(() => new Map(rules.map(r => [r.id, r])), [rules])
@@ -161,7 +229,9 @@ export function AnalyticsReview<T extends { id: string }>({
 
   return (
     <div className="aa-review">
-      <div className="aa-bar" onClick={() => setOpen(o => !o)}>
+      {/* B335: keyboard-reachable disclosure. pressable ignores keys aimed at
+          the nested Reset button, which keeps its own click. */}
+      <div className="aa-bar" {...pressable(() => setOpen(o => !o))} aria-expanded={open}>
         <span className="aa-chevron">{open ? '▾' : '▸'}</span>
         <span className="aa-title">{'\u{1F4CA}'} Automation health</span>
         <span className="aa-chips">
@@ -178,7 +248,7 @@ export function AnalyticsReview<T extends { id: string }>({
         </span>
         <span className="aa-spacer" />
         <span className="aa-since" title="Usage tracking started on this date">since {since}</span>
-        <button className="aa-reset" onClick={e => { e.stopPropagation(); onReset() }} title="Clear all usage stats for this character">Reset</button>
+        <button type="button" className="aa-reset" onClick={e => { e.stopPropagation(); void confirmReset() }} title="Clear all usage stats for this character">Reset</button>
       </div>
 
       {open && (
@@ -204,7 +274,7 @@ export function AnalyticsReview<T extends { id: string }>({
           <AASection key="dup" kind="dup" icon={ISSUE_ICON.duplicate} label="Duplicate sets" count={report.duplicateGroups.length}
             desc="Two or more identical rules — same pattern, scope, and style. Keep one of each set and delete the rest (the button does this for you).">
             {onBulkRemove && dupCopies.length > 0 && (
-              <button className="aa-action" onClick={removeDuplicates}>
+              <button type="button" className="ui-btn ui-btn--danger ui-btn--sm aa-action" onClick={() => void removeDuplicates()}>
                 {'\u{1F9F9}'} Remove {dupCopies.length.toLocaleString()} duplicate copies (keep one of each)
               </button>
             )}
@@ -217,7 +287,7 @@ export function AnalyticsReview<T extends { id: string }>({
           <AASection key="obsolete" kind="obsolete" icon={ISSUE_ICON.obsolete} label="Obsolete (covered by regex)" count={report.obsolete.length}
             desc={'A regex rule already matches everything this text/phrase rule matches — e.g. “joins the .+” covers “joins the adventure”. Removing may change styling if the two differ in color or scope, so review before removing.'}>
             {onBulkRemove && obsoleteIds.length > 0 && (
-              <button className="aa-action" onClick={removeObsolete}>
+              <button type="button" className="ui-btn ui-btn--danger ui-btn--sm aa-action" onClick={() => void removeObsolete()}>
                 {'\u{1F9F9}'} Remove {obsoleteIds.length.toLocaleString()} covered rules (review first)
               </button>
             )}

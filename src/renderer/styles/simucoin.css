@@ -145,8 +145,12 @@
   top: calc(100% + 4px);
   right: 0;
   z-index: 80;              /* above the app-bar's own stacking context (70) */
-  min-width: 300px;
-  max-width: 380px;
+  /* B345: a FIXED width (it was content-sized between 300 and 380px), so the
+     summary line changing from "Checking the store…" to its result doesn't
+     resize the box (pitfall #103). em, so it tracks the game font; 26em is
+     ~296px at the default 12px, the old minimum. */
+  width: 26em;
+  max-width: calc(100vw - 16px);
   background: var(--bg-base);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -200,7 +204,20 @@
   line-height: 1.45;
   padding: 2px 6px 6px;
 }
-.sc-summary { color: var(--text-primary); }
+.sc-summary {
+  color: var(--text-primary);
+  /* B345: the summary's text changes while the popover is open ("Checking the
+     store…" → the result), so it RESERVES two lines and is clamped to two —
+     the height stays put whichever message it shows (pitfall #103). The
+     longest message (~60 characters, "Couldn't check N accounts — details in
+     Settings → SimuCoins.") fits two lines at 26em even in a monospace game
+     font. border-box, so the reservation includes the 2px + 6px padding. */
+  min-height: calc(2 * 1.45em + 8px);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
 
 /* Last-known balance, under the summary. Quieter than the summary on purpose:
    the summary is what needs doing, this is what you have. ONE fixed line

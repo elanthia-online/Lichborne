@@ -95,6 +95,11 @@ export const darkBase: ThemeVars = {
   '--color-danger-bg':     '#2e1a1a',
   '--color-danger-border': '#5a2d2d',
   '--color-success':       '#5cb85c',
+  // B402: the one WARNING hue (stale, waiting, caution). Defined ONCE, here,
+  // with no per-theme overrides: a fixed amber mixed toward --text-primary —
+  // the pitfall-#63 idiom — so it stays legible on light and dark themes
+  // alike. Status UI uses this instead of a hand-picked amber.
+  '--color-warning':       'color-mix(in srgb, #d99a1e 80%, var(--text-primary))',
 
   '--scrollbar-track':       '#111111',
   '--scrollbar-thumb':       '#555555',

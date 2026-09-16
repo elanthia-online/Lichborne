@@ -22,6 +22,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import type { SessionInfo } from './components/LoginScreen'
 import type { SessionId } from '../shared/types'
+import type { HighlightEffect } from './highlights'
 
 // CharacterId is the stable identity of a tab — survives reconnects within
 // the tab. v0.8.0: includes the game shard so the same character on a
@@ -62,8 +63,16 @@ export interface SessionStatus {
   panelSettings: boolean
   panelContacts: boolean
   panelTheme: boolean
-  // §34.5: the Experiences shelf is open OR any Experience surface is open.
+  // §34.5: the Experiences SHELF is open. Not "any Experience is showing" —
+  // a docked Experience tab is permanent layout, so that never went dark (B346).
   panelExperiences: boolean
+  // v0.19.7: this character's app-bar wordmark effect (`settings.brandEffect`).
+  // The app bar is app-level chrome and cannot read per-session state, so the
+  // value rides the status snapshot — the pitfall #57 "reflect via useSessions"
+  // pattern the connection dot and the panel flags already use. A scalar, so it
+  // works with the `!==` gate below; REMEMBER to add any new field there too
+  // (pitfall #130 — an omitted term is written but never re-renders anything).
+  brandEffect: HighlightEffect
 }
 
 const DEFAULT_STATUS: SessionStatus = {
@@ -83,6 +92,7 @@ const DEFAULT_STATUS: SessionStatus = {
   panelContacts: false,
   panelTheme: false,
   panelExperiences: false,
+  brandEffect: 'none',
 }
 
 export interface SessionRecord {
@@ -205,7 +215,8 @@ export function SessionsProvider({ children }: { children: ReactNode }) {
           && next.panelSettings === curr.panelSettings
           && next.panelContacts === curr.panelContacts
           && next.panelTheme === curr.panelTheme
-          && next.panelExperiences === curr.panelExperiences) return prev
+          && next.panelExperiences === curr.panelExperiences
+          && next.brandEffect === curr.brandEffect) return prev
       const arr = prev.slice()
       arr[idx] = { ...prev[idx], status: next }
       return arr

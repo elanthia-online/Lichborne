@@ -1,6 +1,7 @@
-// ScriptListPanel — the "Active Scripts" panel: the `lichScripts` PanelFrame
-// tab listing the Lich scripts currently RUNNING for this session, with
-// pause / resume / kill (kill is click-to-confirm) and a manual refresh.
+// ScriptListPanel — the Lich Scripts panel: the `lichScripts` PanelFrame tab
+// listing the Lich scripts currently RUNNING for this session, with
+// pause / resume / kill (kill asks first, through InlineConfirm) and a manual
+// refresh.
 //
 // Pure view over props. PanelFrame feeds it `scripts` / `lastUpdated` /
 // `pending` and the action callbacks from `useLichBridge`, whose `;listall`
@@ -9,11 +10,14 @@
 // UpstreamHook as typed input). A 1s tick re-renders the uptime / "ago"
 // readouts. It is a PANEL, so `.sl-panel` (lich-panels.css) anchors to the
 // panel font and sizes children in `em` — the Lich Dashboard MODAL is the one
-// that stays `rem`.
+// that stays `rem`. (`.sl-` is this panel's prefix alone; the Session Log that
+// used to share it is `.slog-` since B367.)
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import type { ScriptRecord } from '../../shared/types'
 import { formatAgo } from '../utils/formatAgo'
+import { formatUptime } from '../utils/formatUptime'
+import InlineConfirm from './InlineConfirm'
 import '../styles/lich-panels.css'
 
 interface Props {
@@ -26,18 +30,8 @@ interface Props {
   onRefresh:     () => void
 }
 
-function formatUptime(firstSeen: number): string {
-  const secs = Math.floor((Date.now() - firstSeen) / 1000)
-  const h = Math.floor(secs / 3600)
-  const m = Math.floor((secs % 3600) / 60)
-  const s = secs % 60
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  return `${m}:${String(s).padStart(2, '0')}`
-}
-
 export default function ScriptListPanel({ scripts, lastUpdated, pending, onPause, onResume, onKill, onRefresh }: Props) {
   const [tick, setTick] = useState(0)
-  const [confirmKill, setConfirmKill] = useState<string | null>(null)
 
   // Tick every second to keep uptime and "ago" displays live
   useEffect(() => {
@@ -45,41 +39,42 @@ export default function ScriptListPanel({ scripts, lastUpdated, pending, onPause
     return () => clearInterval(id)
   }, [])
 
-  // Close kill confirm on outside click
-  const panelRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!confirmKill) return
-    function onDown(e: MouseEvent) {
-      if (!panelRef.current?.contains(e.target as Node)) setConfirmKill(null)
-    }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [confirmKill])
-
   // Suppress TS unused-var warning for tick — it drives the re-render
   void tick
+  const now = Date.now()
 
-  const unavailable = !pending && !lastUpdated
+  // Has Lich EVER answered a poll on this connection? (useLichBridge resets
+  // lastUpdated to 0 on disconnect.) B385: this used to key on `!pending &&
+  // !lastUpdated`, so while the first poll was in flight the body claimed "No
+  // scripts running" before anything had been asked, and a session Lich never
+  // answers flipped between two messages every 5s as each poll went pending
+  // and timed out. Keying on "answered" alone gives one stable message until
+  // there is a real list to show.
+  const answered = lastUpdated > 0
 
   return (
-    <div className="sl-panel" ref={panelRef}>
+    <div className="sl-panel">
       <div className="sl-header">
-        <span className="sl-header-title">Active Scripts</span>
+        {/* B392: the tab says "Lich Scripts", so the header names the same thing
+            (it said "Active Scripts"). */}
+        <span className="sl-header-title">Lich Scripts</span>
         <button
+          type="button"
           className={`sl-refresh${pending ? ' sl-refresh--spinning' : ''}`}
           onClick={onRefresh}
-          title="Refresh script list"
+          title={pending ? 'Already checking — waiting for Lich to reply' : 'Refresh the script list now'}
+          aria-label="Refresh the script list"
           disabled={pending}
         >↻</button>
       </div>
 
       <div className="sl-body">
-        {unavailable && (
+        {!answered && (
           <div className="sl-empty">
-            Script list unavailable — connect via Lich to see running scripts.
+            Waiting for Lich — running scripts show here once it replies. This needs a connection through Lich.
           </div>
         )}
-        {!unavailable && scripts.length === 0 && (
+        {answered && scripts.length === 0 && (
           <div className="sl-empty">
             No scripts running. Use <code>;scriptname</code> to start one.
           </div>
@@ -98,35 +93,44 @@ export default function ScriptListPanel({ scripts, lastUpdated, pending, onPause
             <span className={`sl-status${s.killing ? ' sl-status--killing' : s.paused ? ' sl-status--paused' : ' sl-status--running'}`}>
               {s.killing ? 'killing' : s.paused ? 'paused' : 'running'}
             </span>
-            <span className="sl-uptime">{formatUptime(s.firstSeen)}</span>
+            {/* B394: the same "1h 23m" reading the Overview cards use. */}
+            <span className="sl-uptime" title="How long this script has been running">{formatUptime(now - s.firstSeen)}</span>
             <div className="sl-actions">
               {!s.killing && (
                 s.paused
-                  ? <button className="sl-btn sl-btn--resume" onClick={() => onResume(s.name)} title="Resume">▶</button>
-                  : <button className="sl-btn sl-btn--pause"  onClick={() => onPause(s.name)}  title="Pause">⏸</button>
+                  ? <button type="button" className="sl-btn sl-btn--resume" onClick={() => onResume(s.name)} title="Resume">▶</button>
+                  : <button type="button" className="sl-btn sl-btn--pause"  onClick={() => onPause(s.name)}  title="Pause">⏸</button>
               )}
+              {/* B401 / B395: the one inline "are you sure" shape, replacing the
+                  bespoke "Kill? Yes/No" (whose Yes was white-on-danger). Game-area
+                  panel, so the em-sized .sl-btn classes ride through instead of
+                  the rem ui-btn (pitfall #45). */}
               {s.killing
-                ? <button className="sl-btn sl-btn--kill" disabled title="Killing…">✕</button>
-                : confirmKill === s.name
-                  ? (
-                    <span className="sl-kill-confirm">
-                      Kill?{' '}
-                      <button className="sl-btn sl-btn--kill-yes" onClick={() => { onKill(s.name); setConfirmKill(null) }}>Yes</button>
-                      {' '}
-                      <button className="sl-btn sl-btn--kill-no"  onClick={() => setConfirmKill(null)}>No</button>
-                    </span>
-                  )
-                  : <button className="sl-btn sl-btn--kill" onClick={() => setConfirmKill(s.name)} title="Kill">✕</button>
+                ? <button type="button" className="sl-btn sl-btn--kill" disabled title="Killing — waiting for Lich to stop it">✕</button>
+                : <InlineConfirm
+                    label="✕"
+                    title={`Kill ${s.name}`}
+                    // Just "Kill?" — the row already names the script, and the
+                    // full name in the question overflowed a narrow docked
+                    // panel, pushing the buttons off the right edge.
+                    question="Kill?"
+                    confirmLabel="Kill"
+                    onConfirm={() => onKill(s.name)}
+                    buttonClass="sl-btn"
+                    dangerClass="sl-btn--kill"
+                  />
               }
             </div>
           </div>
         ))}
       </div>
 
+      {/* B385: only claim what's true in each state — a count and a poll
+          cadence mean nothing until Lich has answered at least once. */}
       <div className="sl-footer">
-        {scripts.length} script{scripts.length !== 1 ? 's' : ''}
-        {lastUpdated > 0 && <> · updated {formatAgo(lastUpdated) || 'never'}</>}
-        {' · polls every 5s'}
+        {answered
+          ? <>{scripts.length} script{scripts.length !== 1 ? 's' : ''} · updated {formatAgo(lastUpdated, now)} · polls every 5s</>
+          : 'No reply from Lich yet'}
       </div>
     </div>
   )

@@ -15,8 +15,9 @@
 // `initialSetName` preload runs mount-only. The "own window" checkbox is the
 // app-wide `bulkConnectSeparateWindows` preference (v0.11.0).
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { backdropHandlers } from "../utils/backdropClose"
+import { useEscapeClose } from '../hooks/useEscapeClose'
 import { createPortal } from 'react-dom'
 import type { LauncherCharacter } from './Launcher'
 import { exportSharedProfile } from '../profile'
@@ -200,14 +201,9 @@ export default function BulkConnectPicker({ groups, initialSetName = null, onCan
     exportSharedProfile().catch(console.error)
   }
 
-  // Esc to cancel — matches the other modals.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { e.preventDefault(); onCancel() }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onCancel])
+  // Esc to cancel, through the shared topmost-dialog hook (B341).
+  useEscapeClose(onCancel)
+  const titleId = useId()
 
   function setPick(account: string, name: string) {
     setPicks(prev => {
@@ -239,21 +235,21 @@ export default function BulkConnectPicker({ groups, initialSetName = null, onCan
   //    use rather than as a preamble you re-read every time (standard #1).
   return createPortal(
     <div className="cne-backdrop" {...backdropHandlers(() => onCancel())}>
-      <div className="cne-modal tl-modal">
+      <div className="cne-modal tl-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="cne-header">
-          <span className="cne-title">Team Login</span>
-          <button className="cne-close" onClick={onCancel} title="Cancel">×</button>
+          <span className="cne-title" id={titleId}>Team Login</span>
+          <button type="button" className="ui-close" onClick={onCancel} title="Close" aria-label="Close">✕</button>
         </div>
 
         <div className="cne-body">
-          <p className="tl-hint">
+          <p className="ui-hint">
             Pick one character from each account you want to bring. DragonRealms allows one
             character per account, so anyone already logged in is skipped.
           </p>
 
           {/* ── ACCOUNTS ─────────────────────────────────────────────────── */}
           <div className="tl-section">
-            <span className="tl-section-label">Accounts</span>
+            <span className="ui-section-label">Accounts</span>
             <span className="tl-section-count">
               {pickableCount} of {groups.length} selected
             </span>
@@ -272,7 +268,9 @@ export default function BulkConnectPicker({ groups, initialSetName = null, onCan
                     checked={on}
                     disabled={locked}
                     onChange={e => toggleAccount(g.account, e.target.checked)}
-                    title={g.alreadyConnected ? 'Already connected on this account' : 'Include this account'}
+                    title={g.alreadyConnected ? `${g.alreadyConnected} is already connected on this account`
+                         : g.candidates.length === 0 ? 'This account has no characters to log in'
+                         : on ? 'Untick to leave this account out' : 'Tick to bring a character from this account'}
                   />
                   <span className="tl-account-name">{g.account}</span>
                   {g.alreadyConnected && (
@@ -327,8 +325,9 @@ export default function BulkConnectPicker({ groups, initialSetName = null, onCan
                   onChange={e => setSetName(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter') { e.preventDefault(); commitSetName() }
-                    // Esc unticks rather than closing the modal — the
-                    // document-level handler would otherwise cancel everything.
+                    // Esc unticks rather than closing the modal — without
+                    // preventDefault the Esc-to-close hook would cancel
+                    // everything.
                     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setSaveAsTeam(false) }
                   }}
                 />
@@ -336,15 +335,18 @@ export default function BulkConnectPicker({ groups, initialSetName = null, onCan
                     later. Connect saves too (see handleConfirm), so this is
                     the "not right now" path, not the only way to save. */}
                 <button
-                  className="cne-btn cne-btn-cancel"
+                  type="button"
+                  className="ui-btn"
                   onClick={commitSetName}
                   disabled={!setName.trim()}
-                  title={`Save these ${membershipCount} characters as a team without logging in`}
+                  title={setName.trim()
+                    ? `Save these ${membershipCount} characters as a team without logging in`
+                    : 'Name the team first'}
                 >
                   {isReplacing ? 'Replace team' : 'Save team'}
                 </button>
               </div>
-              <p className="tl-hint">
+              <p className="ui-hint">
                 Saved teams appear in the <strong>Teams</strong> section on the logon
                 screen, where one click logs the whole team in.
               </p>
@@ -364,13 +366,17 @@ export default function BulkConnectPicker({ groups, initialSetName = null, onCan
         </div>
 
         <div className="cne-footer">
-          <button className="cne-btn cne-btn-cancel" onClick={onCancel}>
+          <button type="button" className="ui-btn" onClick={onCancel}>
             Cancel
           </button>
           <button
-            className="cne-btn cne-btn-save"
+            type="button"
+            className="ui-btn ui-btn--primary"
             onClick={handleConfirm}
             disabled={pickableCount === 0}
+            title={pickableCount === 0
+              ? 'Tick at least one account that isn\'t already connected'
+              : undefined}
           >
             {pickableCount === 0
               ? 'Nothing to connect'

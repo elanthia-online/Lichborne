@@ -271,7 +271,7 @@ the command was not stored, so Enter always returns you to the live line.
 
 **RENAMED v0.18.2 (F78, Sekmeht): the toolbar button is now `Layout` and the modal is the `Layout Manager`.** The rename is **DISPLAY ONLY** — every persisted identifier is unchanged (`layoutMode`, `freeWindows`, `freeLayoutLocked`, `panelWidth`, `panelFontSizes`, the four zone keys), as is the `toggle-panels` session action and the `panelManager` status flag, so no migration was needed. The one place it reached data: Profile Transfer serialises categories by **id**, so that category's `label` moved `'Panel Layout'` → `'Layout'` while `id: 'layout'` deliberately did not — renaming the id would make every `.lb.yaml` already on disk silently skip the category on import. *Labels are display, ids are data.*
 
-**The mode choice is a CHOOSER, not a status banner (v0.18.2).** It was one banner describing whichever mode you were already in, with a single "Switch to…" button — so the choice itself, and the fact that Static Panels is being retired, were invisible until you clicked. Two cards now state it: what each mode IS, which one is `In use`, that Static is `Legacy`, and that switching converts your layout (and switching back leaves it as you left it). Both render in the SAME shape whichever is active (UX standard #2) so nothing jumps on switch; Legacy is **muted rather than alarming** — it still works — and regains its background when it IS the active mode, so you can always see what you're using. The free-mode controls (Lock windows / Fit bars to content / Rebuild from panels) became described rows with visible explanations rather than hover-only tooltips (UX standard #8). "Reset Panels" renders only in Static mode, because it resets the docked zones and is a no-op you can't see in Windowed.
+**The mode choice is a CHOOSER, not a status banner (v0.18.2).** It was one banner describing whichever mode you were already in, with a single "Switch to…" button — so the choice itself, and the fact that Static Panels is being retired, were invisible until you clicked. Two cards now state it: what each mode IS, which one is `In use`, that Static is `Legacy`, and that switching converts your layout (and switching back leaves it as you left it). Both render in the SAME shape whichever is active (UX standard #2) so nothing jumps on switch; Legacy is **muted rather than alarming** — it still works — and regains its background when it IS the active mode, so you can always see what you're using. The free-mode controls (Lock windows / Fit bars to content / Rebuild from panels) became described rows with visible explanations rather than hover-only tooltips (UX standard #8). "Reset panels" renders only in Static mode, because it resets the docked zones and is a no-op you can't see in Windowed. Since v0.19.7 it is the last row under Panel locations, and it asks first (B370).
 
 A dedicated UI lets the user shape the layout in two independent dimensions: which **panel slots** exist in the layout, and which **streams** live in each slot.
 
@@ -298,7 +298,7 @@ Saved heights persist across mode changes — toggling 3→2→3 restores the us
 
 **Streams.** Each added slot's section in the Panel Manager lists the streams currently in that slot, with per-row controls to **reorder** the stream within its slot (◀ / ▶ — moves the tab one position left or right in the slot's PanelFrame tab bar; v0.8.2), **move** the stream to a different added slot (`→ Zone-Name`), or **remove** it (returns it to Available Streams). The Available Streams section shows every builtin PanelType not yet placed, plus any discovered custom streams; rows there show `+ Zone` buttons that target each currently-added slot.
 
-A **Reset Panels** button restores defaults — all four slots added (yes, including Main-Top — Reset is "everything visible", not "back to new-user state"), with their default streams.
+A **Reset panels** row restores defaults. Since v0.19.7 it is the last item under Panel locations, and it asks first (B370). It restores all four slots added (yes, including Main-Top — Reset is "everything visible", not "back to new-user state"), with their default streams.
 
 **Empty added slots** render an `EmptyPanelSlot` placeholder in the layout (dashed border, label, click → opens the Panel Manager) so the slot is visible and reachable. Removing every stream from an added slot doesn't hide the slot — that requires explicit Remove Panel.
 
@@ -488,7 +488,7 @@ Beyond text streams, the server pushes structured XML elements that drive UI com
 | `<streamWindow id="LichScripts" title="Lich Scripts"/>` | Declares a named stream and its display title before any content is pushed | Stream discovery — emits `stream-declare` event; panel becomes available in Panel Manager at login |
 | `<d cmd='go south'>text</d>` | Inline clickable command link with explicit command | Rendered as dotted-underline clickable span; click sends `cmd` to game |
 | `<d>south</d>` | Bare exit label or help command — text content IS the command | Same dotted-underline rendering; text content sent directly as command on click |
-| `<dialogData id="injuries"><image id="chest" name="Injury2" …/>…</dialogData>` | Per-body-part damage — 15 parts (head, neck, chest, abdomen, back, rightArm/Hand, leftArm/Hand, rightLeg/Foot, leftLeg, rightEye, leftEye, nsys). **The `name` encodes BOTH the kind and the rank, and a WOUND and a SCAR are different states** — verified against Lich's parser (`lib/common/xmlparser.rb` ~681-690), the authority here: `Injury<n>` = an **active wound** of rank n; `Scar<n>` = that wound has **HEALED** (wound → 0) leaving a **scar** of rank n; `Nsys<n>` = nerve damage; anything else (incl. `name === id`) = healthy. **Do NOT infer severity from a trailing digit on an arbitrary name** — this table previously described the name as the part id plus a digit (`"head1"`), which is what caused B224: scars were rendered as permanent wounds. Derive "healthy" from the ABSENCE of Injury/Scar/Nsys, not from a sentinel equality. | Injuries panel — wounds grouped by section and colour-coded by severity; **scars listed separately in a muted, neutral style** (healed history, never active damage); "No active wounds." when no wound is present |
+| `<dialogData id="injuries"><image id="chest" name="Injury2" …/>…</dialogData>` | Per-body-part damage — 15 parts (head, neck, chest, abdomen, back, rightArm/Hand, leftArm/Hand, rightLeg/Foot, leftLeg, rightEye, leftEye, nsys). **The `name` encodes BOTH the kind and the rank, and a WOUND and a SCAR are different states** — verified against Lich's parser (`lib/common/xmlparser.rb` ~681-690), the authority here: `Injury<n>` = an **active wound** of rank n; `Scar<n>` = that wound has **HEALED** (wound → 0) leaving a **scar** of rank n; `Nsys<n>` = nerve damage; anything else (incl. `name === id`) = healthy. **Do NOT infer severity from a trailing digit on an arbitrary name** — this table previously described the name as the part id plus a digit (`"head1"`), which is what caused B224: scars were rendered as permanent wounds. Derive "healthy" from the ABSENCE of Injury/Scar/Nsys, not from a sentinel equality. | Injuries panel — wounds grouped by section and colour-coded by severity; **scars listed separately in a muted, neutral style** (healed history, never active damage); "No active wounds." when no wound is present, and the same for an EMPTY part map — DR sends this dialog only when injuries CHANGE, so an unhurt character may never receive one (B422) |
 | `<dialogData id="injuries"><progressBar id="health2" …/>` | Secondary health bar within the injury diagram UI | Parsed but currently not displayed separately (main health bar is authoritative) |
 | `<nav/>` | Frame marker sent before room-change data arrives | Silently consumed — room state updates when new component data arrives |
 
@@ -569,6 +569,7 @@ Displayed alongside or below the vitals. All state comes from `<indicator>` XML 
 | Bleeding | `<indicator id="bleeding">` | Red dot when bleeding |
 | Webbed | `<indicator id="webbed">` | Chain icon when webbed |
 | Stunned | `<indicator id="stunned">` | Shape/border change (respects Epilepsy Safe mode — never flashes) |
+| Unconscious | **no indicator tag** — the `U` in the status prompt (`SUP>`), decoded in StormFrontParser and re-emitted as a synthetic `unconscious` indicator | Shares the combat slot, ranked bleeding > unconscious > stunned > dead. Needs `set statusprompt` on, so it never appears for a player without it (B426) |
 | Dead | `<indicator id="dead">` | Skull — hard to miss |
 
 ### 5.3 Vital Bar Display
@@ -586,7 +587,9 @@ Displayed alongside or below the vitals. All state comes from `<indicator>` XML 
 
 Roundtime and cast time are displayed as **strips embedded inside the command input box**, along the top and bottom edges respectively. This keeps timing information visible at the exact point of focus — the place where your eyes already are when you type commands.
 
-Two display styles are available (Settings → RT / CT Timer Style):
+**Each strip names itself on hover (v0.19.7, B333)** — "Roundtime", "Cast time", "Aim" — because the three differ only by colour. For that the bars and chips take the pointer (they were `pointer-events: none`); `.cmd-input-wrap` forwards a press that lands on a strip to the input, so clicking the bar still starts typing. The full-width `.cmd-chips` row stays pointer-transparent and each chip shows the row's title.
+
+Two display styles are available (Settings → Roundtime / Cast Time Timer Style — labelled "RT / CT Timer Style" before v0.19.7):
 
 **Bar style** — a single draining strip that shrinks left-to-right as time expires:
 ```
@@ -1098,13 +1101,25 @@ The Display section includes a **live font preview** — a bordered box showing 
 
 | Section | Contains |
 |---|---|
-| **Display & Accessibility** | Font family, font size, line height, live preview, large print, high contrast, auto-link URLs, epilepsy safe, colorblind picker |
+| **Display & Accessibility** | Font family, font size, line height, live preview, large print, high contrast, auto-link URLs, epilepsy safe, colorblind picker, **wordmark effect** (§8.3) |
 | **Theme** | Theme picker, theme editor, My Themes, import/export |
 | **Panels & Layout** | Status bar position, icon bar position, RT bars in command bar, panel defaults |
 | **Command Bar** | RT display, cast time display, command history size |
 | **Highlights** | Highlight rules, groups, import/export |
 | **Connection** | Default credentials, Lich paths, SGE fallback settings |
 | **AI** | Master enable, per-capability BYO key (text=Claude) + Test, model tier (Haiku/Sonnet/Opus/Fable), **Response voice** (persona), per-feature consent, cost meter (§10) |
+
+### 8.3 Wordmark effect (F114, v0.19.7)
+
+The "Lichborne" wordmark in the top-left can wear a text effect, chosen per character in **Settings → Display → Wordmark effect**. Default **Static**, which is byte-identical to the pre-feature rendering: the `--accent` / `--accent-dim` two-tone the brand has always had.
+
+**Why per character and not per theme.** A theme would be the intuitive home — it already owns the brand's colours — but `lichborne.theme` is a single UNSCOPED global key (themes.ts), and §9 / pitfall #56 record that an active character's theme is rewritten from that global on every save. A theme-owned effect would therefore be the same for everyone, which defeats the entire point: telling your characters apart at a glance while multi-boxing. The split that survives is **the theme decides what colour the brand is; the setting decides what it does with that colour.** The effect's own colour vars are fed `var(--accent)` / `var(--accent-dim)`, so Glow, Gradient, Shimmer and Neon stay theme-derived and pick up the high-contrast overlay (which sets `--accent: #ffff00`) for free. Rainbow, Gold, Fire and Frost carry fixed palettes by nature.
+
+**One effect system, not two.** The vocabulary is `HighlightEffect` — the same twelve values highlights and contact templates use — so the `hl-fx-*` CSS in highlights.css is written once and the wordmark inherits its epilepsy-safe freeze automatically (motion stops, colour stays: UX #9b). [brandMark.tsx](src/renderer/utils/brandMark.tsx) is the single painter, called by BOTH the app bar and the Settings preview so the two cannot drift (the B281 lesson). Two effects render the word as one run rather than the two coloured halves: colour-replacing ones, which paint the glyphs themselves, and per-letter ones — which keep their colours but carry the `--i` stagger across the split via `effectContent`'s `startIndex`, because restarting at zero on the second span breaks the wave mid-word (B427, pitfall #147).
+
+**Reaching app-level chrome.** The app bar cannot read per-session state (pitfall #57), so the value rides `SessionStatus.brandEffect`, pushed by a dedicated GameWindow effect and read for the ACTIVE session — the same "reflect via `useSessions`" route the connection dot and the panel flags use. It is a scalar, so it works with the equality gate, and it was added to that gate (pitfall #130). Persistence needs no new plumbing: it is a field on `settings`, so it rides `scopedKey(character,'settings')` → `state:` → YAML, and transfers inside the existing Display & Accessibility category.
+
+**No slash command, by design** (Principle #11, asked and recorded rather than skipped). It is a one-time cosmetic pick set from a dropdown, matching the `timerStyle` / `lineHeight` / `textWeight` precedent — none of which has a command either. `/theme` exists because switching themes is a frequent in-play act; choosing a wordmark treatment is not. Revisit if testers ask to flip it mid-session.
 
 ---
 
@@ -1735,9 +1750,9 @@ Character tabs live in the **main toolbar row** — inline with the existing Deb
 
 Tabs anchor to the left. Toolbar buttons anchor to the right. The `+` button sits between the last tab and the toolbar buttons. When tabs exceed available width they scroll horizontally.
 
-> **Realized in v0.10.0 (top-chrome redesign, Phase 2c).** This single-row design — which the implementation had drifted away from (a separate character-tab row *plus* a per-session toolbar row) — is now the app-level [AppBar.tsx](src/renderer/components/AppBar.tsx): **brand + connection dot · character tabs · action buttons · Disconnect/Login**, the layout sketched above. The per-session `game-toolbar` was removed (reclaiming a full row of game text). Because the bar is app-level, its buttons act on the **active** session through the `menu-action` / `lichborne:session-action` dispatch bridge, and the **Mode switcher moved to the Icon Bar** (it needs the per-session GroupsContext). The less-used buttons (Debug/Logs/Contacts/Theme) are tucked under a static **"More ⋯"** dropdown so the bar survives narrow windows without width-measurement; every button whose panel is open glows `--active`, driven by the active session's open-panel snapshot surfaced through `SessionStatus` (a `panel*` flag per toggle button). See CLAUDE.md "Top chrome: app-bar, native menu & the menu-action bridge" + pitfall #57.
+> **Realized in v0.10.0 (top-chrome redesign, Phase 2c).** This single-row design — which the implementation had drifted away from (a separate character-tab row *plus* a per-session toolbar row) — is now the app-level [AppBar.tsx](src/renderer/components/AppBar.tsx): **brand + connection dot · character tabs · action buttons · Disconnect/Reconnect**, the layout sketched above. The per-session `game-toolbar` was removed (reclaiming a full row of game text). Because the bar is app-level, its buttons act on the **active** session through the `menu-action` / `lichborne:session-action` dispatch bridge, and the **Mode switcher moved to the Icon Bar** (it needs the per-session GroupsContext). The less-used buttons (Debug/Logs/Contacts/Theme) are tucked under a static **"More ⋯"** dropdown so the bar survives narrow windows without width-measurement; every button whose panel is open glows `--active`, driven by the active session's open-panel snapshot surfaced through `SessionStatus` (a `panel*` flag per toggle button). See CLAUDE.md "Top chrome: app-bar, native menu & the menu-action bridge" + pitfall #57.
 >
-> **Narrow-window degradation ladder (B178, v0.13.4).** The window `minWidth` dropped 900 → **480** (users tile multiple windows — 4 columns on a 1920 monitor, Morress), so the bar degrades via em-based **container-query** tiers on `.app-bar` (em in a container query resolves against the bar's `--game-font-size` anchor, so the collapse points track the user's font setting — px media queries fired too late at large fonts): at ≤ 71em the wordmark hides (the status dot + window title still identify the app) and buttons compact; at ≤ 58em the five inline action buttons (Panels/Maps/Automations/Lich/Settings) fold into the ⋯ More menu — the inline buttons AND their menu twins are always rendered, with CSS deciding visibility (`app-bar-collapsible` / `app-bar-more-item--overflow`), preserving the no-width-measurement stance. **Disconnect/Login never collapses** (destructive/critical actions don't hide in menus). The tab strip's overflow scrollbar is themed via a slim `::-webkit-scrollbar` rule — its old `scrollbar-width: thin` is now implemented by Chromium and per spec DISABLES webkit scrollbar styling (the standard-property alternative is `scrollbar-width` + `scrollbar-color` together, the pattern the map/panel-frame scrollbars already use). **B179 (v0.13.5) follow-up:** `container-type` applies layout containment, which made the bar its own STACKING CONTEXT and buried the More ⋯ dropdown under the game area — the bar now carries `position: relative; z-index: 70` (game content + WindowLayer sit at z ≤ 60, overlays/modals start at 100) to lift its whole context. Don't portal the menu instead: the `--overflow` items are gated by the bar's own `@container` query, and a portaled menu is no longer a descendant. Audit popovers any time an element becomes a query container.
+> **Narrow-window degradation ladder (B178, v0.13.4).** The window `minWidth` dropped 900 → **480** (users tile multiple windows — 4 columns on a 1920 monitor, Morress), so the bar degrades via em-based **container-query** tiers on `.app-bar` (em in a container query resolves against the bar's `--game-font-size` anchor, so the collapse points track the user's font setting — px media queries fired too late at large fonts): at ≤ 71em the wordmark hides (the status dot + window title still identify the app) and buttons compact; at ≤ 58em the five inline action buttons (Panels/Maps/Automations/Lich/Settings) fold into the ⋯ More menu — the inline buttons AND their menu twins are always rendered, with CSS deciding visibility (`app-bar-collapsible` / `app-bar-more-item--overflow`), preserving the no-width-measurement stance. **Disconnect/Reconnect never collapses** (destructive/critical actions don't hide in menus). The tab strip's overflow scrollbar is themed via a slim `::-webkit-scrollbar` rule — its old `scrollbar-width: thin` is now implemented by Chromium and per spec DISABLES webkit scrollbar styling (the standard-property alternative is `scrollbar-width` + `scrollbar-color` together, the pattern the map/panel-frame scrollbars already use). **B179 (v0.13.5) follow-up:** `container-type` applies layout containment, which made the bar its own STACKING CONTEXT and buried the More ⋯ dropdown under the game area — the bar now carries `position: relative; z-index: 70` (game content + WindowLayer sit at z ≤ 60, overlays/modals start at 100) to lift its whole context. Don't portal the menu instead: the `--overflow` items are gated by the bar's own `@container` query, and a portaled menu is no longer a descendant. Audit popovers any time an element becomes a query container.
 
 **Tab anatomy (left to right):**
 
@@ -1770,7 +1785,7 @@ Lower-priority conditions are still active in-game, just not surfaced on the tab
 
 **Health % is always visible** (no skull-replaces-health behavior — `💀` lives in the icon slot; health % naturally goes red at low values which already communicates the death state).
 
-**Disconnect is conveyed purely by tab styling** (dim + italic) — no separate disconnect glyph. The last-known icon stays visible so a player can see what state a character was in when they dropped. Reconnect happens via the existing toolbar Login button on the active tab.
+**Disconnect is conveyed purely by tab styling** (dim + italic) — no separate disconnect glyph. The last-known icon stays visible so a player can see what state a character was in when they dropped. Reconnect happens from the app bar's **Reconnect** button for the active tab (F108, v0.19.7 — it replaced a Login button that closed the tab), or from the tab or card right-click menu; all three reconnect in place, keeping the scrollback.
 
 ### 13.5 Tab State Matrix
 
@@ -1793,7 +1808,7 @@ Lower-priority conditions are still active in-game, just not surfaced on the tab
 
 ### 13.6 Launcher & Character Selection (v0.8.0)
 
-The launcher ([Launcher.tsx](src/renderer/components/Launcher.tsx)) is the primary login surface. It renders in two contexts: **full-page** (`session.length === 0`, returns when the user logs everyone out) and **modal-compact** (clicked + while logged in, opens the same launcher inside `.add-character-modal`). The two are the same component with a `compact` prop.
+The launcher ([Launcher.tsx](src/renderer/components/Launcher.tsx)) is the primary login surface. It renders in two contexts: **full-page** (`session.length === 0`, returns when the user logs everyone out) and **modal-compact** (clicked + while logged in, opens the same launcher inside `.add-character-modal`). The two are the same component with a `compact` prop. In the modal, the launcher sits inside `.add-character-panel`, which wears the house modal chrome (UX standard #10, the About Lichborne look; F113, v0.19.7): a `--modal-scrim` backdrop, the `--modal-bg`/`--modal-border`/`--modal-radius`/`--modal-shadow` surface, an accent header band titled "Connect a character" with the ✕, then the launcher as the scrolling body — it no longer draws its own panel, height cap or "Pick a character to connect" heading. The ✕ lives in the header rather than inside the Launcher because the launcher is the scroll container (B321: it once sat against the full-window backdrop, in the window's corner, where nobody saw it). **As of v0.19.7 the compact launcher offers the same ways in as the full one (F110):** the Teams section, pinned teams in Favorites, and `LauncherTopBar` in its `compact` mode — ⟲ Reconnect Last · ⚡ Team Login · ⇋ Attach. Account Remove, Transfer and Lich Setup stay full-screen only: the first is destructive over a live session, the others are setup tools rather than ways in. A team launch from here closes the + window (`runBulkConnect`). Every cne-* dialog those controls open is portaled to `document.body`, so `.cne-backdrop` sits at z-index 1600, above the + modal (B322). "+ Add account" is a full-width, account-row-height dashed row in both launchers (F111). The launcher seeds its character list from the last one this window loaded (`lastLoadedCards`, module scope), so the + modal — which mounts a fresh Launcher on every open — shows the list at once and refreshes it in the background; its loading and empty states also wear the compact chrome (B323).
 
 **Section structure (top-down):**
 
@@ -1987,6 +2002,10 @@ polish standard #11 for the generalised rules.
 
 Tab-switch chords (`Ctrl+1..9`, `Ctrl+Tab`) **also refocus the new tab's command bar** after the switch (v0.7.1). The app-level handler waits one animation frame after `setActive(...)` (React commit needs to land first so the new tab's `.session-shell` isn't `display:none` anymore) and focuses `.session-shell:not(.session-shell--hidden) .command-input`. Without this you'd have to click the new bar before typing. `Ctrl+Shift+Enter` is excluded — focus should land in QuickSend, which auto-focuses its own input.
 
+**Esc closes the topmost dialog — exactly one (v0.19.7, B341).** Every dialog registers through `useEscapeClose` ([hooks/useEscapeClose.ts](src/renderer/hooks/useEscapeClose.ts)): a stack in mount order, served by ONE `window` keydown listener in the bubble phase that closes the most recently opened live dialog and stops the key. Bubble-at-window is deliberate: it is the last stop a keydown makes, so anything nearer the target — a search box clearing its text, the slash palette, a context menu or dropdown inside the dialog, the Quit confirmation's capture-phase handler — handles Esc first, and the stack skips the key when one of them marked it `defaultPrevented`. Esc does what the dialog's ✕ does. A dialog rendered inline (not portaled) passes a ref so a copy sitting in a hidden character tab is skipped. Before this, each dialog bound its own document listener: several had no Esc at all, and two didn't stop propagation, so one press could close two dialogs. Rules for new code: CLAUDE.md pitfall #141.
+
+**Every control is reachable by keyboard (v0.19.7, B335).** Clickable rows, tabs and cards that aren't real `<button>`s spread `pressable()` ([utils/pressable.ts](src/renderer/utils/pressable.ts)) for a role, a tab stop and Enter/Space activation; the global `:focus-visible` ring in global.css draws the focus indicator. Settings' on/off switches are real `role="switch"` buttons, so clicking their label text works too. Rules for new code: CLAUDE.md pitfall #142.
+
 ### 13.8 Quick-Send Overlay
 
 A floating input that sends a command to any character without switching tabs. Useful for boxing — tell your Empath to heal without leaving your main character's screen.
@@ -2025,11 +2044,22 @@ Triggered by `Ctrl+Shift+Enter`. Dropdown lists all connected characters. Sends 
 - Lives in `win.on('close')`, so the X, Cmd+Q, File → Quit and taskbar close all inherit it — guarding only the X would be the version that drifts.
 - **The guard flag is set INSIDE the confirm callback, never before it.** `appClosing` (and `closingWindows` for secondaries) short-circuits re-entrant closes; setting it before a confirm the user then cancels would make every later close return early and **the app could never be quit again**. This is pitfall #114's rule extended: a handler that defers a lifecycle event owns completing it, *including* deciding not to.
 - **Update installs bypass it** (`quitAlreadyConfirmed`). `autoUpdater.quitAndInstall()` routes through `app.quit()` → the close handler, so without the bypass clicking "Install update" would raise a quit dialog the user already answered — and cancelling it would silently abandon the install with the update left staged.
-- **Rendering: themed modal with a native fallback.** The dialog is the canonical About chrome (UX #10) via `--modal-*` tokens, at z 10000 so the app's transient popovers (9999) can't paint over a dialog main is blocked on. Because main **waits on a renderer answer**, a dead renderer would otherwise make the app unquittable — so main requires an **ack** within `QUIT_CONFIRM_ACK_MS` and falls back to a native `dialog.showMessageBox` if it doesn't arrive. The timeout times the ACK, not the decision, so a slow human never stacks two dialogs. The ack is sent from the effect that *receives* the request, not from the modal — it is a liveness signal, not a paint signal. See pitfall #128 for the rest of the failure modes (reload-after-ack, same-document navigation, destroyed-window fallback).
+- **Rendering: themed modal with a native fallback.** The dialog is the canonical About chrome (UX #10) via `--modal-*` tokens, at z 10000 so nothing else can paint over a dialog main is blocked on (context menus top out at 2100; the full tier map is in CLAUDE.md pitfall #118(d)). Because main **waits on a renderer answer**, a dead renderer would otherwise make the app unquittable — so main requires an **ack** within `QUIT_CONFIRM_ACK_MS` and falls back to a native `dialog.showMessageBox` if it doesn't arrive. The timeout times the ACK, not the decision, so a slow human never stacks two dialogs. The ack is sent from the effect that *receives* the request, not from the modal — it is a liveness signal, not a paint signal. See pitfall #128 for the rest of the failure modes (reload-after-ack, same-document navigation, destroyed-window fallback).
 - The dialog is **async**, not `showMessageBoxSync`: main owns every session socket, so a blocking dialog would stall game processing for every character while it sat open.
 - Cancel is focused on mount, Esc cancels, and backdrop-click resolves to Cancel — every accidental input lands on the safe side.
 
 **Tab right-click menu (v0.11.6).** The character-tab context menu is the per-character action surface. It lists only the **actionable** options (no greyed rows): **Reconnect** (disconnected tab) XOR **Disconnect** (connected tab), **Open in New Window** (when the window holds >1 character), **Move to Main Window** (only in a decoupled/secondary window — `useRoster().isPrimary === false`). Close is intentionally omitted (the tab's × covers it). **Disconnect** calls `window.api.disconnect(sessionId)` directly rather than the `lichborne:session-action` bridge, because the bridge only reaches the *active* GameWindow and the menu must act on the right-clicked (possibly background) tab. **Reconnect** (App `handleReconnectTab`) destroys the dead session then re-runs the connect flow; because a GameWindow is keyed by `characterId` (not `sessionId`), it reconnects **in place** — the window stays mounted (scrollback preserved) and just receives the new `sessionId`. That makes resetting the GameWindow's `dropped`/`disconnecting` flags on the `sessionId` *prop change* (not on the racy `onConnectionStatus` 'Connected' event) load-bearing for the tab to refresh to "connected" — see CLAUDE.md pitfall #69. A per-tab spinning ⟳ ("Reconnecting…", `prefers-reduced-motion`-aware) is driven by an App-owned `reconnectingIds` set, since the launcher's connecting overlay isn't on screen for a tab reconnect.
+
+**Reconnect from the app bar (F108, v0.19.7).** When the ACTIVE character is disconnected, the app bar's right-hand button reads **Reconnect** and calls the same `handleReconnectTab` as the tab menu, so it too reconnects in place and keeps the scrollback. It replaced a **Login** button that destroyed the session, removed the tab and opened the picker — the obvious control threw away the scrollback while the good path sat in a right-click menu. While a reconnect is in flight it reads "Reconnecting…" and is disabled (driven by the same `reconnectingIds` set as the tab spinner). Logging in a *different* character is the + tab. **No slash command, by decision:** reconnect is already reachable three ways (app bar, tab menu, Overview card menu), all of them one click from a dropped character. A `/reconnect` would be a cheap follow-up if keyboard-only users ask for it.
+
+**Windows remember their size, position and maximized state (F109, v0.19.7).** Every window used to open at a fixed 1400×900.
+- **Storage:** `{userData}/window-state.json`, `{ version: 1, windows: { <key>: { x, y, width, height, maximized } } }`. Machine-local on purpose, never a profile or `_shared.yaml`: it describes this machine's monitors, and a profile moved to another machine must not carry coordinates for screens it doesn't have (the genie-cache / ai-keys stance). Deliberately NOT a Transfer category. Written with mode 0600 (B366d).
+- **Fullscreen (B362):** capture is skipped while `isFullScreen()` and runs again on `leave-full-screen`, so the saved rect is always the last WINDOWED one — macOS reports a screen-sized rect mid-transition.
+- **Linux position creep (B360):** some X11 window managers report a window's position offset by its decorations, so a window restored at (x, y) reports (x+dx, y+dy) and the next save drifts it. Linux only: after a restored window is shown (`CREEP_SETTLE_MS` 300ms after the show event, `CREEP_FALLBACK_MS` 2000ms if none is seen), `trackWindowState` compares requested with reported position; a non-zero difference within `CREEP_MAX_PX` (64) on both axes is stored as an offset and subtracted from every later save. A larger difference is a clamp or Wayland's 0,0 and is ignored. A no-op when there is no creep; unverified on real X11.
+- **Keys:** `main` for the primary window; `char:<characterId>` for a decoupled window, named after the character whose move opened it, so decoupling that character again reopens its window where it was. A window with no key (no session meta) is simply not tracked.
+- **Validation** ([windowBounds.ts](src/shared/windowBounds.ts), pure, rules harness §M): a saved position is honoured only when ≥100px of the window's top 32px strip lands on an attached display's work area (8px tolerance above it); otherwise the window opens centred with its size kept. A size bigger than its display is clamped, with the minimum upward nudge that clamp needs. A window straddling two monitors is **left alone** — pulling it onto one screen would move windows people placed on purpose.
+- **Capture, then flush.** `windowState.ts` captures `getNormalBounds()` + `isMaximized()` into memory on every move / resize / (un)maximize and on `close`, debounces the file write (500ms, write-then-rename), and flushes on `will-quit`. Capturing at event time is load-bearing: shutdown and the re-home auto-close `destroy()` windows, which emits no `close` event. `getNormalBounds()` rather than `getBounds()` so a maximized, minimized or fullscreen window saves its restore rect (a minimized window's `getBounds()` is -32000 on Windows).
+- A missing, unreadable or unknown-version file reads as empty and is overwritten by the next save — a disposable geometry cache, not user content.
 
 ### 13.10 Per-Character Memory
 
@@ -3061,6 +3091,8 @@ The banner is rendered at the `App` level (above both login and game screens) so
 **`app-update.yml`** — must be bundled manually via `extraResources` in `package.json`. electron-builder does not generate it for portable builds; without it `electron-updater` cannot find its GitHub config and fails silently.
 
 **Diagnostics:** `updater-log` IPC channel forwards checking/error/no-update events to the renderer console. Open DevTools → Console to see `[auto-updater]` messages ~3 seconds after launch.
+
+**User-facing notices ride the same channel (B356/B364, v0.19.7).** A message main prefixes with exactly `[notice] ` is shown by App as an **"Updates" toast** instead of a console line; everything else stays diagnostics. Two senders today: the macOS menu check ("auto-update is unavailable on macOS … download from GitHub Releases") and a MANUAL check (Help menu or the launcher's button, `check-for-updates` passes `manual: true`) that finds no active updater — a non-AppImage Linux run, a dev build — which says this copy can't update itself. The automatic startup check never raises a notice. The prefix is the contract: change it in main and App together.
 
 ### 18.4.1 Dual-Feed Update Check — the Elanthia-Online Handover
 
@@ -6808,8 +6840,13 @@ of new infrastructure — §33's `WindowLayer` is gated to free mode only):
 
 An **"Experiences"** button in the app bar (the Maps button is the precedent), opening a picker of
 registered Experiences with open/close toggles. Routed like every app-bar action through the
-session-action bridge to the active GameWindow; the button gets a `SessionStatus.panel*`-style glow
-flag when any Experience is open (the established reflect-via-snapshot pattern, pitfall #57).
+session-action bridge to the active GameWindow; the button gets a `SessionStatus.panel*`-style
+open flag (the established reflect-via-snapshot pattern, pitfall #57) **while the shelf is open —
+the same rule as every other app-bar button: lit means "clicking this closes what it opened"**.
+Until v0.19.7 it was lit whenever ANY Experience was showing, floating or docked as a panel tab;
+a docked tab is permanent layout, so the button never went dark, and once B345 gave the open state
+a real accent ring it read as stuck (B346). The "is an Experience live?" question still drives the
+§35.6 scene-work gate (`expAnyOpen`) — it just no longer drives the button.
 Closing an Experience never loses anything — reopen it from the shelf (the "updates and accidents
 never break what you built" promise). Right-click garnish ("Add Combat HUD" from a relevant panel)
 is optional, later, and purely a shortcut to the same add.
@@ -7684,7 +7721,21 @@ across a full day.
      certainty the two-stage model exists to avoid. `spellPrevRef` is nulled in the same
      sessionId-change effect that already resets the sky-sync flags. `spellMaxRef` is deliberately
      KEPT — the learned bar ceilings are facts about the SPELL, not about the connection.
-   - **THE NOTE ROW ADDS WHAT THE LABEL DOES NOT SAY** — `spellNoteText`. A first cut rendered the
+   - **ONE LINE PER CELL, ALWAYS (v0.19.7, B411).** The note row below is gone.
+     - **The problem:** a grid row takes the height of its tallest cell, so a single cell carrying a
+       note (Sekmeht's screenshot: a spent cell's leftover "Fading") stretched every cell beside it.
+     - **The slot:** `spellSlotText` puts the note in the time slot when it says more than the label.
+       That covers fading, percent and unknown readings, where the note is the fuller statement of
+       the same reading.
+     - **The aside:** a timed effect keeps its ticking minutes, with a stated charge level beside
+       them (`spellSlotAside`).
+     - **Spent cells:** a spent cell keeps "ended" and its clear-out countdown. Its stale reading
+       moves to the tooltip as "last reported as …".
+     - **Fixed height:** the slot is capped with an ellipsis, and a barless cell reserves the bar's
+       space (`.sm-bar--none`), so every cell is the same height whatever it holds.
+     - **Kept separate on purpose:** DR's own "fading" and our `<1m` countdown still read
+       differently. One is the game's word and the other is our clock (the two-stage rule).
+   - **(v0.19.6, now feeding the slot) THE NOTE ADDS WHAT THE LABEL DOES NOT SAY** — `spellNoteText`. A first cut rendered the
      parenthetical unconditionally, so a `fading` reading printed the word TWICE (label "fading",
      note "Fading") and paid a whole extra row for it, which is what made those cells look
      oversized beside their neighbours (Sekmeht's `Tenebrous Sense (Fading)` screenshot). The test
@@ -7718,7 +7769,7 @@ across a full day.
      pure, harnessable, and free of a dependency `experiences.ts` does not otherwise need.
    - **⚙ layers, one per visual layer (eleven):** `bars`, `urgency` (the traffic light), `untimed`
      (the quiet no-countdown kinds — never fading), `pulse`, `badges` (the skill letter chips),
-     `header` (the "Active Spells" strip; off reclaims a row in a narrow tab), plus the two v0.19.6
+     `header` (the "Spell Monitor" title strip, which read "Active Spells" before B392; off reclaims a row in a narrow tab), plus the two v0.19.6
      additions — `expired` (keep a spent effect on screen, greyed, counting down to its own
      removal) and `updated` (the feed-status strip) — and **three that are `defaultHidden` /
      opt-in (Sekmeht, 2026-09-06)**: `abbrev` (ECRY rather than Eillie's Cry),
@@ -8375,13 +8426,14 @@ sweep is worth doing. See pitfall #125.
 v0.18.0 makes Lichborne cross-platform. **Windows x64 is the stable platform; Linux x64 (AppImage) and macOS arm64 (dmg+zip) ship as labeled BETAS.** The macOS build is deliberately **UNSIGNED** — a free-project decision (no Apple Developer account; the $99/yr Developer ID cert is revisited only if Mac demand proves out). Consequences of unsigned Mac builds, all handled explicitly:
 
 - First launch is blocked by Gatekeeper (macOS 15+ removed the right-click bypass). **CORRECTED v0.18.1 (B238, ohbeanz — the first real Mac tester):** the expectation written here was the friendly *"unidentified developer → Open Anyway"* prompt. What actually happens on Apple Silicon is **"Lichborne is damaged and can't be opened. You should move it to the Trash."** — a dead end with no Open Anyway button, and phrasing that tells the user to delete a perfectly good download. Two causes, both now addressed: **(a)** Apple Silicon requires *every* executable to carry a signature and the kernel refuses an unsigned arm64 binary, but `CSC_IDENTITY_AUTO_DISCOVERY=false` made electron-builder skip signing entirely — so [build/afterPack.cjs](build/afterPack.cjs) now **ad-hoc signs** (`codesign --sign -`) the packaged app before the dmg/zip are built, and FAILS the build if that errors rather than shipping an unrunnable artifact; **(b)** the download carries `com.apple.quarantine` regardless, so the docs now lead with `xattr -cr /Applications/Lichborne.app` instead of an Open Anyway step that may never be offered. **Whether ad-hoc signing alone converts "damaged" into the recoverable Open Anyway prompt is UNVERIFIED** — no Mac here, and CI can build but cannot exercise Gatekeeper — so the docs give the `xattr` route as the primary instruction and a tester has to confirm the rest.
-- **Auto-update is OFF on darwin** (Squirrel.Mac refuses unsigned apps): `setupAutoUpdater` returns early, and the menu's Check for Updates answers with a download-from-GitHub notice instead of erroring (main.ts). Windows (NSIS + latest.yml) and Linux (AppImage + latest-linux.yml) auto-update normally.
+- **Auto-update is OFF on darwin** (Squirrel.Mac refuses unsigned apps): `setupAutoUpdater` returns early, and the menu's Check for Updates answers with a download-from-GitHub notice instead of erroring (main.ts). Windows (NSIS + latest.yml) and Linux (AppImage + latest-linux.yml) auto-update normally. **That notice used to be invisible (B356)** — it went out on `updater-log`, which the renderer only printed to the console, so the menu item appeared to do nothing. It now carries the `[notice] ` prefix and shows as an "Updates" toast (§18.4, Diagnostics).
 - When a cert ever lands: add cert + notarytool secrets to the mac CI job, drop `CSC_IDENTITY_AUTO_DISCOVERY=false`, un-gate the darwin updater. Nothing else changes — the zip artifact Squirrel.Mac needs is already published.
 
 ### 41.2 Platform detection & defaults
 
 - Main: `process.platform`. Renderer: `window.api.platform` (preload exposes it synchronously) → `IS_MAC`/`IS_WINDOWS` in lichSettings.ts.
-- Per-platform `DEFAULT_RUBY`/`DEFAULT_LICH` (lichSettings.ts, single-sourced into profile.ts's shared-profile defaults): Windows keeps `C:\Ruby4Lich5\...`; Linux `/usr/bin/ruby` + `~/Lich5/lich.rbw`; Mac `~/.rbenv/shims/ruby` + `~/Lich5/lich.rbw`.
+- Per-platform `DEFAULT_RUBY`/`DEFAULT_LICH` (lichSettings.ts, single-sourced into profile.ts's shared-profile defaults): Windows keeps `C:\Ruby4Lich5\...`; Linux and Mac have an EMPTY `DEFAULT_RUBY` (a plausible system Ruby would pin users below the Ruby 4 that Lich 5.18+ requires — pitfall #115) and `~/Lich5/lich.rbw`. Discovery fills the Ruby in.
+- **Ruby discovery off Windows (B355, v0.19.7).** Candidates, in order: the rbenv shim, concrete rbenv versions newest-first, the asdf and mise shims, Homebrew's KEG paths (`/opt/homebrew/opt/ruby/bin/ruby`, `/usr/local/opt/ruby/bin/ruby` — Homebrew Ruby is keg-only and not linked into `bin/`) ahead of the plain Homebrew bins, then on Linux `/usr/bin/ruby`; **macOS never offers `/usr/bin/ruby`** (Apple's system Ruby is 2.6). Discovery takes the first candidate that reports Ruby 4 or newer (`firstModernRuby`, `ruby -v` per probe, 8s total budget): the silent startup pass saves NOTHING if there is none, and an explicit Auto-detect offers a Ruby 4 when the configured one is older. Windows is unchanged — no `ruby -v` on its silent path.
 - **`~`-relative paths are expanded in MAIN ONLY** via `expandHome` (src/main/homePath.ts) at every lichPath/rubyPath consumption point: LichConnection.launch, sqliteReader's lich.db3 derivation, lichDirFrom (maps/scripts/profiles), discovery validation. The renderer can't know the home dir synchronously, so it stores/displays `~` literally. **Rule: a new main-side consumer of these paths MUST expandHome.**
 - **Never resolve bare `ruby` from PATH**: GUI apps launched from Finder/the dock (and some Linux launchers) don't inherit the shell PATH that makes rbenv shims resolve — always explicit absolute paths.
 
@@ -8396,7 +8448,7 @@ Probe lists mirror the official install docs (elanthia-online wiki; verified 202
 | darwin | ditto + `~/Desktop/Lich5` (behind `probeDesktop`) | ditto |
 
 - Both `~/Lich5` casings are probed — Linux filesystems are case-sensitive and the wiki itself mixes the two.
-- **`probeDesktop` opt-in**: touching `~/Desktop` fires the macOS privacy consent prompt. Only LichSetupFields' explicit **Auto Detect** passes it; App.tsx's silent startup discovery never does. Keep it that way — a privacy prompt at app launch reads as spyware.
+- **`probeDesktop` opt-in**: touching `~/Desktop` fires the macOS privacy consent prompt. Only LichSetupFields' explicit **Auto-detect** passes it; App.tsx's silent startup discovery never does. Keep it that way — a privacy prompt at app launch reads as spyware.
 - **Ruby version probe**: discovery runs `ruby -v` (best-effort, 3s timeout) and LichSetupFields warns below 4.0 — Lich 5.18+ hard-requires Ruby 4.0 and the Fedora wiki path installs the 3.x system Ruby (the predictable tester trap). Version-unknown is silent, never an error.
 
 ### 41.4 Input & UI conventions
@@ -8577,7 +8629,14 @@ The recipe lives in `:root` in [global.css](src/renderer/styles/global.css) so r
 
 **Converted:** About (reference), Edit Profile (`.cne-`), the launcher's account/Favorites panels, the whole Automations family (`.at-` shell + `.hp-` highlights/mutes/substitutes, `.trg-` triggers, `.ma-` macros/aliases, `.gm-` groups), Contacts (`.cp-`).
 
-**Still on their own chrome:** Panel Manager, Settings, Lich Dashboard, Session Log, Theme Picker/Editor, Import Wizard, Profile Transfer, Quick Send, AI Consent. Convert opportunistically when working in one; keep the list in global.css current. Deliberately NOT a big-bang sweep — each conversion needs its own inner-element audit, and doing twenty blind is how four light-theme regressions ship at once.
+**Completed in v0.19.7 (B400):** Panel Manager (now the Layout Manager), Settings, the Lich Dashboard, the Session Log, the Theme Picker/Editor, the Import Wizard, Profile Transfer, the Add Account wizard / Lich Setup, Quick Send, AI Consent, the Experiences shelf and the Maps overlay.
+
+The v0.18.0 caution against a big-bang sweep still applied:
+- The work was split by file across eight parallel fixers.
+- Each fixer did the inner-element audit for its own dialogs.
+- Every converted dialog is on the test plan's Classic Light list rather than assumed correct.
+
+The controls inside the dialogs moved onto shared primitives at the same time (43.7).
 
 ---
 
@@ -8596,6 +8655,64 @@ The tab and its six children also moved `rem` → `em`, each converted to render
 **Verified rather than eyeballed:** the chip was computed against all 21 built-in themes (composited over `--bg-raised`, the harder end of the bar gradient) — label contrast ≥ 6.17:1 everywhere, accent hairline perceptible everywhere, Barbarian the faintest (fill 1.05, hairline 1.14) because its accent sits close to the bar in luminance. That is inherent to the recipe, so the Automations tabs are equally subtle there; it is consistency, not a regression. Geometry was swept at font sizes 8→24: labels scale 9.06→27.19px, nothing clips the strip (`overflow-y: hidden`), and the active/inactive tabs keep identical heights and a shared baseline.
 
 **Rejected: the folder attachment.** An attach-to-the-edge look was built and measured landing exactly (active tab bottom = bar bottom, unclipped, shared baseline) — then reverted. The strip is `overflow-x: auto` with a 5px scrollbar; as soon as enough characters are open to overflow, that scrollbar claims the strip's bottom edge and lifts every tab off the border. The attachment would break precisely when a player has the most tabs open, which is the worst failure timing. Don't re-attempt without solving the overflow case first.
+
+### 43.7 Shared primitives and the control vocabulary (v0.19.7)
+
+The v0.18.0 tokens unified the *surface* of a dialog. The v0.19.7 UI/UX audit (B367–B410) found almost everything *inside* the surface still hand-rolled per dialog:
+- about eight primary-button looks and seven tab styles;
+- two input fills;
+- close buttons in six styles and two glyphs;
+- six different "are you sure?" patterns;
+- no editor that knew whether its draft had been saved.
+
+Four pieces of shared machinery replace them.
+
+**1. Control classes: [ui.css](src/renderer/styles/ui.css).**
+- **Controls:** `ui-btn` (plus `--primary`, `--danger` and `--ghost`, each combinable with `--sm`), `ui-close`, `ui-field` (plus `--code`), `ui-tabs` / `ui-tab`, `ui-section-label`, `ui-hint` and `ui-empty`.
+- **Dialog skeleton:** `ui-modal-backdrop` → `ui-modal` → `ui-modal-head` / `ui-modal-title` → `ui-modal-body` → `ui-modal-foot`.
+- **Tokens:** a dialog type scale (`--modal-title-size`, `--modal-text-size`, `--modal-label-size`, `--modal-hint-size`) and dialog paddings, plus `--radius-sm` / `--radius-md`, `--popover-shadow`, `--ui-transition` and `--code-font-family`.
+- **Globals:** checkboxes and radios take `accent-color: var(--accent)` everywhere, and `--color-warning` joined `--color-danger` / `--color-success` in darkBase.
+
+- **Load order is part of the design.** ui.css is imported FIRST in main.tsx, ahead of App and therefore ahead of every component stylesheet. That lets a component rule of equal specificity refine a primitive instead of losing to it. global.css loads after App, as it always has. Importing ui.css from global.css would make every primitive override every component rule it ties with.
+- The classes are rem-sized app chrome. In-game panels, which scale with the font setting, keep their own em-sized controls (pitfall #45).
+
+**2. One confirm: [confirm.ts](src/renderer/confirm.ts), [ConfirmHost.tsx](src/renderer/components/ConfirmHost.tsx) and [InlineConfirm.tsx](src/renderer/components/InlineConfirm.tsx).** There are exactly two shapes.
+- **`confirmAction()` / `confirmDelete(kind, name)`** is a themed dialog at the confirm tier (2080).
+  - It covers any destructive action on something that is not already open in an editor: a row ✕, Reset to defaults, Rebuild, a bulk remove, clearing a key.
+  - A danger confirm focuses Cancel, so a reflexive Enter destroys nothing. Esc and a backdrop click cancel.
+  - It is a module queue read through `useSyncExternalStore` with a cached snapshot (pitfall #129), mounted once per window beside ToastHost.
+- **`InlineConfirm`** is the two-step button for the item already on screen: an editor's own footer Delete, or a running script's Kill.
+  - Once armed it shows the question plus [Delete] [Cancel], with focus on Cancel.
+  - Esc disarms it without closing the dialog underneath.
+  - Game-area hosts pass their own em-sized button classes.
+- `window.confirm` is gone from the renderer. It freezes the whole window and ignores the theme, which is why `window.alert` was already banned.
+
+**3. The unsaved-changes guard: [useUnsaved.ts](src/renderer/hooks/useUnsaved.ts).**
+- **In an editor:**
+  - It keeps a baseline beside its draft and computes `dirty = differs(draft, baseline)`. The comparison ignores key order and undefined values.
+  - It guards its own selection switches with `confirmDiscard(dirty, …)` and reports upward with `useReportUnsaved(dirty)`.
+- **In a container dialog** (Automations, Contacts, the Lich Dashboard…), a `useUnsavedScope()` routes close, Esc, the backdrop and tab or scope switches through `scope.guard()`.
+- The prompt reads "Discard unsaved changes?", with **Discard changes** / **Keep editing**.
+
+**4. Focus follows the dialog stack: [useEscapeClose.ts](src/renderer/hooks/useEscapeClose.ts).** The Esc stack (pitfall #141) already knows when the first dialog opens and the last one closes, so it now owns focus too.
+- **Opening the first live dialog** blurs a covered command input (`.command-input`, `.ov-inputbar-input`). Enter can no longer reach the game from under a dialog (B375).
+- **Closing the last dialog** hands focus to the registered home when focus was left nowhere or in the app bar (B376). The home is the Overview's input bar in the Overview, otherwise the active command bar. App registers it through ConfirmHost's `homeFocus` prop.
+- **A confirm** hands focus back to whatever held it when the confirm opened — but only when the confirmed action left focus nowhere. That action often focuses something itself (a "+ New" focusing its name field), and restoring unconditionally stole focus back from it a frame later. A queued second confirm inherits the first one's return target, since the button the first would have returned to is about to be removed.
+
+**The control vocabulary (B407).** Every label follows these rules.
+
+| Rule | Detail |
+|---|---|
+| Case | Buttons, menu items, tabs, field labels and titles use sentence case. Feature names keep their capitals: Lich Dashboard, Automation Analytics, Quick Send, Team Login, Layout Manager, Session Log, Spell Monitor, Moons, Overview. Write section labels in sentence case even when CSS uppercases them. |
+| Ellipsis | Use "…" only on a control that opens another dialog or picker where you still have to act before anything happens. Icon toolbar buttons are the exception and take no "…" even when they open a dialog (the launcher's Team Login, Attach, Transfer and Lich Setup), following the usual toolbar convention (Sekmeht, 2026-09-15). |
+| Verbs | **Delete** permanently destroys saved data and is always confirmed. **Remove** takes something out of a place it can be put back (a tab, a window, a team member) and needs no confirm. **Clear** empties text or a field. **Reset** returns settings to their defaults and is confirmed. **Revert** discards edits to an existing item. **Kill** stops a running script. |
+| Dismissing | The ✕ is U+2715 with `title="Close" aria-label="Close"`. A footer dismiss says **Close** when nothing is pending and **Cancel** when it abandons an edit or operation. Never use "Done" for a plain dismiss. |
+| Creating | Write "+ New *thing*", naming the thing: + New highlight, + New trigger, + New contact, + New team. |
+| Footer order | [destructive] …spacer… [Cancel] [Primary]. |
+| Disabled | A disabled button's `title` says why ("Enter a pattern to save"). |
+| Tooltips | A tooltip adds a fact the control doesn't already show and never repeats the label (UX #8). |
+| Confirms | `confirmDelete` titles read "Delete *kind*?", with a **Delete** button. The inline form asks "Delete this *kind*?". |
+| Context menus | Content actions come first (Copy, Modify Text ▸, Trigger ▸, Show in Log), then a divider and the view toggles (Timestamps), then a divider, **Clear**, and **Close** last. In launcher menus the destructive items go last, after a divider. |
 
 ## 44. Connect Feedback & QuickSend Targeting (v0.18.0)
 
@@ -8658,6 +8775,7 @@ Main is single-threaded and owns **every** session socket, so any synchronous wo
 
 - **Session-log read handlers** (`search`, `list-streams`, export) gunzipped and split whole day-files synchronously — **2.9–3.4s of blocked main** over one tester's 23 day-files. Now `async` with a `yieldToLoop()` between day-files (the shape `buildCatchupDigest` already used), plus a per-day stream-set cache keyed on path+mtime+size, since a closed day-file is immutable and the Export builder re-scans on every date-range tweak.
 - **The trigger `log` action** did an `existsSync` + full open/write/close **per matching line**, ~500µs of blocked main each. Now buffered on the same 1s/100-record cadence the session log uses (2000 lines: ~1015ms → ~0.5ms).
+  - **Where the files go (B352, v0.19.7):** `{userData}/TriggerLogs/<name>`, in dev and packaged builds alike. It used to write beside the executable — inside the read-only mount on a Linux AppImage (every line silently dropped), inside the `.app` bundle on macOS, and into the install directory on Windows, the last two wiped by every upgrade (pitfall #3). TriggerLogs is top-level, not under `Logs/`, whose subfolders are per-character session-log folders. The name is user-authored and `$var`-interpolated, so `safeTriggerLogName` keeps the last segment after EITHER separator (a `\` survives `path.basename` off Windows), replaces control characters and the Windows-forbidden set with `_` (a `:` would otherwise write an NTFS alternate stream), and refuses an empty or all-dots name. The Triggers editor tells the user where the files land.
 
 **The rule this establishes: nothing on a per-line or multi-file path in main may be synchronous.** Buffer writes; yield between files on reads.
 
@@ -9548,12 +9666,25 @@ may not be the owner, so they appear on leaving — the same behaviour as editin
 background character's settings in Session view, and cards already re-map their
 own font inline, so only the summary strip and input bar are affected.
 
-**A card click SELECTS rather than navigates**, aiming the input bar at that
-character (accent ring); clicking empty grid space widens back to All. That is
-why the target lives in `overviewStore` rather than the bar — three surfaces now
-read and write it. **Selected is deliberately distinct from `--active`**: in this
-view they are different facts, since you can be typing at one character while
-another is the one you would land on.
+**A card click SELECTS rather than navigates**: it aims the input bar at that
+character (an accent ring — border only, no background tint, Sekmeht) AND makes it the active tab (B320), while you stay
+in the Overview — only the tab strip above moves. Clicking a tab already did the
+reverse (F101, below), so the two gestures are mirror images and there is ONE
+selection: whatever wears the ring is what you are typing at and the tab you will
+land on. Clicking empty grid space widens the bar back to All and leaves the
+active tab alone (it has to point at someone). That is why the target lives in
+`overviewStore` rather than the bar — three surfaces read and write it.
+
+**Cards do not mark the active tab (B320).** They used to wear an `--active`
+accent border and a "current" chip for the character Session view would show,
+deliberately distinct from the target ring. In the default All state that made
+one card look selected while the bar said everyone was — and beside a target
+picker, "current" reads as "selected". Renaming the chip was not enough: once
+clicks sync both ways it could only duplicate the ring or, under All, contradict
+the bar. The tab strip stays visible above the overlay and already answers "which
+tab". Accepted side effect: leaving the Overview lands on the last card clicked.
+
+**Highlighting shows who a send reaches (F112, v0.19.7).** While the Overview is open, the cards (GameWindow's `selected`) and the tab strip (`CharacterTabBar`'s `isHighlighted`) both highlight the input bar's TARGETS rather than `activeId`: the one selected character, or — under All characters — every CONNECTED one. The bar's All skips disconnected characters, so their cards and tabs stay unlit rather than claim to be targeted. The first cut lit nothing under All; Sekmeht preferred all-lit, which states the same fact affirmatively and makes "who will this reach?" answerable at a glance. `activeId` is not changed by any of this — it is still where Session view lands. The strip reads only `useViewMode` / `useOverviewTarget`, which return primitives, so card-digest publishes never re-render it. The tablist declares `aria-multiselectable` in the Overview, because All characters puts `aria-selected` on several tabs at once. Known trade-off: tab hover excludes active tabs (pitfall #107), so under All no lit tab shows a hover effect — the tabs' styling was deliberately left as-is (Sekmeht).
 
 **Leaving takes intent:** double-click a card, or "Go to <name>'s game session"
 from its menu — an OPTIONAL entry in the shared builder, so the character tab's

@@ -29,8 +29,10 @@ import ContextMenu from './ContextMenu'
 import type { GameEvent, TextLine, RoomState, InjuryState, FireLogEntry } from '../../shared/types'
 import { optionShown } from '../experiences'
 import type { HighlightRule } from '../highlights'
+import type { MuteRule } from '../mutes'
+import type { SubstituteRule } from '../substitutes'
 import RoomPanel from './panels/RoomPanel'
-import StreamPanel from './panels/StreamPanel'
+import StreamPanel, { joinMenuGroups } from './panels/StreamPanel'
 import ExpPanel from './panels/ExpPanel'
 import InjuriesPanel from './panels/InjuriesPanel'
 import DebugPanel from './DebugPanel'
@@ -38,6 +40,7 @@ import MapPanel from './panels/MapPanel'
 import ScriptListPanel from './ScriptListPanel'
 import type { ScriptRecord } from '../../shared/types'
 import { AI_STREAM, AI_STREAM_EMPTY, streamLabel } from '../aiConfig'
+import { activateOnKey, pressable } from '../utils/pressable'
 import '../styles/panel-frame.css'
 
 // v0.8.10 (B134-follow-up): `conversation` (singular) — matches the
@@ -95,6 +98,23 @@ const EMPTY_ARRAY: never[] = []
 const EMPTY_SET: Set<string> = new Set()
 const NOOP = () => {}
 
+// B398: the view controls' wording, defined ONCE. A docked panel / Experience
+// tab (below) and a floating Experience window (ExperienceLayer) used to
+// describe the same A− / A+ / ⚙ in different words. The tooltip adds what the
+// glyph can't say: the change is local to this view, not the global font.
+export const VIEW_CONTROLS = {
+  smaller: { label: 'Smaller text', tip: 'Smaller text here only — your global font size is unchanged' },
+  larger:  { label: 'Larger text',  tip: 'Larger text here only — your global font size is unchanged' },
+  layers:  { label: 'Choose what this scene shows', tip: 'Choose what this scene shows' },
+} as const
+
+// Tab types backed by a text buffer — the ones Clear and Timestamps mean
+// something for. Room / Experience / Injuries / Map / Lich Scripts / an
+// Experience tab render state, so both would be silent no-ops there (B391).
+const STREAM_TAB_TYPES: ReadonlySet<PanelType> = new Set<PanelType>([
+  'thoughts', 'arrivals', 'conversation', 'deaths', 'spells', 'familiar', 'inv', 'log', 'combat', 'custom',
+])
+
 export function makeTab(type: PanelType): TabDef {
   return { id: type, type, label: PANEL_LABELS[type] }
 }
@@ -143,6 +163,12 @@ interface Props {
   onClearStream?: (streamId: string) => void
   onHighlight?: (rule: HighlightRule, testText?: string) => void
   onTrigger?: (pattern: string) => void
+  // B381: the rest of the game window's text menu, for stream panels. Ride
+  // sharedFrameProps (B193) as GameWindow's stable useCallbacks and pass
+  // straight through to the memoized StreamPanel untouched (pitfall #82c).
+  onMute?: (rule: MuteRule) => void
+  onSubstitute?: (rule: SubstituteRule) => void
+  onShowInLog?: (text: string) => void
   injuryState?: InjuryState
   tabs: TabDef[]
   activeId: string
@@ -206,6 +232,7 @@ export default function PanelFrame({
   expFocus = 'None', pinnedSkills, onFocusChange, onTogglePin,
   onSendCommand, autoLinkUrls = true, webLinkSafety = true,
   debugEvents, onClearDebug, rawXmlLines, onClearRawXml, fireLog, onClearFireLog, onGotoFireRule, onClearStream, onHighlight, onTrigger,
+  onMute, onSubstitute, onShowInLog,
   injuryState = {},
   tabs, activeId, onTabsChange, onActiveChange,
   discoveredStreams = [], streamTitles = {}, unreadIds,
@@ -225,6 +252,31 @@ export default function PanelFrame({
   // it never lingers over an unrelated tab's content.
   const [expOptionsOpen, setExpOptionsOpen] = useState(false)
   useEffect(() => { setExpOptionsOpen(false) }, [activeId])
+  // B345: the ⚙ popover also closes on an outside mousedown or Esc (it used to
+  // close only by clicking ⚙ again). A press inside it, or on the ⚙ itself
+  // (which toggles on its own click), is left alone. Esc is preventDefault'ed
+  // so it can't also reach useEscapeClose and close a dialog underneath.
+  const expOptionsRef = useRef<HTMLDivElement>(null)
+  const expGearRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!expOptionsOpen) return
+    function onDown(e: MouseEvent) {
+      const t = e.target as Node
+      if (expOptionsRef.current?.contains(t) || expGearRef.current?.contains(t)) return
+      setExpOptionsOpen(false)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      e.preventDefault()
+      setExpOptionsOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [expOptionsOpen])
   // F46: id of the tab currently being dragged (null when idle). Live
   // reorder: crossing the midpoint of a sibling commits the new order via
   // onTabsChange immediately, so the strip previews the result as you drag.
@@ -287,7 +339,7 @@ export default function PanelFrame({
       tabLeftsRef.current.set(id, newLeft)
     })
   })
-  const [menuPos, setMenuPos] = useState({ bottom: 0, right: 0 })
+  const [menuPos, setMenuPos] = useState<{ bottom: number; right: number; maxHeight?: number }>({ bottom: 0, right: 0 })
   const [tabCtxMenu, setTabCtxMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
   const [showNameInput, setShowNameInput] = useState(false)
   const [newPanelName, setNewPanelName] = useState('')
@@ -305,8 +357,23 @@ export default function PanelFrame({
         setNewPanelName('')
       }
     }
+    // B345: Esc closes it too (it used to close only on an outside click).
+    // The "New stream…" input handles its own Esc first and stops propagation,
+    // so one Esc cancels the name, the next closes the menu. preventDefault so
+    // the key can't also reach useEscapeClose and close a dialog underneath.
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      e.preventDefault()
+      setShowAddMenu(false)
+      setShowNameInput(false)
+      setNewPanelName('')
+    }
     document.addEventListener('mousedown', onOutsideClick)
-    return () => document.removeEventListener('mousedown', onOutsideClick)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onOutsideClick)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [showAddMenu])
 
   useEffect(() => {
@@ -460,7 +527,7 @@ export default function PanelFrame({
           debugEvents ?? EMPTY_ARRAY, onClearDebug ?? NOOP,
           rawXmlLines ?? EMPTY_ARRAY, onClearRawXml ?? NOOP,
           fireLog ?? EMPTY_ARRAY, onClearFireLog ?? NOOP, onGotoFireRule,
-          onClearStream ?? NOOP, onHighlight, onTrigger, injuryState,
+          onClearStream ?? NOOP, onHighlight, onTrigger, onMute, onSubstitute, onShowInLog, injuryState,
           streamTimestamps, onToggleTimestamp, autoLinkUrls, webLinkSafety, lichMapVersion,
           lichScripts, lichLastUpdated, lichPending,
           onLichPause ?? NOOP, onLichResume ?? NOOP,
@@ -486,31 +553,38 @@ export default function PanelFrame({
               <div className={`panel-font-controls${expGear ? ' panel-font-controls--exp' : ''}`} aria-label="Panel view controls">
                 {onAdjustPanelFontSize && (
                   <>
+                    {/* B398: the shared VIEW_CONTROLS wording — the floating
+                        Experience window (ExperienceLayer) uses the same set. */}
                     <button
                       type="button"
                       className="panel-font-btn"
-                      title="Smaller font for this panel"
+                      title={VIEW_CONTROLS.smaller.tip}
+                      aria-label={VIEW_CONTROLS.smaller.label}
                       onClick={() => onAdjustPanelFontSize(activeTab.id, -1)}
                     >A−</button>
                     <button
                       type="button"
                       className="panel-font-btn"
-                      title="Larger font for this panel"
+                      title={VIEW_CONTROLS.larger.tip}
+                      aria-label={VIEW_CONTROLS.larger.label}
                       onClick={() => onAdjustPanelFontSize(activeTab.id, 1)}
                     >A+</button>
                   </>
                 )}
                 {expGear && (
                   <button
+                    ref={expGearRef}
                     type="button"
                     className="panel-font-btn"
-                    title="Choose what this scene shows"
+                    title={VIEW_CONTROLS.layers.tip}
+                    aria-label={VIEW_CONTROLS.layers.label}
+                    aria-expanded={expOptionsOpen}
                     onClick={() => setExpOptionsOpen(o => !o)}
                   >⚙</button>
                 )}
               </div>
               {expGear && expOptionsOpen && expDef && (
-                <div className="exp-inst-options exp-inst-options--tab">
+                <div className="exp-inst-options exp-inst-options--tab" ref={expOptionsRef}>
                   <div className="exp-inst-options-title">Show in this scene</div>
                   {expDef.options!.map(opt => (
                     <label key={opt.id} className="exp-inst-option" title={opt.desc}>
@@ -533,6 +607,7 @@ export default function PanelFrame({
         <div
           className="panel-tab-list"
           ref={tabListRef}
+          role="tablist"
           onDragOver={reorderTabs ? (e => {
             if (!dragTabId && !isForeignTabDrag(e)) return
             e.preventDefault()
@@ -554,7 +629,19 @@ export default function PanelFrame({
                 key={tab.id}
                 data-tab-id={tab.id}
                 className={`panel-tab${isActive ? ' panel-tab--active' : ''}${isUnread ? ' panel-tab--unread' : ''}${dragTabId === tab.id ? ' panel-tab--dragging' : ''}`}
-                onClick={() => onActiveChange(tab.id)}
+                // B335: keyboard-reachable tab (Tab to it, Enter/Space selects).
+                // Only the keyboard parts are spread — the drag handlers below
+                // stay exactly as they were (F46 / pitfall #137).
+                role="tab"
+                tabIndex={0}
+                aria-selected={isActive}
+                onKeyDown={activateOnKey(() => onActiveChange(tab.id))}
+                // A MOUSE click must not leave focus parked on the tab: before
+                // B335 the tab wasn't focusable, so a following Space went to
+                // the command bar via type-anywhere (F60); a focused tab would
+                // swallow it. `detail` is 0 for keyboard-generated clicks, so
+                // keyboard users keep their focus.
+                onClick={e => { onActiveChange(tab.id); if (e.detail > 0) e.currentTarget.blur() }}
                 onContextMenu={e => { e.preventDefault(); setTabCtxMenu({ x: e.clientX, y: e.clientY, tabId: tab.id }) }}
                 draggable={reorderTabs}
                 onDragStart={reorderTabs ? (e => {
@@ -582,32 +669,40 @@ export default function PanelFrame({
                   : tab.label}</span>
                 {tab.type === 'experience' && <span className="panel-tab-exp-badge" title="Lichborne Experience">[e]</span>}
                 {isUnread && <span className="panel-tab-unread-dot" title="New content" />}
-                <span
+                {/* B335: a real button, so Tab reaches it and Enter/Space
+                    close; stopPropagation keeps it from also selecting the
+                    tab. draggable={false} so a drag that starts on the ×
+                    still drags the TAB (F46), not the button. */}
+                <button
+                  type="button"
                   className="panel-tab-close"
+                  draggable={false}
                   onClick={e => { e.stopPropagation(); closeTab(tab.id) }}
                   title="Close tab"
-                >×</span>
+                  aria-label="Close tab"
+                >×</button>
               </div>
             )
           })}
           {tabCtxMenu && (() => {
             const tab = tabs.find(t => t.id === tabCtxMenu.tabId)
             if (!tab) return null
-            // Experience tabs have no text buffer — 'Clear' would be a
-            // silent no-op, so it's omitted (only Close applies).
-            const items: ({ label: string; onClick: () => void } | { label: null })[] = tab.type === 'experience'
-              ? [{ label: 'Close tab', onClick: () => closeTab(tab.id) }]
-              : [
-                  {
-                    label: 'Clear',
-                    onClick: () => {
-                      if (tab.type === 'debug') onClearDebug?.()
-                      else onClearStream?.(tab.id)
-                    },
-                  },
-                  { label: null },
-                  { label: 'Close tab', onClick: () => closeTab(tab.id) },
-                ]
+            // B391: the shared menu shape (StreamPanel.tsx) — view toggle,
+            // divider, then Clear and Close with Close LAST. Timestamps and
+            // Clear only where the tab HAS a text buffer: on a Room / Exp /
+            // Injuries / Map / Lich Scripts / Experience tab both would be
+            // silent no-ops, so only Close applies there. Debug's Clear empties
+            // all three of its buffers — the whole panel, as the label says.
+            const isStream = STREAM_TAB_TYPES.has(tab.type)
+            const toggles = isStream && onToggleTimestamp
+              ? [{ label: streamTimestamps[tab.id] ? 'Hide timestamps' : 'Show timestamps', onClick: () => onToggleTimestamp(tab.id) }]
+              : []
+            const clear = tab.type === 'debug'
+              ? [{ label: 'Clear', onClick: () => { onClearDebug?.(); onClearRawXml?.(); onClearFireLog?.() } }]
+              : isStream && onClearStream
+                ? [{ label: 'Clear', onClick: () => onClearStream(tab.id) }]
+                : []
+            const items = joinMenuGroups([toggles, [...clear, { label: 'Close', onClick: () => closeTab(tab.id) }]])
             return <ContextMenu x={tabCtxMenu.x} y={tabCtxMenu.y} items={items} onClose={() => setTabCtxMenu(null)} />
           })()}
         </div>
@@ -618,13 +713,20 @@ export default function PanelFrame({
             className="panel-tab-add"
             onClick={() => {
               const rect = addBtnRef.current?.getBoundingClientRect()
-              if (rect) setMenuPos({ bottom: window.innerHeight - rect.top + 4, right: window.innerWidth - rect.right })
+              // B332-family: the menu opens UP from the strip, so cap its
+              // height to the room above the button (a strip near the top of
+              // the window used to push the menu's first rows off-screen).
+              if (rect) setMenuPos({ bottom: window.innerHeight - rect.top + 4, right: window.innerWidth - rect.right, maxHeight: Math.max(120, Math.min(240, rect.top - 12)) })
               setShowAddMenu(v => !v)
             }}
             title="Add panel"
+            aria-label="Add panel"
+            aria-haspopup="menu"
+            aria-expanded={showAddMenu}
           >+</button>
           {showAddMenu && createPortal(
-            <div ref={menuRef} className="panel-add-menu" style={{ bottom: menuPos.bottom, right: menuPos.right }}>
+            <div ref={menuRef} className="panel-add-menu" role="menu" aria-label="Add panel"
+              style={{ bottom: menuPos.bottom, right: menuPos.right, maxHeight: menuPos.maxHeight }}>
               <div className="panel-add-scroll">
                 {/* Built-in types and discovered custom streams sorted together
                     A-Z by visible label so the dropdown reads as one alphabetical
@@ -650,7 +752,8 @@ export default function PanelFrame({
                 ]
                   .sort((a, b) => a.label.localeCompare(b.label))
                   .map(item => (
-                    <div key={item.key} className="panel-add-item" onClick={item.onClick}>
+                    // B335: pressable menuitem — Tab reaches it, Enter/Space adds.
+                    <div key={item.key} className="panel-add-item" {...pressable(item.onClick, { role: 'menuitem' })}>
                       {item.label}
                     </div>
                   ))}
@@ -664,7 +767,7 @@ export default function PanelFrame({
                       .slice()
                       .sort((a, b) => a.label.localeCompare(b.label))
                       .map(d => (
-                        <div key={`e:${d.id}`} className="panel-add-item panel-add-item--exp" onClick={() => addExperienceTab(d.id, d.label)}>
+                        <div key={`e:${d.id}`} className="panel-add-item panel-add-item--exp" {...pressable(() => addExperienceTab(d.id, d.label), { role: 'menuitem' })}>
                           <span>{d.label}</span>
                           <span className="panel-add-exp-badge" title="Lichborne Experience — a graphical surface, not a text stream">[e]</span>
                         </div>
@@ -682,7 +785,9 @@ export default function PanelFrame({
                       onChange={e => setNewPanelName(e.target.value)}
                       onKeyDown={e => {
                         if (e.key === 'Enter') addCustomTab()
-                        if (e.key === 'Escape') { setShowNameInput(false); setNewPanelName('') }
+                        // preventDefault: a consumed Esc must not also close a
+                        // dialog underneath via useEscapeClose (B341).
+                        if (e.key === 'Escape') { e.preventDefault(); setShowNameInput(false); setNewPanelName('') }
                         e.stopPropagation()
                       }}
                       placeholder="Stream name…"
@@ -693,7 +798,7 @@ export default function PanelFrame({
                 ) : (
                   <div
                     className="panel-add-item panel-add-item--custom"
-                    onClick={() => setShowNameInput(true)}
+                    {...pressable(() => setShowNameInput(true), { role: 'menuitem' })}
                   >
                     New stream…
                   </div>
@@ -729,6 +834,9 @@ function renderPanel(
   onClearStream: (streamId: string) => void,
   onHighlight?: (rule: HighlightRule, testText?: string) => void,
   onTrigger?: (pattern: string) => void,
+  onMute?: (rule: MuteRule) => void,
+  onSubstitute?: (rule: SubstituteRule) => void,
+  onShowInLog?: (text: string) => void,
   injuryState: InjuryState = {},
   streamTimestamps: Record<string, boolean> = {},
   onToggleTimestamp?: (streamId: string) => void,
@@ -753,10 +861,16 @@ function renderPanel(
   // (the GameWindow callbacks pass through untouched) instead of the old
   // per-render `() => onClearStream(id)` closures, and empty line-lists use
   // the module-level EMPTY_ARRAY rather than a fresh `?? []`.
+  // B381: onMute / onSubstitute / onShowInLog are passed through untouched,
+  // like onHighlight — stable GameWindow callbacks, no per-render closures.
+  // B385: built-in streams get an empty line too (they used to render
+  // nothing); a string is compared by value, so the memo still holds.
   const sp = (id: string, lines: TextLine[]) => (
     <StreamPanel streamId={id} lines={lines} onClear={onClearStream} onHighlight={onHighlight} onTrigger={onTrigger}
+      onMute={onMute} onSubstitute={onSubstitute} onShowInLog={onShowInLog}
       onSendCommand={onSendCommand} autoLinkUrls={autoLinkUrls} webLinkSafety={webLinkSafety} showTimestamp={!!streamTimestamps[id]}
-      onToggleTimestamp={onToggleTimestamp} onCloseStream={onCloseStream} />
+      onToggleTimestamp={onToggleTimestamp} onCloseStream={onCloseStream}
+      emptyMessage={`Nothing in ${PANEL_LABELS[tab.type]} yet.`} />
   )
   switch (tab.type) {
     case 'room':          return <RoomPanel room={roomState} onSendCommand={onSendCommand} />
@@ -769,14 +883,22 @@ function renderPanel(
     case 'injuries':      return <InjuriesPanel parts={injuryState} />
     case 'familiar':      return sp('familiar',      streamLines.familiar      ?? EMPTY_ARRAY)
     case 'inv':           return sp('inv',           streamLines.inv           ?? EMPTY_ARRAY)
-    case 'debug':         return <DebugPanel events={debugEvents} onClear={onClearDebug} rawXmlLines={rawXmlLines} onClearRawXml={onClearRawXml} fireLog={fireLog} onClearFireLog={onClearFireLog} onGotoFireRule={onGotoFireRule} />
+    // B391: onCloseTab gives the Debug panel's right-click menu a Close when
+    // it's hosted here (a zone tab or a floating window). DebugPanel isn't
+    // memoized, so the inline closure costs nothing.
+    case 'debug':         return <DebugPanel events={debugEvents} onClear={onClearDebug} rawXmlLines={rawXmlLines} onClearRawXml={onClearRawXml} fireLog={fireLog} onClearFireLog={onClearFireLog} onGotoFireRule={onGotoFireRule}
+      onCloseTab={onCloseStream ? () => onCloseStream(tab.id) : undefined} />
     case 'log':           return sp('log',           streamLines.log           ?? EMPTY_ARRAY)
     case 'lichScripts':   return <ScriptListPanel scripts={lichScripts} lastUpdated={lichLastUpdated} pending={lichPending} onPause={onLichPause} onResume={onLichResume} onKill={onLichKill} onRefresh={onLichRefresh} />
     case 'combat':        return sp('combat',        streamLines.combat        ?? EMPTY_ARRAY)
     case 'map':           return <MapPanel roomTitle={roomState.title} roomDesc={roomState.desc} roomExits={roomState.exits} roomId={roomState.roomId} lichMapVersion={lichMapVersion} onSendCommand={onSendCommand} mapAnimations={mapAnimations} />
     case 'custom':        return (
+      // B381: no Show in Log on the lbAI stream — AI output is never written
+      // to the Session Log, so the search could only ever come back empty.
       <StreamPanel streamId={tab.id} lines={streamLines[tab.id] ?? EMPTY_ARRAY} onClear={onClearStream}
-        onHighlight={onHighlight} onTrigger={onTrigger} onSendCommand={onSendCommand} autoLinkUrls={autoLinkUrls} webLinkSafety={webLinkSafety}
+        onHighlight={onHighlight} onTrigger={onTrigger}
+        onMute={onMute} onSubstitute={onSubstitute} onShowInLog={tab.id === AI_STREAM ? undefined : onShowInLog}
+        onSendCommand={onSendCommand} autoLinkUrls={autoLinkUrls} webLinkSafety={webLinkSafety}
         showTimestamp={!!streamTimestamps[tab.id]}
         onToggleTimestamp={onToggleTimestamp} onCloseStream={onCloseStream}
         emptyMessage={tab.id === AI_STREAM ? AI_STREAM_EMPTY : `Waiting for content on stream "${tab.label}"…`} />

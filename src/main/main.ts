@@ -58,7 +58,7 @@
 //    but `password:load` DOES return the saved account password to the
 //    renderer — the renderer builds LoginCredentials (with the password) for
 //    the LOGIN handler. Don't describe the boundary as stricter than it is.
-import { app, BrowserWindow, ipcMain, dialog, Menu, shell, session, clipboard, safeStorage } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell, session, clipboard, safeStorage, powerMonitor } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
@@ -77,6 +77,7 @@ import { readSharedProfile, writeSharedProfile, readCharacterProfile, writeChara
 import { savePassword, loadPassword, deletePassword } from './passwords'
 import { registerAIHandlers } from './ai'
 import { registerSimuCoinHandlers } from './simucoin'
+import { restoredBoundsFor, trackWindowState, flushWindowState } from './windowState'
 import { IPC } from '../shared/types'
 import { makeCharacterId } from '../shared/characterId'
 import type {
@@ -310,7 +311,11 @@ function wireSession(s: Session) {
         s.connection.send('_flag Display Inventory Boxes 1')
       }
     }
-    const filtered = events.filter(e => e.type !== 'launch-url' && e.type !== 'unknown')
+    // Annotated GameEvent[] on purpose (B365): TS infers a type predicate from
+    // this filter and narrows the array to "every event but launch-url/unknown",
+    // which then rejects the scene events pushed onto it below. The queue takes
+    // any GameEvent, so the wide type is the true one.
+    const filtered: GameEvent[] = events.filter(e => e.type !== 'launch-url' && e.type !== 'unknown')
     // §35: derive typed scene events (cast / arrive / depart) from this
     // line's room-component events. Appended AFTER the source events so a
     // consumer always sees the underlying clear/stream-text first.
@@ -488,23 +493,45 @@ registerSimuCoinHandlers()
 
 // ── Window ────────────────────────────────────────────────────────────────────
 
-function createWindow(opts?: { secondary?: boolean }): BrowserWindow {
+// First-launch size and the resize floor, shared with the saved-bounds resolver
+// so a restored window can never come back smaller than the window allows. The
+// floor's rationale (B178) sits at the minWidth line below.
+const WINDOW_SIZE = { width: 1400, height: 900, minWidth: 480, minHeight: 600 }
+
+// B363: packaged Linux window icon (see the call site in createWindow).
+function packagedLinuxIcon(): { icon?: string } {
+  if (process.platform !== 'linux') return {}
+  const icon = path.join(process.resourcesPath, 'icon.png')
+  return fs.existsSync(icon) ? { icon } : {}
+}
+
+function createWindow(opts?: { secondary?: boolean; stateKey?: string }): BrowserWindow {
+  // F109: reopen where this window was last time — size, position, maximized —
+  // but only if that still lands on a monitor attached NOW (windowState.ts,
+  // shared/windowBounds.ts). The primary is always 'main'; a decoupled window is
+  // keyed by the character that opened it, and left untracked if there is none.
+  const stateKey = opts?.secondary ? opts.stateKey : 'main'
+  const bounds = restoredBoundsFor(stateKey, WINDOW_SIZE)
   const win = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    ...(bounds.x !== undefined && bounds.y !== undefined ? { x: bounds.x, y: bounds.y } : {}),
+    width: bounds.width,
+    height: bounds.height,
     // Packaged builds take the window/taskbar icon from the exe (build/icon.ico
     // baked in by electron-builder); this only matters for DEV (`npm start`),
     // where the exe is node_modules' electron.exe (the atom). Missing file
-    // fails soft → default icon.
-    ...(app.isPackaged ? {} : { icon: path.join(app.getAppPath(), 'build', 'icon.ico') }),
+    // fails soft → default icon. Packaged LINUX is the exception (B363): an
+    // AppImage has no exe icon to borrow, so without this its windows show a
+    // generic icon. The PNG ships via extraResources; guarded so a build
+    // without it degrades to exactly the previous behaviour.
+    ...(app.isPackaged ? packagedLinuxIcon() : { icon: path.join(app.getAppPath(), 'build', 'icon.ico') }),
     // B178 (Morress): was 900 — users tile multiple windows side by side
     // (4 columns on a 1920 monitor = 480 each), and the old floor hard-stopped
     // the resize drag at ~half screen. The app-bar degrades for narrow widths
     // via CSS media tiers (app-bar.css: wordmark hides, buttons compact, then
     // the inline action buttons collapse into the ⋯ More menu), so 480 stays
     // fully usable. Don't raise this without checking that ladder.
-    minWidth: 480,
-    minHeight: 600,
+    minWidth: WINDOW_SIZE.minWidth,
+    minHeight: WINDOW_SIZE.minHeight,
     backgroundColor: '#1a1a1a',
     title: `Lichborne v${app.getVersion()} | DragonRealms`,
     webPreferences: {
@@ -527,6 +554,17 @@ function createWindow(opts?: { secondary?: boolean }): BrowserWindow {
   const id = win.webContents.id
   windows.set(id, win)
   if (!opts?.secondary) primaryWindowId = id
+  // F109: maximize after construction (the saved rect above is the RESTORE
+  // size, so un-maximizing lands where the user left it), then keep the saved
+  // state current for as long as this window lives.
+  if (bounds.maximized) win.maximize()
+  // The requested position rides along so windowState can measure B360's
+  // Linux/X11 frame-offset creep; absent when Electron centres the window.
+  if (stateKey) {
+    trackWindowState(win, stateKey,
+      bounds.x !== undefined && bounds.y !== undefined && !bounds.maximized
+        ? { x: bounds.x, y: bounds.y } : undefined)
+  }
 
   const rendererPath = path.join(__dirname, '../renderer/index.html')
 
@@ -573,6 +611,8 @@ function createWindow(opts?: { secondary?: boolean }): BrowserWindow {
   win.on('restore',  () => pushVisibility(false))
   win.on('hide',     () => pushVisibility(true))   // macOS Cmd+H / dock hide
   win.on('show',     () => pushVisibility(false))
+  // Wayland: Electron emits no 'minimize' there (the compositor doesn't report
+  // it), so animations keep running while minimized — performance only (B366c).
 
   win.on('close', (e) => {
     const isPrimary = id === primaryWindowId
@@ -582,6 +622,14 @@ function createWindow(opts?: { secondary?: boolean }): BrowserWindow {
       // use Window → "Move Character to Main Window" first (re-home), which
       // empties + auto-closes this window without disconnecting.
       if (closingWindows.has(id)) return  // already draining; let destroy() proceed
+      // B353: a QUIT closes every window, secondaries included, before the
+      // primary's "Quit Lichborne?" can be answered — so handling it here would
+      // log this window's character out even if that prompt is then cancelled.
+      // Defer to the primary instead: its app-scope confirm lists EVERY
+      // connected character, and runAppShutdown destroys this window. (An
+      // already-consented quit — installing an update — keeps the old path.)
+      // Same during the shutdown drain itself: the drain owns this window.
+      if (appClosing || (quitInProgress && !quitAlreadyConfirmed)) { e.preventDefault(); return }
       // preventDefault FIRST — we own the close from here whether or not the
       // user confirms. The `closingWindows` guard is set only once they have,
       // for the same reason as `appClosing` below.
@@ -641,6 +689,25 @@ const confirmingClose = new Set<number>()
 // leaving the update staged. Set it immediately before any such quit.
 let quitAlreadyConfirmed = false
 
+// B353: true from `before-quit` until the quit is resolved. Electron documents
+// `before-quit` as "emitted before the application starts closing its windows",
+// so every window's 'close' during a quit sees it set; the secondary handler
+// uses it to defer to the primary's app-scope confirm. Cleared when that
+// confirm is cancelled — and, as a self-heal, shortly after `before-quit`, so
+// no unforeseen path can leave it stuck (a stuck flag would make a decoupled
+// window's own X silently do nothing). The self-heal is harmless: the flag is
+// only needed during the close pass the quit triggers, and once the primary has
+// either proceeded (appClosing takes over) or is showing its confirm, a close
+// on a secondary is an ordinary window close again.
+let quitInProgress = false
+let quitInProgressTimer: NodeJS.Timeout | null = null
+const QUIT_CLOSE_PASS_MS = 3000
+
+function clearQuitInProgress() {
+  if (quitInProgressTimer) { clearTimeout(quitInProgressTimer); quitInProgressTimer = null }
+  quitInProgress = false
+}
+
 /**
  * Ask before a close that would LOG CHARACTERS OUT, then run `proceed`.
  *
@@ -686,8 +753,10 @@ function confirmCloseThenRun(win: BrowserWindow, scope: 'app' | 'window', procee
     // The renderer never acked — hung, crashed, or still booting. Fall back to
     // the native dialog so a bad renderer can NEVER make the app unquittable.
     .catch(() => askNative(win, scope, names))
-    .then(ok => { confirmingClose.delete(id); if (ok) proceed() })
-    .catch(() => { confirmingClose.delete(id) })
+    // B353: a cancelled app-scope confirm ends the quit — clear the flag so a
+    // decoupled window's own close works normally again.
+    .then(ok => { confirmingClose.delete(id); if (ok) proceed(); else if (scope === 'app') clearQuitInProgress() })
+    .catch(() => { confirmingClose.delete(id); if (scope === 'app') clearQuitInProgress() })
 }
 
 // How long to wait for the renderer to confirm it received the request. This
@@ -868,6 +937,30 @@ function runAppShutdown() {
     // mechanism.
     app.quit()
   })
+}
+
+// B354: the system is restarting, shutting down or logging out (powerMonitor
+// 'shutdown', Linux + macOS only — registered in whenReady). Without this, a
+// system quit reached the primary window's close handler, which ALWAYS
+// preventDefaults to run the drain asynchronously — on macOS that reads as the
+// app refusing to quit (the OS can report Lichborne interrupted the restart),
+// and on Linux the confirm dialog could appear mid-shutdown. Electron's
+// contract: preventDefault() asks the OS to wait, and the app must then quit as
+// soon as it can — which runAppShutdown's closing app.quit() does. No confirm:
+// the user asked the OS to go down, not us.
+//
+// Unverified on a Mac: Electron's macOS `terminate:` override is what calls
+// this handler, and the Dock's Quit (or an AppleScript quit) also arrives as
+// `terminate:` — so those may land here too and quit WITHOUT the multi-character
+// confirm. ⌘Q and the app menu's Quit are routed around it (see setupMenu).
+function onSystemShutdown(e?: { preventDefault?: () => void }) {
+  e?.preventDefault?.()
+  // Every close from here on is already consented (the pattern install-update
+  // uses), so nothing — no window, no stray quit — can raise a dialog now.
+  quitAlreadyConfirmed = true
+  if (appClosing) return  // a drain is already running; its app.quit() finishes the job
+  appClosing = true
+  runAppShutdown()
 }
 
 // ── IPC: session lifecycle ────────────────────────────────────────────────────
@@ -1057,7 +1150,9 @@ ipcMain.handle('session:move-window', (_event, sessionId: SessionId, target: 'ne
     // authoritative backstop covering every entry point.
     const ownedCount = Array.from(sessions.values()).filter(x => x.ownerWindowId === sourceWindowId).length
     if (ownedCount <= 1) return
-    const win = createWindow({ secondary: true })
+    // F109: key the new window by this character, so decoupling them again
+    // reopens their window where it was last left.
+    const win = createWindow({ secondary: true, stateKey: s.meta ? `char:${s.meta.characterId}` : undefined })
     s.ownerWindowId = win.webContents.id
     s.replayTarget = win.webContents.id  // this window earned a history replay
     s.holdingForReplay = true            // hold live until the replay is delivered
@@ -1314,6 +1409,26 @@ function probeRubyVersion(rubyPath: string): Promise<string | null> {
   })
 }
 
+// Major version of a probed "x.y.z" string (NaN-safe: an unparsable one reads 0).
+function rubyMajor(version: string): number {
+  return parseInt(version, 10) || 0
+}
+
+// B355: the first candidate that reports Ruby 4 or newer (Lich 5.18+ refuses
+// anything older), in candidate order. Sequential, so the common case costs one
+// probe; each probe is capped at 3s by probeRubyVersion, and the whole search
+// at RUBY_SEARCH_BUDGET_MS, so a pile of broken shims can't stall startup.
+const RUBY_SEARCH_BUDGET_MS = 8000
+async function firstModernRuby(candidates: string[]): Promise<{ path: string; version: string } | null> {
+  const deadline = Date.now() + RUBY_SEARCH_BUDGET_MS
+  for (const c of candidates) {
+    if (Date.now() > deadline) break
+    const version = await probeRubyVersion(c)
+    if (version && rubyMajor(version) >= 4) return { path: c, version }
+  }
+  return null
+}
+
 // Per-platform Lich/Ruby auto-discovery (v0.18.0 cross-platform). Probe lists
 // come from the official install docs: Windows = the Ruby4Lich5 one-click
 // installer layout; Linux/Mac = the elanthia-online wiki (zip extracted to
@@ -1342,6 +1457,9 @@ ipcMain.handle('discover-lich-paths', async (_event, currentRuby: string, curren
     isWindows:        platform === 'win32',
   }
   const home = os.homedir()
+  // True once the macOS/Linux branch has version-probed (B355), so the
+  // interactive probe below doesn't spawn the same `ruby -v` again.
+  let rubyProbed = false
 
   if (platform === 'win32') {
     const base = 'C:\\Ruby4Lich5'
@@ -1377,8 +1495,12 @@ ipcMain.handle('discover-lich-paths', async (_event, currentRuby: string, curren
         : []),
     ]
     // Ruby: rbenv shim first (version-agnostic, survives `rbenv global`
-    // changes), then concrete rbenv versions newest-first, then Homebrew
-    // (Apple Silicon + Intel prefixes), then system Ruby.
+    // changes), then concrete rbenv versions newest-first, then the asdf and
+    // mise shims, then Homebrew's KEG path before its plain bin (Apple Silicon +
+    // Intel prefixes) — Homebrew's `ruby` formula is keg-only, so a Homebrew
+    // Ruby lives at opt/ruby/bin and is not linked into bin/ — then, on Linux
+    // only, system Ruby. /usr/bin/ruby is dropped on macOS (B355): it is
+    // Apple's Ruby 2.6, which Lich 5.18+ refuses to run on.
     const rubyCandidates: string[] = [path.join(home, '.rbenv', 'shims', 'ruby')]
     try {
       const versionsDir = path.join(home, '.rbenv', 'versions')
@@ -1389,7 +1511,13 @@ ipcMain.handle('discover-lich-paths', async (_event, currentRuby: string, curren
       )
       for (const v of versions) rubyCandidates.push(path.join(versionsDir, v, 'bin', 'ruby'))
     } catch {}
-    rubyCandidates.push('/opt/homebrew/bin/ruby', '/usr/local/bin/ruby', '/usr/bin/ruby')
+    rubyCandidates.push(
+      path.join(home, '.asdf', 'shims', 'ruby'),
+      path.join(home, '.local', 'share', 'mise', 'shims', 'ruby'),
+      '/opt/homebrew/opt/ruby/bin/ruby', '/usr/local/opt/ruby/bin/ruby',
+      '/opt/homebrew/bin/ruby', '/usr/local/bin/ruby',
+      ...(platform === 'darwin' ? [] : ['/usr/bin/ruby']),
+    )
 
     result.baseFolderExists = lichCandidates.some(c => fs.existsSync(path.dirname(c)))
     if (!result.lichAlreadyValid) {
@@ -1397,10 +1525,47 @@ ipcMain.handle('discover-lich-paths', async (_event, currentRuby: string, curren
         if (fs.existsSync(c)) { result.lichPath = c; break }
       }
     }
+
+    // B355: an EXISTING Ruby is not enough. The silent startup pass used to
+    // save the first one that existed, and once saved a path counts as valid,
+    // so no later search replaced it — a Mac with only the system Ruby, or a
+    // Linux box with an older system Ruby, was pinned to an interpreter Lich
+    // refuses. So probe versions here on the silent path too. Off Windows only:
+    // the reason the silent path skips `ruby -v` (below) is antivirus
+    // heuristics flagging a ruby.exe run at boot, which is a Windows concern.
+    const existingRubies = rubyCandidates.filter(c => fs.existsSync(c))
     if (!result.rubyAlreadyValid) {
-      for (const c of rubyCandidates) {
-        if (fs.existsSync(c)) { result.rubyPath = c; break }
+      const modern = await firstModernRuby(existingRubies)
+      if (modern) {
+        result.rubyPath = modern.path
+        result.rubyVersion = modern.version
+      } else if (opts?.probeDesktop || opts?.interactive) {
+        // An explicit Auto Detect still offers the first Ruby it found, with
+        // its version, so the setup dialog can say WHY it won't work (the
+        // Ruby 4 warning) instead of silently finding nothing. The silent path
+        // saves nothing rather than an old Ruby.
+        const first = existingRubies[0]
+        if (first) {
+          result.rubyPath = first
+          result.rubyVersion = await probeRubyVersion(first)
+        }
       }
+      rubyProbed = true
+    } else if (opts?.probeDesktop || opts?.interactive) {
+      // Explicit Auto Detect with a configured Ruby that exists: if it is
+      // known to be older than 4, look for a Ruby 4+ and offer it. An UNKNOWN
+      // version (probe failed) is not evidence of a problem — leave it be.
+      const current = await probeRubyVersion(currentRuby)
+      result.rubyVersion = current
+      if (current !== null && rubyMajor(current) < 4) {
+        const configured = path.resolve(expandHome(currentRuby))
+        const modern = await firstModernRuby(existingRubies.filter(c => path.resolve(c) !== configured))
+        if (modern) {
+          result.rubyPath = modern.path
+          result.rubyVersion = modern.version
+        }
+      }
+      rubyProbed = true
     }
   }
 
@@ -1411,7 +1576,8 @@ ipcMain.handle('discover-lich-paths', async (_event, currentRuby: string, curren
   // up to the probe timeout, and an unexplained ruby.exe execution at boot is
   // exactly what AV/EDR heuristics flag. Gated on the same opt-in as the mac
   // Desktop probe (this is why the flag is `interactive`, not `probeDesktop`).
-  if (opts?.probeDesktop || opts?.interactive) {
+  // (Windows only in practice since B355: macOS/Linux probe above.)
+  if ((opts?.probeDesktop || opts?.interactive) && !rubyProbed) {
     const effectiveRuby = result.rubyPath ?? (result.rubyAlreadyValid ? currentRuby : null)
     if (effectiveRuby) result.rubyVersion = await probeRubyVersion(effectiveRuby)
   }
@@ -1794,9 +1960,14 @@ function flushWriteLogs() {
   writeLogPending = 0
   if (writeLogBuffers.size === 0) return
   try {
-    const dir = app.isPackaged
-      ? path.join(path.dirname(app.getPath('exe')), 'Logs')
-      : path.join(app.getAppPath(), 'Logs')
+    // B352: {userData}/TriggerLogs, in dev as well as packaged builds. This used
+    // to write beside the executable — inside the read-only mount on a Linux
+    // AppImage (every line silently dropped by the catch below), inside the .app
+    // bundle on macOS, and into the install directory on Windows; the last two
+    // are deleted by every upgrade (pitfall #3). Top-level rather than under
+    // Logs/, whose subfolders are per-character session-log folders — a
+    // character named "triggers" must not collide with this.
+    const dir = path.join(app.getPath('userData'), 'TriggerLogs')
     // Once per process, not once per line.
     if (!writeLogDirReady) { fs.mkdirSync(dir, { recursive: true }); writeLogDirReady = true }
     for (const [name, chunk] of writeLogBuffers) {
@@ -1807,9 +1978,23 @@ function flushWriteLogs() {
   writeLogBuffers.clear()
 }
 
+// B352: the file name comes from a user-authored, $var-interpolated trigger
+// field, so it must name a plain FILE inside TriggerLogs. path.basename() alone
+// splits only on the host's own separator — on macOS/Linux a `\` survives it —
+// and '.' / '..' / '' resolve to a directory. Take the last segment after
+// EITHER separator, replace the characters Windows forbids (the sessionLog
+// safeName set, plus control characters — and ':' on NTFS would otherwise
+// write an invisible alternate data stream), and refuse an all-dots name.
+function safeTriggerLogName(filename: unknown): string | null {
+  const last = String(filename ?? '').split(/[\\/]/).pop() ?? ''
+  const name = last.replace(/[\x00-\x1f:*?"<>|]/g, '_').trim()
+  return name && !/^\.+$/.test(name) ? name : null
+}
+
 ipcMain.on('write-log', (_e, filename: string, content: string) => {
   try {
-    const name = path.basename(filename)
+    const name = safeTriggerLogName(filename)
+    if (!name) return
     const buf = writeLogBuffers.get(name)
     if (buf) buf.push(content + LF)
     else writeLogBuffers.set(name, [content + LF])
@@ -1837,12 +2022,18 @@ ipcMain.on('check-for-updates',  () => {
   // signature chain) and 0.18.0 Mac builds ship unsigned — deliberately, no
   // Apple Developer account (see release.yml). A real check would error
   // confusingly, so answer the menu click with the honest instruction instead.
+  // The `[notice] ` prefix (B356) is the contract with the renderer: an
+  // updater-log line carrying it is shown on screen as a toast rather than only
+  // logged — this one used to reach the console alone, so the user saw
+  // "Checking…" flash and no answer.
   if (process.platform === 'darwin') {
     primaryWindow()?.webContents.send('updater-log',
-      'Auto-update is unavailable on macOS (unsigned beta build) — download new versions from GitHub Releases.')
+      '[notice] Auto-update is unavailable on macOS (unsigned beta build) — download new versions from GitHub Releases.')
     return
   }
-  void checkForUpdatesDualFeed()
+  // This IPC is only ever a user's click (Help → Check for Updates, or the
+  // launcher's update button); the startup check calls the function directly.
+  void checkForUpdatesDualFeed({ manual: true })
 })
 
 // ── Dual-feed update check (Elanthia-Online handover — DESIGN §18.4.1) ──────
@@ -1887,8 +2078,12 @@ let updaterProbing = false
 // makes both impossible; the reset lives in this function's own finally
 // (pitfall #122 — the function that is guarded owns the reset).
 let dualFeedRun: Promise<void> | null = null
+// B364: whether a USER asked during the current run — set before joining, so a
+// click that lands while the startup check is in flight still gets its answer.
+let dualFeedManual = false
 
-function checkForUpdatesDualFeed(): Promise<void> {
+function checkForUpdatesDualFeed(opts?: { manual?: boolean }): Promise<void> {
+  if (opts?.manual) dualFeedManual = true
   if (dualFeedRun) return dualFeedRun
   dualFeedRun = (async () => {
     try {
@@ -1902,6 +2097,14 @@ function checkForUpdatesDualFeed(): Promise<void> {
           // don't name a feed that was never actually consulted.
           if (res) {
             primaryWindow()?.webContents.send('updater-log', `Update feed: ${feed.owner}/${feed.repo}`)
+          } else if (dualFeedManual) {
+            // B364: null means the updater is INACTIVE — an unpackaged build,
+            // or an AppImage run without $APPIMAGE (extracted or repackaged,
+            // a common FUSE workaround). It emits no event at all, so without
+            // this the user's "Checking…" never resolved. Manual checks only:
+            // the startup check stays silent, as before.
+            primaryWindow()?.webContents.send('updater-log',
+              "[notice] This copy of Lichborne can't update itself — download new versions from GitHub Releases.")
           }
           return
         } catch {
@@ -1914,6 +2117,7 @@ function checkForUpdatesDualFeed(): Promise<void> {
       }
     } finally {
       dualFeedRun = null
+      dualFeedManual = false
     }
   })()
   return dualFeedRun
@@ -1988,12 +2192,39 @@ function refreshMenuState() {
 }
 
 function setupMenu() {
+  const isMac = process.platform === 'darwin'
+  // macOS convention: the first menu is the application menu (About / Hide /
+  // Quit under the app's name); without it the File menu gets mangled into that
+  // slot. Windows/Linux get no extra menu (spread of an empty array).
+  //
+  // Built EXPLICITLY rather than with the `appMenu` role (B361): that role
+  // labels its items from `app.name`, which is the package `name` — lowercase
+  // "lichborne" — and the fix is NOT `app.setName()`, which would move userData
+  // (pitfall #1). About opens our themed About (the menu-action bridge), not
+  // the native panel. Quit is a CLICK item calling app.quit(), not the `quit`
+  // role. On macOS that role is not run through its JS appMethod — Electron's
+  // role table only executes roles marked nonNativeMacOSRole there, and `quit`
+  // isn't (read from Electron 43's bundled menu-item-roles) — so it goes out as
+  // the native `terminate:`. Electron's macOS `terminate:` override runs the
+  // powerMonitor 'shutdown' handler first once one is registered (B354; from
+  // Electron's source, NOT verified on a Mac), which would skip the
+  // "Quit Lichborne?" confirm for ⌘Q. app.quit() never touches `terminate:`.
+  const macAppMenu: Electron.MenuItemConstructorOptions[] = isMac ? [{
+    label: 'Lichborne',
+    submenu: [
+      { label: 'About Lichborne', click: () => sendMenuAction('about') },
+      { type: 'separator' },
+      { role: 'services' },
+      { type: 'separator' },
+      { label: 'Hide Lichborne', role: 'hide' },
+      { role: 'hideOthers' },
+      { role: 'unhide' },
+      { type: 'separator' },
+      { label: 'Quit Lichborne', accelerator: 'Command+Q', click: () => app.quit() },
+    ],
+  }] : []
   const menu = Menu.buildFromTemplate([
-    // macOS convention: the first menu is the application menu (About / Hide /
-    // Quit under the app's name). Electron's appMenu role supplies the
-    // standard items; without it the File menu gets mangled into that slot.
-    // Windows/Linux get no extra menu (spread of an empty array).
-    ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
+    ...macAppMenu,
     {
       label: 'File',
       submenu: [
@@ -2033,8 +2264,9 @@ function setupMenu() {
         },
         { type: 'separator' },
         { label: 'Disconnect', click: () => sendMenuAction('disconnect') },
-        { type: 'separator' },
-        { role: 'quit' },
+        // macOS quits from the app menu (Quit Lichborne); a second Quit here
+        // only duplicated it (B361).
+        ...(isMac ? [] : [{ type: 'separator' as const }, { role: 'quit' as const }]),
       ],
     },
     {
@@ -2124,13 +2356,18 @@ function setupMenu() {
     },
     {
       label: 'Window',
+      // B361: on macOS the `window` role makes this NSApp's Windows menu, so
+      // the OS lists the open windows (decoupled ones included) below our items.
+      ...(isMac ? { role: 'window' as const } : {}),
       submenu: [
         // Enabled-state is scoped to the FOCUSED window's tab count by
         // refreshMenuState() (re-run on connect/disconnect/tab change AND on
         // window focus): Next/Prev need 2+ tabs in that window, Close needs 1+.
         // Next Character shows the existing Ctrl+Tab chord (App.tsx) but does
-        // not rebind it (registerAccelerator false).
-        { id: 'menu-next-character',  label: 'Next Character',     enabled: false, accelerator: 'CmdOrCtrl+Tab', registerAccelerator: false, click: () => sendMenuAction('next-character') },
+        // not rebind it (registerAccelerator false). The hint says Ctrl+Tab on
+        // macOS too (B361): CmdOrCtrl+Tab would display ⌘⇥, the system app
+        // switcher, while the chord Lichborne accepts is ⌃⇥.
+        { id: 'menu-next-character',  label: 'Next Character',     enabled: false, accelerator: isMac ? 'Ctrl+Tab' : 'CmdOrCtrl+Tab', registerAccelerator: false, click: () => sendMenuAction('next-character') },
         { id: 'menu-prev-character',  label: 'Previous Character', enabled: false, click: () => sendMenuAction('prev-character') },
         { id: 'menu-close-character', label: 'Close Character',    enabled: false, click: () => sendMenuAction('close-character') },
         { type: 'separator' },
@@ -2212,6 +2449,23 @@ app.whenReady().then(() => {
   createWindow()
   setupMenu()
   if (app.isPackaged) setupAutoUpdater()
+  // B354: system restart / shut down / log out. The event exists on Linux and
+  // macOS only, so Windows never loads powerMonitor here and is unchanged. The
+  // typings declare the listener with no parameter although Electron passes
+  // the event (the docs call e.preventDefault()) — hence the rest parameter.
+  if (process.platform !== 'win32') {
+    powerMonitor.on('shutdown', (...args: unknown[]) =>
+      onSystemShutdown(args[0] as { preventDefault?: () => void } | undefined))
+  }
+})
+
+// B353: mark a quit as in progress before Electron starts closing windows (see
+// `quitInProgress`). Never preventDefaults — runAppShutdown's own closing
+// app.quit() passes straight through, with no windows left to close.
+app.on('before-quit', () => {
+  quitInProgress = true
+  if (quitInProgressTimer) clearTimeout(quitInProgressTimer)
+  quitInProgressTimer = setTimeout(() => { quitInProgressTimer = null; quitInProgress = false }, QUIT_CLOSE_PASS_MS)
 })
 
 // Safety net only: the real quit is issued by runAppShutdown() once the drain
@@ -2223,6 +2477,23 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow()
+// macOS Dock-icon click. No windows at all (not normally reachable — closing the
+// primary quits) → create one. Windows that exist but none visible (all
+// minimized) → bring the primary back, which macOS otherwise leaves sitting in
+// the Dock (B361). Nothing during the shutdown drain.
+app.on('activate', (_e, hasVisibleWindows) => {
+  if (appClosing) return
+  if (BrowserWindow.getAllWindows().length === 0) { createWindow(); return }
+  if (!hasVisibleWindows) {
+    const w = primaryWindow()
+    if (w) {
+      if (w.isMinimized()) w.restore()
+      w.show()
+      w.focus()
+    }
+  }
 })
+
+// F109: the final window-state write. Shutdown DESTROYS windows, which emits no
+// 'close', so this is what guarantees a move made just before quitting lands.
+app.on('will-quit', () => flushWindowState())

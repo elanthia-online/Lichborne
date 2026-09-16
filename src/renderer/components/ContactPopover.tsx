@@ -39,9 +39,14 @@ export default function ContactPopover({ contact, template, x, y, onClose, onEdi
     const vw = window.innerWidth
     const vh = window.innerHeight
     const MARGIN = 8
+    // Below the click, or above it when it would run off the bottom; then clamp
+    // BOTH axes into the window (B332). The flip alone had no floor, so a click
+    // near the top of a short window put the card's top edge off-screen. The CSS
+    // max-height guarantees the box fits, so the clamp always has room.
+    const top = y + 4 + height > vh - MARGIN ? y - height - 4 : y + 4
     setPos({
-      left: Math.min(x, vw - width - MARGIN),
-      top:  y + height > vh - MARGIN ? y - height - 4 : y + 4,
+      left: Math.max(MARGIN, Math.min(x, vw - width - MARGIN)),
+      top:  Math.max(MARGIN, Math.min(top, vh - height - MARGIN)),
     })
   }, [x, y])
 
@@ -50,7 +55,8 @@ export default function ContactPopover({ contact, template, x, y, onClose, onEdi
       if (ref.current && !ref.current.contains(e.target as Node)) onClose()
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      // preventDefault so a dialog's Esc handler (useEscapeClose) leaves the key alone.
+      if (e.key === 'Escape') { e.preventDefault(); onClose() }
     }
     document.addEventListener('mousedown', onMouseDown)
     document.addEventListener('keydown', onKey)
@@ -83,7 +89,7 @@ export default function ContactPopover({ contact, template, x, y, onClose, onEdi
             {contact.name}
           </span>
         </div>
-        <button className="cpop-close" onClick={onClose}>✕</button>
+        <button className="cpop-close" onClick={onClose} title="Close" aria-label="Close">✕</button>
       </div>
 
       {subtitle && <div className="cpop-subtitle">{subtitle}</div>}

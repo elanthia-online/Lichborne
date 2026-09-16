@@ -1,3 +1,9 @@
+/* Quick Send (Ctrl+Shift+Enter) — the About-modal chrome (UX standard #10,
+   B400, v0.19.7): --modal-* surface, an accent header band holding the title
+   and the shared `ui-close`, then the body. z 2000 is its tier in the map
+   (pitfall #118d) — above the connect overlay and `.cne-backdrop` dialogs,
+   below About (2010), toasts and context menus. */
+
 .quick-send-backdrop {
   position: fixed;
   inset: 0;
@@ -11,39 +17,41 @@
 
 .quick-send-card {
   width: min(520px, 92vw);
-  /* Canonical modal chrome (global.css tokens) — the About-modal look. */
   background: var(--modal-bg);
+  color: var(--text-primary);
   border: 1px solid var(--modal-border);
   border-radius: var(--modal-radius);
   box-shadow: var(--modal-shadow);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px 12px;
+  /* The header band meets the rounded corners. */
+  overflow: hidden;
 }
 
+/* The accent band. Was an uppercase --text-dim label over a faint hairline —
+   the one dialog header that read as a section label. */
 .quick-send-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 8px;
+  padding: var(--modal-head-pad);
+  background: var(--modal-head-bg);
+  border-bottom: 1px solid var(--modal-head-border);
+}
+.quick-send-header > .ui-close { margin-left: auto; }
+
+.quick-send-title {
+  font-size: var(--modal-title-size);
   font-weight: 700;
-  letter-spacing: 0.06em;
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  color: var(--text-dim, #aaa);
-  border-bottom: 1px solid var(--border-faint, #2a2a2a);
-  padding-bottom: 8px;
+  letter-spacing: 0.02em;
+  color: var(--modal-head-color);
 }
 
-.quick-send-close {
-  appearance: none;
-  background: transparent;
-  border: 0;
-  color: var(--text-dim, #aaa);
-  cursor: pointer;
-  font-size: 1.1rem;
-  line-height: 1;
-  padding: 2px 6px;
+.quick-send-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px;
 }
 
 /* ── Target picker (v0.18.0) ──────────────────────────────────────────────
@@ -57,12 +65,13 @@
   gap: 4px;
 }
 
+/* Small, uppercase, muted — only the top header is an accent band. */
 .quick-send-targets-label {
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: var(--modal-label-size);
+  font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-muted);
   margin-bottom: 2px;
 }
 
@@ -79,6 +88,7 @@
   gap: 2px;
   max-height: 9.5rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .quick-send-target-row {
@@ -87,12 +97,13 @@
   gap: 8px;
   padding: 5px 8px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.86rem;
   color: var(--text-primary);
   cursor: pointer;
 }
-.quick-send-target-row:hover { background: var(--modal-ctl-hover); }
+/* Neutral hover on UNSELECTED rows only (pitfall #107). */
+.quick-send-target-row:not(.quick-send-target-row--on):hover { background: var(--modal-ctl-hover); }
 .quick-send-target-row input { margin: 0; cursor: pointer; }
 
 /* Selected = the About accent chip, so the active targets read at a glance. */
@@ -127,17 +138,20 @@
 
 .quick-send-input {
   background: var(--modal-input-bg);
-  color: var(--text, #ddd);
-  border: 1px solid var(--border-subtle, #3a3a3a);
-  border-radius: 4px;
+  /* B324: was `var(--text, #ddd)` — `--text` is defined nowhere, so the typed
+     text was always the dark-theme fallback (~1.1:1 on light themes). */
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   padding: 8px 10px;
   font-family: inherit;
   font-size: 0.95rem;
   outline: none;
+  transition: border-color var(--ui-transition);
 }
 
 .quick-send-input:focus {
-  border-color: var(--accent, #6aa);
+  border-color: var(--accent-dim);
 }
 
 .quick-send-actions {
@@ -147,29 +161,12 @@
   gap: 8px;
 }
 
+/* --text-muted, not --text-faint: the hint says who receives the command, and
+   --text-faint is ~2.3:1 on Classic Light. */
 .quick-send-hint {
-  font-size: 0.72rem;
-  color: var(--text-faint, #777);
-}
-
-.quick-send-btn {
-  appearance: none;
-  background: color-mix(in srgb, var(--accent, #6aa) 30%, transparent);
-  color: var(--accent, #cce);
-  border: 1px solid var(--accent, #6aa);
-  border-radius: 4px;
-  padding: 6px 14px;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.quick-send-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent, #6aa) 50%, transparent);
-}
-
-.quick-send-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  min-width: 0;
+  font-size: var(--modal-hint-size);
+  color: var(--text-muted);
 }
 
 /* Every picked character disconnected while the modal was open — Send is

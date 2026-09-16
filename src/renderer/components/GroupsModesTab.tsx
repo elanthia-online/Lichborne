@@ -5,16 +5,28 @@
 // its own: every edit goes through `useGroups()` (GroupsContext), whose
 // `setGroups`/`setModes` write state AND save it for the current character.
 // Two side effects a developer should keep: deleting a group also strips its
-// id from every mode's `enabledGroups`, and deleting the ACTIVE mode calls
-// `clearMode()` so no stale mode stays applied. "Apply" saves the draft first,
-// then applies it via `applyModeObject`. The hotkey field is MacrosPanel's
-// `KeyBindingField`, reused so mode hotkeys capture keys the same way macros do.
+// id from every mode's `enabledGroups` (and from an open mode draft), and
+// deleting the ACTIVE mode calls `clearMode()` so no stale mode stays applied.
+// "Apply" saves the draft first, then applies it via `applyModeObject`. The
+// hotkey field is MacrosPanel's `KeyBindingField`, reused so mode hotkeys
+// capture keys the same way macros do.
+//
+// v0.19.7: "+ New" opens a PENDING draft like the rule editors — nothing is
+// written until Save, so an abandoned one leaves no "New Group" behind (B388).
+// Each editor tracks its draft against a baseline and asks before a switch
+// would drop unsaved edits; the flag is reported to the Automations dialog
+// (B368).
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { type RuleGroup, type GameMode, newGroup, newMode } from '../groups'
 import { useGroups } from './GroupsContext'
 import { KeyBindingField } from './MacrosPanel'
 import { normalizeColorInput, COLOR_INPUT_TITLE } from '../colors'
+import { pressable } from '../utils/pressable'
+import InlineConfirm from './InlineConfirm'
+import { confirmDiscard } from '../confirm'
+import { useReportUnsaved, differs } from '../hooks/useUnsaved'
+import { ruleListKeyDown } from './AutomationAnalytics'
 import '../styles/groups.css'
 
 export default function GroupsModesTab() {
@@ -27,36 +39,82 @@ export default function GroupsModesTab() {
   const [selModeId,  setSelModeId]  = useState<string | null>(null)
   const [groupDraft, setGroupDraft] = useState<RuleGroup | null>(null)
   const [modeDraft,  setModeDraft]  = useState<GameMode  | null>(null)
+  // B368: what each draft is compared against (stored / fresh / just saved).
+  const [groupBase,  setGroupBase]  = useState<RuleGroup | null>(null)
+  const [modeBase,   setModeBase]   = useState<GameMode  | null>(null)
+  // B388: true while the draft is a "+ New" that hasn't been saved yet.
+  const [groupPending, setGroupPending] = useState(false)
+  const [modePending,  setModePending]  = useState(false)
+  const groupNameRef = useRef<HTMLInputElement>(null)
+  const modeNameRef  = useRef<HTMLInputElement>(null)
+
+  const groupDirty = !!groupDraft && !!groupBase && differs(groupDraft, groupBase)
+  const modeDirty  = !!modeDraft  && !!modeBase  && differs(modeDraft, modeBase)
+  useReportUnsaved(groupDirty || modeDirty)
 
   // ── Groups ────────────────────────────────────────────────────────────────
 
   function selectGroup(g: RuleGroup) {
     setSelGroupId(g.id)
     setGroupDraft({ ...g })
+    setGroupBase({ ...g })
+    setGroupPending(false)
+  }
+
+  function requestSelectGroup(g: RuleGroup) {
+    if (g.id === selGroupId) return
+    confirmDiscard(groupDirty, () => selectGroup(g))
   }
 
   function createGroup() {
     const g = newGroup()
-    const updated = [...groups, g]
-    setGroups(updated)
-    selectGroup(g)
+    setSelGroupId(g.id)
+    setGroupDraft({ ...g })
+    setGroupBase({ ...g })
+    setGroupPending(true)
+    setTimeout(() => { groupNameRef.current?.focus(); groupNameRef.current?.select() }, 0)
   }
 
+  const groupSaveBlock = !groupDraft ? 'Select a group to save'
+    : !groupDraft.name.trim() ? 'Enter a name to save'
+    : null
+
   function saveGroup() {
-    if (!groupDraft) return
-    const updated = groups.map(g => g.id === groupDraft.id ? groupDraft : g)
-    setGroups(updated)
+    if (!groupDraft || groupSaveBlock) return
+    const saved = { ...groupDraft, name: groupDraft.name.trim() }
+    setGroups(groupPending ? [...groups, saved] : groups.map(g => g.id === saved.id ? saved : g))
+    setGroupDraft(saved)
+    setGroupBase(saved)
+    setGroupPending(false)
+  }
+
+  function cancelOrRevertGroup() {
+    if (groupPending) {
+      setSelGroupId(null); setGroupDraft(null); setGroupBase(null); setGroupPending(false)
+      return
+    }
+    const g = groups.find(x => x.id === selGroupId)
+    if (g) { setGroupDraft({ ...g }); setGroupBase({ ...g }) }
   }
 
   function deleteGroup() {
     if (!selGroupId) return
-    setGroups(groups.filter(g => g.id !== selGroupId))
+    const id = selGroupId
+    setGroups(groups.filter(g => g.id !== id))
     setModes(modes.map(m => ({
       ...m,
-      enabledGroups: m.enabledGroups.filter(id => id !== selGroupId),
+      enabledGroups: m.enabledGroups.filter(x => x !== id),
     })))
+    // An open mode editor loses the id too, so saving it can't write the
+    // deleted group back — draft and baseline together, so it doesn't read
+    // as an edit.
+    const strip = (m: GameMode | null): GameMode | null =>
+      m && m.enabledGroups.includes(id) ? { ...m, enabledGroups: m.enabledGroups.filter(x => x !== id) } : m
+    setModeDraft(strip)
+    setModeBase(strip)
     setSelGroupId(null)
     setGroupDraft(null)
+    setGroupBase(null)
   }
 
   // ── Modes ─────────────────────────────────────────────────────────────────
@@ -64,19 +122,46 @@ export default function GroupsModesTab() {
   function selectMode(m: GameMode) {
     setSelModeId(m.id)
     setModeDraft({ ...m })
+    setModeBase({ ...m })
+    setModePending(false)
+  }
+
+  function requestSelectMode(m: GameMode) {
+    if (m.id === selModeId) return
+    confirmDiscard(modeDirty, () => selectMode(m))
   }
 
   function createMode() {
     const m = newMode()
-    const updated = [...modes, m]
-    setModes(updated)
-    selectMode(m)
+    setSelModeId(m.id)
+    setModeDraft({ ...m })
+    setModeBase({ ...m })
+    setModePending(true)
+    setTimeout(() => { modeNameRef.current?.focus(); modeNameRef.current?.select() }, 0)
   }
 
-  function saveMode() {
-    if (!modeDraft) return
-    const updated = modes.map(m => m.id === modeDraft.id ? modeDraft : m)
-    setModes(updated)
+  const modeSaveBlock = !modeDraft ? 'Select a mode to save'
+    : !modeDraft.name.trim() ? 'Enter a name to save'
+    : null
+
+  /** Saves the draft and returns what was saved (null if it couldn't be). */
+  function saveMode(): GameMode | null {
+    if (!modeDraft || modeSaveBlock) return null
+    const saved = { ...modeDraft, name: modeDraft.name.trim() }
+    setModes(modePending ? [...modes, saved] : modes.map(m => m.id === saved.id ? saved : m))
+    setModeDraft(saved)
+    setModeBase(saved)
+    setModePending(false)
+    return saved
+  }
+
+  function cancelOrRevertMode() {
+    if (modePending) {
+      setSelModeId(null); setModeDraft(null); setModeBase(null); setModePending(false)
+      return
+    }
+    const m = modes.find(x => x.id === selModeId)
+    if (m) { setModeDraft({ ...m }); setModeBase({ ...m }) }
   }
 
   function deleteMode() {
@@ -85,6 +170,7 @@ export default function GroupsModesTab() {
     if (activeModeId === selModeId) clearMode()
     setSelModeId(null)
     setModeDraft(null)
+    setModeBase(null)
   }
 
   function toggleGroupInMode(groupId: string) {
@@ -112,24 +198,28 @@ export default function GroupsModesTab() {
       <div className="gm-panel">
         <div className="gm-panel-header">
           <span className="gm-panel-title">Groups</span>
-          <button className="gm-new-btn" onClick={createGroup}>+ New</button>
+          <button type="button" className="gm-new-btn" onClick={() => confirmDiscard(groupDirty, createGroup)}>+ New group</button>
         </div>
-        <div className="gm-list">
-          {groups.length === 0 && (
-            <div style={{ padding: '10px 12px', color: 'var(--text-faint)', fontSize: '0.8rem', fontStyle: 'italic' }}>
-              No groups yet.
-            </div>
+        <div className="gm-list" role="listbox" aria-label="Groups" onKeyDown={ruleListKeyDown}>
+          {groups.length === 0 && !groupPending && (
+            <div className="ui-empty">No groups yet.</div>
           )}
           {groups.map(g => (
             <div
               key={g.id}
               className={`gm-list-item${selGroupId === g.id ? ' gm-list-item--active' : ''}`}
-              onClick={() => selectGroup(g)}
+              {...pressable(() => requestSelectGroup(g), { role: 'option', selected: selGroupId === g.id })}
             >
               <span className="gm-list-dot" style={{ background: g.color }} />
-              {g.name}
+              <span className="gm-list-name" title={g.name}>{g.name}</span>
             </div>
           ))}
+          {groupPending && groupDraft && (
+            <div className="gm-list-item gm-list-item--active gm-list-item--pending">
+              <span className="gm-list-dot" style={{ background: groupDraft.color }} />
+              <span className="gm-list-name"><em>New group…</em></span>
+            </div>
+          )}
         </div>
 
         {groupDraft ? (
@@ -137,11 +227,11 @@ export default function GroupsModesTab() {
             <div className="gm-field">
               <label className="gm-label">Name</label>
               <input
+                ref={groupNameRef}
                 className="gm-input"
                 value={groupDraft.name}
                 onChange={e => setGroupDraft({ ...groupDraft, name: e.target.value })}
                 onKeyDown={e => { if (e.key === 'Enter') saveGroup() }}
-                autoFocus
               />
             </div>
             <div className="gm-field">
@@ -158,17 +248,39 @@ export default function GroupsModesTab() {
                   value={groupDraft.color}
                   title={COLOR_INPUT_TITLE}
                   onChange={e => setGroupDraft({ ...groupDraft, color: e.target.value })}
-                  onBlur={e => setGroupDraft({ ...groupDraft, color: normalizeColorInput(e.target.value) })}
+                  onBlur={e => { const v = normalizeColorInput(e.target.value); if (v !== e.target.value) setGroupDraft({ ...groupDraft, color: v }) }}
+                  onKeyDown={e => { if (e.key === 'Enter') saveGroup() }}
                 />
               </div>
             </div>
             <div className="gm-actions">
-              <button className="gm-btn gm-btn--delete" onClick={deleteGroup}>Delete</button>
-              <button className="gm-btn gm-btn--apply" onClick={saveGroup}>Save</button>
+              {!groupPending && (
+                <InlineConfirm
+                  question="Delete this group?"
+                  title="Deletes the group and takes it out of every mode"
+                  onConfirm={deleteGroup}
+                  resetKey={selGroupId}
+                />
+              )}
+              <span className="ui-modal-foot-spacer" />
+              <button
+                type="button"
+                className="ui-btn"
+                onClick={cancelOrRevertGroup}
+                disabled={!groupPending && !groupDirty}
+                title={!groupPending && !groupDirty ? 'No changes to revert' : undefined}
+              >{groupPending ? 'Cancel' : 'Revert'}</button>
+              <button
+                type="button"
+                className="ui-btn ui-btn--primary"
+                onClick={saveGroup}
+                disabled={!!groupSaveBlock}
+                title={groupSaveBlock ?? undefined}
+              >Save</button>
             </div>
           </div>
         ) : (
-          <div className="gm-no-selection">Select a group to edit.</div>
+          <div className="gm-no-selection">Select a group, or use + New group.</div>
         )}
       </div>
 
@@ -176,29 +288,33 @@ export default function GroupsModesTab() {
       <div className="gm-panel">
         <div className="gm-panel-header">
           <span className="gm-panel-title">Modes</span>
-          <button className="gm-new-btn" onClick={createMode}>+ New</button>
+          <button type="button" className="gm-new-btn" onClick={() => confirmDiscard(modeDirty, createMode)}>+ New mode</button>
         </div>
-        <div className="gm-list">
-          {modes.length === 0 && (
-            <div style={{ padding: '10px 12px', color: 'var(--text-faint)', fontSize: '0.8rem', fontStyle: 'italic' }}>
-              No modes yet.
-            </div>
+        <div className="gm-list" role="listbox" aria-label="Modes" onKeyDown={ruleListKeyDown}>
+          {modes.length === 0 && !modePending && (
+            <div className="ui-empty">No modes yet.</div>
           )}
           {modes.map(m => (
             <div
               key={m.id}
               className={`gm-list-item${selModeId === m.id ? ' gm-list-item--active' : ''}`}
-              onClick={() => selectMode(m)}
+              {...pressable(() => requestSelectMode(m), { role: 'option', selected: selModeId === m.id })}
             >
-              <span style={{ fontSize: '0.75rem', color: activeModeId === m.id ? 'var(--accent)' : 'var(--text-dim)' }}>
+              <span className={`gm-list-mode-dot${activeModeId === m.id ? ' gm-list-mode-dot--on' : ''}`}>
                 {activeModeId === m.id ? '●' : '○'}
               </span>
-              {m.name}
+              <span className="gm-list-name" title={m.name}>{m.name}</span>
               {activeModeId === m.id && (
                 <span className="gm-list-mode-active">active</span>
               )}
             </div>
           ))}
+          {modePending && modeDraft && (
+            <div className="gm-list-item gm-list-item--active gm-list-item--pending">
+              <span className="gm-list-mode-dot">○</span>
+              <span className="gm-list-name"><em>New mode…</em></span>
+            </div>
+          )}
         </div>
 
         {modeDraft ? (
@@ -206,11 +322,11 @@ export default function GroupsModesTab() {
             <div className="gm-field">
               <label className="gm-label">Name</label>
               <input
+                ref={modeNameRef}
                 className="gm-input"
                 value={modeDraft.name}
                 onChange={e => setModeDraft({ ...modeDraft, name: e.target.value })}
                 onKeyDown={e => { if (e.key === 'Enter') saveMode() }}
-                autoFocus
               />
             </div>
             <div className="gm-field">
@@ -222,7 +338,7 @@ export default function GroupsModesTab() {
             </div>
             {groups.length > 0 && (
               <div className="gm-field">
-                <label className="gm-label">Active Groups</label>
+                <label className="gm-label">Active groups</label>
                 <div className="gm-group-toggles">
                   {groups.map(g => (
                     <label key={g.id} className="gm-group-toggle-row">
@@ -239,15 +355,42 @@ export default function GroupsModesTab() {
               </div>
             )}
             <div className="gm-actions">
-              <button className="gm-btn gm-btn--delete" onClick={deleteMode}>Delete</button>
-              <button className="gm-btn" onClick={saveMode}>Save</button>
-              <button className="gm-btn gm-btn--apply" onClick={() => { saveMode(); applyModeObject(modeDraft) }}>
+              {!modePending && (
+                <InlineConfirm
+                  question="Delete this mode?"
+                  title={activeModeId === modeDraft.id ? 'Deletes the mode and turns it off' : undefined}
+                  onConfirm={deleteMode}
+                  resetKey={selModeId}
+                />
+              )}
+              <span className="ui-modal-foot-spacer" />
+              <button
+                type="button"
+                className="ui-btn"
+                onClick={cancelOrRevertMode}
+                disabled={!modePending && !modeDirty}
+                title={!modePending && !modeDirty ? 'No changes to revert' : undefined}
+              >{modePending ? 'Cancel' : 'Revert'}</button>
+              <button
+                type="button"
+                className="ui-btn"
+                onClick={() => saveMode()}
+                disabled={!!modeSaveBlock}
+                title={modeSaveBlock ?? undefined}
+              >Save</button>
+              <button
+                type="button"
+                className="ui-btn ui-btn--primary"
+                onClick={() => { const m = saveMode(); if (m) applyModeObject(m) }}
+                disabled={!!modeSaveBlock}
+                title={modeSaveBlock ?? 'Saves the mode, then switches its groups on and the rest off'}
+              >
                 {activeModeId === modeDraft.id ? 'Re-apply' : 'Apply'}
               </button>
             </div>
           </div>
         ) : (
-          <div className="gm-no-selection">Select a mode to edit.</div>
+          <div className="gm-no-selection">Select a mode, or use + New mode.</div>
         )}
       </div>
 

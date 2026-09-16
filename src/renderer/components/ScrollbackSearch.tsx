@@ -68,6 +68,8 @@ export function ScrollbackSearch({ lines, onJump, onClose, onClearHit }: Scrollb
   }
 
   function handleKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    // B349: Enter/Esc mid-composition commit/cancel the IME candidate.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
     if (e.key === 'Enter') { e.preventDefault(); go(e.shiftKey ? 1 : -1) }
     else if (e.key === 'Escape') { e.preventDefault(); onClose() }
   }
@@ -87,9 +89,9 @@ export function ScrollbackSearch({ lines, onJump, onClose, onClearHit }: Scrollb
       <span className="sb-search-count">
         {matches.length > 0 ? `${cur + 1}/${matches.length}` : q.length >= MIN_QUERY ? 'no matches' : ''}
       </span>
-      <button type="button" className="sb-search-btn" title="Older match (Enter)" onClick={() => go(-1)}>▲</button>
-      <button type="button" className="sb-search-btn" title="Newer match (Shift+Enter)" onClick={() => go(1)}>▼</button>
-      <button type="button" className="sb-search-btn" title="Close (Esc)" onClick={onClose}>✕</button>
+      <button type="button" className="sb-search-btn" title="Older match (Enter)" aria-label="Older match" onClick={() => go(-1)}>▲</button>
+      <button type="button" className="sb-search-btn" title="Newer match (Shift+Enter)" aria-label="Newer match" onClick={() => go(1)}>▼</button>
+      <button type="button" className="sb-search-btn" title="Close search (Esc)" aria-label="Close search" onClick={onClose}>✕</button>
     </div>
   )
 }

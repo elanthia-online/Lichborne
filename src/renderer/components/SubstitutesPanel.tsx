@@ -19,12 +19,16 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { ResizeDivider } from './ResizeDivider'
+import { pressable } from '../utils/pressable'
+import InlineConfirm from './InlineConfirm'
+import { confirmDelete, confirmDiscard } from '../confirm'
+import { useReportUnsaved, differs } from '../hooks/useUnsaved'
 import { loadSubstitutes, saveSubstitutes, newSubstitute, type SubstituteRule } from '../substitutes'
 import { STREAM_OPTIONS } from '../mutes'
 import { isValidRegex } from '../highlights'
 import { useCharacter } from '../CharacterContext'
 import { scopedKey } from '../characterScope'
-import { useRuleAnalytics, AnalyticsReview, RuleBadges } from './AutomationAnalytics'
+import { useRuleAnalytics, AnalyticsReview, RuleBadges, ruleListKeyDown } from './AutomationAnalytics'
 import { analyzeSubstitutes } from '../automationHealth'
 import GroupPicker from './GroupPicker'
 import '../styles/highlights.css'
@@ -36,15 +40,13 @@ import '../styles/groups.css'
 // `hp-*` layout/classes. Display-only; the Session Log keeps the raw text.
 
 interface Props {
-  onClose:  () => void
   onSaved?: () => void
-  inline?:  boolean
   prefill?: SubstituteRule   // from the game-window right-click "Substitute …"
   openRuleId?: string        // v0.14.6: open an existing rule for edit (slash /sub edit)
   analyticsOn?: boolean
   // F37/F63 (v0.15.2): which store this panel edits ('global' = All Characters
   // scope — groups row hidden) + the cross-store MOVE callback for the
-  // editor's "Applies to" control. Both absent when hosted standalone.
+  // editor's "Applies to" control (only rendered when a callback is given).
   scope?: 'character' | 'global'
   onMoveScope?: (rule: SubstituteRule) => void
 }
@@ -56,45 +58,60 @@ export default function SubstitutesPanel({ onSaved, prefill, openRuleId, analyti
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const an = useRuleAnalytics(character, rules, analyzeSubstitutes, analyticsOn, onSaved)
   const [draft, setDraft]   = useState<SubstituteRule | null>(null)
+  // B368: what the draft is compared against (stored / fresh / just saved).
+  const [baseline, setBaseline] = useState<SubstituteRule | null>(null)
   const [isPendingNew, setIsPendingNew] = useState(false)
-  const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [search, setSearch] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const appliedOpenRef = useRef<string | undefined>(undefined)
+
+  const dirty = !!draft && !!baseline && differs(draft, baseline)
+  useReportUnsaved(dirty)
 
   // A "Substitute …" from the game-window right-click arrives as a new draft.
   useEffect(() => {
     if (!prefill) return
-    setDraft({ ...prefill })
-    setSelectedId(prefill.id)
-    setIsPendingNew(true)
-    setDeleteConfirm(false)
-    setTimeout(() => nameInputRef.current?.focus(), 0)
+    confirmDiscard(dirty, () => {
+      setDraft({ ...prefill })
+      setBaseline({ ...prefill })
+      setSelectedId(prefill.id)
+      setIsPendingNew(true)
+      setTimeout(() => nameInputRef.current?.focus(), 0)
+    })
   }, [prefill?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // v0.14.6: open an EXISTING rule by id (slash `/sub edit`) — the
   // TriggersPanel openRuleId pattern. No-op if the rule was deleted since.
+  // Applied once per id, so a later save doesn't snap the editor back.
   useEffect(() => {
-    if (!openRuleId) return
+    // Reset when the request clears, so asking for the same rule again opens it.
+    if (!openRuleId) { appliedOpenRef.current = undefined; return }
+    if (appliedOpenRef.current === openRuleId) return
     const r = rules.find(x => x.id === openRuleId)
     if (!r) return
-    setDraft({ ...r })
-    setSelectedId(r.id)
-    setIsPendingNew(false)
-  }, [openRuleId, rules])
+    appliedOpenRef.current = openRuleId
+    confirmDiscard(dirty, () => selectRule(r))
+  }, [openRuleId, rules]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function selectRule(r: SubstituteRule) {
     setSelectedId(r.id)
     setDraft({ ...r })
+    setBaseline({ ...r })
     setIsPendingNew(false)
-    setDeleteConfirm(false)
+  }
+
+  // B368: the user-facing switches — they ask before an unsaved draft is lost.
+  function requestSelect(r: SubstituteRule) {
+    if (r.id === selectedId) return
+    confirmDiscard(dirty, () => selectRule(r))
   }
 
   function createNew() {
     const r = newSubstitute()
     setDraft(r)
+    setBaseline({ ...r })
     setSelectedId(r.id)
     setIsPendingNew(true)
-    setDeleteConfirm(false)
     setTimeout(() => nameInputRef.current?.focus(), 0)
   }
 
@@ -104,47 +121,55 @@ export default function SubstitutesPanel({ onSaved, prefill, openRuleId, analyti
     onSaved?.()
   }
 
+  const regexInvalid = !!draft && draft.mode === 'regex' && !!draft.pattern && !isValidRegex(draft.pattern)
+  // B379: why Save is unavailable (the disabled button's title), or null.
+  const saveBlock = !draft ? 'Select a substitute to save'
+    : !draft.pattern.trim() ? 'Fill in Find to save'
+    : regexInvalid ? 'Fix the regular expression to save'
+    : null
+
   function saveDraft() {
-    if (!draft) return
+    if (!draft || saveBlock) return
     const trimmed = { ...draft, pattern: draft.pattern.trim() }
-    if (!trimmed.pattern) return
     if (!trimmed.name) trimmed.name = trimmed.pattern
     persist(isPendingNew ? [...rules, trimmed] : rules.map(r => r.id === trimmed.id ? trimmed : r))
     setDraft(trimmed)
+    setBaseline(trimmed)
     setIsPendingNew(false)
   }
 
   function discardOrCancel() {
     if (isPendingNew) {
-      setSelectedId(null); setDraft(null); setIsPendingNew(false)
+      setSelectedId(null); setDraft(null); setBaseline(null); setIsPendingNew(false)
     } else {
       const original = rules.find(r => r.id === selectedId)
-      if (original) setDraft({ ...original })
-      setDeleteConfirm(false)
+      if (original) { setDraft({ ...original }); setBaseline({ ...original }) }
     }
   }
 
   function deleteRuleById(id: string) {
     persist(rules.filter(r => r.id !== id))
-    if (selectedId === id) { setSelectedId(null); setDraft(null); setIsPendingNew(false); setDeleteConfirm(false) }
+    if (selectedId === id) { setSelectedId(null); setDraft(null); setBaseline(null); setIsPendingNew(false) }
   }
 
   function toggleEnabled(id: string) {
     persist(rules.map(r => r.id === id ? { ...r, enabled: !r.enabled } : r))
-    if (draft?.id === id) setDraft(prev => prev ? { ...prev, enabled: !prev.enabled } : prev)
+    // Saved immediately, so the baseline moves too — not an unsaved edit.
+    if (draft?.id === id) {
+      setDraft(prev => prev ? { ...prev, enabled: !prev.enabled } : prev)
+      setBaseline(prev => prev ? { ...prev, enabled: !prev.enabled } : prev)
+    }
   }
 
   const filtered = search
     ? rules.filter(r => (r.name + ' ' + r.pattern + ' ' + r.replacement).toLowerCase().includes(search.toLowerCase()))
     : rules
 
-  const regexInvalid = !!draft && draft.mode === 'regex' && !!draft.pattern && !isValidRegex(draft.pattern)
-
   const subBody = (
     <div className="hp-body">
       {/* Sidebar */}
       <div className="hp-sidebar">
-        <button className="hp-new-btn" onClick={createNew}>+ New Substitute</button>
+        <button type="button" className="hp-new-btn" onClick={() => confirmDiscard(dirty, createNew)}>+ New substitute</button>
         <div className="sidebar-search">
           <input
             className="sidebar-search-input"
@@ -152,33 +177,42 @@ export default function SubstitutesPanel({ onSaved, prefill, openRuleId, analyti
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          {search && <button className="sidebar-search-clear" onClick={() => setSearch('')}>✕</button>}
+          {search && <button className="sidebar-search-clear" onClick={() => setSearch('')} title="Clear search" aria-label="Clear search">✕</button>}
           {search && <span className="sidebar-search-count">{filtered.length}/{rules.length}</span>}
         </div>
-        <div className="hp-list">
+        <div className="hp-list" role="listbox" aria-label="Substitutes" onKeyDown={ruleListKeyDown}>
           {rules.length === 0 && !isPendingNew && (
-            <div className="hp-empty">No substitutes yet.<br />Click New Substitute to rewrite game text.</div>
+            <div className="hp-empty">No substitutes yet.<br />Use + New substitute to rewrite game text.</div>
           )}
-          {filtered.map(r => (
+          {filtered.map(r => {
+            const label = r.name || r.pattern
+            return (
             <div
               key={r.id}
               className={`hp-list-item${selectedId === r.id ? ' hp-list-item--active' : ''}${!r.enabled ? ' hp-list-item--disabled' : ''}`}
-              onClick={() => selectRule(r)}
+              {...pressable(() => requestSelect(r), { role: 'option', selected: selectedId === r.id })}
             >
               <button
+                type="button"
                 className={`hp-toggle${r.enabled ? ' hp-toggle--on' : ''}`}
                 title={r.enabled ? 'Disable' : 'Enable'}
+                aria-label={r.enabled ? 'Disable' : 'Enable'}
                 onClick={e => { e.stopPropagation(); toggleEnabled(r.id) }}
               />
-              <span className="hp-list-label">{r.name || r.pattern || <em className="hp-unnamed">Unnamed</em>}</span>
+              {/* B396: the full label, since the row truncates it. */}
+              <span className="hp-list-label" title={label || undefined}>{label || <em className="hp-unnamed">Unnamed</em>}</span>
               {an.on ? <RuleBadges ruleId={r.id} report={an.report} stats={an.stats} /> : <span className="hp-list-scope">{r.mode}</span>}
+              {/* B370: a row ✕ deletes something that isn't open, so it asks. */}
               <button
+                type="button"
                 className="list-item-delete"
                 title="Delete"
-                onClick={e => { e.stopPropagation(); deleteRuleById(r.id) }}
+                aria-label={`Delete ${label || 'substitute'}`}
+                onClick={async e => { e.stopPropagation(); if (await confirmDelete('substitute', label)) deleteRuleById(r.id) }}
               >✕</button>
             </div>
-          ))}
+            )
+          })}
           {isPendingNew && draft && (
             <div className="hp-list-item hp-list-item--active hp-list-item--pending">
               <span className="hp-toggle hp-toggle--on" />
@@ -215,7 +249,7 @@ export default function SubstitutesPanel({ onSaved, prefill, openRuleId, analyti
                   type="button"
                   className={`grp-all-btn${draft.allGroups ? ' grp-all-btn--on' : ''}`}
                   onClick={() => setDraft({ ...draft, allGroups: !draft.allGroups, groupIds: [] })}
-                >All Groups</button>
+                >All groups</button>
                 {!draft.allGroups && (
                   <GroupPicker
                     groupIds={draft.groupIds ?? []}
@@ -240,7 +274,7 @@ export default function SubstitutesPanel({ onSaved, prefill, openRuleId, analyti
                   title={scope === 'character'
                     ? 'This substitute belongs to this character'
                     : 'Move this substitute to the character you have open — every OTHER character stops getting it'}
-                >This Character</button>
+                >This character</button>
                 <button
                   type="button"
                   className={`rule-scope-btn${scope === 'global' ? ' rule-scope-btn--on' : ''}`}
@@ -248,8 +282,8 @@ export default function SubstitutesPanel({ onSaved, prefill, openRuleId, analyti
                   onClick={() => onMoveScope(draft)}
                   title={scope === 'global'
                     ? 'This substitute applies to every character'
-                    : 'Move this substitute to All Characters — it will rewrite this text for every character on every account'}
-                >All Characters</button>
+                    : 'Move this substitute to All characters — it will rewrite this text for every character on every account'}
+                >All characters</button>
               </div>
             </div>
             )}
@@ -268,6 +302,7 @@ export default function SubstitutesPanel({ onSaved, prefill, openRuleId, analyti
                   {(['text', 'phrase', 'regex'] as const).map(m => (
                     <button
                       key={m}
+                      type="button"
                       className={`hp-mode-btn${draft.mode === m ? ' hp-mode-btn--active' : ''}`}
                       onClick={() => setDraft({ ...draft, mode: m })}
                       title={
@@ -281,6 +316,7 @@ export default function SubstitutesPanel({ onSaved, prefill, openRuleId, analyti
                   ))}
                 </div>
                 <button
+                  type="button"
                   className={`hp-mode-btn hp-mode-btn--case${draft.caseSensitive ? ' hp-mode-btn--active' : ''}`}
                   onClick={() => setDraft({ ...draft, caseSensitive: !draft.caseSensitive })}
                   title={draft.caseSensitive ? 'Case-sensitive — click to ignore case' : 'Case-insensitive — click to match exact case'}
@@ -294,7 +330,7 @@ export default function SubstitutesPanel({ onSaved, prefill, openRuleId, analyti
             <div className="hp-field">
               <label className="hp-label">Replace with</label>
               <input
-                className="hp-input"
+                className="hp-input hp-input--code"
                 value={draft.replacement}
                 onChange={e => setDraft({ ...draft, replacement: e.target.value })}
                 placeholder="Replacement text — use $1, $2 for regex capture groups"
@@ -313,22 +349,20 @@ export default function SubstitutesPanel({ onSaved, prefill, openRuleId, analyti
               </select>
             </div>
 
+            {/* Footer rail: [Delete] …spacer… [Revert/Cancel] [Save]. */}
             <div className="hp-actions">
-              {deleteConfirm ? (
-                <>
-                  <span className="hp-confirm-text">Delete this substitute?</span>
-                  <button className="hp-btn hp-btn--danger" onClick={() => deleteRuleById(draft.id)}>Yes, delete</button>
-                  <button className="hp-btn" onClick={() => setDeleteConfirm(false)}>Cancel</button>
-                </>
-              ) : (
-                <>
-                  {!isPendingNew && (
-                    <button className="hp-btn hp-btn--delete" onClick={() => setDeleteConfirm(true)}>Delete</button>
-                  )}
-                  <button className="hp-btn" onClick={discardOrCancel}>{isPendingNew ? 'Cancel' : 'Revert'}</button>
-                  <button className="hp-btn hp-btn--save" onClick={saveDraft} disabled={!draft.pattern.trim()}>Save</button>
-                </>
+              {!isPendingNew && (
+                <InlineConfirm question="Delete this substitute?" onConfirm={() => deleteRuleById(draft.id)} resetKey={selectedId} />
               )}
+              <span className="ui-modal-foot-spacer" />
+              <button
+                type="button"
+                className="ui-btn"
+                onClick={discardOrCancel}
+                disabled={!isPendingNew && !dirty}
+                title={!isPendingNew && !dirty ? 'No changes to revert' : undefined}
+              >{isPendingNew ? 'Cancel' : 'Revert'}</button>
+              <button type="button" className="ui-btn ui-btn--primary" onClick={saveDraft} disabled={!!saveBlock} title={saveBlock ?? undefined}>Save</button>
             </div>
           </div>
         )}
@@ -341,11 +375,13 @@ export default function SubstitutesPanel({ onSaved, prefill, openRuleId, analyti
     <div className="aa-host">
       <AnalyticsReview rules={rules} report={an.report} stats={an.stats}
         nameOf={r => r.name || r.pattern}
-        onJump={id => { const r = rules.find(x => x.id === id); if (r) selectRule(r) }}
+        onJump={id => { const r = rules.find(x => x.id === id); if (r) requestSelect(r) }}
         onReset={an.reset}
         onBulkRemove={ids => {
           const s = new Set(ids); const u = rules.filter(r => !s.has(r.id))
-          persist(u); setSelectedId(null); setDraft(null); setIsPendingNew(false)
+          persist(u)
+          // Only drop the editor if its rule was among those removed.
+          if (selectedId && s.has(selectedId)) { setSelectedId(null); setDraft(null); setBaseline(null); setIsPendingNew(false) }
         }} />
       {subBody}
     </div>

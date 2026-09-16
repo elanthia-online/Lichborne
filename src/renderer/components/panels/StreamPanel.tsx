@@ -8,8 +8,10 @@
 // load-bearing rules: `pinnedRef` changes ONLY from real scroll events, never
 // from render-time geometry (B203), and a `ResizeObserver` re-asserts the
 // bottom on container resizes via a bare `scrollTop` write (the pitfall #68c
-// observer rule). Right-click builds the stream context menu (highlight /
-// trigger from the word or line, timestamps, Clear, Close).
+// observer rule). Right-click builds the stream context menu through
+// `buildTextMenu` — the SAME builder the main game text uses (B381/B391), so a
+// stream offers Modify Text ▸ / Trigger ▸ / Show in Log exactly like the game
+// window, then Timestamps, then Clear and Close.
 //
 // `memo`'d (B172): every prop must stay referentially stable across unrelated
 // GameWindow renders, which is why `onClear` / `onToggleTimestamp` /
@@ -20,8 +22,82 @@ import type { TextLine } from '../../../shared/types'
 import { useContacts } from '../../ContactsContext'
 import { useHighlights } from '../../HighlightsContext'
 import { newHighlight, type HighlightRule } from '../../highlights'
+import { newMute, type MuteRule } from '../../mutes'
+import { newSubstitute, type SubstituteRule } from '../../substitutes'
 import { TextLineRow } from '../TextLineRow'
-import ContextMenu from '../ContextMenu'
+import ContextMenu, { type CtxItem } from '../ContextMenu'
+
+// ── The one text context-menu shape (B391) ───────────────────────────────────
+// Every right-click menu over text — the main game window (GameWindow), every
+// stream panel (below), and by the same grouping the PanelFrame tab menu and
+// the Debug panel — reads in ONE order:
+//   content actions (Copy · Modify Text ▸ · Trigger ▸ · Show in Log)
+//   ── view toggles (Timestamps)
+//   ── Clear · Close   (Close always LAST)
+// Empty groups are dropped, so there is never a leading, trailing or doubled
+// divider. Before this each surface assembled its own list and they disagreed
+// on where Clear and Close went and what they were called.
+
+/** Joins non-empty groups with one divider between each — never two in a row,
+ *  never a leading or trailing one. */
+export function joinMenuGroups(groups: CtxItem[][]): CtxItem[] {
+  const ne = groups.filter(g => g.length > 0)
+  return ne.flatMap((g, i) => (i < ne.length - 1 ? [...g, { label: null }] : g))
+}
+
+/** The rule-editor openers a text menu can offer. Each is optional — a surface
+ *  offers what its host wires and nothing else. */
+export interface TextMenuActions {
+  onHighlight?: (rule: HighlightRule, testText?: string) => void
+  onTrigger?: (pattern: string) => void
+  onMute?: (rule: MuteRule) => void
+  onSubstitute?: (rule: SubstituteRule) => void
+  onShowInLog?: (text: string) => void
+}
+
+/** Builds a text surface's context menu for the word / line under the pointer. */
+export function buildTextMenu(
+  at: { word: string | null; lineText: string | null },
+  actions: TextMenuActions,
+  view: { timestamps?: { shown: boolean; toggle: () => void }; clear?: () => void; close?: () => void },
+): CtxItem[] {
+  const { word, lineText } = at
+  const { onHighlight, onTrigger, onMute, onSubstitute, onShowInLog } = actions
+  const testText = lineText ?? undefined
+  const hl: CtxItem[] = onHighlight ? [
+    ...(word ? [{ label: `Highlight "${word}"`, onClick: () => onHighlight(newHighlight(word, 'match'), testText) }] : []),
+    ...(lineText ? [{ label: 'Highlight this line', onClick: () => onHighlight(newHighlight(lineText, 'line'), testText) }] : []),
+  ] : []
+  // A word mute strips just that text (`match`); a line mute drops the line.
+  const mu: CtxItem[] = onMute ? [
+    ...(word ? [{ label: `Mute "${word}"`, onClick: () => onMute({ ...newMute(word, 'phrase'), scope: 'match' }) }] : []),
+    ...(lineText ? [{ label: 'Mute this line', onClick: () => onMute({ ...newMute(lineText, 'phrase'), scope: 'line' }) }] : []),
+  ] : []
+  const sub: CtxItem[] = onSubstitute ? [
+    ...(word ? [{ label: `Substitute "${word}"`, onClick: () => onSubstitute(newSubstitute(word, '')) }] : []),
+    ...(lineText ? [{ label: 'Substitute this line', onClick: () => onSubstitute(newSubstitute(lineText, '')) }] : []),
+  ] : []
+  const tr: CtxItem[] = onTrigger ? [
+    ...(word ? [{ label: `Trigger for "${word}"`, onClick: () => onTrigger(word) }] : []),
+    ...(lineText ? [{ label: 'Trigger for this line', onClick: () => onTrigger(lineText) }] : []),
+  ] : []
+  // Two sibling submenus keep the root short: "Modify Text" changes how text
+  // DISPLAYS (highlight / mute / substitute); "Trigger" builds automation off it.
+  const modify = joinMenuGroups([hl, mu, sub])
+  const content: CtxItem[] = [
+    ...(modify.length ? [{ label: 'Modify Text', submenu: modify }] : []),
+    ...(tr.length ? [{ label: 'Trigger', submenu: tr }] : []),
+    ...(onShowInLog && lineText ? [{ label: 'Show in Log', onClick: () => onShowInLog(lineText) }] : []),
+  ]
+  const toggles: CtxItem[] = view.timestamps
+    ? [{ label: view.timestamps.shown ? 'Hide timestamps' : 'Show timestamps', onClick: view.timestamps.toggle }]
+    : []
+  const end: CtxItem[] = [
+    ...(view.clear ? [{ label: 'Clear', onClick: view.clear }] : []),
+    ...(view.close ? [{ label: 'Close', onClick: view.close }] : []),
+  ]
+  return joinMenuGroups([content, toggles, end])
+}
 
 // B172: memoized — a GameWindow render no longer re-renders every stream
 // panel; this panel re-renders only when ITS lines (or rules/contacts via
@@ -38,6 +114,14 @@ interface Props {
   onClear?: (streamId: string) => void
   onHighlight?: (rule: HighlightRule, testText?: string) => void
   onTrigger?: (pattern: string) => void
+  // B381: mutes and substitutes apply to EVERY stream by default, so a stream
+  // offers them from its own text just like the game window does; Show in Log
+  // searches the Session Log for the line. All three are GameWindow's stable
+  // useCallbacks passed straight through (the memo note above) — they take the
+  // rule / text as an argument, so no per-render closure is ever minted.
+  onMute?: (rule: MuteRule) => void
+  onSubstitute?: (rule: SubstituteRule) => void
+  onShowInLog?: (text: string) => void
   onSendCommand?: (cmd: string) => void
   autoLinkUrls?: boolean
   webLinkSafety?: boolean
@@ -50,7 +134,7 @@ interface Props {
   // identity, no per-render closure (see the memo note above).
 }
 
-export default memo(function StreamPanel({ streamId, lines, emptyMessage, onClear, onHighlight, onTrigger, onSendCommand, autoLinkUrls = true, webLinkSafety = true, showTimestamp, onToggleTimestamp, onCloseStream }: Props) {
+export default memo(function StreamPanel({ streamId, lines, emptyMessage, onClear, onHighlight, onTrigger, onMute, onSubstitute, onShowInLog, onSendCommand, autoLinkUrls = true, webLinkSafety = true, showTimestamp, onToggleTimestamp, onCloseStream }: Props) {
   const { contacts, templates, nameRegex, onContactClick } = useContacts()
   const { matchRules, lineRules } = useHighlights()
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -98,7 +182,7 @@ export default memo(function StreamPanel({ streamId, lines, emptyMessage, onClea
 
   function handleContextMenu(e: React.MouseEvent) {
     e.preventDefault()
-    const hasExtras = onHighlight || onTrigger
+    const hasExtras = onHighlight || onTrigger || onMute || onSubstitute || onShowInLog
     const word = hasExtras ? getWordAtPoint(e.clientX, e.clientY) : null
     const lineText = hasExtras ? getLineTextAtPoint(e.clientX, e.clientY) : null
     setCtxMenu({ x: e.clientX, y: e.clientY, word, lineText })
@@ -125,8 +209,10 @@ export default memo(function StreamPanel({ streamId, lines, emptyMessage, onClea
 
   return (
     <div className="stream-panel" ref={scrollRef} onScroll={handleScroll} onContextMenu={handleContextMenu}>
+      {/* B385: the shared quiet-but-readable empty line (--text-muted, em-sized
+          off this panel's font) — every stream now passes one, built-ins too. */}
       {lines.length === 0 && emptyMessage && (
-        <div className="stream-panel-empty">{emptyMessage}</div>
+        <div className="ui-empty">{emptyMessage}</div>
       )}
       {lines.map(line => (
         <TextLineRow
@@ -145,29 +231,23 @@ export default memo(function StreamPanel({ streamId, lines, emptyMessage, onClea
         />
       ))}
       <div ref={bottomRef} />
-      {ctxMenu && (() => {
-        const sep = { label: null as null }
-        const hlGroup = [
-          ...(onHighlight && ctxMenu.word ? [{ label: `Highlight "${ctxMenu.word}"`, onClick: () => onHighlight(newHighlight(ctxMenu.word!, 'match'), ctxMenu.lineText ?? undefined) }] : []),
-          ...(onHighlight && ctxMenu.lineText ? [{ label: 'Highlight this line', onClick: () => onHighlight(newHighlight(ctxMenu.lineText!, 'line'), ctxMenu.lineText ?? undefined) }] : []),
-        ]
-        const trGroup = [
-          ...(onTrigger && ctxMenu.word ? [{ label: `Trigger for "${ctxMenu.word}"`, onClick: () => onTrigger(ctxMenu.word!) }] : []),
-          ...(onTrigger && ctxMenu.lineText ? [{ label: 'Trigger for this line', onClick: () => onTrigger(ctxMenu.lineText!) }] : []),
-        ]
-        const tsGroup = onToggleTimestamp ? [{ label: showTimestamp ? 'Disable Timestamps' : 'Enable Timestamps', onClick: () => onToggleTimestamp(streamId) }] : []
-        const clGroup = onClear ? [{ label: 'Clear', onClick: () => onClear(streamId) }] : []
-        // Own group, so it reads as the destructive one rather than sitting
-        // flush against Clear. The floating window's own right-click Close
-        // never reaches here — this menu preventDefaults first — so a stream
-        // that draws its own menu has to offer it itself.
-        const csGroup = onCloseStream ? [{ label: 'Close', onClick: () => onCloseStream(streamId) }] : []
-        const groups = [hlGroup, trGroup, tsGroup, clGroup, csGroup].filter(g => g.length > 0)
-        const items = groups.flatMap((g, i) => i < groups.length - 1 ? [...g, sep] : g)
-        return (
-          <ContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} items={items} />
-        )
-      })()}
+      {/* B381/B391: the shared text-menu shape. Close is always offered here
+          when the host supports it — the floating window's own right-click
+          Close never reaches this menu (it preventDefaults first), so a stream
+          that draws its own menu has to offer it itself. These closures exist
+          only while the menu is open; nothing memoized receives them. */}
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+          items={buildTextMenu(ctxMenu, { onHighlight, onTrigger, onMute, onSubstitute, onShowInLog }, {
+            timestamps: onToggleTimestamp ? { shown: !!showTimestamp, toggle: () => onToggleTimestamp(streamId) } : undefined,
+            clear: onClear ? () => onClear(streamId) : undefined,
+            close: onCloseStream ? () => onCloseStream(streamId) : undefined,
+          })}
+        />
+      )}
     </div>
   )
 })

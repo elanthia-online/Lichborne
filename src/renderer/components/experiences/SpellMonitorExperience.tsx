@@ -50,7 +50,7 @@
 // ticking value can never reflow its cell (pitfall #103).
 import { Fragment, memo, useEffect, useState } from 'react'
 import type { ExperienceProps, SpellEffect } from '../../experiences'
-import { liveSpellEffects, spellBand, spellSortRank, groupSpells, spellRemainingLabel, spellExpired, spellEndedRemainingMs, spellEndedCountdownLabel, spellPulseCadenceLabel, spellNoteText, optionShown, experienceById, SPELL_ENDED_TTL_MS } from '../../experiences'
+import { liveSpellEffects, spellBand, spellSortRank, groupSpells, spellSlotText, spellSlotAside, spellExpired, spellEndedRemainingMs, spellEndedCountdownLabel, spellPulseCadenceLabel, optionShown, experienceById, SPELL_ENDED_TTL_MS } from '../../experiences'
 import { formatAgo } from '../../utils/formatAgo'
 import { lookupSpell } from '../../spellData'
 import '../../styles/experiences.css'
@@ -98,8 +98,14 @@ function SpellCell({ effect, now, showBars, showUrgency, pulse, showBadges, useA
   // are the known gap: they appear in percWindow but not in that file.
   const ref = lookupSpell(effect.name)
   const u = showUrgency ? spellBand(effect, now) : 'none'
-  const label = spellRemainingLabel(effect, now)
-  // '' for everything that is not a spent cell inside its grace.
+  // ONE line of text per cell, always — see spellSlotText. The optional note row
+  // this replaced made its cell taller, and a grid row takes the height of its
+  // tallest cell, so one note stretched every cell beside it.
+  const slot = spellSlotText(effect, now)
+  // The smaller reading beside it: a spent cell's clear-out countdown, or a
+  // timed effect's charge level.
+  const aside = spellSlotAside(effect, now)
+  // '' for everything that is not a spent cell inside its grace (tooltip only).
   const endedIn = spellEndedCountdownLabel(effect, now)
   const bar = barFraction(effect, now)
   const cls = [
@@ -123,8 +129,6 @@ function SpellCell({ effect, now, showBars, showUrgency, pulse, showBadges, useA
   // Abbreviations only where we actually have one — 12 spells in Lich's data
   // carry no `abbrev`, and a blank cell would be worse than a long name.
   const shownName = useAbbrev && ref?.a ? ref.a : effect.name
-  // '' when the note would only repeat the label — see spellNoteText.
-  const noteText = spellNoteText(effect, label)
   // The tooltip adds facts the cell does NOT already show (UX #8) — never a
   // restatement of the label. Under abbreviation it carries the full name,
   // which is the one thing the cell has stopped saying.
@@ -133,9 +137,14 @@ function SpellCell({ effect, now, showBars, showUrgency, pulse, showBadges, useA
     ref ? ref.l + (ref.g ? ' · ' + ref.g : '') : null,
     effect.kind === 'timed'
       ? effect.roisaen + ' roisaen when last reported' + (effect.max ? ' · longest seen ' + effect.max : '')
+        + (effect.note ? ' · the game said "' + effect.note + '"' : '')
       : effect.kind === 'fading'    ? 'fading — about to lapse'
       : effect.kind === 'permanent' ? 'no expiry'
-      : effect.kind === 'percent'   ? effect.percent + '%'
+      // The full reading, since the slot may ellipsize a compound one.
+      : effect.kind === 'percent'   ? (effect.note ?? effect.percent + '%')
+      // A spent cell's leftover reading is what the game said BEFORE it ended.
+      // It's no longer true, so it's labelled as history and never shown in the slot.
+      : effect.kind === 'ended'     ? (effect.note ? 'last reported as "' + effect.note + '"' : null)
       : effect.note ?? 'no countdown reported',
     // The two end stages are one word apart on screen and mean different
     // things, so the tooltip spells out which one you are looking at (UX #8 —
@@ -144,7 +153,11 @@ function SpellCell({ effect, now, showBars, showUrgency, pulse, showBadges, useA
       ? 'the time the game gave has run out, but it is still listed — it may have up to a roisan left'
       : effect.kind === 'ended'
         ? 'the game has stopped listing it, so it is no longer in effect'
-          + (endedIn ? ' — clears from the grid in ' + endedIn : '')
+          // B412: no ticking number here. A native tooltip can't update while
+          // it's showing — Chromium hides it when its text changes — so a live
+          // countdown made this one blink every second (pitfall #145). The cell
+          // itself shows the seconds.
+          + (endedIn ? ' — it clears from the grid when its bar runs out' : '')
         : null,
   ].filter(Boolean).join(' — ')
   return (
@@ -154,20 +167,23 @@ function SpellCell({ effect, now, showBars, showUrgency, pulse, showBadges, useA
           <span className={'sm-badge sm-badge--' + ref.b.toLowerCase()} aria-hidden="true">{ref.b}</span>
         )}
         <span className="sm-name">{shownName}</span>
-        {label && <span className="sm-time">{label}</span>}
-        {/* A spent cell says how long before it clears itself. Rendered as its
-            own element rather than folded into the label so the WORD stays the
-            primary fact and the number reads as secondary — and so the label
-            keeps being one fact, which is what makes it testable. */}
-        {endedIn && <span className="sm-ttl">{endedIn}</span>}
+        {slot && <span className="sm-time">{slot}</span>}
+        {/* The secondary reading, smaller: how long before a spent cell clears
+            itself, or a timed effect's charge. Its own element rather than
+            folded into the slot, so the WORD stays the primary fact and the
+            number reads as secondary — and so the slot keeps being one fact,
+            which is what makes it testable. */}
+        {aside && <span className="sm-aside">{aside}</span>}
       </div>
-      {noteText && <div className="sm-note">{noteText}</div>}
-      {showBars && bar !== null && (
-        <div className="sm-bar" aria-hidden="true">
+      {/* While bars are on, the bar slot is ALWAYS there, so a cell with no bar
+          (a permanent or unknown effect) is exactly as tall as one with a bar.
+          `--none` hides the track without giving its space back. */}
+      {showBars && (
+        <div className={bar === null ? 'sm-bar sm-bar--none' : 'sm-bar'} aria-hidden="true">
           {/* scaleX, not width — the bar drains continuously, and a width
               transition would invalidate layout every frame for every bar.
               See the .sm-bar-fill rule. */}
-          <span className="sm-bar-fill" style={{ transform: 'scaleX(' + bar + ')' }} />
+          {bar !== null && <span className="sm-bar-fill" style={{ transform: 'scaleX(' + bar + ')' }} />}
         </div>
       )}
     </div>
@@ -283,7 +299,10 @@ export default memo(function SpellMonitorExperience({ spells, spellsPulse, setti
     <div className="sm-scene">
       {shown('header') && (
         <div className="sm-head">
-          <span className="sm-head-title">Active Spells</span>
+          {/* B392: the window's own name, the one its tab, the shelf and the +
+              menu use — "Active Spells" named the plain Active Spells PANEL,
+              the very thing this Experience's id is chosen not to collide with. */}
+          <span className="sm-head-title">Spell Monitor</span>
           {showUpdated && (
             <span className="sm-head-feed" title={feedTitle}>
               {feedAt

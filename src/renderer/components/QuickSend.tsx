@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { backdropHandlers } from "../utils/backdropClose"
+import { useEscapeClose } from '../hooks/useEscapeClose'
 import { type CharacterId } from '../SessionsContext'
 import { useRoster } from '../RosterContext'
 import '../styles/quick-send.css'
@@ -47,6 +48,7 @@ export default function QuickSend({ onClose, initialCommand = '' }: Props) {
   const [selected, setSelected] = useState<Set<CharacterId>>(() => new Set())
   const [command, setCommand] = useState(initialCommand)
   const inputRef = useRef<HTMLInputElement>(null)
+  const titleId = useId()
 
   const allMode = selected.size === 0
   // Who actually receives the command right now.
@@ -122,9 +124,11 @@ export default function QuickSend({ onClose, initialCommand = '' }: Props) {
     onClose()
   }
 
-  function handleKey(e: React.KeyboardEvent) {
-    if (e.key === 'Escape') { e.preventDefault(); onClose() }
-  }
+  // B341: Esc through the shared hook, which closes only the TOPMOST dialog.
+  // The form's own Esc handler used to close this AND let the key reach a
+  // dialog underneath. Off while there is nothing on screen (the empty-roster
+  // null render below), so Esc isn't swallowed by an invisible dialog.
+  useEscapeClose(onClose, { enabled: roster.length > 0 })
 
   if (roster.length === 0) return null
 
@@ -132,83 +136,96 @@ export default function QuickSend({ onClose, initialCommand = '' }: Props) {
 
   return (
     <div className="quick-send-backdrop" {...backdropHandlers(() => onClose())}>
-      <form className="quick-send-card" onSubmit={handleSend} onKeyDown={handleKey}>
+      <form
+        className="quick-send-card"
+        onSubmit={handleSend}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
         <div className="quick-send-header">
-          <span>Quick Send</span>
-          <button type="button" className="quick-send-close" onClick={onClose} title="Cancel (Esc)">✕</button>
+          <span className="quick-send-title" id={titleId}>Quick Send</span>
+          <button type="button" className="ui-close" onClick={onClose} title="Close" aria-label="Close">✕</button>
         </div>
 
-        <div className="quick-send-targets">
-          <div className="quick-send-targets-label">Send to</div>
-          {noConnected && <div className="quick-send-empty">No connected characters</div>}
+        <div className="quick-send-body">
+          <div className="quick-send-targets">
+            <div className="quick-send-targets-label">Send to</div>
+            {noConnected && <div className="quick-send-empty">No connected characters</div>}
 
-          {/* Single connected character — it IS the target; no picker. */}
-          {singleTarget && (
-            <div className="quick-send-target-row quick-send-target-row--on quick-send-target-row--solo">
-              <span className="quick-send-target-name">{connected[0].character}</span>
-              <span className="quick-send-target-meta">
-                {connected[0].game}
-                {windowId != null && connected[0].ownerWindowId !== windowId ? ' · other window' : ''}
-              </span>
-            </div>
-          )}
-
-          {!noConnected && !singleTarget && (
-            <>
-              <label className={`quick-send-target-row quick-send-target-row--all${allMode ? ' quick-send-target-row--on' : ''}`}>
-                <input type="checkbox" checked={allMode} onChange={selectAll} />
-                <span className="quick-send-target-name">All characters</span>
-                <span className="quick-send-target-meta">{connected.length}</span>
-              </label>
-
-              <div className="quick-send-target-list">
-                {connected.map(s => {
-                  const on = selected.has(s.characterId)
-                  return (
-                    <label
-                      key={s.characterId}
-                      className={`quick-send-target-row${on ? ' quick-send-target-row--on' : ''}`}
-                    >
-                      <input type="checkbox" checked={on} onChange={() => toggleOne(s.characterId)} />
-                      <span className="quick-send-target-name">{s.character}</span>
-                      <span className="quick-send-target-meta">
-                        {s.game}
-                        {/* Flag characters living in another window — the send
-                            still works (one process), the user just knows. */}
-                        {windowId != null && s.ownerWindowId !== windowId ? ' · other window' : ''}
-                      </span>
-                    </label>
-                  )
-                })}
+            {/* Single connected character — it IS the target; no picker. */}
+            {singleTarget && (
+              <div className="quick-send-target-row quick-send-target-row--on quick-send-target-row--solo">
+                <span className="quick-send-target-name">{connected[0].character}</span>
+                <span className="quick-send-target-meta">
+                  {connected[0].game}
+                  {windowId != null && connected[0].ownerWindowId !== windowId ? ' · other window' : ''}
+                </span>
               </div>
-            </>
-          )}
-        </div>
+            )}
 
-        <input
-          ref={inputRef}
-          className="quick-send-input"
-          type="text"
-          value={command}
-          onChange={e => setCommand(e.target.value)}
-          placeholder="Type a command..."
-          autoComplete="off"
-        />
-        <div className="quick-send-actions">
-          <span className={`quick-send-hint${lostTargets ? ' quick-send-hint--warn' : ''}`}>
-            {lostTargets
-              ? 'The characters you picked are no longer connected — pick another.'
-              : targets.length > 0
-              ? `Sending to ${
-                  targets.length === 1 ? targets[0].character
-                  : allMode ? `all ${targets.length}`
-                  : `${targets.length} characters`
-                } · Enter to send · Esc to cancel`
-              : 'Enter to send · Esc to cancel'}
-          </span>
-          <button type="submit" className="quick-send-btn" disabled={targets.length === 0 || !command.trim()}>
-            Send ↵
-          </button>
+            {!noConnected && !singleTarget && (
+              <>
+                <label className={`quick-send-target-row quick-send-target-row--all${allMode ? ' quick-send-target-row--on' : ''}`}>
+                  <input type="checkbox" checked={allMode} onChange={selectAll} />
+                  <span className="quick-send-target-name">All characters</span>
+                  <span className="quick-send-target-meta">{connected.length}</span>
+                </label>
+
+                <div className="quick-send-target-list">
+                  {connected.map(s => {
+                    const on = selected.has(s.characterId)
+                    return (
+                      <label
+                        key={s.characterId}
+                        className={`quick-send-target-row${on ? ' quick-send-target-row--on' : ''}`}
+                      >
+                        <input type="checkbox" checked={on} onChange={() => toggleOne(s.characterId)} />
+                        <span className="quick-send-target-name">{s.character}</span>
+                        <span className="quick-send-target-meta">
+                          {s.game}
+                          {/* Flag characters living in another window — the send
+                              still works (one process), the user just knows. */}
+                          {windowId != null && s.ownerWindowId !== windowId ? ' · other window' : ''}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+
+          <input
+            ref={inputRef}
+            className="quick-send-input"
+            type="text"
+            value={command}
+            onChange={e => setCommand(e.target.value)}
+            placeholder="Type a command..."
+            autoComplete="off"
+          />
+          <div className="quick-send-actions">
+            <span className={`quick-send-hint${lostTargets ? ' quick-send-hint--warn' : ''}`}>
+              {lostTargets
+                ? 'The characters you picked are no longer connected — pick another.'
+                : targets.length > 0
+                ? `Sending to ${
+                    targets.length === 1 ? targets[0].character
+                    : allMode ? `all ${targets.length}`
+                    : `${targets.length} characters`
+                  } · Enter to send · Esc to cancel`
+                : 'Enter to send · Esc to cancel'}
+            </span>
+            <button
+              type="submit"
+              className="ui-btn ui-btn--primary"
+              disabled={targets.length === 0 || !command.trim()}
+              title={targets.length === 0 ? 'No connected character to send to' : !command.trim() ? 'Type a command first' : undefined}
+            >
+              Send ↵
+            </button>
+          </div>
         </div>
       </form>
     </div>

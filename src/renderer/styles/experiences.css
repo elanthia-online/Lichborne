@@ -38,24 +38,41 @@
   flex-direction: column;
 }
 
-/* GEOMETRY IS DELIBERATELY IDENTICAL to `.panel-font-controls--exp`
-   (panel-frame.css) — a vertical A−/A+/⚙ stack in the BOTTOM-right, lifted 28px
-   to clear a scene's bottom chrome (the Moons footer strip). The same
+/* GEOMETRY IS DELIBERATELY IDENTICAL to `.panel-font-controls--exp` (below,
+   the same cluster when the Experience is docked in a stream tab) — the same
    experience hosted in a floating window and in a stream tab should not put its
    view controls in two different places (Sekmeht: "just make it match what's in
    the streams"). Keep the two rules in step if either moves.
 
+   B372: ONE HORIZONTAL ROW, bottom-right. It used to be a vertical A−/A+/⚙
+   stack lifted a fixed 28px — ~84px of window height — while the Spell Monitor
+   can shrink to 48px and `.fl-body` clips, so in a strip the top of the stack
+   (the A−) was simply cut off. A row is one button tall (~17px).
+
+   The LIFT is still there to clear a scene's bottom chrome (the Moons footer
+   strip — Sekmeht's screenshot had the ⚙ on "moonwatch: just now"), but it now
+   gives way in a short window instead of pushing the row off the top:
+   `calc(100% - 30px)` keeps the row's top ~13px below the window top (clear of
+   the floating header overlay, whose close/collapse buttons own the top-right
+   corner), and the clamp holds it between 4px (a tiny window) and the old 28px
+   (any window taller than ~58px). `bottom` percentages resolve against the host
+   (`.fl-body` / `.panel-frame-body`, both `position: relative`).
+
    This also permanently resolves the top-right collision: the v0.18.1 header
    overlay put the window's close/collapse buttons in that corner, and the scene's
-   own header strip runs along it too, so the cluster was overlapping the header
-   text. Nothing competes for the bottom-right corner. */
+   own header strip runs along it too. Nothing competes for the bottom-right. */
+.exp-inst-controls,
+.panel-font-controls.panel-font-controls--exp,
+.exp-inst-options {
+  --exp-ctl-lift: clamp(4px, calc(100% - 30px), 28px);
+}
 .exp-inst-controls {
   position: absolute;
-  bottom: 28px;
+  bottom: var(--exp-ctl-lift);
   right: 18px;
   z-index: 6;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 2px;
   opacity: 0.15;
   transition: opacity 0.15s ease;
@@ -65,18 +82,32 @@
 .fl-window:hover .exp-inst-controls { opacity: 0.6; pointer-events: auto; }
 .exp-inst-controls:hover { opacity: 1; pointer-events: auto; }
 
-/* Opens BESIDE the stack (to its left, same bottom edge) rather than above it —
-   a tall popover anchored upward from a bottom-corner button runs off the top of
-   a short window. Matches `.exp-inst-options--tab`. */
+/* B372: opens ABOVE the button row, right-aligned with it — BY CONSTRUCTION, so
+   it can never cover A−/A+. (It used to open beside a vertical stack at a fixed
+   `bottom: 28px; right: 44px`; once the controls became a row that offset put
+   the popover straight over A− and A+.) The row's height is known exactly: the
+   buttons are fixed-rem chrome (`.panel-font-btn`: 0.7rem × line-height 1.2,
+   1px padding + 1px border top and bottom — deliberately not game-font scaled,
+   B305), so a button is 0.84rem + 4px tall at any font. The popover's bottom is
+   the row's own clamped lift + that height + a 4px gap, and `max-height` below
+   takes whatever is left of the host above it. Same rule for the floating
+   window and the docked tab (`--tab` overrides only its z). If
+   `.panel-font-btn`'s font-size, line-height or padding ever change, change
+   the 0.84rem + 8px here with them.
+
+   Trade-off, knowingly taken: in a very short window (the Spell Monitor can be
+   a 48px strip) there is little height above the row, so the popover is short
+   and scrolls — bounded, never clipped (pitfall #109). */
 .exp-inst-options {
+  --exp-pop-bottom: calc(var(--exp-ctl-lift) + 0.84rem + 8px);
   position: absolute;
-  bottom: 28px;
-  right: 44px;
+  bottom: var(--exp-pop-bottom);
+  right: 18px;
   z-index: 7;
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: 5px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  border-radius: var(--radius-md);
+  box-shadow: var(--popover-shadow);
   padding: 6px 9px;
   display: flex;
   flex-direction: column;
@@ -90,10 +121,10 @@
      popover was simply CLIPPED: the top options became unreachable with no
      scrollbar to reveal them, and nothing on screen said they were missing.
      `.fl-body` / `.panel-frame-body` are both `position: relative`, so the
-     percentage resolves against the host; 40px clears the 28px bottom offset
-     plus a margin. `contain` stops a scroll at the end chaining out to the
-     game text underneath. */
-  max-height: calc(100% - 40px);
+     percentage resolves against the host: everything above the popover's own
+     bottom edge, less a 4px margin at the top. `contain` stops a scroll at the
+     end chaining out to the game text underneath. */
+  max-height: calc(100% - var(--exp-pop-bottom) - 4px);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -121,13 +152,12 @@
 .exp-inst-option input { margin: 0; }
 
 /* F55 follow-up: the same popover hosted by a PANEL TAB's ⚙ (PanelFrame).
-   The tab's view controls sit bottom-right of .panel-frame-body (F31), so the
-   popover anchors bottom-right too — opening upward-left of the button stack,
-   clear of the 12px scrollbar rail and above the controls' z (5). */
+   B372: it INHERITS the floating popover's geometry above (above the button
+   row, right-aligned with it, clear of the 12px scrollbar rail) — no bottom /
+   right override here, so the two can never open in different places. Only its
+   z differs, to clear the docked controls' z (5). */
 .exp-inst-options--tab {
   top: auto;
-  bottom: 28px;
-  right: 44px;
   z-index: 8;
 }
 
@@ -140,72 +170,40 @@
 
 /* Experience tabs lift the whole view-controls cluster (A−/A+ + ⚙) above the
    scene's bottom chrome — the Moons footer strip sat exactly under the stack's
-   4px anchor (Sekmeht's screenshot: the ⚙ over "moonwatch: just now"). 28px
-   clears the text-height footer (~20px strip + breathing room) on every
-   game-font size; ordinary stream panels keep the original corner. */
-.panel-font-controls--exp {
-  bottom: 28px;
+   4px anchor (Sekmeht's screenshot: the ⚙ over "moonwatch: just now").
+   Ordinary stream panels keep the original corner.
+
+   B372: the SAME row and the same clamped lift as the floating
+   `.exp-inst-controls` (see there for the arithmetic), so a docked Experience
+   and a floating one put their controls in exactly the same place. Two classes
+   (0,2,0) so it beats panel-frame.css's `.panel-font-controls` by specificity,
+   never by bundle order (pitfall #111). */
+.panel-font-controls.panel-font-controls--exp {
+  bottom: var(--exp-ctl-lift);
+  flex-direction: row;
 }
 
 /* ── The shelf (§34.5) ────────────────────────────────────────────────────
-   Canonical modal chrome recipe (pitfall #55): body --bg-base, header band
-   --bg-hover, title --accent. A compact picker, not a full-size modal. */
+   B400: the ONE dialog look (UX standard #10, the About modal). The scrim,
+   panel, accent header band, title and ✕ come from ui.css's `ui-modal-*` /
+   `ui-close` classes, which read the `--modal-*` tokens — so none of that is
+   restated here (pitfall #113). Only what is shelf-specific lives below: its
+   z tier, its picker width, and the rows. (It used to hand-roll a 0.4 scrim, a
+   neutral --bg-hover header band and a 6px radius — the older chrome.) */
 .exp-shelf-backdrop {
-  position: fixed;
-  inset: 0;
+  /* Per-session dialog tier (100–400, pitfall #118(d)): it is rendered inline
+     in GameWindow, above the floating/Experience layers (≤ 61) and the app bar
+     (70). */
   z-index: 120;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
+/* A compact picker, not a full-size modal. */
 .exp-shelf {
   width: min(560px, 92vw);
   max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
-  overflow: hidden;
-}
-
-.exp-shelf-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: var(--bg-hover);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.exp-shelf-title {
-  color: var(--accent);
-  font-weight: 700;
-  letter-spacing: 0.5px;
-}
-
-.exp-shelf-close {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 1rem;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 3px;
-}
-.exp-shelf-close:hover {
-  color: var(--text-primary);
-  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
 }
 
 .exp-shelf-body {
-  overflow-y: auto;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
   gap: 10px;
 }
 
@@ -259,34 +257,16 @@
   line-height: 1.4;
 }
 
-/* One quiet line for the whole shelf (replaced the verbose per-row line). */
+/* One quiet line for the whole shelf (replaced the verbose per-row line). Its
+   colour and size are `ui-modal-note`'s (--text-muted — it used to be
+   --text-faint, 2.3:1 on Classic Light); this adds only the footer placement.
+   (The Open/Close toggles are `ui-btn ui-btn--sm`, `--primary` while open — the
+   old `.exp-shelf-toggle` rules and their `transition: all` are gone, B409.) */
 .exp-shelf-note {
-  padding: 8px 4px 2px;
+  flex: none;
+  padding: 0.5rem 1.1rem 0.75rem;
   text-align: center;
-  color: var(--text-faint);
-  font-size: 0.72rem;
   font-style: italic;
-}
-
-.exp-shelf-toggle {
-  flex-shrink: 0;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: 4px;
-  padding: 5px 14px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.exp-shelf-toggle:hover {
-  border-color: var(--accent-dim);
-  color: var(--accent);
-}
-.exp-shelf-toggle--open {
-  border-color: var(--accent-dim);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 /* ── Living Tableau — Phase 1 cast kernel ───────────────────────────────── */
@@ -1109,9 +1089,13 @@
    just the same darkened band + sky-contrast ink as the footer. Inline-flow row
    wraps a long weather sentence. */
 .moons-header {
-  padding: 3px 8px 4px;
+  /* B395 (UX #7): a strip is text-height plus minimal padding — em off the
+     strip's own 0.78em font (≈3px 8px 4px at the default 12px) so the padding
+     follows the window's A−/A+, and line-height pinned to 1 so the band cannot
+     inherit the scene's leading and balloon. */
+  padding: 0.3em 0.85em 0.4em;
   font-size: 0.78em;
-  line-height: 1.3;
+  line-height: 1;
   color: inherit;
   text-align: center;   /* center the inline-flow row (Sekmeht) */
   /* Adaptive strip bg (--moons-band, opposite the sky-ink) so text pops by day
@@ -1128,9 +1112,9 @@
    age` segment with the ⟳. An instrument must never present stale data as live,
    so the age is shown (polish #8). */
 .moons-footer {
-  padding: 3px 8px 4px;
+  padding: 0.3em 0.85em 0.4em;   /* B395 — mirror of the header strip */
   font-size: 0.78em;
-  line-height: 1.3;
+  line-height: 1;
   color: inherit;
   text-align: center;   /* center the inline-flow row (Sekmeht) */
   /* Same adaptive strip bg + crisp edge as the header (mirror). */
@@ -1140,8 +1124,8 @@
   box-shadow: 0 -1.5px 0 -0.5px var(--moons-halo, transparent);
 }
 .moons-foot-row + .moons-foot-row {
-  margin-top: 2px;
-  padding-top: 2px;
+  margin-top: 0.2em;   /* B395: em, so it scales with the strip */
+  padding-top: 0.2em;
   border-top: 1px solid color-mix(in srgb, currentColor 10%, transparent);
 }
 .moons-foot-key {
@@ -1193,7 +1177,11 @@
   max-width: 96%;
   padding: 4px;
   border-radius: 13px;
-  font-size: calc(var(--panel-font-size, var(--game-font-size, 12px)) * 0.74);
+  /* B395: --game-font-size ONLY, like the rest of the Moons scene. A floating
+     Experience window shadows that var for its own A−/A+ (and a docked tab
+     re-maps its F31 override onto it), so reading --panel-font-size first could
+     leave the pill at a different size from the sky it sits on. */
+  font-size: calc(var(--game-font-size, 12px) * 0.74);
   line-height: 1.15;
   color: var(--text-primary);
   /* NO `backdrop-filter` HERE — it was `blur(9px) saturate(1.25)` and it was the
@@ -1264,7 +1252,7 @@
   margin-left: 0.5em;
   background: none;
   border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);   /* B409: the control radius scale */
   color: inherit;
   opacity: 0.72;
   cursor: pointer;
@@ -1318,9 +1306,9 @@
   color: var(--experience-scene-muted);
 }
 .moons-empty-body code {
-  font-family: Consolas, monospace;
+  font-family: var(--code-font-family);   /* B406: the one code stack */
   background: color-mix(in srgb, var(--experience-scene-text) 12%, transparent);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 0 0.3em;
 }
 
@@ -1766,6 +1754,14 @@
 }
 .sm-time {
   flex: 0 0 auto;
+  /* Since v0.19.7 the slot can hold a WORD as well as a time: a compound or
+     unmodelled reading ("intact, fading") takes it rather than growing a row.
+     So it's capped and ellipsized instead of squeezing the name to nothing.
+     The full text is in the cell's tooltip. */
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.9em;
   /* Tabular so a ticking value can never reflow its own cell (pitfall #103). */
   font-variant-numeric: tabular-nums;
@@ -1773,15 +1769,17 @@
      was backwards: the remaining time is the whole point of the cell, and on
      Classic Light the muted ramp (--text-dim #969696) measured 2.7:1 against
      the cell surface — the least readable thing in the row was the datum you
-     open the window for. Muting belongs on the NOTE below, not here (UX #5:
-     hierarchy comes from muting the SECONDARY, never the subject). */
+     open the window for. Muting belongs on the SECONDARY reading beside it,
+     not here (UX #5: hierarchy comes from muting the secondary, never the
+     subject). */
   color: var(--experience-scene-text);
 }
-/* A spent cell's clear-out countdown, beside the word "ended". Secondary to it
-   by SIZE rather than by opacity: the cell already carries `opacity: .6` from
-   `--ended`, and stacking another reduction on top drops it under the readable
-   floor on light themes. Tabular so the last ten seconds don't jitter. */
-.sm-ttl {
+/* The secondary reading beside the slot: a spent cell's clear-out countdown,
+   or a timed effect's charge level. Secondary by SIZE rather than by opacity:
+   a spent cell already carries `opacity: .6` from `--ended`, and stacking
+   another reduction on top drops it under the readable floor on light themes.
+   Tabular so the last ten seconds don't jitter. */
+.sm-aside {
   flex: 0 0 auto;
   font-size: 0.78em;
   line-height: 1;
@@ -1789,15 +1787,10 @@
   color: var(--experience-scene-muted);
 }
 
-.sm-note {
-  font-size: 0.82em;
-  line-height: 1.2;
-  margin-top: 0.1em;
-  color: var(--experience-scene-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* There is no `.sm-note` row any more (v0.19.7). A note added a second line to
+   its cell, and a grid row takes the height of its tallest cell, so one note
+   stretched every cell beside it. The note now takes the time slot where it
+   says more than the label — see spellSlotText in experiences.ts. */
 
 .sm-bar {
   display: block;
@@ -1807,6 +1800,10 @@
   overflow: hidden;
   background: color-mix(in srgb, var(--experience-scene-text) 12%, transparent);
 }
+/* A cell with no bar (a permanent or unknown effect) still reserves the bar's
+   space, so every cell is the same height whatever it holds. `visibility`
+   keeps the box and draws nothing. */
+.sm-bar--none { visibility: hidden; }
 /* The fill animates with a TRANSFORM, never `width`. The bar drains on every
    1 Hz tick, so it is in a CONTINUOUS transition the whole time the window is
    open — and a `width` transition invalidates layout on every animation frame,

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { DEVELOPERS, CONTRIBUTORS, TESTERS, REPO_URL, DISCORD_URL, AI_NOTICE_URL, ABOUT_BLURB } from '../credits'
 import { parseMidi, createMidiPlayer, loadArrayBuffer, type MidiPlayback } from '../midiPlayer'
+import { useEscapeClose } from '../hooks/useEscapeClose'
 import '../styles/about.css'
 
 // Optional easter-egg MIDI: drop a .mid at src/renderer/public/about-theme.mid
@@ -16,9 +17,9 @@ const ABOUT_MIDI_SRC = 'about-theme.mid'
 // Help → About Lichborne. Replaced the native Win32 message box (v0.17.0) so it
 // picks up the active theme (Principle #4 — eyeballed on light themes) and can
 // style the credit lists. Opened via the menu-action bridge ('about' →
-// runAppActionRef in App). Portaled to <body> at z 300 so it clears the
-// WindowLayer (z 60, pitfall on overlays). Version is fetched live so it always
-// matches package.json — never hardcode it.
+// runAppActionRef in App). Portaled to <body> at z 2010 — above every modal,
+// since the native menu can open it over any of them (B341). Version is fetched
+// live so it always matches package.json — never hardcode it.
 export default function AboutModal({ onClose }: { onClose: () => void }) {
   const [version, setVersion] = useState('')
   useEffect(() => { window.api.getAppVersion().then(setVersion).catch(() => {}) }, [])
@@ -36,11 +37,9 @@ export default function AboutModal({ onClose }: { onClose: () => void }) {
       window.api.platform
     return `${os} ${window.api.arch}`
   }
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  // B341: the shared hook, not a document listener of its own — that one never
+  // stopped the key, so a single Esc closed About AND the dialog under it.
+  useEscapeClose(onClose)
 
   // Background MIDI: load + parse the bundled file on mount (the toggle only
   // appears once it's ready), start MUTED. The synth's AudioContext spins up on

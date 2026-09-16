@@ -18,12 +18,18 @@
 //     are tab-unique because Macros and Aliases are the same component.
 //   - the app-wide Automation Analytics toggle (v0.14.4) + the stats prune on
 //     open, which must count GLOBAL rule ids as live.
+//   - the unsaved-changes SCOPE (B368, v0.19.7): every editor reports its
+//     dirty draft through UnsavedContext, and close / Esc / backdrop, the tab
+//     and scope switches, and opening Import (whose save remounts every
+//     panel) all go through `unsaved.guard`, which asks before dropping one.
 // The only import path left here is "Import from another client…" (Wrayth /
 // Genie / Frostbite); Lichborne→Lichborne moved to the Launcher's Transfer
 // (v0.10.0). Rendered by GameWindow, portaled to document.body.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { backdropHandlers } from '../utils/backdropClose'
+import { useEscapeClose } from '../hooks/useEscapeClose'
+import { UnsavedContext, useUnsavedScope } from '../hooks/useUnsaved'
 import { createPortal } from 'react-dom'
 import { type HighlightRule, loadHighlights } from '../highlights'
 import { loadTriggers } from '../triggers'
@@ -75,13 +81,33 @@ interface Props {
   muteOpenId?:          string
   substituteOpenId?:    string
   aliasOpenId?:         string
+  // B368: bumped by the host to ask an OPEN dialog to close (the app-bar
+  // button / native menu toggle). Answered with the same guarded close as the
+  // ✕, so an unsaved draft asks first. The counter isn't reset between
+  // openings, so the value present at mount is ignored.
+  closeRequest?:        number
 }
 
 export default function AutomationsPanel({
   onClose, onSaved, onThemeSaved, initialTab = 'highlights',
   highlightPrefill, highlightTestText, triggerPrefillPattern, triggerOpenId, mutePrefill, substitutePrefill,
-  highlightOpenId, muteOpenId, substituteOpenId, aliasOpenId,
+  highlightOpenId, muteOpenId, substituteOpenId, aliasOpenId, closeRequest,
 }: Props) {
+  // B368: one scope for every editor inside; leaving asks first if any of
+  // them holds an unsaved draft.
+  const unsaved = useUnsavedScope()
+  const guardedClose = () => unsaved.guard(onClose)
+  useEscapeClose(guardedClose)
+  // Latest-closure ref so the closeRequest effect always calls the current
+  // onClose (pitfall #31).
+  const guardedCloseRef = useRef(guardedClose)
+  guardedCloseRef.current = guardedClose
+  const closeReqAtMount = useRef(closeRequest)
+  useEffect(() => {
+    if (closeRequest !== undefined && closeRequest !== closeReqAtMount.current) guardedCloseRef.current()
+  }, [closeRequest])
+  const titleId = useId()
+  const modalRef = useRef<HTMLDivElement>(null)
   const [tab, setTab] = useState<Tab>(initialTab)
   const [showImport, setShowImport] = useState(false)
   // Bumped when the import wizard saves, so the active tab's panel REMOUNTS and
@@ -108,6 +134,18 @@ export default function AutomationsPanel({
   const [scope, setScope] = useState<'character' | 'global'>('character')
   const scopeCapable = GLOBAL_TABS.includes(tab)
   const effectiveScope = scopeCapable ? scope : 'character'
+  // Fires → Edit and slash `edit` name a rule by id, and those are CHARACTER
+  // rules. In "All characters" scope the panel can't find one — and the old
+  // prefill path copied it into the global store under the same id. So when an
+  // id we're asked to open is a character rule, switch to This character first
+  // (through the unsaved guard); the panel then opens it.
+  useEffect(() => {
+    if (scope !== 'global') return
+    const isCharacterRule =
+      (!!highlightOpenId && loadHighlights(character).some(r => r.id === highlightOpenId)) ||
+      (!!triggerOpenId && loadTriggers(character).some(r => r.id === triggerOpenId))
+    if (isCharacterRule) unsaved.guard(() => setScope('character'))
+  }, [highlightOpenId, triggerOpenId]) // eslint-disable-line react-hooks/exhaustive-deps
   // Panels' saves in Global scope also need: the _shared.yaml flush (globals
   // live there, not in the character YAML) and the same-window custom event
   // (a storage event never fires in the writing window — every GameWindow's
@@ -171,8 +209,8 @@ export default function AutomationsPanel({
     const r = rule as { name?: string; pattern?: string; key?: string; input?: string }
     const label = r.name || r.pattern || r.key || r.input || 'Rule'
     showToast(exists
-      ? { kind: 'info', title: 'Already exists there', message: `“${label}” already exists in ${toGlobal ? 'All Characters' : 'this character’s rules'} — moved by removing the duplicate copy.` }
-      : { kind: 'success', message: `“${label}” moved to ${toGlobal ? 'All Characters — it now applies to every character' : `this character only — other characters no longer have it`}.` })
+      ? { kind: 'info', title: 'Already exists there', message: `“${label}” already exists in ${toGlobal ? 'All characters' : 'this character’s rules'} — moved by removing the duplicate copy.` }
+      : { kind: 'success', message: `“${label}” moved to ${toGlobal ? 'All characters — it now applies to every character' : `this character only — other characters no longer have it`}.` })
   }
   const toggleAnalytics = () => {
     const next = !analyticsOn
@@ -180,7 +218,23 @@ export default function AutomationsPanel({
     saveAnalyticsEnabled(next)
     document.dispatchEvent(new CustomEvent('lichborne:analytics-changed'))
   }
-  useEffect(() => { setTab(initialTab) }, [initialTab])
+  // A new entry point (e.g. a slash `/mute edit` via Quick Send) can re-aim an
+  // already-open dialog; switching tabs unmounts the current editor, so ask.
+  useEffect(() => {
+    if (initialTab !== tab) unsaved.guard(() => setTab(initialTab))
+  }, [initialTab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // B397: open with focus in the active panel — its search box, else its first
+  // row, else the dialog itself. Runs after the panels' own mount effects; a
+  // prefill's name-field focus is deferred a tick, so it still wins.
+  useEffect(() => {
+    const root = modalRef.current
+    if (!root) return
+    const target = root.querySelector<HTMLElement>('.at-body .sidebar-search-input')
+      ?? root.querySelector<HTMLElement>('.at-body [role="option"]')
+      ?? root
+    target.focus({ preventScroll: true })
+  }, [])
 
   // Bound the usage-stats store: when Analytics is on, drop stats for rules that
   // no longer exist (deleted/re-imported). recordFire keys by ruleId and never
@@ -224,17 +278,18 @@ export default function AutomationsPanel({
   ]
 
   const modal = (
-    <div className="at-backdrop" {...backdropHandlers(() => onClose())}>
-      <div className="at-modal">
+    <div className="at-backdrop" {...backdropHandlers(guardedClose)}>
+      <div className="at-modal" ref={modalRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
 
         <div className="at-header">
-          <span className="at-title">Automations</span>
+          <span className="at-title" id={titleId}>Automations</span>
           <div className="at-tab-bar">
             {TABS.map(t => (
               <button
                 key={t.id}
+                type="button"
                 className={`at-tab${tab === t.id ? ' at-tab--active' : ''}`}
-                onClick={() => setTab(t.id)}
+                onClick={() => { if (t.id !== tab) unsaved.guard(() => setTab(t.id)) }}
               >
                 {t.label}
               </button>
@@ -251,23 +306,28 @@ export default function AutomationsPanel({
             title={scopeCapable ? undefined : 'Groups & Modes are always per-character — they gate rules per character, so a global scope doesn’t apply here.'}
           >
             <button
+              type="button"
               className={`at-scope-btn${effectiveScope === 'character' ? ' at-scope-btn--on' : ''}`}
-              onClick={() => setScope('character')}
+              onClick={() => { if (scope !== 'character') unsaved.guard(() => setScope('character')) }}
               disabled={!scopeCapable}
+              aria-pressed={effectiveScope === 'character'}
               title={scopeCapable ? `Rules for ${character} only` : undefined}
             >
-              This Character
+              This character
             </button>
             <button
+              type="button"
               className={`at-scope-btn${effectiveScope === 'global' ? ' at-scope-btn--on' : ''}`}
-              onClick={() => setScope('global')}
+              onClick={() => { if (scope !== 'global') unsaved.guard(() => setScope('global')) }}
               disabled={!scopeCapable}
+              aria-pressed={effectiveScope === 'global'}
               title={scopeCapable ? 'Global rules — apply to EVERY character, on every account. Always active (no group gating). Stored app-wide in _shared.yaml, not in any character’s profile.' : undefined}
             >
-              All Characters
+              All characters
             </button>
           </div>
           <button
+            type="button"
             className={`at-analytics-btn${analyticsOn ? ' at-analytics-btn--on' : ''}`}
             onClick={toggleAnalytics}
             title={analyticsOn
@@ -276,16 +336,20 @@ export default function AutomationsPanel({
           >
             {'\u{1F4CA}'} Analytics: {analyticsOn ? 'On' : 'Off'}
           </button>
+          {/* An import's save remounts every tab panel, which would drop an
+              open draft — so opening it goes through the same guard. */}
           <button
+            type="button"
             className="at-import-btn"
-            onClick={() => setShowImport(true)}
+            onClick={() => unsaved.guard(() => setShowImport(true))}
             title="Import highlights, macros, and colors from Wrayth, Genie, or Frostbite. To copy a setup between Lichborne characters, use the Transfer button on the launcher."
           >
             Import from another client…
           </button>
-          <button className="at-close" onClick={onClose}>✕</button>
+          <button type="button" className="ui-close" onClick={guardedClose} title="Close" aria-label="Close">✕</button>
         </div>
 
+        <UnsavedContext.Provider value={unsaved.registry}>
         <div className="at-body">
           {/* Keys are tab-UNIQUE (not bare `importNonce`): Macros + Aliases are
               the SAME component (MacrosPanel, differing only by initialTab, read
@@ -304,7 +368,6 @@ export default function AutomationsPanel({
           {tab === 'highlights' && (
             <HighlightsPanel
               key={`highlights-${effectiveScope}-${importNonce}`}
-              onClose={() => {}} inline
               prefill={highlightPrefill}
               initialTestText={highlightTestText}
               openRuleId={highlightOpenId}
@@ -317,7 +380,6 @@ export default function AutomationsPanel({
           {tab === 'triggers' && (
             <TriggersPanel
               key={`triggers-${effectiveScope}-${importNonce}`}
-              onClose={() => {}} inline
               prefillPattern={triggerPrefillPattern}
               openRuleId={triggerOpenId}
               onSaved={handleSaved}
@@ -326,13 +388,14 @@ export default function AutomationsPanel({
               onMoveScope={rule => moveRuleScope('triggers', rule)}
             />
           )}
-          {tab === 'macros'   && <MacrosPanel key={`macros-${effectiveScope}-${importNonce}`} onClose={() => {}} inline initialTab="macros"   onSaved={handleSaved} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={(type, rule) => moveRuleScope(type, rule)} />}
-          {tab === 'aliases'  && <MacrosPanel key={`aliases-${effectiveScope}-${importNonce}`} onClose={() => {}} inline initialTab="aliases"  openAliasId={aliasOpenId} onSaved={handleSaved} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={(type, rule) => moveRuleScope(type, rule)} />}
-          {tab === 'mutes'    && <MutePanel key={`mutes-${effectiveScope}-${importNonce}`} onClose={() => {}} inline onSaved={handleSaved} prefill={mutePrefill} openRuleId={muteOpenId} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={rule => moveRuleScope('mutes', rule)} />}
-          {tab === 'substitutes' && <SubstitutesPanel key={`substitutes-${effectiveScope}-${importNonce}`} onClose={() => {}} inline onSaved={handleSaved} prefill={substitutePrefill} openRuleId={substituteOpenId} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={rule => moveRuleScope('substitutes', rule)} />}
+          {tab === 'macros'   && <MacrosPanel key={`macros-${effectiveScope}-${importNonce}`} initialTab="macros"   onSaved={handleSaved} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={(type, rule) => moveRuleScope(type, rule)} />}
+          {tab === 'aliases'  && <MacrosPanel key={`aliases-${effectiveScope}-${importNonce}`} initialTab="aliases"  openAliasId={aliasOpenId} onSaved={handleSaved} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={(type, rule) => moveRuleScope(type, rule)} />}
+          {tab === 'mutes'    && <MutePanel key={`mutes-${effectiveScope}-${importNonce}`} onSaved={handleSaved} prefill={mutePrefill} openRuleId={muteOpenId} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={rule => moveRuleScope('mutes', rule)} />}
+          {tab === 'substitutes' && <SubstitutesPanel key={`substitutes-${effectiveScope}-${importNonce}`} onSaved={handleSaved} prefill={substitutePrefill} openRuleId={substituteOpenId} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={rule => moveRuleScope('substitutes', rule)} />}
           {tab === 'groups'   && <GroupsModesTab key={`groups-${importNonce}`} />}
           </CharacterProvider>
         </div>
+        </UnsavedContext.Provider>
 
       </div>
     </div>
@@ -343,6 +406,7 @@ export default function AutomationsPanel({
       {createPortal(modal, document.body)}
       {showImport && (
         <ImportWizard
+          nested
           onClose={() => setShowImport(false)}
           onSaved={() => { onSaved?.(); setShowImport(false); setImportNonce(n => n + 1) }}
           onThemeSaved={onThemeSaved}

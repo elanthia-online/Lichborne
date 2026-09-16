@@ -172,14 +172,19 @@ export default function LichSetupFields({ adv, setAdv, disabled = false, alwaysS
   return (
     <>
       <div className="lich-detect-row">
-        <button type="button" className="btn-auto-detect" onClick={runDiscovery}>
-          ↺ Auto Detect
+        <button
+          type="button"
+          className="btn-auto-detect"
+          onClick={runDiscovery}
+          title={`Look for Ruby and lich.rbw in the usual install location (${LICH_HOME_LABEL}) and fill in what's found`}
+        >
+          ↺ Auto-detect
         </button>
       </div>
       {statusEl}
       {rubyVersionEl}
       <label>
-        {`Ruby Path (${RUBY_FILE_LABEL})`}
+        {`Ruby path (${RUBY_FILE_LABEL})`}
         <div className="path-input-row">
           <input
             type="text"
@@ -201,13 +206,13 @@ export default function LichSetupFields({ adv, setAdv, disabled = false, alwaysS
               )
               if (p) setAdv1('rubyPath', p)
             }}
-          >Browse</button>
+          >Browse…</button>
           {rubyOk === true  && <span className="path-status-icon path-status-icon--valid">✓</span>}
           {rubyOk === false && <span className="path-status-icon path-status-icon--invalid">✕</span>}
         </div>
       </label>
       <label>
-        Lich Path (lich.rbw)
+        Lich path (lich.rbw)
         <div className="path-input-row">
           <input
             type="text"
@@ -223,7 +228,7 @@ export default function LichSetupFields({ adv, setAdv, disabled = false, alwaysS
               const p = await window.api.browseFile([{ name: 'Lich Script', extensions: ['rbw', 'rb'] }])
               if (p) setAdv1('lichPath', p)
             }}
-          >Browse</button>
+          >Browse…</button>
           {lichOk === true  && <span className="path-status-icon path-status-icon--valid">✓</span>}
           {lichOk === false && <span className="path-status-icon path-status-icon--invalid">✕</span>}
         </div>
@@ -233,7 +238,7 @@ export default function LichSetupFields({ adv, setAdv, disabled = false, alwaysS
           (lib/main/argv_options.rb: determine_frontend / $frontend). Labeled to
           match so the value lines up with Lich docs / support requests. */}
       <label>
-        Lich Frontend
+        Lich frontend
         <div className="port-input-row">
           <select
             value={lichMode}
@@ -250,7 +255,12 @@ export default function LichSetupFields({ adv, setAdv, disabled = false, alwaysS
           <button
             type="button"
             className={`btn-lock ${modeLocked ? 'btn-lock--locked' : 'btn-lock--unlocked'}`}
-            title={modeLocked ? 'Unlock mode' : 'Lock mode'}
+            // An icon-only button: the tooltip is its label, so it says what
+            // the click does — locking also resets the frontend (UX #8).
+            title={modeLocked
+              ? 'Unlock to choose a different frontend'
+              : `Lock to the recommended frontend (${ADV_DEFAULTS.lichMode})`}
+            aria-label={modeLocked ? 'Unlock frontend' : 'Lock frontend'}
             disabled={disabled}
             onClick={() => setAdv(prev => ({
               ...prev,
@@ -268,7 +278,7 @@ export default function LichSetupFields({ adv, setAdv, disabled = false, alwaysS
           local Lich install. The actual game-per-character is picked in the Add
           Character wizard; nothing in this block is configurable. */}
       <div className="games-list">
-        <div className="games-list-label">Games List</div>
+        <div className="games-list-label">Games list</div>
         <div className="games-list-grid">
           {GAMES.map(g => (
             <div key={g.code} className="games-list-item">

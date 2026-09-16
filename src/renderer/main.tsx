@@ -8,6 +8,11 @@
 
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+// The shared control + dialog primitives load FIRST, ahead of App and every
+// component stylesheet it pulls in, so a component rule of equal specificity
+// refines them rather than losing to them (B399 — see ui.css). global.css
+// stays after App, where it has always been.
+import './styles/ui.css'
 import App from './App'
 import './styles/global.css'
 import { initTheme } from './themes'

@@ -65,15 +65,25 @@
 
 /* ── GroupPicker dropdown menu ───────────────────────────────────────────── */
 
+/* Portaled to <body> from a rule editor inside Automations or Contacts (both
+   z 200). B403: it tied the Add-Account wizard at 600; 450 sits it just above
+   the per-session dialog tier (100–400) that hosts it and below the wizard —
+   pitfall #118(d). */
 .gp-menu {
   position: fixed;
-  z-index: 600;
+  z-index: 450;
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 3px 0;
   min-width: 140px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--popover-shadow);
+  /* B331 (pitfall #109): its length is the user's group count. GroupPicker
+     also sets an inline max-height for the space on the side it opens toward;
+     this is the ceiling when it can't measure. */
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .gp-menu-item {
@@ -117,7 +127,7 @@
 
 .gp-menu-empty {
   padding: 8px 12px;
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: 0.78rem;
   font-style: italic;
 }
@@ -144,7 +154,7 @@
   line-height: 1.4;
 }
 
-.grp-all-btn:hover {
+.grp-all-btn:not(.grp-all-btn--on):hover {
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -175,14 +185,14 @@
   font-size: 0.7rem;
   padding: 1px 8px;
   cursor: pointer;
-  transition: all 0.12s;
+  transition: background var(--ui-transition), color var(--ui-transition), border-color var(--ui-transition);
   display: flex;
   align-items: center;
   gap: 4px;
   line-height: 1.5;
 }
 
-.grp-filter-pill:hover {
+.grp-filter-pill:not(.grp-filter-pill--active):hover {
   border-color: var(--accent-dim);
   color: var(--text-secondary);
 }
@@ -219,12 +229,13 @@
   overflow: hidden;
 }
 
+/* B402: an accent tint instead of a hand-picked blue, so it follows the theme. */
 .gm-lich-notice {
   padding: 8px 14px;
-  background: rgba(100, 180, 255, 0.06);
-  border-bottom: 1px solid rgba(100, 180, 255, 0.15);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 15%, transparent);
   font-size: 0.78rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
@@ -272,8 +283,8 @@
   font-size: 0.78rem;
   cursor: pointer;
   padding: 2px 6px;
-  border-radius: 3px;
-  transition: color 0.12s, background 0.12s;
+  border-radius: var(--radius-sm);
+  transition: color var(--ui-transition), background var(--ui-transition);
 }
 
 .gm-new-btn:hover { color: var(--accent); background: var(--bg-hover); }
@@ -295,8 +306,19 @@
   transition: background 0.1s;
 }
 
-.gm-list-item:hover { background: var(--bg-hover); }
+.gm-list-item:not(.gm-list-item--active):hover { background: var(--bg-hover); }
 .gm-list-item--active { background: var(--bg-sunken); color: var(--text-primary); }
+/* B388: an unsaved "+ New" draft, like the rule editors' pending row. */
+.gm-list-item--pending { opacity: 0.7; font-style: italic; cursor: default; }
+
+/* B396: long names truncate; the row carries the full name as a title. */
+.gm-list-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .gm-list-dot {
   width: 10px;
@@ -305,12 +327,20 @@
   flex-shrink: 0;
 }
 
+.gm-list-mode-dot {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.gm-list-mode-dot--on { color: var(--accent); }
+
 .gm-list-mode-active {
   margin-left: auto;
+  flex-shrink: 0;
   font-size: 0.68rem;
   color: var(--accent);
   border: 1px solid var(--accent-bg);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 1px 6px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -342,13 +372,13 @@
 .gm-input {
   background: var(--modal-input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 0.85rem;
   padding: 5px 9px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color var(--ui-transition);
 }
 
 .gm-input:focus { border-color: var(--accent-dim); }
@@ -364,7 +394,7 @@
   height: 28px;
   padding: 1px 2px;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: var(--modal-input-bg);
   cursor: pointer;
   flex-shrink: 0;
@@ -372,7 +402,7 @@
 
 .gm-color-hex {
   width: 88px;
-  font-family: monospace;
+  font-family: var(--code-font-family);
 }
 
 .gm-group-toggles {
@@ -405,43 +435,23 @@
   flex-shrink: 0;
 }
 
+/* Footer rail: [Delete] …spacer… [Cancel/Revert] [Save] ([Apply]). The
+   buttons are the shared ui-btn (ui.css); the old .gm-btn set was retired in
+   v0.19.7 (B399). Wraps so the armed InlineConfirm fits a narrow column. */
 .gm-actions {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding-top: 4px;
 }
-
-.gm-btn {
-  background: var(--bg-btn);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: 4px;
-  padding: 5px 14px;
-  font-family: inherit;
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.gm-btn:hover { border-color: var(--accent-dim); color: var(--text-secondary); }
-
-.gm-btn--apply {
-  margin-left: auto;
-  border-color: var(--accent-bg);
-  color: var(--accent);
-}
-
-.gm-btn--apply:hover { background: var(--accent-bg); border-color: var(--accent); }
-
-.gm-btn--delete { color: var(--text-dim); }
-.gm-btn--delete:hover { border-color: var(--color-danger-border); color: var(--color-danger); }
 
 .gm-no-selection {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: 0.83rem;
   font-style: italic;
 }

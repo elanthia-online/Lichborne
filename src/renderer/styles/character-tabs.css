@@ -262,10 +262,15 @@
 }
 
 /* Add Character modal — backdrop + center the existing LoginScreen card */
+/* The + tab's "Connect a character" modal (F113) — the house modal chrome,
+   UX standard #10: the About Lichborne look, built from the --modal tokens so a
+   retune of the house style reaches it. The z-index is load-bearing: the
+   portaled dialogs opened from inside it (.cne-backdrop, 1600) and the connect
+   overlay (1500) must sit above it, and context menus (2100) above those. */
 .add-character-modal {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--modal-scrim);
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -273,15 +278,46 @@
   padding: 24px;
 }
 
-.add-character-modal-cancel {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  appearance: none;
-  background: transparent;
-  border: 0;
-  color: var(--text, #ccc);
-  font-size: 1.6rem;
-  line-height: 1;
-  cursor: pointer;
+/* The dialog surface: a column of header band, then the Launcher as the
+   scrolling body. The ✕ therefore sits in the header, not inside the launcher,
+   which is the scroll container and would carry it away (B321).
+   `overflow: hidden` lets the header band meet the rounded corners (the
+   .cne-modal recipe); menus opened from inside are portaled, so nothing is
+   clipped. */
+.add-character-panel {
+  width: 100%;
+  max-width: 760px;
+  max-height: calc(100vh - 48px);   /* the backdrop's 24px padding, top + bottom */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--modal-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--modal-border);
+  border-radius: var(--modal-radius);
+  box-shadow: var(--modal-shadow);
+  overflow: hidden;
 }
+
+/* The accent header band — the ONE accent band in the dialog. Section labels
+   inside the body stay small and muted, or the hierarchy flattens (UX #10). */
+.add-character-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.85rem 1.1rem;
+  background: var(--modal-head-bg);
+  border-bottom: 1px solid var(--modal-head-border);
+}
+
+.add-character-title {
+  flex: 1;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--modal-head-color);
+}
+
+/* The ✕ is the shared `.ui-close` (ui.css) since v0.19.7 (B399); the private
+   copy of the About recipe that lived here is gone. */
