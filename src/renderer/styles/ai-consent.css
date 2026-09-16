@@ -1,64 +1,15 @@
-/* AI consent disclosure modal (DESIGN §10). Canonical modal-chrome vars
-   (pitfall #55) so it's legible on light and dark themes. z above Settings (600)
-   and the WindowLayer (60). */
-.aic-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 620;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
+/* AI consent disclosure (DESIGN §10). The scrim, panel, header band, ✕, body,
+   footer and buttons are the shared About look in ui.css (.ui-modal*, .ui-btn,
+   B400); this file only places it in the stack. z sits above the per-session
+   dialogs (100–400) it can be triggered over, and above the WindowLayer (60). */
+.aic-backdrop { z-index: 620; }
+
+/* Focused on open (B397); the panel isn't a control, so no ring of its own. */
+.aic-modal[tabindex="-1"]:focus { outline: none; }
+
+/* A disclosure title is a whole question ("Catch Me Up — send recent text to
+   Anthropic?"), so it wraps rather than being cut off with an ellipsis. */
+.aic-title {
+  white-space: normal;
+  line-height: 1.3;
 }
-.aic-modal {
-  width: 440px;
-  max-width: 92vw;
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  overflow: hidden;
-}
-.aic-header {
-  padding: 12px 16px;
-  background: var(--bg-hover);
-  border-bottom: 1px solid var(--border);
-  color: var(--accent);
-  font-weight: 600;
-}
-.aic-body {
-  padding: 14px 16px;
-  color: var(--text-primary);
-  line-height: 1.5;
-  font-size: 0.95em;
-}
-.aic-body p { margin: 0 0 10px; }
-.aic-body p:last-child { margin-bottom: 0; }
-.aic-note {
-  color: var(--text-muted);
-  font-size: 0.9em;
-}
-.aic-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 10px 16px;
-  border-top: 1px solid var(--border-subtle);
-}
-.aic-btn {
-  padding: 6px 14px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 0.9em;
-}
-.aic-btn:hover { border-color: var(--accent-dim); color: var(--text-primary); }
-.aic-btn--primary {
-  background: color-mix(in srgb, var(--accent) 20%, var(--bg-raised));
-  border-color: var(--accent-dim);
-  color: var(--text-primary);
-}
-.aic-btn--primary:hover { background: color-mix(in srgb, var(--accent) 30%, var(--bg-raised)); }

@@ -7,10 +7,10 @@
 .qc-backdrop {
   position: fixed;
   inset: 0;
-  /* Above EVERYTHING. The app's transient popovers (app-bar More menu, panel +
-     menu, map menu) sit at 9999, QuickSend at 2000, context menus at 2100 —
-     a quit confirmation must not be paintable-over by any of them, because
-     main is blocked waiting on its answer. */
+  /* Above EVERYTHING — the top of the pitfall #118(d) tier map. Context menus
+     sit at 2100, the confirm tier at 2080, Quick Send at 2000; a quit
+     confirmation must not be paintable-over by any of them, because main is
+     blocked waiting on its answer. */
   z-index: 10000;
   display: flex;
   align-items: center;
@@ -34,13 +34,13 @@
    an accent band; the section label inside the body stays small/uppercase/muted
    or the hierarchy flattens (standard #10). */
 .qc-head {
-  padding: 0.85rem 1.15rem;
+  padding: var(--modal-head-pad);
   border-bottom: 1px solid var(--modal-head-border);
   background: var(--modal-head-bg);
   border-radius: var(--modal-radius) var(--modal-radius) 0 0;
 }
 .qc-title {
-  font-size: 1.05rem;
+  font-size: var(--modal-title-size);
   font-weight: 700;
   line-height: 1;
   color: var(--modal-head-color);
@@ -56,11 +56,11 @@
 }
 
 .qc-label {
-  font-size: 0.68rem;
+  font-size: var(--modal-label-size);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text-faint);
+  color: var(--text-dim);
   margin-bottom: 0.3rem;
 }
 
@@ -68,7 +68,7 @@
   margin: 0 0 0.9rem;
   padding: 0.5rem 0.75rem;
   list-style: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   /* A quiet sunken well rather than another raised surface — --modal-input-bg
      exists precisely because a bare --bg-input collapses into --modal-bg on
      light themes (pitfall #55). */
@@ -105,7 +105,7 @@
   font-family: inherit;
   font-size: 0.85rem;
   line-height: 1;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   background: var(--modal-input-bg);
   color: var(--text-primary);
@@ -119,16 +119,16 @@
   outline-offset: 1px;
 }
 
-/* Destructive action. The hue is FIXED (it carries the meaning) but it is mixed
-   into theme vars, so contrast self-corrects light↔dark — the semantic-status
-   recipe from pitfall #55/#63, not a hardcoded red. */
+/* Destructive action. The hue comes from --color-danger (B402), mixed into
+   theme vars, so contrast self-corrects light↔dark — the semantic-status
+   recipe from pitfall #55/#63, not a hand-picked red. */
 .qc-btn--danger {
-  background: color-mix(in srgb, #e5484d 18%, var(--modal-bg));
-  border-color: color-mix(in srgb, #e5484d 45%, transparent);
-  color: color-mix(in srgb, #e5484d 65%, var(--text-primary));
+  background: color-mix(in srgb, var(--color-danger) 18%, var(--modal-bg));
+  border-color: color-mix(in srgb, var(--color-danger) 45%, transparent);
+  color: color-mix(in srgb, var(--color-danger) 65%, var(--text-primary));
   font-weight: 600;
 }
 .qc-btn--danger:hover {
-  background: color-mix(in srgb, #e5484d 30%, var(--modal-bg));
-  border-color: color-mix(in srgb, #e5484d 65%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 30%, var(--modal-bg));
+  border-color: color-mix(in srgb, var(--color-danger) 65%, transparent);
 }

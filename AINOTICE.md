@@ -64,7 +64,8 @@ for the AI.** Specifically:
 
 - **Passwords** are never part of the game text stream in the first place — logging
   in is handled by a separate, encrypted channel, and your saved password is stored
-  **locally, encrypted with Windows DPAPI**, and is never included in anything sent
+  **locally, encrypted by your operating system** (DPAPI on Windows, the Keychain
+  on macOS, libsecret or KWallet on Linux), and is never included in anything sent
   to the AI. Any text that *looks* like a labelled password is additionally redacted
   as a safety net.
 - **Your Simutronics account PIN / identification numbers** — the output of the
@@ -85,8 +86,10 @@ saved logs or what you see on screen.
 
 ## Your API key
 
-- Stored **on your machine only**, encrypted via the operating system
-  (Windows **safeStorage** / DPAPI).
+- Stored **on your machine only**, encrypted via the operating system (Electron's
+  **safeStorage**: DPAPI on Windows, the Keychain on macOS, libsecret or KWallet on
+  Linux). If your system has no secure storage available, the key is not saved at
+  all — you'd enter it again each session rather than have it stored unencrypted.
 - **Never leaves your machine except to authenticate directly with Anthropic** — it
   is not sent to any Lichborne server (there isn't one), and it never crosses into
   the display side of the app.

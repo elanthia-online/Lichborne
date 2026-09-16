@@ -25,10 +25,20 @@ export default function InjuriesPanel({ parts }: Props) {
   for (const [id, p] of Object.entries(parts)) state[id] = parseInjury(p.name)
   const anyWound = Object.values(state).some(s => s.wound > 0)
   const anyScar  = Object.values(state).some(s => s.scar > 0)
+  // An empty parts map is the NORMAL reading for an unhurt character, not "no
+  // data yet": DR pushes its injuries dialog when something CHANGES, so a
+  // healthy character may never send one (a full captured login session
+  // contains none). B385 briefly made this say "Waiting for injury data", which
+  // then sat there all session — wrong in the common case, where the old
+  // affirmative line was right. It stays, with a tooltip saying when it moves.
+  // Once a dialog lands, the B224 wound-vs-scar rules below take over unchanged.
+  const noData = Object.keys(parts).length === 0
 
   return (
     <div className="injuries-panel">
-      {!anyWound && !anyScar ? (
+      {noData ? (
+        <div className="injuries-clear" title="Wounds appear here as the game reports them.">No active wounds.</div>
+      ) : !anyWound && !anyScar ? (
         <div className="injuries-clear">No active wounds.</div>
       ) : (
         <>

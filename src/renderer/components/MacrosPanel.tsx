@@ -6,7 +6,10 @@
 //
 // AutomationsPanel hosts it TWICE, once per `initialTab`, and `initialTab` is
 // read once on mount — which is why the host keys the two tabs distinctly.
-// It also runs standalone as its own modal when `inline` is false. Per
+// That host is its only caller: the never-rendered standalone modal branch
+// (with its own Aliases/Key Bindings tab switch) was removed in v0.19.7, B408.
+// Unsaved edits are tracked against a baseline per editor and guarded the
+// HighlightsPanel way (B368). Per
 // character via `useCharacter()` (re-pointed at the virtual `_global` store
 // in the Automations "All Characters" scope — `scope='global'` hides the
 // Groups rows, and `onMoveScope(type, rule)` carries WHICH store because this
@@ -20,9 +23,12 @@
 // Analytics is opt-in via `analyticsOn`, one review per tab.
 
 import { useEffect, useRef, useState } from 'react'
-import { backdropHandlers } from '../utils/backdropClose'
+import { pressable } from '../utils/pressable'
 import { ResizeDivider } from './ResizeDivider'
 import { createPortal } from 'react-dom'
+import InlineConfirm from './InlineConfirm'
+import { confirmDelete, confirmDiscard } from '../confirm'
+import { useReportUnsaved, differs } from '../hooks/useUnsaved'
 import {
   type AliasRule, type MacroRule,
   loadAliases, saveAliases, newAlias,
@@ -32,7 +38,8 @@ import {
 } from '../macros'
 import { useCharacter } from '../CharacterContext'
 import { scopedKey } from '../characterScope'
-import { useRuleAnalytics, AnalyticsReview, RuleBadges } from './AutomationAnalytics'
+import { IS_MAC } from '../lichSettings'
+import { useRuleAnalytics, AnalyticsReview, RuleBadges, ruleListKeyDown, enterToSave } from './AutomationAnalytics'
 import { analyzeMacros, analyzeAliases } from '../automationHealth'
 import GroupPicker from './GroupPicker'
 import '../styles/macros.css'
@@ -41,9 +48,7 @@ import '../styles/groups.css'
 type Tab = 'aliases' | 'macros'
 
 interface Props {
-  onClose:      () => void
   onSaved?:     () => void
-  inline?:      boolean
   initialTab?:  'aliases' | 'macros'
   openAliasId?: string // v0.14.6: open an existing alias for edit (slash /alias edit)
   analyticsOn?: boolean
@@ -80,8 +85,34 @@ function MaVarPicker({ inputRef, value, onChange, vars, tokens }: VarPickerProps
       if (!btnRef.current?.contains(e.target as Node) && !menuRef.current?.contains(e.target as Node))
         setOpen(false)
     }
+    // B380: Esc closes the menu ONLY — preventDefault tells the Automations
+    // dialog's Esc handler (useEscapeClose) the key was used, so the dialog
+    // stays open — and hands focus back to the $ button. ↑/↓ move between items.
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setOpen(false)
+        btnRef.current?.focus()
+        return
+      }
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+      const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('.ma-var-item') ?? [])
+      if (items.length === 0) return
+      e.preventDefault()
+      const i = items.indexOf(document.activeElement as HTMLButtonElement)
+      const next = e.key === 'ArrowDown' ? (i + 1) % items.length : (i <= 0 ? items.length - 1 : i - 1)
+      items[next].focus()
+    }
     document.addEventListener('mousedown', onOutside)
-    return () => document.removeEventListener('mousedown', onOutside)
+    document.addEventListener('keydown', onKey)
+    // The menu is portaled to the end of <body>, so Tab from the $ button never
+    // reaches it — start keyboard users on the first item.
+    const raf = requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>('.ma-var-item')?.focus())
+    return () => {
+      cancelAnimationFrame(raf)
+      document.removeEventListener('mousedown', onOutside)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [open])
 
   function handleOpen() {
@@ -105,23 +136,33 @@ function MaVarPicker({ inputRef, value, onChange, vars, tokens }: VarPickerProps
 
   return (
     <>
-      <button ref={btnRef} className="ma-var-btn" type="button" onClick={handleOpen} title="Insert variable or token">$</button>
+      <button
+        ref={btnRef}
+        className="ma-var-btn"
+        type="button"
+        onClick={handleOpen}
+        title="Insert variable or token"
+        aria-label="Insert variable or token"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >$</button>
       {open && createPortal(
-        <div ref={menuRef} className="ma-var-menu" style={{ top: pos.top, left: pos.left, transform: 'translateX(-100%)' }}>
+        <div ref={menuRef} className="ma-var-menu" role="menu" aria-label="Insert variable or token" style={{ top: pos.top, left: pos.left, transform: 'translateX(-100%)' }}>
+          {/* B380: real buttons, so each item is keyboard-reachable. */}
           {vars.map(v => (
-            <div key={`v-${v.name}`} className="ma-var-item" onClick={() => insertText(`$${v.name}`)}>
+            <button type="button" role="menuitem" key={`v-${v.name}`} className="ma-var-item" onClick={() => insertText(`$${v.name}`)}>
               <code>${v.name}</code>
               <span>{v.desc}</span>
-            </div>
+            </button>
           ))}
           {tokens && tokens.length > 0 && (
             <>
               <div className="ma-var-section">Special tokens</div>
               {tokens.map(t => (
-                <div key={`t-${t.name}`} className="ma-var-item" onClick={() => insertText(`{${t.name}}`)}>
+                <button type="button" role="menuitem" key={`t-${t.name}`} className="ma-var-item" onClick={() => insertText(`{${t.name}}`)}>
                   <code>{`{${t.name}}`}</code>
                   <span>{t.desc}</span>
-                </div>
+                </button>
               ))}
             </>
           )}
@@ -180,7 +221,7 @@ function CommandList({ commands, onChange, vars, tokens }: CommandListProps) {
             />
             <MaVarPicker inputRef={iRef} value={cmd} onChange={v => update(i, v)} vars={vars} tokens={tokens} />
             {commands.length > 1 && (
-              <button className="ma-cmd-remove" type="button" onClick={() => remove(i)} title="Remove">×</button>
+              <button className="ma-cmd-remove" type="button" onClick={() => remove(i)} title="Remove command" aria-label="Remove command">×</button>
             )}
           </div>
         )
@@ -206,7 +247,8 @@ export function KeyBindingField({ value, onChange }: KeyBindingFieldProps) {
       e.preventDefault()
       e.stopPropagation()
       if (e.key === 'Escape') { setRecording(false); return }
-      const combo = formatKeyCombo(e)
+      // B347: on a Mac, record Option chords by physical key (`Alt+T`, not `Alt+†`).
+      const combo = formatKeyCombo(e, { mac: IS_MAC })
       if (combo) { onChange(combo); setRecording(false) }
     }
     window.addEventListener('keydown', onKeyDown, { capture: true })
@@ -231,7 +273,7 @@ export function KeyBindingField({ value, onChange }: KeyBindingFieldProps) {
         {recording ? '■ Cancel' : '● Record'}
       </button>
       {value && !recording && (
-        <button className="ma-clear-btn" type="button" onClick={clear} title="Clear binding">✕</button>
+        <button className="ma-clear-btn" type="button" onClick={clear} title="Clear binding" aria-label="Clear binding">✕</button>
       )}
     </div>
   )
@@ -239,9 +281,12 @@ export function KeyBindingField({ value, onChange }: KeyBindingFieldProps) {
 
 // ── Main Panel ────────────────────────────────────────────────────────────────
 
-export default function MacrosPanel({ onClose, onSaved, inline = false, initialTab, openAliasId, analyticsOn = false, scope = 'character', onMoveScope }: Props) {
+export default function MacrosPanel({ onSaved, initialTab, openAliasId, analyticsOn = false, scope = 'character', onMoveScope }: Props) {
+  // The key recorder above preventDefaults every key it captures, Esc
+  // included, so cancelling a recording never closes the Automations dialog.
   const hideGroups = scope === 'global'
-  const [tab, setTab]           = useState<Tab>(initialTab ?? 'aliases')
+  // Fixed for the life of the instance (the host keys the two tabs apart).
+  const [tab]                   = useState<Tab>(initialTab ?? 'aliases')
   const character = useCharacter()
   const [aliases, setAliases]   = useState<AliasRule[]>(() => loadAliases(character))
   const [macros,  setMacros]    = useState<MacroRule[]>(() => loadMacros(character))
@@ -251,60 +296,67 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
   const [selectedId,   setSelectedId]   = useState<string | null>(null)
   const [aliasDraft,   setAliasDraft]   = useState<AliasRule | null>(null)
   const [macroDraft,   setMacroDraft]   = useState<MacroRule | null>(null)
+  // B368: what each draft is compared against (stored / fresh / just saved).
+  const [aliasBase,    setAliasBase]    = useState<AliasRule | null>(null)
+  const [macroBase,    setMacroBase]    = useState<MacroRule | null>(null)
   const [isPendingNew, setIsPendingNew] = useState(false)
-  const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [search,       setSearch]       = useState('')
 
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const appliedOpenRef = useRef<string | undefined>(undefined)
 
-  function switchTab(t: Tab) {
-    setTab(t)
-    setSelectedId(null)
-    setAliasDraft(null)
-    setMacroDraft(null)
-    setIsPendingNew(false)
-    setDeleteConfirm(false)
-    setSearch('')
-  }
+  const aliasDirty = !!aliasDraft && !!aliasBase && differs(aliasDraft, aliasBase)
+  const macroDirty = !!macroDraft && !!macroBase && differs(macroDraft, macroBase)
+  useReportUnsaved(aliasDirty || macroDirty)
 
   // v0.14.6: open an EXISTING alias by id (slash `/alias edit`) — the
   // TriggersPanel openRuleId pattern. The host passes initialTab='aliases'
   // alongside, so `tab` is already right. No-op if the alias was deleted.
+  // Applied once per id, so a later save doesn't snap the editor back.
   useEffect(() => {
-    if (!openAliasId) return
+    // Reset when the request clears, so asking for the same alias again opens it.
+    if (!openAliasId) { appliedOpenRef.current = undefined; return }
+    if (appliedOpenRef.current === openAliasId) return
     const r = aliases.find(x => x.id === openAliasId)
     if (!r) return
-    setSelectedId(r.id)
-    setAliasDraft({ ...r })
-    setIsPendingNew(false)
-  }, [openAliasId, aliases])
+    appliedOpenRef.current = openAliasId
+    confirmDiscard(aliasDirty, () => selectAlias(r))
+  }, [openAliasId, aliases]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Alias CRUD ──────────────────────────────────────────────────────────────
 
   function selectAlias(r: AliasRule) {
     setSelectedId(r.id)
     setAliasDraft({ ...r })
+    setAliasBase({ ...r })
     setIsPendingNew(false)
-    setDeleteConfirm(false)
+  }
+
+  function requestSelectAlias(r: AliasRule) {
+    if (r.id === selectedId) return
+    confirmDiscard(aliasDirty, () => selectAlias(r))
   }
 
   function createAlias() {
     const r = newAlias()
     setAliasDraft({ ...r })
+    setAliasBase({ ...r })
     setSelectedId(r.id)
     setIsPendingNew(true)
-    setDeleteConfirm(false)
     setTimeout(() => nameInputRef.current?.focus(), 0)
   }
 
+  // B379: why Save is unavailable (the disabled button's title), or null.
+  const aliasSaveBlock = !aliasDraft ? 'Select an alias to save'
+    : !aliasDraft.input.trim() ? 'Enter what you type to use the alias'
+    : !aliasDraft.commands.some(c => c.trim()) ? 'Enter at least one command to save'
+    : null
+
   function saveAlias() {
-    if (!aliasDraft) return
+    if (!aliasDraft || aliasSaveBlock) return
     const trimmed = { ...aliasDraft, input: aliasDraft.input.trim() }
-    if (!trimmed.input) return
     if (!trimmed.name) trimmed.name = trimmed.input
-    const cmds = trimmed.commands.filter(c => c.trim())
-    if (!cmds.length) return
-    trimmed.commands = cmds
+    trimmed.commands = trimmed.commands.filter(c => c.trim())
     const updated = isPendingNew
       ? [...aliases, trimmed]
       : aliases.map(r => r.id === trimmed.id ? trimmed : r)
@@ -312,16 +364,16 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
     saveAliases(character, updated)
     onSaved?.()
     setAliasDraft(trimmed)
+    setAliasBase(trimmed)
     setIsPendingNew(false)
   }
 
   function revertAlias() {
     if (isPendingNew) {
-      setSelectedId(null); setAliasDraft(null); setIsPendingNew(false)
+      setSelectedId(null); setAliasDraft(null); setAliasBase(null); setIsPendingNew(false)
     } else {
       const orig = aliases.find(r => r.id === selectedId)
-      if (orig) setAliasDraft({ ...orig })
-      setDeleteConfirm(false)
+      if (orig) { setAliasDraft({ ...orig }); setAliasBase({ ...orig }) }
     }
   }
 
@@ -336,8 +388,8 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
     saveAliases(character, updated)
     onSaved?.()
     if (selectedId === id) {
-      setSelectedId(null); setAliasDraft(null)
-      setIsPendingNew(false); setDeleteConfirm(false)
+      setSelectedId(null); setAliasDraft(null); setAliasBase(null)
+      setIsPendingNew(false)
     }
   }
 
@@ -346,7 +398,11 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
     setAliases(updated)
     saveAliases(character, updated)
     onSaved?.()
-    if (aliasDraft?.id === id) setAliasDraft(p => p ? { ...p, enabled: !p.enabled } : p)
+    // Saved immediately, so the baseline moves too — not an unsaved edit.
+    if (aliasDraft?.id === id) {
+      setAliasDraft(p => p ? { ...p, enabled: !p.enabled } : p)
+      setAliasBase(p => p ? { ...p, enabled: !p.enabled } : p)
+    }
   }
 
   // ── Macro CRUD ──────────────────────────────────────────────────────────────
@@ -354,27 +410,36 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
   function selectMacro(r: MacroRule) {
     setSelectedId(r.id)
     setMacroDraft({ ...r })
+    setMacroBase({ ...r })
     setIsPendingNew(false)
-    setDeleteConfirm(false)
+  }
+
+  function requestSelectMacro(r: MacroRule) {
+    if (r.id === selectedId) return
+    confirmDiscard(macroDirty, () => selectMacro(r))
   }
 
   function createMacro() {
     const r = newMacro()
     setMacroDraft({ ...r })
+    setMacroBase({ ...r })
     setSelectedId(r.id)
     setIsPendingNew(true)
-    setDeleteConfirm(false)
     setTimeout(() => nameInputRef.current?.focus(), 0)
   }
 
+  // B379: a macro with no key can never fire (Automation Analytics already
+  // lists it as broken), so a key is required, not just a label.
+  const macroSaveBlock = !macroDraft ? 'Select a macro to save'
+    : !macroDraft.key ? 'Record a key combination to save'
+    : !macroDraft.commands.some(c => c.trim()) ? 'Enter at least one command to save'
+    : null
+
   function saveMacro() {
-    if (!macroDraft) return
+    if (!macroDraft || macroSaveBlock) return
     const trimmed = { ...macroDraft }
-    if (!trimmed.name && !trimmed.key) return
     if (!trimmed.name) trimmed.name = trimmed.key
-    const cmds = trimmed.commands.filter(c => c.trim())
-    if (!cmds.length) return
-    trimmed.commands = cmds
+    trimmed.commands = trimmed.commands.filter(c => c.trim())
     const updated = isPendingNew
       ? [...macros, trimmed]
       : macros.map(r => r.id === trimmed.id ? trimmed : r)
@@ -382,16 +447,16 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
     saveMacros(character, updated)
     onSaved?.()
     setMacroDraft(trimmed)
+    setMacroBase(trimmed)
     setIsPendingNew(false)
   }
 
   function revertMacro() {
     if (isPendingNew) {
-      setSelectedId(null); setMacroDraft(null); setIsPendingNew(false)
+      setSelectedId(null); setMacroDraft(null); setMacroBase(null); setIsPendingNew(false)
     } else {
       const orig = macros.find(r => r.id === selectedId)
-      if (orig) setMacroDraft({ ...orig })
-      setDeleteConfirm(false)
+      if (orig) { setMacroDraft({ ...orig }); setMacroBase({ ...orig }) }
     }
   }
 
@@ -406,8 +471,8 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
     saveMacros(character, updated)
     onSaved?.()
     if (selectedId === id) {
-      setSelectedId(null); setMacroDraft(null)
-      setIsPendingNew(false); setDeleteConfirm(false)
+      setSelectedId(null); setMacroDraft(null); setMacroBase(null)
+      setIsPendingNew(false)
     }
   }
 
@@ -416,13 +481,12 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
     setMacros(updated)
     saveMacros(character, updated)
     onSaved?.()
-    if (macroDraft?.id === id) setMacroDraft(p => p ? { ...p, enabled: !p.enabled } : p)
+    // Saved immediately, so the baseline moves too — not an unsaved edit.
+    if (macroDraft?.id === id) {
+      setMacroDraft(p => p ? { ...p, enabled: !p.enabled } : p)
+      setMacroBase(p => p ? { ...p, enabled: !p.enabled } : p)
+    }
   }
-
-  // ── Helpers ──────────────────────────────────────────────────────────────────
-
-  const aliasCanSave = !!aliasDraft?.input.trim() && aliasDraft.commands.some(c => c.trim())
-  const macroCanSave = !!(macroDraft?.key || macroDraft?.name) && (macroDraft?.commands ?? []).some(c => c.trim())
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -433,7 +497,7 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
           {tab === 'aliases' && (
             <>
               <div className="ma-sidebar">
-                <button className="ma-new-btn" onClick={createAlias}>+ New Alias</button>
+                <button type="button" className="ma-new-btn" onClick={() => confirmDiscard(aliasDirty, createAlias)}>+ New alias</button>
                 <div className="sidebar-search">
                   <input
                     className="sidebar-search-input"
@@ -441,40 +505,49 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                   />
-                  {search && <button className="sidebar-search-clear" onClick={() => setSearch('')}>✕</button>}
+                  {search && <button className="sidebar-search-clear" onClick={() => setSearch('')} title="Clear search" aria-label="Clear search">✕</button>}
                   {search && (
                     <span className="sidebar-search-count">
                       {aliases.filter(r => (r.name + ' ' + r.input + ' ' + r.commands.join(' ')).toLowerCase().includes(search.toLowerCase())).length}/{aliases.length}
                     </span>
                   )}
                 </div>
-                <div className="ma-list">
+                <div className="ma-list" role="listbox" aria-label="Aliases" onKeyDown={ruleListKeyDown}>
                   {aliases.length === 0 && !isPendingNew && (
                     <div className="ma-empty">
                       Speed up your adventure.<br />
                       Create shortcuts for commands you use every day.
                     </div>
                   )}
-                  {(search ? aliases.filter(r => (r.name + ' ' + r.input + ' ' + r.commands.join(' ')).toLowerCase().includes(search.toLowerCase())) : aliases).map(r => (
+                  {(search ? aliases.filter(r => (r.name + ' ' + r.input + ' ' + r.commands.join(' ')).toLowerCase().includes(search.toLowerCase())) : aliases).map(r => {
+                    const label = r.name || r.input
+                    return (
                     <div
                       key={r.id}
                       className={`ma-list-item${selectedId === r.id ? ' ma-list-item--active' : ''}${!r.enabled ? ' ma-list-item--disabled' : ''}`}
-                      onClick={() => selectAlias(r)}
+                      {...pressable(() => requestSelectAlias(r), { role: 'option', selected: selectedId === r.id })}
                     >
                       <button
+                        type="button"
                         className={`ma-toggle${r.enabled ? ' ma-toggle--on' : ''}`}
                         title={r.enabled ? 'Disable' : 'Enable'}
+                        aria-label={r.enabled ? 'Disable' : 'Enable'}
                         onClick={e => { e.stopPropagation(); toggleAlias(r.id) }}
                       />
-                      <span className="ma-list-label">{r.name || r.input || <em className="ma-unnamed">Unnamed</em>}</span>
+                      {/* B396: the full label, since the row truncates it. */}
+                      <span className="ma-list-label" title={label || undefined}>{label || <em className="ma-unnamed">Unnamed</em>}</span>
                       {anAlias.on ? <RuleBadges ruleId={r.id} report={anAlias.report} stats={anAlias.stats} /> : <span className="ma-list-arrow">→</span>}
+                      {/* B370: a row ✕ deletes something that isn't open, so it asks. */}
                       <button
+                        type="button"
                         className="list-item-delete"
                         title="Delete"
-                        onClick={e => { e.stopPropagation(); deleteAliasById(r.id) }}
+                        aria-label={`Delete ${label || 'alias'}`}
+                        onClick={async e => { e.stopPropagation(); if (await confirmDelete('alias', label)) deleteAliasById(r.id) }}
                       >✕</button>
                     </div>
-                  ))}
+                    )
+                  })}
                   {isPendingNew && aliasDraft && (
                     <div className="ma-list-item ma-list-item--active ma-list-item--pending">
                       <span className="ma-toggle ma-toggle--on" />
@@ -490,7 +563,8 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
                 {!aliasDraft ? (
                   <div className="ma-no-selection">Select an alias or create a new one.</div>
                 ) : (
-                  <div className="ma-form">
+                  // B389: Enter in a single-line field saves.
+                  <div className="ma-form" onKeyDown={enterToSave(saveAlias)}>
 
                     <div className="ma-section">
                       <label className="ma-section-label">Label</label>
@@ -511,7 +585,7 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
                           type="button"
                           className={`grp-all-btn${aliasDraft.allGroups ? ' grp-all-btn--on' : ''}`}
                           onClick={() => setAliasDraft({ ...aliasDraft, allGroups: !aliasDraft.allGroups, groupIds: [] })}
-                        >All Groups</button>
+                        >All groups</button>
                         {!aliasDraft.allGroups && (
                           <GroupPicker
                             groupIds={aliasDraft.groupIds ?? []}
@@ -536,7 +610,7 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
                           title={scope === 'character'
                             ? 'This alias belongs to this character'
                             : 'Move this alias to the character you have open — every OTHER character stops getting it'}
-                        >This Character</button>
+                        >This character</button>
                         <button
                           type="button"
                           className={`rule-scope-btn${scope === 'global' ? ' rule-scope-btn--on' : ''}`}
@@ -544,8 +618,8 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
                           onClick={() => onMoveScope('aliases', aliasDraft)}
                           title={scope === 'global'
                             ? 'This alias applies to every character'
-                            : 'Move this alias to All Characters — it will work for every character on every account'}
-                        >All Characters</button>
+                            : 'Move this alias to All characters — it will work for every character on every account'}
+                        >All characters</button>
                       </div>
                     </div>
                     )}
@@ -554,7 +628,7 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
                       <label className="ma-section-label">When I type</label>
                       <div className="ma-input-row">
                         <input
-                          className="ma-input ma-input--flex"
+                          className="ma-input ma-input--flex ma-input--code"
                           value={aliasDraft.input}
                           onChange={e => setAliasDraft({ ...aliasDraft, input: e.target.value })}
                           placeholder="e.g. hunt"
@@ -610,26 +684,24 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
                       </div>
                     </div>
 
+                    {/* Footer rail: [Delete] …spacer… [Revert/Cancel] [Save]. */}
                     <div className="ma-actions">
-                      {deleteConfirm ? (
-                        <>
-                          <span className="ma-confirm-text">Delete this alias?</span>
-                          <button className="ma-btn ma-btn--danger" onClick={deleteAlias}>Yes, delete</button>
-                          <button className="ma-btn" onClick={() => setDeleteConfirm(false)}>Cancel</button>
-                        </>
-                      ) : (
-                        <>
-                          {!isPendingNew && (
-                            <button className="ma-btn ma-btn--delete" onClick={() => setDeleteConfirm(true)}>Delete</button>
-                          )}
-                          <button className="ma-btn" onClick={revertAlias}>
-                            {isPendingNew ? 'Cancel' : 'Revert'}
-                          </button>
-                          <button className="ma-btn ma-btn--save" onClick={saveAlias} disabled={!aliasCanSave}>
-                            Save
-                          </button>
-                        </>
+                      {!isPendingNew && (
+                        <InlineConfirm question="Delete this alias?" onConfirm={deleteAlias} resetKey={selectedId} />
                       )}
+                      <span className="ui-modal-foot-spacer" />
+                      <button
+                        type="button"
+                        className="ui-btn"
+                        onClick={revertAlias}
+                        disabled={!isPendingNew && !aliasDirty}
+                        title={!isPendingNew && !aliasDirty ? 'No changes to revert' : undefined}
+                      >
+                        {isPendingNew ? 'Cancel' : 'Revert'}
+                      </button>
+                      <button type="button" className="ui-btn ui-btn--primary" onClick={saveAlias} disabled={!!aliasSaveBlock} title={aliasSaveBlock ?? undefined}>
+                        Save
+                      </button>
                     </div>
 
                   </div>
@@ -642,7 +714,7 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
           {tab === 'macros' && (
             <>
               <div className="ma-sidebar">
-                <button className="ma-new-btn" onClick={createMacro}>+ New Key Binding</button>
+                <button type="button" className="ma-new-btn" onClick={() => confirmDiscard(macroDirty, createMacro)}>+ New macro</button>
                 <div className="sidebar-search">
                   <input
                     className="sidebar-search-input"
@@ -650,49 +722,58 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                   />
-                  {search && <button className="sidebar-search-clear" onClick={() => setSearch('')}>✕</button>}
+                  {search && <button className="sidebar-search-clear" onClick={() => setSearch('')} title="Clear search" aria-label="Clear search">✕</button>}
                   {search && (
                     <span className="sidebar-search-count">
                       {macros.filter(r => (r.name + ' ' + r.key + ' ' + r.commands.join(' ')).toLowerCase().includes(search.toLowerCase())).length}/{macros.length}
                     </span>
                   )}
                 </div>
-                <div className="ma-list">
+                <div className="ma-list" role="listbox" aria-label="Macros" onKeyDown={ruleListKeyDown}>
                   {macros.length === 0 && !isPendingNew && (
                     <div className="ma-empty">
                       Bind your most-used commands<br />
                       to a single keypress.
                     </div>
                   )}
-                  {(search ? macros.filter(r => (r.name + ' ' + r.key + ' ' + r.commands.join(' ')).toLowerCase().includes(search.toLowerCase())) : macros).map(r => (
+                  {(search ? macros.filter(r => (r.name + ' ' + r.key + ' ' + r.commands.join(' ')).toLowerCase().includes(search.toLowerCase())) : macros).map(r => {
+                    const label = r.name || r.commands[0]
+                    return (
                     <div
                       key={r.id}
                       className={`ma-list-item${selectedId === r.id ? ' ma-list-item--active' : ''}${!r.enabled ? ' ma-list-item--disabled' : ''}`}
-                      onClick={() => selectMacro(r)}
+                      {...pressable(() => requestSelectMacro(r), { role: 'option', selected: selectedId === r.id })}
                     >
                       <button
+                        type="button"
                         className={`ma-toggle${r.enabled ? ' ma-toggle--on' : ''}`}
                         title={r.enabled ? 'Disable' : 'Enable'}
+                        aria-label={r.enabled ? 'Disable' : 'Enable'}
                         onClick={e => { e.stopPropagation(); toggleMacro(r.id) }}
                       />
                       {r.key
                         ? <span className="ma-key-badge">{r.key}</span>
-                        : <span className="ma-key-badge ma-key-badge--unset">—</span>
+                        : <span className="ma-key-badge ma-key-badge--unset" title="No key recorded">—</span>
                       }
-                      <span className="ma-list-label">{r.name || r.commands[0] || <em className="ma-unnamed">Unnamed</em>}</span>
+                      {/* B396: the full label, since the row truncates it. */}
+                      <span className="ma-list-label" title={label || undefined}>{label || <em className="ma-unnamed">Unnamed</em>}</span>
                       {anMacro.on && <RuleBadges ruleId={r.id} report={anMacro.report} stats={anMacro.stats} />}
+                      {/* B370: a row ✕ deletes something that isn't open, so it asks. */}
                       <button
+                        type="button"
                         className="list-item-delete"
                         title="Delete"
-                        onClick={e => { e.stopPropagation(); deleteMacroById(r.id) }}
+                        aria-label={`Delete ${label || r.key || 'macro'}`}
+                        onClick={async e => { e.stopPropagation(); if (await confirmDelete('macro', label || r.key)) deleteMacroById(r.id) }}
                       >✕</button>
                     </div>
-                  ))}
+                    )
+                  })}
                   {isPendingNew && macroDraft && (
                     <div className="ma-list-item ma-list-item--active ma-list-item--pending">
                       <span className="ma-toggle ma-toggle--on" />
                       <span className="ma-key-badge ma-key-badge--unset">—</span>
-                      <span className="ma-list-label"><em>New binding…</em></span>
+                      <span className="ma-list-label"><em>New macro…</em></span>
                     </div>
                   )}
                 </div>
@@ -701,9 +782,11 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
               <ResizeDivider storageKey={scopedKey(character, 'automationsSidebarWidth')} />
               <div className="ma-detail">
                 {!macroDraft ? (
-                  <div className="ma-no-selection">Select a key binding or create a new one.</div>
+                  <div className="ma-no-selection">Select a macro or create a new one.</div>
                 ) : (
-                  <div className="ma-form">
+                  // B389: Enter in a single-line field saves. The key recorder
+                  // is untouched — it captures keys at the window while recording.
+                  <div className="ma-form" onKeyDown={enterToSave(saveMacro)}>
 
                     <div className="ma-section">
                       <label className="ma-section-label">Label</label>
@@ -724,7 +807,7 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
                           type="button"
                           className={`grp-all-btn${macroDraft.allGroups ? ' grp-all-btn--on' : ''}`}
                           onClick={() => setMacroDraft({ ...macroDraft, allGroups: !macroDraft.allGroups, groupIds: [] })}
-                        >All Groups</button>
+                        >All groups</button>
                         {!macroDraft.allGroups && (
                           <GroupPicker
                             groupIds={macroDraft.groupIds ?? []}
@@ -749,7 +832,7 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
                           title={scope === 'character'
                             ? 'This macro belongs to this character'
                             : 'Move this macro to the character you have open — every OTHER character stops getting it'}
-                        >This Character</button>
+                        >This character</button>
                         <button
                           type="button"
                           className={`rule-scope-btn${scope === 'global' ? ' rule-scope-btn--on' : ''}`}
@@ -757,14 +840,14 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
                           onClick={() => onMoveScope('macros', macroDraft)}
                           title={scope === 'global'
                             ? 'This macro applies to every character'
-                            : 'Move this macro to All Characters — its key will work for every character on every account'}
-                        >All Characters</button>
+                            : 'Move this macro to All characters — its key will work for every character on every account'}
+                        >All characters</button>
                       </div>
                     </div>
                     )}
 
                     <div className="ma-section">
-                      <label className="ma-section-label">Key Binding</label>
+                      <label className="ma-section-label">Key binding</label>
                       <KeyBindingField
                         value={macroDraft.key}
                         onChange={key => setMacroDraft({ ...macroDraft, key })}
@@ -800,26 +883,24 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
                       </div>
                     </div>
 
+                    {/* Footer rail: [Delete] …spacer… [Revert/Cancel] [Save]. */}
                     <div className="ma-actions">
-                      {deleteConfirm ? (
-                        <>
-                          <span className="ma-confirm-text">Delete this key binding?</span>
-                          <button className="ma-btn ma-btn--danger" onClick={deleteMacro}>Yes, delete</button>
-                          <button className="ma-btn" onClick={() => setDeleteConfirm(false)}>Cancel</button>
-                        </>
-                      ) : (
-                        <>
-                          {!isPendingNew && (
-                            <button className="ma-btn ma-btn--delete" onClick={() => setDeleteConfirm(true)}>Delete</button>
-                          )}
-                          <button className="ma-btn" onClick={revertMacro}>
-                            {isPendingNew ? 'Cancel' : 'Revert'}
-                          </button>
-                          <button className="ma-btn ma-btn--save" onClick={saveMacro} disabled={!macroCanSave}>
-                            Save
-                          </button>
-                        </>
+                      {!isPendingNew && (
+                        <InlineConfirm question="Delete this macro?" onConfirm={deleteMacro} resetKey={selectedId} />
                       )}
+                      <span className="ui-modal-foot-spacer" />
+                      <button
+                        type="button"
+                        className="ui-btn"
+                        onClick={revertMacro}
+                        disabled={!isPendingNew && !macroDirty}
+                        title={!isPendingNew && !macroDirty ? 'No changes to revert' : undefined}
+                      >
+                        {isPendingNew ? 'Cancel' : 'Revert'}
+                      </button>
+                      <button type="button" className="ui-btn ui-btn--primary" onClick={saveMacro} disabled={!!macroSaveBlock} title={macroSaveBlock ?? undefined}>
+                        Save
+                      </button>
                     </div>
 
                   </div>
@@ -831,55 +912,28 @@ export default function MacrosPanel({ onClose, onSaved, inline = false, initialT
         </div>
   )
 
-  // Analytics banner for the ACTIVE tab (aliases vs key-bindings).
+  // Analytics banner for the ACTIVE tab (aliases vs key-bindings). A bulk
+  // remove drops the open editor only if its rule was among those removed.
   const review = tab === 'aliases'
     ? (anAlias.on && <AnalyticsReview rules={aliases} report={anAlias.report} stats={anAlias.stats}
         nameOf={r => r.name || r.input}
-        onJump={id => { const r = aliases.find(x => x.id === id); if (r) selectAlias(r) }}
+        onJump={id => { const r = aliases.find(x => x.id === id); if (r) requestSelectAlias(r) }}
         onReset={anAlias.reset}
         onBulkRemove={ids => {
           const s = new Set(ids); const u = aliases.filter(r => !s.has(r.id))
           setAliases(u); saveAliases(character, u)
-          setSelectedId(null); setAliasDraft(null); setIsPendingNew(false); onSaved?.()
+          if (selectedId && s.has(selectedId)) { setSelectedId(null); setAliasDraft(null); setAliasBase(null); setIsPendingNew(false) }
+          onSaved?.()
         }} />)
     : (anMacro.on && <AnalyticsReview rules={macros} report={anMacro.report} stats={anMacro.stats}
         nameOf={r => r.name || r.key}
-        onJump={id => { const r = macros.find(x => x.id === id); if (r) selectMacro(r) }}
+        onJump={id => { const r = macros.find(x => x.id === id); if (r) requestSelectMacro(r) }}
         onReset={anMacro.reset}
         onBulkRemove={ids => {
           const s = new Set(ids); const u = macros.filter(r => !s.has(r.id))
           setMacros(u); saveMacros(character, u)
-          setSelectedId(null); setMacroDraft(null); setIsPendingNew(false); onSaved?.()
+          if (selectedId && s.has(selectedId)) { setSelectedId(null); setMacroDraft(null); setMacroBase(null); setIsPendingNew(false) }
+          onSaved?.()
         }} />)
-  const content = review ? <div className="aa-host">{review}{body}</div> : body
-
-  if (inline) return content
-
-  const modal = (
-    <div className="ma-backdrop" {...backdropHandlers(() => onClose())}>
-      <div className="ma-modal">
-        <div className="ma-header">
-          <span className="ma-title">MACROS</span>
-          <div className="ma-tab-group">
-            <button
-              className={`ma-tab${tab === 'aliases' ? ' ma-tab--active' : ''}`}
-              onClick={() => switchTab('aliases')}
-            >
-              Aliases{aliases.length > 0 && <span className="ma-tab-count">{aliases.length}</span>}
-            </button>
-            <button
-              className={`ma-tab${tab === 'macros' ? ' ma-tab--active' : ''}`}
-              onClick={() => switchTab('macros')}
-            >
-              Key Bindings{macros.length > 0 && <span className="ma-tab-count">{macros.length}</span>}
-            </button>
-          </div>
-          <button className="ma-close" onClick={onClose}>✕</button>
-        </div>
-        {content}
-      </div>
-    </div>
-  )
-
-  return createPortal(modal, document.body)
+  return review ? <div className="aa-host">{review}{body}</div> : body
 }

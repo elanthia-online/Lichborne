@@ -175,15 +175,15 @@
 }
 
 /* Creature-count chip (⚔ N) — rendered only when creatures are present
-   (quiet by default). Fixed semantic hue mixed toward theme text so it reads
-   on light AND dark themes (pitfall #55 pattern); line-height pinned so the
-   chip can't balloon the title row (pitfall #75b). */
+   (quiet by default). --color-warning (B402) is already mixed toward theme
+   text, so it reads on light AND dark themes (pitfall #55 pattern);
+   line-height pinned so the chip can't balloon the title row (pitfall #75b). */
 .room-creature-chip {
   font-size: 0.78em;
   line-height: 1;
   font-weight: var(--ui-bold-weight);
-  color: color-mix(in srgb, #e0a030 70%, var(--text-primary));
-  border: 1px solid color-mix(in srgb, #e0a030 40%, var(--border));
+  color: var(--color-warning);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 50%, var(--border));
   border-radius: 9px;
   padding: 2px 7px;
   white-space: nowrap;
@@ -309,7 +309,8 @@
   cursor: pointer;
 }
 
-.exp-sort-dir-btn:hover { color: var(--text-primary); }
+/* B340: hover never repaints the active/selected state (pitfall #107). */
+.exp-sort-dir-btn:not(.exp-sort-dir-btn--active):hover { color: var(--text-primary); }
 .exp-sort-dir-btn--active { color: var(--accent); border-color: var(--accent); }
 
 .exp-sort-option {
@@ -339,7 +340,7 @@
   white-space: nowrap;
 }
 
-.exp-bar-toggle:hover { color: var(--text-primary); background: var(--bg-deep); }
+.exp-bar-toggle:not(.exp-bar-toggle--active):hover { color: var(--text-primary); background: var(--bg-deep); }
 .exp-bar-toggle--active { color: var(--accent); }
 
 .exp-picker-label {
@@ -375,9 +376,13 @@
   box-shadow: 0 4px 12px rgba(0,0,0,0.4);
   display: flex;
   flex-direction: column;
+  /* B332: ExpPanel also sets an inline max-height from the room left in the
+     panel below the picker — .panel-frame-body / .fl-body are overflow:hidden,
+     so a short panel used to CLIP this menu with no way to reach the rest. */
   max-height: 320px;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .exp-picker-option {
@@ -392,7 +397,8 @@
   cursor: pointer;
 }
 
-.exp-picker-option:hover { background: var(--bg-deep); color: var(--text-primary); }
+/* B340: the selected option keeps its accent under the mouse (pitfall #107). */
+.exp-picker-option:not(.exp-picker-option--selected):hover { background: var(--bg-deep); color: var(--text-primary); }
 
 .exp-picker-option--selected {
   color: var(--accent);
@@ -406,13 +412,6 @@
      responsive tier the row tail clips instead (names ellipsize already). */
   overflow-x: hidden;
   padding: 6px 8px 0;
-}
-
-.exp-panel--empty {
-  color: var(--text-faint);
-  font-size: 1.04em;
-  font-style: italic;
-  padding: 6px 0;
 }
 
 .exp-group { margin-bottom: 10px; }
@@ -492,12 +491,23 @@
   border-radius: 2px;
   letter-spacing: 0;
   justify-self: center;
+  /* B339: a tinted chip in a grid cell — without this it inherited the body's
+     1.5 and drew a ~14px box around an ~8px letter (pitfall #75b/#77). */
+  line-height: 1;
 }
 
 .exp-badge--p { color: var(--accent);             background: color-mix(in srgb, var(--accent) 15%, transparent); }
 .exp-badge--s { color: var(--text-secondary);      background: color-mix(in srgb, var(--text-secondary) 12%, transparent); }
 .exp-badge--t { color: var(--text-dim);            background: transparent; }
-.exp-badge--g { color: var(--color-info, #7ec8d4); background: color-mix(in srgb, var(--color-info, #7ec8d4) 12%, transparent); }
+/* B324: was var(--color-info, #7ec8d4) — --color-info is defined nowhere, so the
+   pale-cyan fallback always won and all but vanished on light themes. A fixed
+   teal mixed toward the theme's text keeps the hue while contrast self-corrects
+   per theme (pitfall #63). */
+.exp-badge--g {
+  --exp-badge-g: color-mix(in srgb, #2aa6ba 65%, var(--text-primary));
+  color: var(--exp-badge-g);
+  background: color-mix(in srgb, var(--exp-badge-g) 12%, transparent);
+}
 .exp-badge--empty { visibility: hidden; }
 
 .exp-rank {
@@ -722,8 +732,13 @@
    bumped from 8px to 16px so the centered text has room to read. */
 .exp-rxp-bar-track {
   flex: 1 1 0;
-  min-width: 80px;
-  height: 16px;
+  /* B337: em, not px — the value text inside grows with Font Size / A+ and a
+     fixed 16px box clipped it top and bottom. em here is relative to THIS
+     element's font (pitfall #58b), which is .exp-rxp's 0.82em of the panel
+     font: 16px ÷ (0.82 × 12px) = 1.63em, 80px ÷ 9.84px = 8.13em — identical
+     at the default 12px. */
+  min-width: 8.13em;
+  height: 1.63em;
   background: color-mix(in srgb, var(--border-faint) 80%, transparent);
   border-radius: 4px;
   overflow: hidden;
@@ -835,11 +850,6 @@
   min-height: 0;
   overflow-y: auto;
   padding: 0.2em 0;
-}
-.exp-compact-empty {
-  color: var(--text-faint);
-  font-style: italic;
-  padding: 0.6em;
 }
 .exp-compact-row {
   display: grid;

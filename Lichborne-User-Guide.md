@@ -70,6 +70,86 @@ A few ideas shape everything:
 
 ## What's New in the Latest Version
 
+**v0.19.7**
+
+- **One-click Reconnect after a drop.** The button at the right of the top bar
+  now reads **Reconnect** when your character is disconnected, and brings them
+  back in the same tab with the scrollback intact. (It used to say Login, close
+  the tab and send you to the character list.)
+- **Windows remember where you left them** — size, position and maximized, for
+  the main window and any character in its own window. A window whose monitor is
+  gone opens on your main screen instead.
+- **The Lichborne wordmark can wear a text effect.** Pick one per character in
+  **Settings → Display → Wordmark effect** — Glow, Rainbow, Gold, Wave and
+  eight more, with a live preview beside the dropdown. Because it's per
+  character, it's an easy way to tell which one is in front when you're playing
+  several. **Static** is the default and looks exactly as it always has. Your
+  theme still supplies the colours, and Epilepsy safe mode holds every effect
+  still.
+- **An Unconscious marker in the icon bar.** DragonRealms never announces
+  "unconscious" the way it does stunned or bleeding — the only place it says so
+  is the letter **U** in the status prompt. Lichborne now reads that letter, and
+  `$unconscious` is available in triggers, macros and aliases. This one needs the
+  status prompt turned on in game: type `set statusprompt` once. Without it the
+  game sends no letters, so the marker can never appear.
+- **The Overview has one selection.** Clicking a card aims the input bar at that
+  character and makes it the active tab; with **All characters** chosen, every
+  connected card and tab lights up, so you can always see who your next command
+  will reach.
+- **The + window has the full login experience** — your Teams, Reconnect Last,
+  Team Login and Attach are all there, not just single characters.
+- **"+ Add account" is a slim row** under your accounts, instead of a big tile.
+- **The + window is a proper Lichborne dialog** — titled **Connect a
+  character**, in the same style as About Lichborne — opens straight to your
+  characters, and dialogs opened from it (Edit profile, Team Login) no longer
+  hide behind it.
+- **Esc and the keyboard work everywhere.** Esc closes the dialog on top, and
+  only that one, and every tab, list and switch can be reached with Tab. A round
+  of polish also fixed text that was hard to read on light themes, menus that
+  ran off screen, and hover states that hid what was selected — and the
+  **Experiences** button now lights only while its shelf is open, like the other
+  top-bar buttons.
+- **Every window matches, and nothing is lost by accident.**
+  - All dialogs now share the About Lichborne look.
+  - Deleting asks first.
+  - Closing an editor with unsaved changes asks whether to discard them.
+  - The cursor leaves the command bar while a dialog is open, and comes back when it closes.
+- **A round of macOS and Linux fixes.** Option-key macros work on a Mac, the
+  Linux download keeps one name (`Lichborne.AppImage`) so updates no longer
+  break your shortcuts, and trigger "log to file" actions save into a
+  **TriggerLogs** folder in Lichborne's data folder (see
+  [Where your settings live](#appendix-c--where-your-settings-live)).
+
+**v0.19.6**
+
+- **The Spell Monitor now shows an effect ending in two steps.** When your
+  countdown runs out the cell says **"expired"** and stays lit — the moment to
+  act. When the game itself stops listing the effect it turns **"ended"**, greyed
+  out, so you can see what lapsed and needs recasting instead of watching it
+  disappear. The greyed cell **counts down to its own removal**, so you know how
+  long you have to notice it. The greying is a ⚙ toggle, on by default.
+- **The Spell Monitor's header shows its feed status** — *updated 3s ago ·
+  every ~6s* — when the game last refreshed the list and roughly how often it
+  does, so a motionless grid reads as "nothing has changed" rather than
+  "something has hung".
+- **The Spell Monitor shrinks to a strip.** It can now be resized down to about
+  one row of cells, so it can sit as a thin band across the top of your layout.
+- **Katamba no longer casts a glow** in the Moons view — the black moon sheds no
+  light, so it now renders as the dark disc it is.
+
+**v0.19.5**
+
+- **New Experience: Spell Monitor.** Everything currently on you as a grid of
+  live countdowns, each with
+  a duration bar that drains as the effect does, running green while full, amber
+  past halfway and red near the end. Optional **skill badges** ([A]ugmentation,
+  [W]arding, [F]orm…) and **abbreviations** (ECRY rather than Eillie's Cry) make
+  it quick to see what to renew. Open it from the **Experiences** shelf, or dock
+  it as a panel tab from any panel's **+** menu. Works without Lich.
+- **Dragging a tab between windowed panels no longer leaves the strip jittering**
+  — a fix that also restores the map's animation smoothness, which the same bug
+  was quietly slowing down.
+
 **v0.19.4**
 
 - **Attach to a Lich that's already running.** A third way to connect, beside
@@ -102,7 +182,7 @@ Lichborne is actively developed. A few things we're heading toward — direction
   community, stewarded by it. Updates and links carry over seamlessly (v0.19.2
   installs are already transfer-ready, and GitHub redirects cover the rest).
 - **Windowed Panels becomes the default.** The floating-window layout is the future; the older docked "Static Panels" mode will eventually retire, with an automatic one-time conversion so no layout is ever lost.
-- **More Lichborne Experiences.** The graphical scenes (Living Tableau, Moons) are the first of a larger set of "graphics for text players" — richer combat instruments, wound/status visuals, and more.
+- **More Lichborne Experiences.** The graphical scenes (Living Tableau, Moons, Spell Monitor) are the first of a larger set of "graphics for text players" — richer combat instruments, wound/status visuals, and more.
 - **More AI helpers.** Catch Me Up is the first BYOK ("bring your own key") AI feature. Others are designed and on the way — always optional, always with a working non-AI baseline, and always privacy-first.
 - **A proper Discord community** for feedback and bug reports (link in **Help → About Lichborne**).
 - **Linux and Mac out of beta.** The v0.18.0 platform betas graduate once they've soaked with testers — if you play on either, your reports are what get them there.
@@ -120,7 +200,12 @@ All downloads are on the **[Releases page](https://github.com/SekmehtDR/Lichborn
 
 **Windows (stable):** run `Lichborne-X.Y.Z-setup.exe` — no admin rights needed. Windows may show a **SmartScreen** warning (no code-signing certificate yet); click **More info → Run anyway**. It's safe. Auto-updates with one click when a new version lands.
 
-**Linux (beta):** download the `.AppImage`, `chmod +x` it, run it. Auto-update works. If "Remember password" is greyed out, your desktop lacks a keyring service — install GNOME Keyring or KWallet, or just type the password each session.
+**Linux (beta):** download the `.AppImage`, `chmod +x` it, run it. Two tips:
+
+- **It keeps one name: `Lichborne.AppImage`.** Auto-update replaces that file in place, so desktop shortcuts and dock favourites keep working. Downloads before v0.19.7 had the version number in the name (`Lichborne-0.19.6.AppImage`); if yours does, rename it once to `Lichborne.AppImage`. Otherwise the next update switches it to the new name itself, and any shortcut to the old name stops working.
+- **If it won't start on Ubuntu 22.04 or newer**, install FUSE 2, which AppImages need: `sudo apt install libfuse2t64` on 24.04, or `sudo apt install libfuse2` on 22.04. Running it from a terminal shows the FUSE error if that's the cause.
+
+If "Remember password" is greyed out, your desktop lacks a keyring service — install GNOME Keyring or KWallet, or just type the password each session.
 
 **macOS (beta, Apple Silicon):** open the `.dmg`, drag Lichborne to Applications. **The first launch needs one Terminal command** — open Terminal and paste:
 
@@ -138,7 +223,7 @@ Then open Lichborne normally; you'll never need it again. If macOS instead offer
 
 - Install it per the **[official Lich install guide](https://github.com/elanthia-online/lich-5/wiki/Documentation-for-Installing-and-Upgrading-Lich)** — Windows has a one-click installer; Linux/Mac follow the wiki's steps (Lich in `~/Lich5`, Ruby 4.0+ via rbenv or your distro).
 - **Already running Lich** for Genie, Profanity, or another client? You're set — no reinstall.
-- In Lichborne, open **Lich Setup** (the **⚙ Lich Setup** button on the launcher, or **Settings → Lich Setup → Open Lich Setup…**) and hit **↺ Auto Detect**. Green checkmarks mean you're good. It knows each platform's standard install spots (on a Mac, the first detect asks permission to look at your Desktop folder — that's where the wiki's install lands). If your Ruby is older than 4.0, the dialog warns you — current Lich won't start on it.
+- In Lichborne, open **Lich Setup** (the **⚙ Lich Setup** button on the launcher, or **Settings → Lich Setup → Open Lich Setup…**) and hit **↺ Auto-detect**. Green checkmarks mean you're good. It knows each platform's standard install spots (on a Mac, the first detect asks permission to look at your Desktop folder — that's where the wiki's install lands). If your Ruby is older than 4.0, the dialog warns you — current Lich won't start on it.
 
 *Prefer no Lich? You can skip this entirely — see [Connecting](#connecting--playing-your-whole-team).*
 
@@ -204,9 +289,11 @@ This tells DragonRealms to include your full status (hidden, stunned, roundtime,
 - **One app, every character.** Each character is a tab. Switch with `Ctrl+Tab` or `Ctrl+1–9`.
 - **Quick Send** (`Ctrl+Shift+Enter`) fires a command at *another* character without leaving the one you're on.
 - **Pop a character into its own window** — right-click its tab, use the **Window** menu, or tick "open each in its own window" when bulk-connecting. It's still one app, so Quick Send and Lich coordination keep working. (You can also launch the app more than once to keep two teams fully separate.)
+- **Dropped?** The button at the right end of the top bar turns into **Reconnect** — one click logs that character back in, in the same tab, with its scrollback intact.
 - **Right-click any tab** for quick actions — Reconnect a dropped character, Disconnect, or move it between windows (only the choices that apply are shown).
+- **Windows remember where you left them** — size, position, and whether they were maximized, for the main window and for any character you've moved into its own window. If a window's monitor isn't connected any more, it opens on your main screen instead.
 - **⟲ Reconnect Last** on the launcher brings your whole crew back in one click. If an account already has a different character on, Lichborne asks which you want rather than bouncing anyone.
-- **Team Login** logs several characters in at once (DR allows one character per account, so it's one from each). Tick only the accounts you want, and tick **Save this line-up as a team** to remember it. Saved teams appear in a **Teams** section on the logon screen — each one shows who is on it, and a single Connect logs the whole team in, skipping anyone already playing. Pin a team with the heart and it joins **Favorites** at the top; the ⋯ menu edits its name and notes, or deletes it. A long team run can be **stopped** part-way: whoever is connecting finishes, and the rest are skipped and listed so you can start them whenever you like.
+- **Team Login** logs several characters in at once (DR allows one character per account, so it's one from each). Tick only the accounts you want, and tick **Save this line-up as a team** to remember it. Saved teams appear in a **Teams** section on the logon screen and in the **+** window — each one shows who is on it, and a single Connect logs the whole team in, skipping anyone already playing. Pin a team with the heart and it joins **Favorites** at the top; the ⋯ menu edits its name and notes, or deletes it. A long team run can be **stopped** part-way: whoever is connecting finishes, and the rest are skipped and listed so you can start them whenever you like.
 
 ---
 
@@ -268,8 +355,12 @@ looking at — and only when the count is above zero, so a healthy roster shows 
 badge at all. A character with nothing wrong reads a quiet **✓ calm** on its card
 rather than a row of zeroes.
 
-Clicking a card aims the input bar at that character; **double-clicking** it (or
-**Go to … 's game session** in its menu) opens that character full-screen. Cards
+Clicking a card selects that character: the input bar aims at it and its tab
+becomes the active one, while you stay in the Overview. Pick **All characters**
+in the bar (or click empty space) to aim at everyone again — every connected
+card and tab lights up, so you can see exactly who a command will reach. **Double-clicking** a
+card (or **Go to … 's game session** in its menu) opens that character
+full-screen. Cards
 are read-only on
 purpose: to send a command to someone else, use **Quick Send**
 (Ctrl/Cmd+Shift+Enter), which already does exactly that. While the Overview is up,
@@ -411,7 +502,7 @@ Client commands **never reach the game** — a typo gets a hint instead of leaki
 - Each Experience **costs nothing until you open it**, respects your **theme** and **epilepsy-safe** setting, and always treats the game text as the source of truth.
 - Hover an Experience for its own controls: **A− / A+** sizes all its text, and **⚙ "Show in this scene"** ticks exactly which layers you want to see. Your choices are remembered **per window**.
 
-There are two Experiences today, both **[Beta]**:
+There are three Experiences today, all **[Beta]**:
 
 #### Living Tableau
 
@@ -433,6 +524,30 @@ Elanthia's night sky and world, alive.
 - Below the horizon, a little **wilderness** — distant forest, foreground trees, a winding stream and a **lake that mirrors the sun and moons** — that **dresses itself by season** (snow and ice in winter, blossoms in spring, lush summer, falling leaves in autumn) and casts **sun-following shadows**.
 - **Header and footer strips** read the sky at a glance: day/night with the sun's countdown, the next moon, and the current **weather** up top; the **Elanthian date** below. **Hover any body for its lore** and its next rise/set time, with live "sets in 88m" countdowns throughout. A single **⟳** silently refreshes the weather and date (it sends `WEATHER`/`TIME` behind the scenes — nothing clutters your game window).
 - **Powered by the community `moonwatch` script** — run `;moonwatch window` on a Lich character to feed it the moons. Even without it, you still get a day/night sky from public sun data.
+
+#### Spell Monitor
+
+Everything currently on you, as live countdowns.
+
+- **One cell per effect**, in a grid that reflows to whatever shape you give the window. By default they appear in the order the game itself lists them, which stays put as timers tick; flip on **Soonest first** in the **⚙** if you'd rather have whatever is about to run out lead the grid.
+- Each cell carries a **duration bar** that drains as the effect does. Lichborne isn't told how long a spell lasts, so the bar learns it: the longest you've ever seen an effect run becomes its full mark, and a recast visibly refills it.
+- Each effect runs **green while it's full, amber past the halfway mark, and red as it nears its end**, with an optional pulse on the red ones. The colors adapt to your theme — deepening on light ones, brightening on dark — and follow your color-blind setting if you have one. (Epilepsy-safe turns off the pulse and keeps the colors, so you lose nothing.)
+- Because the game never tells a client how long a spell *should* last, a freshly-noticed effect can't be judged as a percentage yet — so an effect with only a minute or two left always shows as ending regardless, rather than pretending to be full.
+- **Times read in whole minutes** — `28m`, then `<1m` at the end. The game reports your effects to the minute, so showing you a ticking `28:04` would be inventing precision that was never there.
+- **An effect ends in two steps, and you see both**, because they tell you different things:
+  1. **"expired"** — the time the game gave you has run out. The cell stays lit and red, ringed to catch your eye. This is the moment to act, but it isn't the last word: the game counts in whole minutes, so an effect at `1m` may have almost another minute left, and a refresh can put an expired cell straight back to counting down.
+  2. **"ended"** — the game has stopped listing the effect, which is the one thing that settles it. The cell greys out and drains of colour, so you can see exactly what lapsed and needs recasting rather than watching it vanish. **It counts down to its own removal** — `ended 45s`, with its bar draining alongside — so you can see how long you've still got to notice it. It clears when you recast it, or when that countdown runs out. (⚙ **Ended effects**, on by default — turn it off and a spell simply disappears when it's done.)
+
+  Hover any cell and the tooltip tells you which of the two you're looking at.
+- Effects the game lists **without** a countdown — a Trabe Chalice reading *"intact, fading"*, say — are shown too, quietly, after everything that has a timer. Nothing that's on you is ever hidden just because Lichborne didn't recognize the wording. Anything the game marks as *Fading* goes to the very top instead — that's it telling you an effect is about to lapse.
+- **Skill badges** put a letter chip on each effect for its magic skill or ability type — **[A]**ugmentation, **[U]**tility, **[T]**argeted Magic, **[D]**ebilitation, **[W]**arding, **[C]**antrip, **[X]** metamagic, and for Barbarians and Bards **[F]**orm, **[B]**erserk, **[M]**editation, **[R]**oar and **[S]**cream. Each has its own colour, so one kind is easy to pick out; hover for the full name and guild.
+- **Abbreviations** switch the display to the game's short names — **ECRY** rather than *Eillie's Cry* — so what you see about to expire is what you type to renew it. Anything without a known abbreviation keeps its full name. (Thief Khri have no badge or abbreviation: they aren't in the reference data Lich publishes.)
+- **Group by skill** gathers effects under a heading for their skill or ability type — all your Wards together, all your Augmentations together. For a Barbarian that means Forms, Berserks, Roars and Meditations each in their own block. It combines with Soonest first, which then orders within each group. (Thieves get one "Other" block: Khri aren't in the reference data.)
+- **Abbreviations**, **Soonest first** and **Group by skill** all start **off** — the window opens with full names in the order the game itself lists them, which stays put as timers tick. Turn on whichever you want from the **⚙**. Your choices are remembered per character and travel with a [Profile Transfer](#profile-transfer).
+- Every colour here — the twelve badges and the three countdown states — is editable in the **Theme Editor** under **HUD**, if you want your own scheme.
+- **The header bar shows the feed's status** — *updated 3s ago · every ~6s* — when DragonRealms last sent the list, and roughly how often it's been sending it. It answers the question a motionless grid otherwise raises: the list only changes when your effects do, so a number ticking up beside a still grid means everything is working and nothing has changed. The cadence appears once Lichborne has seen enough refreshes to say so honestly, and it's measured rather than assumed — DragonRealms decides when to send, and there's no command known to ask it for one. (⚙ **Feed status**, on by default; it lives in the header bar, so hiding that hides this too.)
+- **It shrinks to a strip.** The window can be dragged down to roughly the height of a single row of cells, so it can sit as a thin band across the top of your layout rather than a box — turn off the header bar in the **⚙** for the tightest fit.
+- **No Lich required** — this reads DragonRealms' own spell readout, so it works exactly the same on a direct connection. The same information in text form is the **Active Spells** panel.
 
 *(Every layer above — bubbles, thoughts, combat rings, weather effects, seasons, and more — is an individual **⚙** toggle, so you can dial each Experience to taste.)*
 
@@ -574,6 +689,7 @@ Lich is the **recommended** way to play — it unlocks the map, timers, variable
 | AI — Catch Me Up | ✅ | ✅ (reads your log) |
 | Import wizard · Transfer | ✅ | ✅ |
 | Moons Experience | ✅ (with `;moonwatch`) | ⚠️ day/night only |
+| Spell Monitor Experience | ✅ | ✅ |
 | Lich Map · Genie Maps | ✅ | ❌ (needs Lich map data) |
 | Variables · Scripts · Profiles (Lich Dashboard) | ✅ | ❌ (Lich only) |
 | Spell/buff timers, `go2` walking, repository | ✅ | ❌ (Lich only) |
@@ -597,7 +713,8 @@ Lich is the **recommended** way to play — it unlocks the map, timers, variable
 | `Ctrl+Shift+Enter` | Quick-Send — sends to **all** connected characters by default; untick to pick specific ones (pre-filled from the active command bar) |
 | `Ctrl+F` | Search the live game window |
 | `Ctrl+Enter` / `Alt+Enter` / `NumpadEnter` | Repeat last / second-to-last / send-or-repeat |
-| `Esc` | Clear the command line (or close the slash palette) |
+| `Esc` | Close the dialog on top — only that one. In the command line, clear it (or close the slash palette) |
+| `Tab` / `Shift+Tab` | Move between buttons, tabs, list rows and switches; `Enter` or `Space` uses the one in focus |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom the window in / out / reset |
 
 Plain `Home`/`End` edit the command box (where your cursor usually is); hold `Ctrl` to scroll the story window instead. Macro hotkeys (F1–F12, Ctrl/Alt combos) are set up in the Automations panel.
@@ -663,16 +780,24 @@ Notes: `edit` on any rule jumps straight to it in the editor; your real mode/gro
 
 ## Appendix C — Where your settings live
 
-Your setup is saved as plain **YAML** files you own — back them up, copy them to another machine, or share them. Everything lives under your Windows app-data folder:
+Your setup is saved as plain **YAML** files you own — back them up, copy them to another machine, or share them. Everything lives in Lichborne's app-data folder:
+
+| System | Folder |
+|---|---|
+| Windows | `%APPDATA%\lichborne\` |
+| macOS | `~/Library/Application Support/lichborne/` |
+| Linux | `~/.config/lichborne/` (or `$XDG_CONFIG_HOME/lichborne/` if you've set it) |
 
 ```
-%APPDATA%\lichborne\
-  profiles\
+lichborne/
+  profiles/
     {Character}.yaml   — one file per character (your per-character setup)
     _shared.yaml       — app-wide settings shared by every character
-  Exports\             — Transfer bundles (.lb.yaml) you export
-  Logs\
-    {Character}\        — session logs, one folder per character
+  Exports/             — Transfer bundles (.lb.yaml) you export
+  Logs/
+    {Character}/       — session logs, one folder per character
+  TriggerLogs/         — files written by a trigger's "log to file" action
+  window-state.json    — where each window was last placed (this computer only)
 ```
 
 Because it's all plain text, nothing is locked in. You almost never need to touch these by hand — Lichborne saves automatically, and [Transfer](#transfer-a-setup-between-your-characters) is the friendly way to move a setup between your own characters. But here's what's where:
@@ -697,7 +822,7 @@ One file, for the things that make sense **app-wide** rather than per character:
 - **AI settings** (your model choice and consent flags — *not* your API key; see below).
 - **App preferences** — "open each character in its own window," whether Analytics is on, and the "Reconnect Last" roster.
 
-> Your **API key** (if you use AI) is stored **separately and encrypted** by Windows (DPAPI) — it's never part of these YAML files and never leaves your machine except to talk to Anthropic. See [AINOTICE.md](AINOTICE.md).
+> Your **API key** (if you use AI) is stored **separately and encrypted** by your operating system (DPAPI on Windows, the Keychain on macOS, libsecret or KWallet on Linux) — it's never part of these YAML files and never leaves your machine except to talk to Anthropic. See [AINOTICE.md](AINOTICE.md).
 
 *(Heads up: these are **Lichborne's** profiles. Your **Lich script** profiles are different files, inside your Lich installation — edit those from the [Lich Dashboard → Profiles](#the-lich-dashboard).)*
 
@@ -716,9 +841,9 @@ Lichborne keeps a clean, dated **plain-text log** of every session — the game 
 - **Platforms:** Windows x64 (stable), Linux x64 AppImage (beta), macOS Apple Silicon (beta). Linux/Mac are new in v0.18.0 — report anything odd on Discord.
 - **First-install warnings** — expected on two platforms (no code-signing certs): Windows SmartScreen → **More info → Run anyway**. On macOS the download is quarantined, and Apple Silicon words that as **"Lichborne is damaged and can't be opened"** — it isn't damaged, that's Apple's phrasing for "not notarized". Clear it once with `xattr -cr /Applications/Lichborne.app` (or use **System Settings → Privacy & Security → Open Anyway** if macOS offers that instead).
 - **Mac: no auto-update.** Unsigned builds can't self-update (an Apple rule) — grab new versions from the Releases page. Windows and Linux auto-update normally.
-- **Mac: "Lichborne wants to access your Desktop"?** That's the Lich **Auto Detect** looking for the wiki-standard `~/Desktop/Lich5` install — allow it (or browse to Lich manually).
+- **Mac: "Lichborne wants to access your Desktop"?** That's the Lich **Auto-detect** looking for the wiki-standard `~/Desktop/Lich5` install — allow it (or browse to Lich manually).
 - **Linux: "Remember password" greyed out?** No keyring service found — install GNOME Keyring or KWallet; until then, type the password each session.
-- **Linux/Mac: Lich won't launch from Lichborne but runs in a terminal?** Point the Ruby path at the **full rbenv path** (`~/.rbenv/shims/ruby`) — apps launched from the desktop don't see your shell's PATH. Auto Detect does this for you.
+- **Linux/Mac: Lich won't launch from Lichborne but runs in a terminal?** Point the Ruby path at the **full rbenv path** (`~/.rbenv/shims/ruby`) — apps launched from the desktop don't see your shell's PATH. Auto-detect does this for you.
 - **Map marker stuck?** The Lich Map tracks by room id and is most reliable — turn on DR's room-number display so titles show a number like `[Town Square] (12345)`. The Genie Map matches by room name + description (its data has no ids), so in areas full of identically-named rooms it can briefly lag. A **`LOOK`** resyncs either map.
 - **Hand bar says "Empty" but you're holding something?** The common cause was fixed in v0.13.3. For rare genuine gaps (e.g. spell-summoned items DR doesn't announce), a **`GLANCE`** always resyncs your hands.
 - **Lich won't start after updating Lich?** Recent Lich versions require a newer **Ruby** — check your Ruby version first. And if a very recent Lich shows raw protocol "garbage" instead of the normal game feed, update Lich to its latest patch (a known Lich-side hiccup fixed upstream).

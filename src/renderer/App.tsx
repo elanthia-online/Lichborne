@@ -57,7 +57,7 @@
 //  • `data-window-hidden` on <html>, stamped from main's per-window visibility
 //    signal (`document.hidden` is unreliable here — pitfall #96).
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react'
 import type { SessionInfo } from './components/LoginScreen'
 import Launcher, { loadCharacterCards, saveCharacterAttach, type LauncherCharacter } from './components/Launcher'
 import AddCharacterWizard from './components/AddCharacterWizard'
@@ -71,7 +71,12 @@ import AppBar from './components/AppBar'
 import QuickSend from './components/QuickSend'
 import BulkConnectPicker from './components/BulkConnectPicker'
 import { showToast } from './toasts'
+
+// B356/B364: the contract with main — an `updater-log` message starting with
+// this is shown as a toast (prefix stripped); every other one is console-only.
+const UPDATER_NOTICE_PREFIX = '[notice] '
 import ToastHost from './components/ToastHost'
+import ConfirmHost from './components/ConfirmHost'
 import { GroupsProvider } from './components/GroupsContext'
 import { SessionsProvider, useSessions, type CharacterId } from './SessionsContext'
 import { RosterProvider, useRoster } from './RosterContext'
@@ -86,6 +91,8 @@ import { simucoinToast } from './components/SimuCoinButton'
 import { loadSimuCoinConfig, saveSimuCoinConfig, accountConfig, rememberBalance, SIMUCOIN_CHANGED_EVENT } from './simucoinConfig'
 import OverviewShell from './components/overview/OverviewShell'
 import { useViewMode, setViewMode, toggleViewMode, loadOverviewState, OVERVIEW_KEY } from './overviewStore'
+import { backdropHandlers } from './utils/backdropClose'
+import { useEscapeClose } from './hooks/useEscapeClose'
 
 // Exposed to main via mainWindow.webContents.executeJavaScript on shutdown so
 // every debounced profile save fires before the window destroys. Returns a
@@ -129,6 +136,49 @@ function ConnectStep({ character }: { character: string }) {
       {step?.character === character ? step.message : 'Starting…'}
     </div>
   )
+}
+
+// The + tab's "Connect a character" dialog (F113). Its own component so it
+// MOUNTS when it opens: useEscapeClose's stack is mount-ordered, and a hook in
+// AppShell gated on `enabled: showAdd` would sit at the BOTTOM of the stack,
+// beneath per-session dialogs mounted after it — Esc would then close + from
+// under whatever is on top of it (B341).
+function AddCharacterModal({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  useEscapeClose(onClose)
+  return (
+    // B342: backdropHandlers, so a press inside the launcher (a tile, its
+    // scrollbar) that is released over the scrim no longer closes the dialog.
+    <div className="add-character-modal" {...backdropHandlers(onClose)}>
+      {/* The house modal chrome (UX standard #10, the About Lichborne look;
+          F113): the PANEL is the dialog surface — an accent header band with
+          the title and the ✕, then the Launcher as the scrolling body. The ✕
+          lives in the header, not inside the Launcher, because the launcher
+          is the scroll container and would carry it away. (B321: it once sat
+          against the full-window backdrop, in the window's corner, where
+          nobody saw it.) */}
+      <div className="add-character-panel" role="dialog" aria-modal="true" aria-labelledby="add-character-title">
+        <div className="add-character-head">
+          <span id="add-character-title" className="add-character-title">Connect a character</span>
+          <button
+            type="button"
+            className="ui-close"
+            onClick={onClose}
+            title="Close"
+            aria-label="Close"
+          >✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+// An Esc-to-close entry for an inline App-level dialog, registered while that
+// dialog is MOUNTED — so it stacks above whatever was already open, and Esc
+// closes it rather than the + window underneath (B341).
+function EscToClose({ onClose }: { onClose: () => void }) {
+  useEscapeClose(onClose)
+  return null
 }
 
 function AppShell() {
@@ -515,32 +565,78 @@ function AppShell() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCharacter, activeGame, activeConnected])
 
+  // Refocus the active GameWindow's command input after a tab switch — and
+  // (B343) as the fallback when Quick Send closes. The session-shell DOM toggle
+  // happens on the next React commit, so we wait a frame before querying.
+  // Selector is "the one visible session-shell" since hidden ones are
+  // display:none and their inputs aren't focusable anyway. (Bug: Ctrl+# used to
+  // leave focus wherever it was — usually nowhere — so testers had to click the
+  // bar before they could type.) Reads only a ref and the DOM, so it is stable.
+  const refocusActiveCommandBar = useCallback(() => {
+    // v0.19.0 Views: NEVER refocus into a command bar the Overview is
+    // covering. The overlay deliberately leaves the active session shell
+    // laid out (so its virtualised scrollback stays measured), which means
+    // the shell is not `--hidden` and this selector still finds its input —
+    // focusing it would put the caret in an invisible field where typing goes
+    // nowhere visible and Enter still sends to the game.
+    if (viewRef.current === 'overview') return
+    requestAnimationFrame(() => {
+      const el = document.querySelector(
+        '.session-shell:not(.session-shell--hidden) .command-input'
+      ) as HTMLInputElement | null
+      el?.focus()
+    })
+  }, [])
+
+  // B343: closing Quick Send left keyboard focus NOWHERE — unmounting the modal
+  // drops focus to <body>, so ↑ history and Enter did nothing until you
+  // clicked. It now puts focus back where it was when Quick Send opened (which
+  // may be a dialog's field it was opened over, not the command bar), falling
+  // back to the command bar — or, in the Overview, the Overview's own input
+  // bar, since the covered command bar must never take focus (pitfall #131).
+  const quickSendReturnFocusRef = useRef<HTMLElement | null>(null)
+  const openQuickSend = useCallback((initialCommand: string) => {
+    quickSendReturnFocusRef.current = document.activeElement as HTMLElement | null
+    setShowQuickSend({ initialCommand })
+  }, [])
+  const closeQuickSend = useCallback(() => {
+    setShowQuickSend(null)
+    const prev = quickSendReturnFocusRef.current
+    quickSendReturnFocusRef.current = null
+    // A frame, so the modal has unmounted before focus moves.
+    requestAnimationFrame(() => {
+      const overview = viewRef.current === 'overview'
+      if (prev && prev !== document.body && prev.isConnected
+          && prev.getClientRects().length > 0            // still laid out (not a hidden tab)
+          && !(overview && prev.closest('.session-shell'))) {
+        prev.focus()
+        return
+      }
+      if (overview) {
+        (document.querySelector('.ov-inputbar-input') as HTMLInputElement | null)?.focus()
+        return
+      }
+      refocusActiveCommandBar()
+    })
+  }, [refocusActiveCommandBar])
+
+  // B376: where keyboard focus goes when the LAST dialog closes and left it
+  // nowhere — handed to the dialog stack (useEscapeClose) through ConfirmHost.
+  // The Overview's own input bar in the Overview (the covered command bar must
+  // never take focus, pitfall #131), otherwise the active command bar.
+  const dialogHomeFocus = useCallback(() => {
+    if (viewRef.current === 'overview') {
+      (document.querySelector('.ov-inputbar-input') as HTMLInputElement | null)?.focus()
+      return
+    }
+    refocusActiveCommandBar()
+  }, [refocusActiveCommandBar])
+
   // §13.7 — App-level keyboard shortcuts. Ctrl+1..9 jump to a tab by slot;
   // Ctrl+Tab cycles to the next connected character; Ctrl+Shift+Enter opens
   // the Quick-Send overlay. The active GameWindow's local keydown handler
   // already early-returns when not active, so these don't collide.
   useEffect(() => {
-    // Refocus the active GameWindow's command input after a tab switch. The
-    // session-shell DOM toggle happens on the next React commit, so we wait
-    // a frame before querying. Selector is "the one visible session-shell"
-    // since hidden ones are display:none and their inputs aren't focusable
-    // anyway. (Bug: Ctrl+# used to leave focus wherever it was — usually
-    // nowhere — so testers had to click the bar before they could type.)
-    function refocusActiveCommandBar() {
-      // v0.19.0 Views: NEVER refocus into a command bar the Overview is
-      // covering. The overlay deliberately leaves the active session shell
-      // laid out (so its virtualised scrollback stays measured), which means
-      // the shell is not `--hidden` and this selector still finds its input —
-      // focusing it would put the caret in an invisible field where typing goes
-      // nowhere visible and Enter still sends to the game.
-      if (viewRef.current === 'overview') return
-      requestAnimationFrame(() => {
-        const el = document.querySelector(
-          '.session-shell:not(.session-shell--hidden) .command-input'
-        ) as HTMLInputElement | null
-        el?.focus()
-      })
-    }
     function onKeyDown(e: KeyboardEvent) {
       // Cross-platform (v0.18.0): on macOS the primary chord modifier is Cmd
       // (metaKey); Ctrl variants STAY live there too (additive — the Windows
@@ -562,7 +658,7 @@ function AppShell() {
         const srcInput = document.querySelector(
           '.session-shell:not(.session-shell--hidden) .command-input'
         ) as HTMLInputElement | null
-        setShowQuickSend({ initialCommand: srcInput?.value ?? '' })
+        openQuickSend(srcInput?.value ?? '')
         return
       }
       // Ctrl+1..9 and Ctrl+Tab fire regardless of text-field focus — the whole
@@ -600,7 +696,7 @@ function AppShell() {
       const srcInput = document.querySelector(
         '.session-shell:not(.session-shell--hidden) .command-input'
       ) as HTMLInputElement | null
-      setShowQuickSend({ initialCommand: srcInput?.value ?? '' })
+      openQuickSend(srcInput?.value ?? '')
     }
     document.addEventListener('keydown', onKeyDown)
     document.addEventListener('lichborne:open-quick-send', onOpenQuickSend)
@@ -608,7 +704,7 @@ function AppShell() {
       document.removeEventListener('keydown', onKeyDown)
       document.removeEventListener('lichborne:open-quick-send', onOpenQuickSend)
     }
-  }, [sessions, activeId, setActive])
+  }, [sessions, activeId, setActive, refocusActiveCommandBar, openQuickSend])
 
   // Profile Transfer open hook — the Launcher's "Transfer" button dispatches
   // this. Empty deps: opening just flips the boolean; the modal reads live
@@ -629,8 +725,10 @@ function AppShell() {
     runAppActionRef.current = (action: string) => {
       switch (action) {
         case 'quick-send':      document.dispatchEvent(new CustomEvent('lichborne:open-quick-send')); break
+        // B330: Transfer (z 300) would open UNDER the + window (1000) and look
+        // like nothing happened, so + closes first.
         case 'profile-export':
-        case 'profile-import':  setShowProfileTransfer(true); break
+        case 'profile-import':  setShowAdd(false); setShowProfileTransfer(true); break
         case 'login-character': setShowAdd(true); break  // same as the "+" tab — character picker + add-account button
         case 'bulk-connect':    void loadCharacterCards().then(cards => { if (cards.length) setBulkPickerSource(cards) }); break
         case 'close-character': if (activeId) handleCloseTab(activeId); break
@@ -654,6 +752,12 @@ function AppShell() {
   useEffect(() => {
     const off = window.api.onMenuAction?.(({ action }) => {
       if (isSessionAction(action)) {
+        // B330: every session action either opens a per-session panel (z
+        // 100–400, far below the + window's 1000 — Tools → Settings "did
+        // nothing" until + was closed) or acts on the active character, which
+        // the + window is covering. Close + so the result is visible. The
+        // app-bar buttons skip this path, but they sit under + anyway.
+        setShowAdd(false)
         document.dispatchEvent(new CustomEvent('lichborne:session-action', { detail: { action } }))
       } else {
         runAppActionRef.current?.(action)
@@ -928,6 +1032,14 @@ function AppShell() {
     const unsubLog = window.api.onUpdaterLog((msg) => {
       console.log('[auto-updater]', msg)
       setChecking(false)
+      // B356/B364: main marks a message meant for the USER with this prefix
+      // (macOS has no auto-update; an extracted AppImage can't update). Before
+      // this they only reached the console, so "Checking…" flashed and nothing
+      // else happened.
+      if (msg.startsWith(UPDATER_NOTICE_PREFIX)) {
+        showToast({ title: 'Updates', message: msg.slice(UPDATER_NOTICE_PREFIX.length), durationMs: 10000 })
+        return
+      }
       if (msg === 'No update available') setUpToDate(true)
     })
     return () => { unsubAvailable(); unsubDownloaded(); unsubLog() }
@@ -1424,6 +1536,11 @@ function AppShell() {
   async function runBulkConnect(picks: LauncherCharacter[], separateWindows = false) {
     setBulkPickerSource(null)
     setBulkPickerSet(null)
+    // Every team launch funnels through here — Team Login, a Teams row, Reconnect
+    // Last, the Keep/Switch chooser — so this is where a launch started from the
+    // + tab's compact launcher closes that modal, the way a single-character
+    // connect does. Otherwise it is still sitting there when the run ends.
+    setShowAdd(false)
     const ok: string[] = []
     const failed: { name: string; error: string }[] = []
     // STOP, not cancel (Sekmeht: the individual connect got a Cancel and a team
@@ -1600,18 +1717,6 @@ function AppShell() {
       .finally(() => setReconnectingIds(prev => { const n = new Set(prev); n.delete(id); return n }))
   }
 
-  // App-bar "Login" button (shown when the active character is disconnected):
-  // tear down the dead session and open the character picker so the player can
-  // re-login. Mirrors the GameWindow onDisconnect login path, scoped to the
-  // active tab.
-  function handleLoginActive() {
-    const s = sessions.find(x => x.characterId === activeId)
-    if (!s) return
-    window.api.destroySession(s.sessionId)
-    removeSession(s.characterId)
-    setShowAdd(true)
-  }
-
   const isEmpty       = sessions.length === 0
   // A secondary (decoupled) window must NOT show the full Launcher when empty —
   // it briefly has no sessions before its moved-in character mounts, and shows a
@@ -1638,6 +1743,9 @@ function AppShell() {
       {/* Toast stack (DESIGN §37.6) — one host per BrowserWindow; any module
           surfaces a notice via showToast() (e.g. safeSetItem's quota warning). */}
       <ToastHost />
+      {/* The confirm queue (confirmAction / confirmDelete / confirmDiscard) —
+          one host per window, above every dialog it can be opened from. */}
+      <ConfirmHost homeFocus={dialogHomeFocus} />
       {(updateState !== 'idle' && !updateDismissed) && (
         <div className="update-banner">
           {updateState === 'available' && (
@@ -1669,7 +1777,6 @@ function AppShell() {
         <AppBar
           onAdd={() => setShowAdd(true)}
           onClose={handleCloseTab}
-          onLoginActive={handleLoginActive}
           onReconnect={handleReconnectTab}
           reconnectingIds={reconnectingIds}
           simucoin={simucoin}
@@ -1797,13 +1904,7 @@ function AppShell() {
       )}
 
       {showModalLogin && (
-        <div className="add-character-modal" onClick={e => { if (e.target === e.currentTarget) setShowAdd(false) }}>
-          <button
-            type="button"
-            className="add-character-modal-cancel"
-            onClick={() => setShowAdd(false)}
-            title="Cancel"
-          >✕</button>
+        <AddCharacterModal onClose={() => setShowAdd(false)}>
           <Launcher
             refreshKey={launcherRefreshKey}
             onConnect={handleCardConnect}
@@ -1835,7 +1936,7 @@ function AppShell() {
             connectError={connectError}
             onDismissError={() => setConnectError('')}
           />
-        </div>
+        </AddCharacterModal>
       )}
 
       {showWizard && (
@@ -1857,7 +1958,9 @@ function AppShell() {
         />
       )}
 
-      {showLichSetup && <LichSetupDialog onClose={() => setShowLichSetup(false)} />}
+      {/* B405: opened from the Add Account wizard's footer, the wizard's scrim
+          already dims the screen, so Lich Setup's stays clear. */}
+      {showLichSetup && <LichSetupDialog nested={showWizard} onClose={() => setShowLichSetup(false)} />}
 
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
       {quitConfirm && (
@@ -1887,6 +1990,10 @@ function AppShell() {
 
       {pendingConnect && (
         <div className="launcher-connecting">
+          {/* Esc = its Cancel (B341). Without an entry of its own, Esc here
+              would fall through and close the + window underneath mid-connect,
+              taking any connect error shown there with it. */}
+          <EscToClose onClose={cancelPendingConnect} />
           <div className="launcher-connecting-card">
             <div className="launcher-spinner" />
             <div className="launcher-connecting-body">
@@ -1905,7 +2012,11 @@ function AppShell() {
       )}
 
       {pendingConflict && (
-        <div className="launcher-connecting" onClick={e => { if (e.target === e.currentTarget && !conflictBusy) cancelConflict() }}>
+        // B342: backdropHandlers — a drag that ends on the scrim no longer
+        // cancels. cancelConflict is a no-op mid-disconnect, so Esc (B341) is
+        // swallowed then rather than falling through.
+        <div className="launcher-connecting" {...backdropHandlers(cancelConflict, !conflictBusy)}>
+          <EscToClose onClose={cancelConflict} />
           <div className="launcher-connecting-card launcher-dialog">
             <div className="launcher-dialog-head">Account already in use</div>
             <div className="launcher-dialog-body">
@@ -1944,7 +2055,9 @@ function AppShell() {
           player keeps the connected character or switches to the saved one;
           nothing connects until Confirm (Sekmeht: choose, don't skip). */}
       {reconnectPrompt && (
-        <div className="launcher-connecting" onClick={e => { if (e.target === e.currentTarget && !reconnectBusy) setReconnectPrompt(null) }}>
+        // B342 / B341 — as the conflict dialog above; mid-switch neither closes.
+        <div className="launcher-connecting" {...backdropHandlers(() => setReconnectPrompt(null), !reconnectBusy)}>
+          <EscToClose onClose={() => { if (!reconnectBusy) setReconnectPrompt(null) }} />
           <div className="launcher-connecting-card launcher-dialog">
             <div className="launcher-dialog-head">Choose who plays each account</div>
             <div className="launcher-dialog-body">
@@ -2000,7 +2113,7 @@ function AppShell() {
       {showQuickSend && (
         <QuickSend
           initialCommand={showQuickSend.initialCommand}
-          onClose={() => setShowQuickSend(null)}
+          onClose={closeQuickSend}  // B343: restores focus as it closes
         />
       )}
 
@@ -2025,8 +2138,19 @@ function AppShell() {
           you sit through every remaining Lich wait". Hence STOP rather than
           Cancel: it skips the characters not yet attempted and keeps the one
           in flight, because that login cannot be aborted anyway. */}
+      {/* B374: no inline z-index. It used to be 9000 — above toasts (2050),
+          About (2010) and context menus (2100), outside the pitfall #118(d)
+          tier map. It is a connect overlay, so `.launcher-connecting`'s own
+          1500 tier (above the + modal it can be launched from) is correct. */}
       {bulkProgress && (
-        <div className="launcher-connecting" style={{ zIndex: 9000 }}>
+        <div className="launcher-connecting">
+          {/* An Esc-stack entry with a no-op close (pitfall #141d): the run
+              can't be dismissed, but registering it keeps this overlay a
+              DIALOG. Without it the stack empties when the picker unmounts,
+              and the last-dialog home focus put the caret in the command bar
+              underneath this scrim, where typing is invisible and Enter
+              reaches the game (pitfall #131). */}
+          <EscToClose onClose={() => {}} />
           <div className="launcher-connecting-card">
             <div className="launcher-spinner" />
             <div className="launcher-connecting-body">
@@ -2068,7 +2192,9 @@ function AppShell() {
           per-character success/failure so the user knows what landed and
           what didn't. */}
       {bulkSummary && (
-        <div className="launcher-connecting" onClick={e => { if (e.target === e.currentTarget) setBulkSummary(null) }}>
+        // B342 / B341 — Esc and the scrim do what Done does.
+        <div className="launcher-connecting" {...backdropHandlers(() => setBulkSummary(null))}>
+          <EscToClose onClose={() => setBulkSummary(null)} />
           <div className="launcher-connecting-card launcher-dialog">
             {/* Title states the OUTCOME, not just that it finished — "all
                 connected" vs "N didn't connect" is the thing the user needs. */}
@@ -2123,8 +2249,13 @@ function AppShell() {
           disconnect wait so the window doesn't look frozen. Inline styles
           keep this self-contained — no separate CSS file needed for one
           short-lived element that paints once and then the window destroys. */}
+      {/* B374: the scrim is `.launcher-connecting`'s own var(--modal-scrim)
+          rather than a hand-rolled rgba. The z-index STAYS at the Quit tier
+          (10000, pitfall #118(d)) on purpose: this is the last thing the window
+          ever paints, and it must cover every surface — toasts, context menus,
+          About — while the drain runs. */}
       {shutdownInfo && (
-        <div className="launcher-connecting" style={{ zIndex: 10000, background: 'rgba(0,0,0,0.75)' }}>
+        <div className="launcher-connecting" style={{ zIndex: 10000 }}>
           <div className="launcher-connecting-card">
             <div className="launcher-spinner" />
             <div className="launcher-connecting-text">

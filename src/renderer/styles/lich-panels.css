@@ -1,9 +1,12 @@
-/* ── Shared backdrop / modal shell ───────────────────────────────────────── */
+/* ── Lich Dashboard shell — the About-modal chrome (B400, v0.19.7) ─────────
+   Scrim, surface, radius, shadow and the accent header band all come from the
+   --modal-* tokens (global.css) so the house look is one edit away. The ✕ is
+   the shared `ui-close` and the tabs are `ui-tab` chips (ui.css). */
 
 .lp-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
+  background: var(--modal-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -11,84 +14,76 @@
 }
 
 .lp-modal {
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: var(--modal-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--modal-border);
+  border-radius: var(--modal-radius);
   width: var(--modal-w-standard);
   max-width: 96vw;
   height: var(--modal-h-standard);
   max-height: var(--modal-h-standard);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+  overflow: hidden;              /* the header band meets the rounded corners */
+  box-shadow: var(--modal-shadow);
 }
-
-.lp-modal--profile {
-  width: var(--modal-w-standard);
-}
+/* Opened with focus on the panel itself (B397) — no ring on the whole dialog. */
+.lp-modal:focus { outline: none; }
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
 
+/* B373: the ✕ must never be pushed off-screen. The title, session pill and
+   tabs live in `.lp-header-main`, which WRAPS (and the tab chips wrap inside
+   it), while the ✕ is a sibling that never shrinks. The old single non-wrapping
+   row clipped the ✕ under `.lp-modal`'s overflow in windows below ~900px. */
 .lp-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
-  background: var(--bg-hover);
-  border-bottom: 1px solid var(--border);
+  padding: var(--modal-head-pad);
+  background: var(--modal-head-bg);
+  border-bottom: 1px solid var(--modal-head-border);
   flex-shrink: 0;
+  min-width: 0;
 }
+.lp-header-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.lp-header > .ui-close { flex: none; }
 
 .lp-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 700;
-  color: var(--accent);
-  font-size: 0.88rem;
-  letter-spacing: 1px;
-  margin-right: 4px;
+  color: var(--modal-head-color);
+  font-size: var(--modal-title-size);
+  letter-spacing: 0.02em;
 }
-
-.lp-close {
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  font-size: 1rem;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 3px;
-  margin-left: auto;
-}
-.lp-close:hover { color: var(--text-primary); background: var(--bg-hover); }
 
 /* ── Script browser ──────────────────────────────────────────────────────── */
 
+/* The folder filter (custom/ · scripts/ · all) uses the `ui-tab` chips from
+   ui.css (UX standard #10); this is only its row. */
 .lp-filter-tabs {
   display: flex;
   gap: 4px;
 }
 
-.lp-filter-tab {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  border-radius: 4px;
-  padding: 2px 10px;
-  font-family: inherit;
-  font-size: 0.75rem;
-  cursor: pointer;
-}
-.lp-filter-tab:hover { color: var(--text-primary); }
-.lp-filter-tab--active {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-
+/* Fields on --modal-input-bg, never a bare --bg-input: on Classic Light that
+   is #fff on a #fff dialog (pitfall #55). */
 .lp-search {
   flex: 1;
-  background: var(--bg-input);
+  min-width: 0;
+  background: var(--modal-input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 0.82rem;
@@ -109,9 +104,9 @@
   padding: 6px 14px;
   cursor: pointer;
   border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 4%, transparent);
-  transition: background 0.1s;
+  transition: background-color var(--ui-transition);
 }
-.lp-row:hover { background: var(--bg-hover); }
+.lp-row:not(.lp-row--selected):hover { background: var(--bg-hover); }
 
 .lp-source-badge {
   font-size: 0.65rem;
@@ -119,7 +114,7 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
 .lp-source-badge--custom {
@@ -137,7 +132,7 @@
   flex: 1;
   font-size: 0.83rem;
   color: var(--text-primary);
-  font-family: monospace;
+  font-family: var(--code-font-family);
 }
 
 .lp-modified {
@@ -164,114 +159,19 @@
 }
 
 .lp-footer code {
-  font-family: monospace;
+  font-family: var(--code-font-family);
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
-/* ── Profile viewer ──────────────────────────────────────────────────────── */
+/* (The old standalone profile viewer, `yaml-*` token colours, `.lp-empty`,
+   map auto-detect banner and script palette rules lived here. Only the dead
+   LichProfileModal / LichScriptsPanel used them, so they went with the B400
+   conversion; the Dashboard's view and editor use the `.ld-*` / hljs rules
+   below.) */
 
-.lp-profile-body {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-}
-
-.lp-profile-list {
-  width: 200px;
-  flex-shrink: 0;
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-  padding: 4px 0;
-}
-
-.lp-profile-item {
-  padding: 7px 14px;
-  font-size: 0.82rem;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: background 0.1s;
-}
-.lp-profile-item:hover { background: var(--bg-hover); }
-.lp-profile-item--active { background: var(--bg-sunken); color: var(--accent); }
-
-.lp-profile-content {
-  flex: 1;
-  overflow: auto;
-  padding: 12px 16px;
-}
-
-.lp-yaml {
-  font-family: monospace;
-  font-size: 0.8rem;
-  line-height: 1.6;
-  color: var(--text-primary);
-  margin: 0;
-  white-space: pre;
-}
-
-/* YAML syntax colors */
-.yaml-key     { color: var(--syntax-key); }
-.yaml-string  { color: var(--syntax-string); }
-.yaml-value   { color: var(--text-secondary); }
-.yaml-bool    { color: var(--syntax-number); }
-.yaml-number  { color: var(--syntax-number); }
-.yaml-comment { color: var(--text-faint); font-style: italic; }
-.yaml-punct   { color: var(--text-dim); }
-
-/* ── Shared empty state ──────────────────────────────────────────────────── */
-
-.lp-empty {
-  padding: 24px 16px;
-  color: var(--text-faint);
-  font-size: 0.82rem;
-  font-style: italic;
-  text-align: center;
-}
-
-/* ── Map auto-detect banner ──────────────────────────────────────────────── */
-
-.map-autodetect {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  border-bottom: 1px solid var(--accent-bg);
-  flex-shrink: 0;
-  flex-wrap: wrap;
-}
-
-.map-autodetect-label {
-  font-size: 0.75rem;
-  color: var(--text-dim);
-}
-
-.map-autodetect-btn {
-  background: var(--accent-bg);
-  border: 1px solid var(--accent);
-  color: var(--accent);
-  border-radius: 4px;
-  padding: 2px 10px;
-  font-family: inherit;
-  font-size: 0.75rem;
-  cursor: pointer;
-  font-weight: 600;
-}
-.map-autodetect-btn:hover { background: var(--accent); color: var(--bg-base); }
-
-.map-autodetect-dismiss {
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  cursor: pointer;
-  margin-left: auto;
-  font-size: 0.85rem;
-  padding: 2px 4px;
-}
-
-/* ── Active Scripts Panel (ScriptListPanel) ──────────────────────────────── */
+/* ── Lich Scripts panel (ScriptListPanel) ────────────────────────────────── */
 
 .sl-panel {
   display: flex;
@@ -321,9 +221,9 @@
      than the (now tight) title — keeps the header strip compact. */
   font-size: 0.9em;
   padding: 0 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   line-height: 1;
-  transition: color 0.15s;
+  transition: color var(--ui-transition);
 }
 .sl-refresh:hover:not(:disabled) { color: var(--text-primary); }
 .sl-refresh:disabled { opacity: 0.4; cursor: default; }
@@ -335,18 +235,21 @@
   overflow-y: auto;
 }
 
+/* B385: --text-muted, not --text-faint (2.3:1 on Classic Light), and em-sized
+   so it follows the panel font. */
 .sl-empty {
-  padding: 24px 16px;
-  color: var(--text-faint);
+  padding: 1.5em 1.2em;
+  color: var(--text-muted);
   font-style: italic;
   text-align: center;
-  font-size: 1.07em;
+  font-size: 0.95em;
+  line-height: 1.45;
 }
 .sl-empty code {
-  font-family: monospace;
+  font-family: var(--code-font-family);
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .sl-row {
@@ -355,19 +258,23 @@
   gap: 8px;
   padding: 5px 10px;
   border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 4%, transparent);
-  transition: background 0.1s;
+  transition: background-color var(--ui-transition);
 }
+/* `.sl-` is this panel's alone since B367 (the Session Log is `.slog-`), so the
+   hover no longer has to step around the log's --hit rows. */
 .sl-row:hover { background: var(--bg-hover); }
 .sl-row--paused   { opacity: 0.65; }
 .sl-row--killing { opacity: 0.5; }
 
+/* B386: widths in em of the element's OWN font (pitfall #58b) — the fixed
+   18px / 52px columns overflowed once the panel font was raised. */
 .sl-badge {
   font-size: 0.87em;
   font-weight: 700;
-  width: 18px;
+  width: 1.72em;
   text-align: center;
   flex-shrink: 0;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 1px 0;
 }
 .sl-badge--custom {
@@ -383,7 +290,7 @@
 
 .sl-name {
   flex: 1;
-  font-family: monospace;
+  font-family: var(--code-font-family);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -397,27 +304,31 @@
   letter-spacing: 0.4px;
   flex-shrink: 0;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 .sl-status--running {
   color: var(--color-success);
   background: color-mix(in srgb, var(--color-success) 12%, transparent);
 }
+/* B402: the amber is the warning token, not the speech-preset colour it
+   borrowed (which a theme can set to anything). */
 .sl-status--paused {
-  color: var(--preset-expiry);
-  background: color-mix(in srgb, var(--preset-expiry) 12%, transparent);
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
 }
 .sl-status--killing {
   color: var(--color-danger);
   background: color-mix(in srgb, var(--color-danger) 12%, transparent);
 }
 
+/* Uptime now reads "1h 23m" (B394), so it needs aligned digits, not a
+   monospace face; the width is em for B386 (fits "23h 59m" at this size). */
 .sl-uptime {
-  font-family: monospace;
   font-size: 0.96em;
-  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
   flex-shrink: 0;
-  width: 52px;
+  width: 4.5em;
   text-align: right;
 }
 
@@ -426,42 +337,50 @@
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+  min-width: 0;
 }
+/* While the Kill confirm is ARMED the cluster is a question plus two buttons,
+   which doesn't fit a narrow docked panel at its natural width — so this is the
+   one state where it may shrink, and `.ui-inline-confirm`'s own flex-wrap then
+   takes the buttons to a second line instead of off the right edge. */
+.sl-actions:has(.ui-inline-confirm) { flex-shrink: 1; }
 
 .sl-btn {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-dim);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 1px 6px;
   font-size: 0.96em;
   cursor: pointer;
   font-family: inherit;
-  transition: all 0.1s;
+  transition: color var(--ui-transition), border-color var(--ui-transition), background-color var(--ui-transition);
   line-height: 1.4;
 }
-.sl-btn:hover { color: var(--text-primary); border-color: var(--text-dim); }
+/* B367: the disabled look (the ✕ while a kill is in flight) used to come from
+   the Session Log's `.sl-btn:disabled` through the shared prefix. Now local. */
+.sl-btn:disabled { opacity: 0.45; cursor: default; }
+.sl-btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--text-dim); }
 
-.sl-btn--pause:hover  { color: var(--preset-expiry); border-color: var(--preset-expiry); }
-.sl-btn--resume:hover { color: var(--color-success); border-color: var(--color-success); }
-.sl-btn--kill:hover   { color: var(--color-danger); border-color: var(--color-danger); }
+.sl-btn--pause:hover:not(:disabled)  { color: var(--color-warning); border-color: var(--color-warning); }
+.sl-btn--resume:hover:not(:disabled) { color: var(--color-success); border-color: var(--color-success); }
+.sl-btn--kill:hover:not(:disabled)   { color: var(--color-danger); border-color: var(--color-danger); }
 
-.sl-kill-confirm {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 0.96em;
-  color: var(--color-danger);
+/* B401 / B395: the Kill confirm is InlineConfirm now. Its armed Kill button
+   carries `.sl-btn--kill` too, so it gets a theme-safe danger chip here — the
+   old "Yes" was hardcoded white on --color-danger with no halo. Scoped to the
+   armed group so the resting row ✕ stays quiet (UX #1). */
+.sl-actions .ui-inline-confirm { gap: 0.35em; }
+.ui-inline-confirm .sl-btn--kill {
+  color: color-mix(in srgb, var(--color-danger) 80%, var(--text-primary));
+  background: color-mix(in srgb, var(--color-danger) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 45%, transparent);
+  font-weight: 600;
 }
-.sl-btn--kill-yes {
-  background: var(--color-danger);
+.ui-inline-confirm .sl-btn--kill:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 22%, transparent);
   border-color: var(--color-danger);
-  color: #fff;
-  padding: 1px 6px;
-  font-size: 0.93em;
 }
-.sl-btn--kill-yes:hover { opacity: 0.85; color: #fff; }
-.sl-btn--kill-no { }
 
 .sl-footer {
   padding: 2px 12px;
@@ -476,38 +395,8 @@
   flex-shrink: 0;
 }
 
-/* ── Script Palette (toolbar quick-launch strip) ─────────────────────────── */
-
-.script-palette {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 0 4px;
-  border-left: 1px solid var(--border-faint);
-  border-right: 1px solid var(--border-faint);
-}
-
-.script-palette-btn {
-  background: var(--bg-hover);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  border-radius: 4px;
-  padding: 2px 10px;
-  font-family: inherit;
-  font-size: 0.75rem;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.12s;
-  white-space: nowrap;
-}
-.script-palette-btn:hover {
-  background: var(--accent-bg);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
 /* ══════════════════════════════════════════════════════════════════════════════
-   Lich Dashboard — unified 4-tab modal
+   Lich Dashboard — unified tabbed modal
    ══════════════════════════════════════════════════════════════════════════════ */
 
 .lp-modal--dashboard {
@@ -517,30 +406,11 @@
 
 /* ── Tab nav ─────────────────────────────────────────────────────────────── */
 
-.ld-tab-nav {
-  display: flex;
-  gap: 2px;
-  margin-left: 12px;
-}
-
-.ld-tab {
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-dim);
-  border-radius: 4px 4px 0 0;
-  padding: 3px 14px;
-  font-family: inherit;
-  font-size: 0.78rem;
-  cursor: pointer;
-  transition: color 0.1s;
-}
-.ld-tab:hover { color: var(--text-primary); }
-.ld-tab--active {
-  color: var(--accent);
-  border-color: var(--border);
-  border-bottom-color: var(--bg-base);
-  background: var(--bg-base);
-}
+/* The tabs are `ui-tabs` / `ui-tab` accent chips (ui.css, UX standard #10) —
+   they replaced a rounded-top folder look that relied on matching the body
+   colour. `min-width: 0` lets the chip row shrink and wrap inside the header
+   instead of pushing the ✕ out (B373). */
+.ld-tab-nav { min-width: 0; }
 
 /* ── Body ────────────────────────────────────────────────────────────────── */
 
@@ -569,9 +439,9 @@
 .ld-char-select {
   flex-shrink: 0;
   max-width: 42%;
-  background: var(--bg-input);
+  background: var(--modal-input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   font-family: inherit;
   font-size: 0.76rem;
@@ -607,9 +477,10 @@
 
 /* ── Shared empty / error states ─────────────────────────────────────────── */
 
+/* --text-muted, not --text-faint: faint is 2.3:1 on Classic Light (B385). */
 .ld-empty {
   padding: 32px 16px;
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: 0.82rem;
   font-style: italic;
   text-align: center;
@@ -631,9 +502,9 @@
 /* ── Variables tab ───────────────────────────────────────────────────────── */
 
 .ld-scope-select {
-  background: var(--bg-input);
+  background: var(--modal-input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 0.8rem;
@@ -645,7 +516,7 @@
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-dim);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 3px 8px;
   font-size: 0.9rem;
   cursor: pointer;
@@ -669,7 +540,7 @@
   padding: 5px 14px;
   border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 4%, transparent);
   font-size: 0.8rem;
-  font-family: monospace;
+  font-family: var(--code-font-family);
 }
 .ld-var-row:hover { background: var(--bg-hover); }
 
@@ -702,14 +573,14 @@
   border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 7%, transparent);
   background: color-mix(in srgb, var(--bg-hover) 50%, transparent);
 }
-.ld-var-eq { color: var(--text-faint); font-family: monospace; }
+.ld-var-eq { color: var(--text-faint); font-family: var(--code-font-family); }
 
 .ld-var-input {
-  background: var(--bg-input);
+  background: var(--modal-input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-family: monospace;
+  font-family: var(--code-font-family);
   font-size: 0.8rem;
   padding: 3px 6px;
   min-width: 0;
@@ -727,7 +598,7 @@
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-dim);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 2px 7px;
   font-size: 0.8rem;
   font-family: inherit;
@@ -736,12 +607,13 @@
 }
 .ld-var-btn:hover { color: var(--text-primary); border-color: var(--accent-dim); }
 .ld-var-btn:disabled { opacity: 0.4; cursor: default; }
-.ld-var-btn--save:not(:disabled) { color: var(--vital-health-ok-start, #7ec699); }
-.ld-var-btn--del,
+/* B402: status hues from the semantic tokens — the save ✓ used to borrow a
+   theme's vital-bar colour (red on themes whose health bar is red at full). */
+.ld-var-btn--save:not(:disabled) { color: var(--color-success); }
 .ld-var-btn--del-trigger:hover { color: var(--color-danger); border-color: color-mix(in srgb, var(--color-danger) 50%, transparent); }
 
 .ld-var-hint { font-size: 0.72rem; color: var(--text-faint); }
-.ld-var-hint--warn { color: color-mix(in srgb, #c98a00 72%, var(--text-primary)); }
+.ld-var-hint--warn { color: var(--color-warning); }
 
 /* Recursive value tree */
 .ld-val--null   { color: var(--text-faint); }
@@ -754,7 +626,7 @@
   background: transparent;
   border: none;
   color: var(--text-dim);
-  font-family: monospace;
+  font-family: var(--code-font-family);
   font-size: 0.78rem;
   cursor: pointer;
   padding: 0;
@@ -791,7 +663,7 @@
   font-weight: 700;
   letter-spacing: 0.8px;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-dim);          /* the ui-section-label ink, not the 2.3:1 faint */
   background: var(--bg-sunken);
   border-bottom: 1px solid var(--border-faint);
   position: sticky;
@@ -811,7 +683,7 @@
 .ld-setting-name {
   flex: 1;
   color: var(--text-primary);
-  font-family: monospace;
+  font-family: var(--code-font-family);
 }
 
 /* A flag row with a friendly label + description stacks its text and puts the
@@ -836,7 +708,7 @@
 
 .ld-setting-value {
   color: var(--text-muted);
-  font-family: monospace;
+  font-family: var(--code-font-family);
   font-size: 0.78rem;
   max-width: 320px;
   text-align: right;
@@ -857,10 +729,10 @@
   background: color-mix(in srgb, var(--text-primary) 3%, transparent);
 }
 .ld-info-intro code {
-  font-family: monospace;
+  font-family: var(--code-font-family);
   font-size: 0.92em;
   padding: 1px 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
   color: var(--text-primary);
 }
@@ -877,7 +749,7 @@
   border-left: 3px solid var(--accent);
 }
 .ld-info-module {
-  font-family: monospace;
+  font-family: var(--code-font-family);
   font-weight: 700;
   font-size: 0.82rem;
   color: var(--accent);
@@ -901,7 +773,7 @@
 .ld-info-expr {
   flex-shrink: 0;
   min-width: 190px;
-  font-family: monospace;
+  font-family: var(--code-font-family);
   font-size: 0.8rem;
   color: var(--text-primary);
 }
@@ -916,7 +788,7 @@
   align-self: center;
   background: transparent;
   border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--accent);
   font-family: inherit;
   font-size: 0.72rem;
@@ -924,7 +796,7 @@
   cursor: pointer;
   white-space: nowrap;
   opacity: 0;
-  transition: opacity 0.12s;
+  transition: opacity var(--ui-transition);
 }
 /* Quiet by default (UX standard #1) — the check button appears on row hover. */
 .ld-info-row:hover .ld-info-check { opacity: 1; }
@@ -936,10 +808,10 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   padding: 2px 8px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 .ld-flag-badge--on  { background: color-mix(in srgb, var(--color-success) 12%, transparent); color: var(--color-success); border: 1px solid color-mix(in srgb, var(--color-success) 40%, transparent); }
-.ld-flag-badge--off { background: var(--bg-sunken); color: var(--text-faint); border: 1px solid var(--border-faint); }
+.ld-flag-badge--off { background: var(--bg-sunken); color: var(--text-muted); border: 1px solid var(--border-faint); }
 
 /* ── Profiles tab ────────────────────────────────────────────────────────── */
 
@@ -1009,7 +881,7 @@
 }
 
 .ld-line-num {
-  font-family: monospace;
+  font-family: var(--code-font-family);
   font-size: 0.75rem;
   /* Absolute (not unitless) line-height so the gutter row height is INDEPENDENT
      of font-size. The gutter (0.75rem) and the content pre/textarea (0.79rem)
@@ -1046,7 +918,7 @@
 }
 
 .ld-yaml-preview {
-  font-family: monospace;
+  font-family: var(--code-font-family);
   font-size: 0.79rem;
   /* MUST match .ld-line-num / .ld-yaml-editor line-height (absolute) so the
      gutter, the syntax-highlighted view, and the search overlay all share one
@@ -1116,21 +988,22 @@
   padding: 0 10px 6px;
   border-bottom: 1px solid var(--border-faint);
 }
-/* Warning banner over a core (Lich-owned) script — a fixed amber hue mixed
-   toward the surface so it stays legible on light and dark themes (pitfall #55). */
+/* Warning banner over a script in scripts/ — the --color-warning amber (B402;
+   it was a hand-picked #d0a020), mixed toward the surface so it stays legible
+   on light and dark themes (pitfall #55). */
 .ld-script-warning {
   padding: 8px 14px;
   font-size: 0.76rem;
   line-height: 1.4;
-  color: color-mix(in srgb, #d0a020 70%, var(--text-primary));
-  background: color-mix(in srgb, #d0a020 14%, var(--bg-base));
-  border-bottom: 1px solid color-mix(in srgb, #d0a020 30%, transparent);
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 14%, var(--bg-base));
+  border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
 }
 .ld-script-warning code {
-  font-family: monospace;
+  font-family: var(--code-font-family);
   background: color-mix(in srgb, var(--text-primary) 10%, transparent);
   padding: 0 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 /* Source badge shown next to the name in the editor bar. */
 .ld-profile-name .lp-source-badge { margin-left: 8px; }
@@ -1139,11 +1012,11 @@
 .ld-run-args {
   width: 130px;
   min-width: 0;
-  background: var(--bg-input);
+  background: var(--modal-input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-family: monospace;
+  font-family: var(--code-font-family);
   font-size: 0.76rem;
   padding: 3px 7px;
 }
@@ -1179,7 +1052,7 @@
 .ld-profile-name {
   font-size: 0.78rem;
   color: var(--text-muted);
-  font-family: monospace;
+  font-family: var(--code-font-family);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1187,41 +1060,9 @@
 
 .ld-edit-gap { flex: 1; }
 
-.ld-btn {
-  border-radius: 4px;
-  padding: 4px 12px;
-  font-family: inherit;
-  font-size: 0.8rem;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.15s;
-  white-space: nowrap;
-}
-.ld-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-
-.ld-btn--secondary {
-  background: transparent;
-  border-color: var(--border);
-  color: var(--text-muted);
-}
-.ld-btn--secondary:not(:disabled):hover { border-color: var(--accent-dim); color: var(--accent); }
-
-.ld-btn--primary {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  border-color: var(--accent-dim);
-  color: var(--accent);
-}
-.ld-btn--primary:not(:disabled):hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-
-.ld-btn--danger {
-  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
-  border-color: var(--color-danger-dim);
-  color: var(--color-danger);
-}
-.ld-btn--danger:not(:disabled):hover {
-  background: color-mix(in srgb, var(--color-danger) 18%, transparent);
-  border-color: var(--color-danger);
-}
+/* The Dashboard's buttons are the shared `ui-btn` / `--primary` / `--danger`
+   / `--sm` (ui.css, B400) — the private `.ld-btn` family that lived here had
+   drifted from every other dialog's. */
 
 /* In-file YAML search field (v0.8.1, F25). Sits in the profile-edit-bar
    alongside Validate / Cancel / Save. Same compact size as the buttons so
@@ -1233,24 +1074,19 @@
 }
 
 .ld-yaml-search-input {
-  background: var(--bg-input);
+  background: var(--modal-input-bg);
   border: 1px solid var(--border);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 0.78rem;
   padding: 3px 8px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   width: 160px;
 }
 
 .ld-yaml-search-input:focus {
   outline: none;
   border-color: var(--accent-dim);
-}
-
-.ld-yaml-search-btn {
-  padding: 3px 10px;
-  font-size: 0.78rem;
 }
 
 .ld-yaml-editor {
@@ -1260,7 +1096,7 @@
   background: var(--bg-base);
   border: none;
   color: var(--text-primary);
-  font-family: monospace;
+  font-family: var(--code-font-family);
   font-size: 0.79rem;
   /* MUST match .ld-line-num / .ld-yaml-preview line-height (absolute) — the
      edit-mode gutter and scrollElementToLine() rely on a shared per-line
@@ -1277,8 +1113,8 @@
    A transparent <textarea> layered exactly over a highlighted <pre>. The two
    layers MUST share byte-identical font metrics (family/size/line-height/
    padding/white-space/tab-size) or the caret drifts off the glyphs — change
-   them together. Same 0.79rem / 1.3rem / 12px 16px as .ld-yaml-preview so the
-   line-number gutter and scrollElementToLine() still line up. */
+   them together. Same font / 0.79rem / 21px / 12px 16px as .ld-yaml-preview so
+   the line-number gutter and scrollElementToLine() still line up. */
 .ld-editor-stack {
   position: relative;
   flex: 1;
@@ -1291,7 +1127,7 @@
   margin: 0;
   border: 0;
   box-sizing: border-box;
-  font-family: monospace;
+  font-family: var(--code-font-family);
   font-size: 0.79rem;
   line-height: 21px;
   padding: 12px 16px;
@@ -1336,7 +1172,7 @@
      text — the classic "why is this ribbon so chunky" smell, and it made the
      bar eat editor rows every time you hit Validate. */
   line-height: 1.4;
-  font-family: monospace;
+  font-family: var(--code-font-family);
   flex-shrink: 0;
   border-bottom: 1px solid transparent;
 }
@@ -1398,7 +1234,7 @@
 }
 
 .ld-confirm-path {
-  font-family: monospace;
+  font-family: var(--code-font-family);
   font-size: 0.8rem;
   color: var(--accent);
   word-break: break-all;
@@ -1414,7 +1250,7 @@
 .ld-diff-line {
   display: flex;
   align-items: baseline;
-  font-family: monospace;
+  font-family: var(--code-font-family);
   font-size: 0.77rem;
   line-height: 1.55;
   padding: 0 12px;
@@ -1444,7 +1280,7 @@
   background: var(--bg-sunken);
   border-top: 1px solid var(--border-faint);
   border-bottom: 1px solid var(--border-faint);
-  font-family: monospace;
+  font-family: var(--code-font-family);
 }
 
 .ld-diff-message {

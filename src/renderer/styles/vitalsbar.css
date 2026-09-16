@@ -25,7 +25,13 @@
   flex: 1;
   position: relative;
   height: 1.83em;
-  min-width: 60px;
+  /* B386: em, not px — a fixed 60px floor stopped tracking the font, so at a
+     large game font the five bars' labels overran a floor sized for 12px. 5em =
+     60px at the default 12px (this element inherits the strip's game font).
+     Capped against the row as well: five bars at a large font in a narrow
+     window (the app floor is 480px) would otherwise total more than the row and
+     push Spirit off the edge, where the old px floor just squeezed. */
+  min-width: min(5em, 18%);
 }
 
 .vital-track {
@@ -87,7 +93,7 @@
 }
 .vitals-strip--compact .vital-bar {
   height: 1em;
-  min-width: 48px;
+  min-width: min(4em, 18%);   /* B386: 48px at the default 12px, but tracks the font (capped like .vital-bar) */
 }
 .vitals-strip--compact .vital-text {
   font-size: 0.83em;

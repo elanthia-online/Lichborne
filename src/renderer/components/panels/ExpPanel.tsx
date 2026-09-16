@@ -16,7 +16,7 @@
 // subscription tier). Badging templates come from focusTemplates.ts; `focus`
 // itself is owned by the parent (`onFocusChange`). `memo`'d (B172) — callers
 // must pass referentially stable callbacks and Sets.
-import { memo, useState, useRef, useEffect } from 'react'
+import { memo, useState, useRef, useEffect, useLayoutEffect, type RefObject } from 'react'
 import { FOCUS_OPTIONS, FOCUS_NONE, getSkillBadge, getSkillSortPriority, type SkillBadge } from '../../focusTemplates'
 import { scopedKey } from '../../characterScope'
 // v0.19.0: the mindstate ladder + line parser moved to a shared module so the
@@ -233,9 +233,37 @@ function ExpFooter({ skills }: { skills: Record<string, string> }) {
   )
 }
 
+// B332: the picker menus hang inside the panel, and .panel-frame-body /
+// .fl-body are overflow:hidden — so in a short panel a 320px menu was simply
+// CLIPPED, the lower options unreachable. Bound it to the room left below the
+// picker in whatever clips it (it then scrolls). Measured on open only.
+function useMenuMaxHeight(open: boolean, wrapRef: RefObject<HTMLDivElement | null>): number | undefined {
+  const [maxH, setMaxH] = useState<number | undefined>(undefined)
+  useLayoutEffect(() => {
+    if (!open) return
+    const wrap = wrapRef.current
+    if (!wrap) return
+    const clip = wrap.closest('.panel-frame-body, .fl-body')
+    const bottom = clip ? clip.getBoundingClientRect().bottom : window.innerHeight
+    const room = Math.floor(bottom - wrap.getBoundingClientRect().bottom - 4)
+    setMaxH(Math.max(60, Math.min(320, room)))
+  }, [open, wrapRef])
+  return maxH
+}
+
+// B336 (UX #8): what each Badging / Focus choice does, shown under it the way
+// the Sort picker explains its options.
+const FOCUS_MODE_DESC: Record<FocusMode, string> = {
+  none:      'Show every learning skill',
+  primary:   'Only skills in the badged guild\'s Primary skillsets',
+  secondary: 'Only skills in the badged guild\'s Secondary skillsets',
+  tertiary:  'Only skills in the badged guild\'s Tertiary skillsets',
+}
+
 function BadgingPicker({ focus, onFocusChange }: { focus: string; onFocusChange: (f: string) => void }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const menuMaxH = useMenuMaxHeight(open, ref)
 
   useEffect(() => {
     if (!open) return
@@ -248,19 +276,23 @@ function BadgingPicker({ focus, onFocusChange }: { focus: string; onFocusChange:
 
   return (
     <div className="exp-focus-picker" ref={ref}>
-      <button className="exp-picker-btn" onClick={() => setOpen(o => !o)}>
+      <button className="exp-picker-btn" onClick={() => setOpen(o => !o)}
+        title="Badging — pick a guild to mark each skill P / S / T by that guild's Primary / Secondary / Tertiary skillset, and G for its guild-only skill. Set automatically from your INFO sheet; a manual pick holds until the next INFO.">
         <span className="exp-picker-label">Badging</span>
         <span className="exp-picker-value">{focus}</span>
         <span className="exp-picker-caret">▾</span>
       </button>
       {open && (
-        <div className="exp-picker-menu">
+        <div className="exp-picker-menu" style={{ maxHeight: menuMaxH }}>
           {FOCUS_OPTIONS.map(f => (
             <button
               key={f}
-              className={`exp-picker-option${f === focus ? ' exp-picker-option--selected' : ''}`}
+              className={`exp-picker-option exp-sort-option${f === focus ? ' exp-picker-option--selected' : ''}`}
               onClick={() => { onFocusChange(f); setOpen(false) }}
-            >{f}</button>
+            >
+              <span>{f}</span>
+              {f === FOCUS_NONE && <span className="exp-sort-option-hint">No P / S / T / G badges</span>}
+            </button>
           ))}
         </div>
       )}
@@ -271,6 +303,7 @@ function BadgingPicker({ focus, onFocusChange }: { focus: string; onFocusChange:
 function FocusModePicker({ mode, onModeChange }: { mode: FocusMode; onModeChange: (m: FocusMode) => void }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const menuMaxH = useMenuMaxHeight(open, ref)
 
   useEffect(() => {
     if (!open) return
@@ -283,19 +316,23 @@ function FocusModePicker({ mode, onModeChange }: { mode: FocusMode; onModeChange
 
   return (
     <div className="exp-focus-mode-picker" ref={ref}>
-      <button className="exp-picker-btn" onClick={() => setOpen(o => !o)}>
+      <button className="exp-picker-btn" onClick={() => setOpen(o => !o)}
+        title="Focus — narrow the Learning list to one skillset tier of the guild chosen in Badging (no effect while Badging is None)">
         <span className="exp-picker-label">Focus</span>
         <span className="exp-picker-value">{FOCUS_MODE_LABEL[mode]}</span>
         <span className="exp-picker-caret">▾</span>
       </button>
       {open && (
-        <div className="exp-picker-menu">
+        <div className="exp-picker-menu" style={{ maxHeight: menuMaxH }}>
           {FOCUS_MODES.map(m => (
             <button
               key={m}
-              className={`exp-picker-option${m === mode ? ' exp-picker-option--selected' : ''}`}
+              className={`exp-picker-option exp-sort-option${m === mode ? ' exp-picker-option--selected' : ''}`}
               onClick={() => { onModeChange(m); setOpen(false) }}
-            >{FOCUS_MODE_LABEL[m]}</button>
+            >
+              <span>{FOCUS_MODE_LABEL[m]}</span>
+              <span className="exp-sort-option-hint">{FOCUS_MODE_DESC[m]}</span>
+            </button>
           ))}
         </div>
       )}
@@ -319,6 +356,7 @@ function SortPicker({ mode, desc, onModeChange, onDescChange }: {
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const menuMaxH = useMenuMaxHeight(open, ref)
 
   useEffect(() => {
     if (!open) return
@@ -338,7 +376,7 @@ function SortPicker({ mode, desc, onModeChange, onDescChange }: {
         <span className="exp-picker-caret">▾</span>
       </button>
       {open && (
-        <div className="exp-picker-menu">
+        <div className="exp-picker-menu" style={{ maxHeight: menuMaxH }}>
           {(
             <div className="exp-sort-dir-row">
               <button className={`exp-sort-dir-btn${desc ? ' exp-sort-dir-btn--active' : ''}`}
@@ -398,7 +436,14 @@ function CompactExpView({ skills, rankUpSkills, pinnedSkills, sortMode, sortDesc
         {favor && <span className="exp-compact-stat"><span className="exp-compact-stat-label">Fav</span>{favor}</span>}
       </div>
       <div className="exp-compact-rows">
-        {rows.length === 0 && <div className="exp-compact-empty">No skills actively training.</div>}
+        {/* B385: `ui-empty` (--text-muted), not the old --text-faint class, and
+            an empty map is "no data yet", not "nothing training" — see the full
+            panel's empty state below. */}
+        {rows.length === 0 && (
+          <div className="ui-empty">
+            {Object.keys(skills).length === 0 ? 'Waiting for experience data from the game.' : 'No skills actively training.'}
+          </div>
+        )}
         {rows.map(([skill, text]) => {
           const { rank, pctStr, mindstateIdx } = parseExp(text)
           const bucket = dotBucket(mindstateIdx)
@@ -517,14 +562,22 @@ export default memo(function ExpPanel({ skills, rankUpSkills, focus, pinnedSkill
         <SortPicker mode={sortMode} desc={sortDesc} onModeChange={handleModeChange} onDescChange={handleDescChange} />
       </div>
       <div className="exp-panel-body">
-        <ExpGroup label="Mind Locked" count={locked.length} locked defaultExpanded={false}>
+        {/* B407: sentence case, matching the Overview's "Mind locked" chip. */}
+        <ExpGroup label="Mind locked" count={locked.length} locked defaultExpanded={false}>
           {locked.map(([skill, text]) => skillRow(skill, text))}
         </ExpGroup>
         <ExpGroup label="Learning" count={learning.length} defaultExpanded={true}>
           {learning.map(([skill, text]) => skillRow(skill, text))}
         </ExpGroup>
+        {/* B385: the skills map keeps a key for every exp component once the
+            game has sent one, so an EMPTY map means no data has arrived yet —
+            don't claim "nothing training" before the panel could know. And
+            `ui-empty` (--text-muted) rather than the old --text-faint class,
+            which measures 2.3:1 on Classic Light. */}
         {active.length === 0 && (
-          <div className="exp-panel--empty">No skills actively training.</div>
+          <div className="ui-empty">
+            {Object.keys(skills).length === 0 ? 'Waiting for experience data from the game.' : 'No skills actively training.'}
+          </div>
         )}
       </div>
       <ExpFooter skills={skills} />

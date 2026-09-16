@@ -119,7 +119,9 @@ export default function SimuCoinButton({ accounts, withPassword, statuses, onRun
   useEffect(() => {
     if (!open) return
     function onDown(e: MouseEvent) { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false) }
+    // preventDefault: consumed here, so the Esc-to-close hook doesn't also
+    // close a dialog underneath (B341).
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') { e.preventDefault(); setOpen(false) } }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }

@@ -1,184 +1,128 @@
-/* ── Session Log modal (Release E2, DESIGN.md §28.4) ───────────────────────── */
+/* ── Session Log modal (Release E2, DESIGN.md §28.4) ─────────────────────────
 
-.sl-backdrop {
+   Class prefix `.slog-` (B367, v0.19.7). It used to be `.sl-`, which the Lich
+   Scripts panel (lich-panels.css) ALSO uses — and CSS is global, so each file
+   restyled the other: this file's `.sl-btn:hover:not(:disabled)` (0,3,0) beat
+   the panel's pause/resume/kill hovers, and the paddings, button font size and
+   empty-state font swapped with bundle order. Keep the prefix unique
+   (pitfall #55c).
+
+   Chrome is the About look (B400): the --modal-* tokens for scrim, surface,
+   radius, shadow and the accent header band, plus `ui-close`, `ui-tab` chips,
+   `ui-btn`, `ui-field`, `ui-section-label` and `ui-modal-foot` from ui.css —
+   so this file holds only the dialog's own LAYOUT. App chrome, so rem sizing is
+   deliberate (Principle #9's modal exception). */
+
+.slog-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--modal-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
 }
 
-.sl-modal {
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+.slog-modal {
+  background: var(--modal-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--modal-border);
+  border-radius: var(--modal-radius);
   width: var(--modal-w-standard);
   max-width: 95vw;
   height: var(--modal-h-standard);
   max-height: var(--modal-h-standard);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+  overflow: hidden;              /* the header band meets the rounded corners */
+  box-shadow: var(--modal-shadow);
 }
+/* Opened with focus on the panel itself (B397) — no ring on the whole dialog. */
+.slog-modal:focus { outline: none; }
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
 
-.sl-header {
+.slog-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
-  background: var(--bg-hover);
-  border-bottom: 1px solid var(--border);
+  min-width: 0;
+  padding: var(--modal-head-pad);
+  background: var(--modal-head-bg);
+  border-bottom: 1px solid var(--modal-head-border);
   flex-shrink: 0;
 }
 
-.sl-title {
+.slog-title {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 700;
-  color: var(--accent);
-  font-size: 0.88rem;
-  letter-spacing: 0.5px;
+  color: var(--modal-head-color);
+  font-size: var(--modal-title-size);
+  letter-spacing: 0.02em;
 }
-
-.sl-tabs { display: flex; gap: 2px; }
-
-.sl-tab {
-  background: var(--bg-btn);
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  border-radius: 3px;
-  font-size: 0.74rem;
-  cursor: pointer;
-  padding: 3px 12px;
-}
-
-.sl-tab:hover { color: var(--text-secondary); }
-
-.sl-tab--active {
-  background: var(--accent-bg);
-  border-color: var(--accent-dim);
-  color: var(--accent);
-}
-
-.sl-close {
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  font-size: 1.4rem;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-}
-
-.sl-close:hover { color: var(--text-secondary); }
 
 /* ── Controls ────────────────────────────────────────────────────────────── */
 
-.sl-controls {
+.slog-controls {
   padding: 8px 14px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle, var(--border));
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.sl-control-row {
+.slog-control-row {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-.sl-inline-label {
-  font-size: 0.74rem;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.sl-select,
-.sl-date {
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  border-radius: 3px;
-  padding: 3px 6px;
-  font-family: inherit;
+/* Compact fields on the `ui-field` chrome (ui.css); only the size differs. */
+.slog-select,
+.slog-date {
   font-size: 0.78rem;
-  outline: none;
+  padding: 3px 6px;
   cursor: pointer;
 }
 
-.sl-select:focus,
-.sl-date:focus { border-color: var(--accent-dim); }
-
-.sl-search-input {
+.slog-search-input {
   flex: 1;
   min-width: 200px;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  color: var(--text-primary);
-  border-radius: 3px;
-  padding: 5px 8px;
-  font-family: inherit;
-  font-size: 0.82rem;
-  outline: none;
 }
 
-.sl-search-input:focus { border-color: var(--accent-dim); }
-
-.sl-btn {
-  background: var(--bg-btn);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  border-radius: 3px;
-  padding: 4px 10px;
-  font-family: inherit;
-  font-size: 0.76rem;
-  cursor: pointer;
-  transition: all 0.12s;
-}
-
-.sl-btn:hover:not(:disabled) { border-color: var(--accent-dim); color: var(--accent); }
-.sl-btn:disabled { opacity: 0.45; cursor: default; }
-
-.sl-btn--primary {
-  background: var(--accent-bg);
-  border-color: var(--accent-dim);
-  color: var(--accent);
-}
-
-.sl-presets {
+.slog-presets {
   display: flex;
   gap: 3px;
   margin-left: auto;
 }
 
-.sl-preset {
-  background: var(--bg-btn);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-dim);
-  border-radius: 3px;
+.slog-preset {
+  background: transparent;
+  border: 1px solid var(--border-subtle, var(--border));
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
   padding: 3px 8px;
+  font-family: inherit;
   font-size: 0.72rem;
+  line-height: 1.2;
   cursor: pointer;
 }
+.slog-preset:hover { border-color: var(--accent-dim); color: var(--accent); }
 
-.sl-preset:hover { border-color: var(--accent-dim); color: var(--accent); }
-
-.sl-streams {
+.slog-streams {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
   padding-top: 2px;
 }
 
-.sl-check {
+.slog-check {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -188,13 +132,13 @@
   user-select: none;
 }
 
-.sl-check input { cursor: pointer; margin: 0; }
+.slog-check input { cursor: pointer; margin: 0; }
 
-.sl-check--dedup { margin-left: 4px; }
+.slog-check--dedup { margin-left: 4px; }
 
 /* ── Line list ───────────────────────────────────────────────────────────── */
 
-.sl-list {
+.slog-list {
   flex: 1;
   overflow-y: auto;
   padding: 4px 0;
@@ -203,90 +147,102 @@
   background: var(--bg-sunken);
 }
 
-.sl-row {
+.slog-row {
   display: flex;
   gap: 8px;
   padding: 1px 14px;
   align-items: baseline;
   white-space: pre-wrap;
   word-break: break-word;
+  /* The hairline and the hover fade used to reach these rows from the Lich
+     Scripts panel's `.sl-row` through the shared prefix (B367). Kept on
+     purpose so the log reads exactly as it did. */
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 4%, transparent);
+  transition: background-color var(--ui-transition);
 }
 
-.sl-row:hover { background: var(--bg-hover); }
+/* Hover must not erase the jump highlight (pitfall #107). */
+.slog-row:not(.slog-row--hit):hover { background: var(--bg-hover); }
 
-.sl-row--clickable { cursor: pointer; }
+.slog-row--clickable { cursor: pointer; }
 
-.sl-row--hit {
+.slog-row--hit {
   background: var(--accent-bg);
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
-.sl-time {
-  color: var(--text-faint);
+.slog-time {
+  color: var(--text-dim);
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
 
-.sl-chips {
+.slog-chips {
   display: inline-flex;
   gap: 3px;
   flex-shrink: 0;
 }
 
-.sl-chip {
+.slog-chip {
   font-size: 0.66rem;
   padding: 0 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--text-dim) 18%, transparent);
   color: var(--text-dim);
   text-transform: lowercase;
   align-self: center;
 }
 
-.sl-chip--main { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-dim); }
-.sl-chip--cmd  { background: color-mix(in srgb, var(--preset-speech, #d8c068) 20%, transparent); color: var(--preset-speech, #d8c068); }
-.sl-chip--sys  { background: color-mix(in srgb, var(--text-faint) 22%, transparent); color: var(--text-faint); }
+.slog-chip--main { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-dim); }
+.slog-chip--cmd  { background: color-mix(in srgb, var(--preset-speech, #d8c068) 20%, transparent); color: var(--preset-speech, #d8c068); }
+.slog-chip--sys  { background: color-mix(in srgb, var(--text-faint) 22%, transparent); color: var(--text-dim); }
 
-.sl-text {
+.slog-text {
   color: var(--text-secondary);
   flex: 1;
 }
 
-.sl-load-older {
+.slog-load-older {
   display: block;
   width: calc(100% - 28px);
   margin: 2px 14px 6px;
-  background: var(--bg-btn);
-  border: 1px dashed var(--border-subtle);
-  color: var(--text-dim);
-  border-radius: 3px;
+  background: transparent;
+  border: 1px dashed var(--border-subtle, var(--border));
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
   padding: 4px;
+  font-family: inherit;
   font-size: 0.74rem;
   cursor: pointer;
 }
 
-.sl-load-older:hover:not(:disabled) { border-color: var(--accent-dim); color: var(--accent); }
-.sl-load-older:disabled { opacity: 0.5; cursor: default; }
+.slog-load-older:hover:not(:disabled) { border-color: var(--accent-dim); color: var(--accent); }
+.slog-load-older:disabled { opacity: 0.5; cursor: default; }
 
-.sl-empty,
-.sl-muted {
-  color: var(--text-faint);
+/* Empty / waiting text: --text-muted, not --text-faint (2.3:1 on Classic
+   Light, B385). */
+.slog-empty,
+.slog-muted {
+  color: var(--text-muted);
   font-size: 0.78rem;
 }
 
-.sl-empty {
+.slog-empty {
   padding: 24px 16px;
   text-align: center;
+  /* Italic used to arrive from the panel's `.sl-empty` through the shared
+     prefix (B367); kept on purpose. */
+  font-style: italic;
 }
 
-.sl-result-count {
+.slog-result-count {
   padding: 6px 14px;
   font-size: 0.74rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
   border-bottom: 1px solid var(--border-faint);
 }
 
-.sl-result-date {
+.slog-result-date {
   padding: 6px 14px 2px;
   font-size: 0.72rem;
   font-weight: 700;
@@ -297,7 +253,7 @@
 
 /* ── Export builder ──────────────────────────────────────────────────────── */
 
-.sl-export-body {
+.slog-export-body {
   flex: 1;
   overflow-y: auto;
   padding: 12px 16px;
@@ -307,29 +263,22 @@
   gap: 6px;
 }
 
-.sl-export-section {
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 1.2px;
-  margin-top: 6px;
-}
+/* Rides `ui-section-label` (ui.css) for the type; only the spacing is local. */
+.slog-export-section { margin-top: 6px; }
+.slog-export-section:first-child { margin-top: 0; }
 
-.sl-export-section:first-child { margin-top: 0; }
-
-.sl-export-opts {
+.slog-export-opts {
   display: flex;
   flex-direction: column;
   gap: 5px;
   padding-left: 2px;
 }
 
-.sl-export-sample {
+.slog-export-sample {
   display: block;
-  background: var(--bg-input);
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  background: var(--modal-input-bg);
+  border: 1px solid var(--border-subtle, var(--border));
+  border-radius: var(--radius-sm);
   padding: 7px 10px;
   font-family: var(--game-font-family, monospace);
   font-size: 0.78rem;
@@ -338,27 +287,15 @@
   word-break: break-word;
 }
 
-.sl-export-result {
+.slog-export-result {
   margin-top: 8px;
   background: var(--accent-bg);
   border: 1px solid var(--accent-dim);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 8px 10px;
   font-size: 0.8rem;
   color: var(--accent);
   word-break: break-word;
 }
 
-/* ── Footer ──────────────────────────────────────────────────────────────── */
-
-.sl-footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  background: var(--bg-hover);
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.sl-footer-spacer { flex: 1; }
+/* The footer rail is `ui-modal-foot` / `ui-modal-foot-spacer` (ui.css). */

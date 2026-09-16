@@ -4,6 +4,14 @@ import CharacterTabBar from './CharacterTabBar'
 import SimuCoinButton from './SimuCoinButton'
 import ViewToggle from './overview/ViewToggle'
 import type { SimuCoinStatus } from '../../shared/types'
+// The wordmark effect (v0.19.7) reuses the highlight/contact effect system —
+// one resolver, one stylesheet. highlights.css is imported here because this
+// bar is app-level chrome that renders before any panel has been opened;
+// relying on a rule-editor panel to have pulled it in would be luck, not a
+// dependency. Nothing outside highlights.css defines `.hl-fx-*`, so where the
+// file lands in the bundle's cascade order cannot matter (pitfall #144).
+import { paintBrandMark } from '../utils/brandMark'
+import '../styles/highlights.css'
 import '../styles/app-bar.css'
 
 // Unified top app-bar (top-chrome redesign, Phase 2c). Replaces the bare
@@ -26,11 +34,10 @@ import '../styles/app-bar.css'
 interface Props {
   onAdd: () => void
   onClose: (id: CharacterId) => void
-  // Login flow for a disconnected active session: destroy + remove + open the
-  // character picker. Owned by App (it has the session/launcher state).
-  onLoginActive: () => void
-  // One-click reconnect of a disconnected tab (tab right-click menu). Owned by
-  // App (needs the connect flow); passed through to CharacterTabBar.
+  // One-click IN-PLACE reconnect of a disconnected tab — the tab keeps its
+  // scrollback. Owned by App (needs the connect flow). Used by the tab
+  // right-click menu (passed through to CharacterTabBar) AND, as of F108, by
+  // this bar's own button when the active character is disconnected.
   onReconnect: (id: CharacterId) => void
   // Characters mid-reconnect — drives the per-tab "connecting" indicator.
   reconnectingIds: Set<CharacterId>
@@ -53,7 +60,7 @@ function dispatchSessionAction(action: string) {
   document.dispatchEvent(new CustomEvent('lichborne:session-action', { detail: { action } }))
 }
 
-export default function AppBar({ onAdd, onClose, onLoginActive, onReconnect, reconnectingIds, simucoin }: Props) {
+export default function AppBar({ onAdd, onClose, onReconnect, reconnectingIds, simucoin }: Props) {
   const { sessions, activeId } = useSessions()
   const active = sessions.find(s => s.characterId === activeId)
   const st = active?.status
@@ -94,7 +101,9 @@ export default function AppBar({ onAdd, onClose, onLoginActive, onReconnect, rec
   useEffect(() => {
     if (!moreOpen) return
     function onDown(e: MouseEvent) { if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false) }
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setMoreOpen(false) }
+    // preventDefault: consumed here, so the Esc-to-close hook doesn't also
+    // close a dialog underneath (B341).
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') { e.preventDefault(); setMoreOpen(false) } }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
@@ -102,12 +111,22 @@ export default function AppBar({ onAdd, onClose, onLoginActive, onReconnect, rec
   // The ⋯ button hints when any hidden panel (Debug/Logs/Contacts/Theme) is open.
   const moreActive = !!(st?.panelDebug || st?.panelLogs || st?.panelContacts || st?.panelTheme)
 
+  // The wordmark wears the ACTIVE character's `settings.brandEffect`, so the
+  // bar quietly says which character you are looking at (v0.19.7). Painted by
+  // the shared builder the Settings preview also calls, so the two cannot
+  // disagree; 'none' and the no-session empty state both render the original
+  // two-tone markup unchanged.
+  const brand = paintBrandMark(st?.brandEffect)
+
   return (
     <div className="app-bar">
       <span className="app-bar-brand" title={dotTitle}>
         {/* Wordmark wrapped in ONE element so the flex `gap` on .app-bar-brand
             spaces the dot away from the word, NOT "Lich" from "borne". */}
-        <span className="app-bar-wordmark"><span className="toolbar-title-lich">Lich</span><span className="toolbar-title-borne">borne</span></span>
+        <span
+          className={brand.className ? `app-bar-wordmark ${brand.className}` : 'app-bar-wordmark'}
+          style={brand.style}
+        >{brand.content}</span>
         <span className={`app-bar-status-dot app-bar-status-dot--${dotState}`}
               role="status"
               aria-label={dotTitle} />
@@ -175,9 +194,20 @@ export default function AppBar({ onAdd, onClose, onLoginActive, onReconnect, rec
             mis-click on it when reaching for the adjacent ⋯ More button (Binu). */}
         <span className="app-bar-divider" aria-hidden="true" />
 
+        {/* F108: a disconnected active character gets RECONNECT, in place — the
+            same handleReconnectTab the tab and card menus use, so the tab and
+            its scrollback survive. It used to read "Login", which destroyed the
+            tab and opened the picker. Logging in someone else is the + tab. */}
         {connected
           ? <button className="btn-disconnect" onClick={() => dispatchSessionAction('disconnect')}>Disconnect</button>
-          : <button className="btn-disconnect btn-disconnect--login" onClick={onLoginActive}>Login</button>}
+          : active && (
+            <button
+              className="btn-disconnect btn-disconnect--login"
+              disabled={reconnectingIds.has(active.characterId)}
+              onClick={() => onReconnect(active.characterId)}
+              title={`Reconnect ${active.character} in this tab, keeping its scrollback. To log in a different character, use the + tab.`}
+            >{reconnectingIds.has(active.characterId) ? 'Reconnecting…' : 'Reconnect'}</button>
+          )}
       </div>
     </div>
   )

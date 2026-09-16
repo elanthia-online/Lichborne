@@ -16,8 +16,9 @@
 // `_shared.yaml` is flushed once because two categories (custom themes,
 // named colors) merge into APP-WIDE stores rather than a character's profile.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { backdropHandlers } from "../utils/backdropClose"
+import { useEscapeClose } from '../hooks/useEscapeClose'
 import { createPortal } from 'react-dom'
 import type { CharacterProfile } from '../profile-types'
 import { flushPendingProfileSaves, exportSharedProfile } from '../profile'
@@ -55,6 +56,12 @@ async function loadProfileRows(): Promise<ProfileRow[]> {
 }
 
 export default function ProfileTransferModal({ sessions, reloadSession, onClose }: Props) {
+  useEscapeClose(onClose)
+  const titleId = useId()
+  // B397: open with focus INSIDE the dialog (the panel itself — the first field
+  // is a <select>, where a stray arrow key would silently change the source).
+  const panelRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { panelRef.current?.focus() }, [])
   const [mode, setMode] = useState<'export' | 'import'>('export')
   const [profiles, setProfiles] = useState<ProfileRow[]>([])
 
@@ -74,6 +81,9 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose 
   const [exportSel, setExportSel] = useState<Set<TransferCategoryId>>(new Set())
   const [exportDone, setExportDone] = useState<string | null>(null)
   const [exportErr, setExportErr] = useState<string>('')
+  // B390: Export had no busy state, so a double-click wrote the file twice.
+  // Mirrors Import's `importBusy`.
+  const [exportBusy, setExportBusy] = useState(false)
 
   // Default the source to the first profile (or the first active session).
   useEffect(() => {
@@ -103,7 +113,8 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose 
   const exportPresent = useMemo(() => (fullFile ? presentCategories(fullFile) : []), [fullFile])
 
   async function handleExport() {
-    if (!fullFile) return
+    if (!fullFile || exportBusy) return
+    setExportBusy(true)
     setExportErr('')
     // Filter the full file's categories down to the selected set.
     const categories: ProfileExportFile['categories'] = {}
@@ -116,6 +127,8 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose 
       setExportDone(path)
     } catch (e) {
       setExportErr(`Export failed: ${String(e)}`)
+    } finally {
+      setExportBusy(false)
     }
   }
 
@@ -208,8 +221,9 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose 
           <div className="pt-done-title">Profile exported</div>
           <div className="pt-done-path">{exportDone}</div>
           <div className="pt-done-actions">
-            <button className="pt-btn" onClick={() => window.api.profileTransferOpenExportsFolder()}>Show in folder</button>
-            <button className="pt-btn" onClick={() => setExportDone(null)}>Export another</button>
+            <button type="button" className="ui-btn" onClick={() => window.api.profileTransferOpenExportsFolder()}>Show in folder</button>
+            <button type="button" className="ui-btn" onClick={() => setExportDone(null)}>Export another</button>
+            <button type="button" className="ui-btn ui-btn--primary" onClick={onClose}>Close</button>
           </div>
         </div>
       )
@@ -218,7 +232,7 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose 
       <>
         <div className="pt-field">
           <label className="pt-label">Source character</label>
-          <select className="pt-select" value={sourceChar} onChange={e => setSourceChar(e.target.value)}>
+          <select className="ui-field pt-select" value={sourceChar} onChange={e => setSourceChar(e.target.value)}>
             {profiles.map(p => (
               <option key={p.name} value={p.name}>
                 {p.name} — {p.account || 'no account'} ({p.game}){activeNames.has(p.name) ? ' • connected' : ''}
@@ -282,7 +296,7 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose 
             ))}
           </div>
           <div className="pt-done-actions">
-            <button className="pt-btn pt-btn--primary" onClick={onClose}>Done</button>
+            <button type="button" className="ui-btn ui-btn--primary" onClick={onClose}>Close</button>
           </div>
         </div>
       )
@@ -294,14 +308,14 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose 
           <label className="pt-label">Profile file <span className="pt-label-hint">(from the Exports folder)</span></label>
           <div className="pt-file-row">
             <select
-              className="pt-select"
+              className="ui-field pt-select"
               value={importFileName && exportsList.some(e => e.name === importFileName) ? importFileName : ''}
               onChange={e => { if (e.target.value) pickFromExports(e.target.value) }}
             >
               <option value="">{exportsList.length ? 'Choose an export…' : 'No exports found'}</option>
               {exportsList.map(e => <option key={e.name} value={e.name}>{e.name}</option>)}
             </select>
-            <button className="pt-btn" onClick={browseForFile}>Browse…</button>
+            <button type="button" className="ui-btn" onClick={browseForFile}>Browse…</button>
           </div>
           {importFileName && importFile && (
             <div className="pt-file-chosen">Loaded <strong>{importFileName}</strong> (from {importFile.exportedBy})</div>
@@ -386,24 +400,36 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose 
   function renderFooter() {
     if (mode === 'export') {
       if (exportDone) return null
-      const can = !!fullFile && exportSel.size > 0
+      const can = !!fullFile && exportSel.size > 0 && !exportBusy
+      // Rule 5 of the label guide: a disabled button says why.
+      const why = exportBusy ? 'Writing the file…'
+        : !fullFile ? (sourceChar ? 'Reading this character’s profile…' : 'Pick a source character')
+        : exportSel.size === 0 ? 'Tick at least one category to export'
+        : undefined
       return (
-        <div className="pt-footer">
+        <div className="ui-modal-foot">
           <span className="pt-footer-info">{exportSel.size} categor{exportSel.size === 1 ? 'y' : 'ies'} selected</span>
-          <button className="pt-btn" onClick={onClose}>Cancel</button>
-          <button className="pt-btn pt-btn--primary" disabled={!can} onClick={handleExport}>Export →</button>
+          <button type="button" className="ui-btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="ui-btn ui-btn--primary" disabled={!can} title={why} onClick={handleExport}>
+            {exportBusy ? 'Exporting…' : 'Export'}
+          </button>
         </div>
       )
     }
     if (importResults) return null
     const can = !!importFile && importSel.size > 0 && targets.size > 0 && !importBusy
+    const why = importBusy ? 'Importing…'
+      : !importFile ? 'Choose a profile file first'
+      : importSel.size === 0 ? 'Tick at least one category to import'
+      : targets.size === 0 ? 'Tick at least one character to apply it to'
+      : undefined
     return (
-      <div className="pt-footer">
+      <div className="ui-modal-foot">
         <span className="pt-footer-info">
           {importFile ? `${importSel.size} categor${importSel.size === 1 ? 'y' : 'ies'} → ${targets.size} character${targets.size === 1 ? '' : 's'}` : 'Choose a file'}
         </span>
-        <button className="pt-btn" onClick={onClose}>Cancel</button>
-        <button className="pt-btn pt-btn--primary" disabled={!can} onClick={handleImport}>
+        <button type="button" className="ui-btn" onClick={onClose}>Cancel</button>
+        <button type="button" className="ui-btn ui-btn--primary" disabled={!can} title={why} onClick={handleImport}>
           {importBusy ? 'Importing…' : 'Import'}
         </button>
       </div>
@@ -411,15 +437,32 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose 
   }
 
   const modal = (
-    <div className="pt-backdrop" {...backdropHandlers(() => onClose())}>
-      <div className="pt-modal">
-        <div className="pt-header">
-          <span className="pt-title">Transfer</span>
-          <div className="pt-tabs">
-            <button className={`pt-tab${mode === 'export' ? ' pt-tab--active' : ''}`} onClick={() => setMode('export')}>Export</button>
-            <button className={`pt-tab${mode === 'import' ? ' pt-tab--active' : ''}`} onClick={() => setMode('import')}>Import</button>
+    <div className="ui-modal-backdrop pt-backdrop" {...backdropHandlers(() => onClose())}>
+      <div
+        ref={panelRef}
+        className="ui-modal pt-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+      >
+        <div className="ui-modal-head">
+          <span className="ui-modal-title" id={titleId}>Transfer</span>
+          <div className="ui-tabs pt-tabs" role="tablist">
+            {(['export', 'import'] as const).map(m => (
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={mode === m}
+                className={`ui-tab${mode === m ? ' ui-tab--active' : ''}`}
+                onClick={() => setMode(m)}
+              >
+                {m === 'export' ? 'Export' : 'Import'}
+              </button>
+            ))}
           </div>
-          <button className="pt-close" onClick={onClose}>✕</button>
+          <button type="button" className="ui-close" onClick={onClose} title="Close" aria-label="Close">✕</button>
         </div>
         <div className="pt-body">
           {mode === 'export' ? renderExport() : renderImport()}

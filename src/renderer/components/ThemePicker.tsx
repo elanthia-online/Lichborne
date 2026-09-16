@@ -11,11 +11,16 @@
 // Cancel restores whatever was active before (`prevThemeIdRef`). The preview
 // mock reads the same `darkBase`-merged var set `applyTheme` uses, so what it
 // shows is what the theme resolves to. Deleting the ACTIVE custom theme falls
-// back to `THEMES[0]`. Import/Export are JSON files via `myThemes` helpers.
-// Styles are the `.tp-*` classes in theme-picker.css.
+// back to `THEMES[0]`, and deleting asks first (B370). Import/Export are JSON
+// files via `myThemes` helpers. Chrome is the shared About look (ui.css);
+// layout is the `.tp-*` classes in theme-picker.css.
 
-import { useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { backdropHandlers } from "../utils/backdropClose"
+import { useEscapeClose } from '../hooks/useEscapeClose'
+import { pressable } from '../utils/pressable'
+import { confirmDelete } from '../confirm'
+import { useUnsavedScope, UnsavedContext } from '../hooks/useUnsaved'
 import { createPortal } from 'react-dom'
 import { THEMES, applyTheme, applyCustomTheme, darkBase, type Theme, type ThemeVars } from '../themes'
 import {
@@ -33,6 +38,11 @@ interface Props {
   onThemeChange: (id: string) => void
   onMyThemesChange: (themes: CustomTheme[]) => void
   onClose: () => void
+  /** Bumped by the owner to ask the picker to close (the app-bar Theme button
+   *  / native menu toggling it shut). Answered with the same guarded close as
+   *  the ✕, so an open Theme Editor with edits asks first (B368). The value
+   *  present at mount is ignored — the counter isn't reset between openings. */
+  closeRequest?: number
 }
 
 function isBaseTheme(t: Theme | CustomTheme): t is Theme {
@@ -88,7 +98,7 @@ function PreviewMock({ vars }: { vars: ThemeVars }) {
 
 // ── Main component ──────────────────────────────────────────────────────────
 
-export default function ThemePicker({ currentThemeId, myThemes, onThemeChange, onMyThemesChange, onClose }: Props) {
+export default function ThemePicker({ currentThemeId, myThemes, onThemeChange, onMyThemesChange, onClose, closeRequest }: Props) {
   const generalThemes = THEMES.filter(t => t.category === 'general')
   const guildThemes   = THEMES.filter(t => t.category === 'guild')
 
@@ -103,6 +113,32 @@ export default function ThemePicker({ currentThemeId, myThemes, onThemeChange, o
   const [isNewTheme,   setIsNewTheme]   = useState(false)
   const prevThemeIdRef = useRef(currentThemeId)
   const importRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+
+  // B368: every way the picker closes — its ✕, the backdrop, Esc, and the
+  // owner's `closeRequest` — goes through this unsaved-changes scope. The
+  // Theme Editor reports its draft into it, so closing the picker while the
+  // editor holds edits asks first. Closing with the editor open also undoes
+  // its live preview, exactly as the editor's own Cancel does.
+  const unsaved = useUnsavedScope()
+  function guardedClose() {
+    unsaved.guard(() => {
+      if (editingTheme) handleEditorCancel()
+      onClose()
+    })
+  }
+  const guardedCloseRef = useRef(guardedClose)
+  guardedCloseRef.current = guardedClose
+  const closeReqAtMount = useRef(closeRequest)
+  useEffect(() => {
+    if (closeRequest !== undefined && closeRequest !== closeReqAtMount.current) guardedCloseRef.current()
+  }, [closeRequest])
+  useEscapeClose(guardedClose)
+
+  // B397: open with focus inside the dialog, not left on the app-bar button
+  // it covers. The panel itself — there is no field to start in.
+  useEffect(() => { panelRef.current?.focus({ preventScroll: true }) }, [])
 
   function handleTabChange(newTab: Tab) {
     setTab(newTab)
@@ -152,6 +188,13 @@ export default function ThemePicker({ currentThemeId, myThemes, onThemeChange, o
     setEditingTheme(null)
     setTab('custom')
     setSelectedId(saved.id)
+    refocusPanel()
+  }
+
+  // The editor took focus when it opened (its name field); when it closes,
+  // hand focus back to this dialog rather than leaving it on <body> (B397).
+  function refocusPanel() {
+    requestAnimationFrame(() => panelRef.current?.focus({ preventScroll: true }))
   }
 
   function handleEditorCancel() {
@@ -163,6 +206,7 @@ export default function ThemePicker({ currentThemeId, myThemes, onThemeChange, o
       if (custom) applyCustomTheme(custom.vars)
     }
     setEditingTheme(null)
+    refocusPanel()
   }
 
   // ── Custom theme actions ──────────────────────────────────────────────────
@@ -172,7 +216,13 @@ export default function ThemePicker({ currentThemeId, myThemes, onThemeChange, o
     onMyThemesChange([...myThemes, copy])
   }
 
-  function handleDelete(theme: CustomTheme) {
+  async function handleDelete(theme: CustomTheme) {
+    // B370: this used to delete in one click.
+    const active = currentThemeId === theme.id
+    const ok = await confirmDelete('theme', theme.name, active
+      ? `It's the theme you're using — Lichborne switches to ${THEMES[0].name}. This can't be undone.`
+      : undefined)
+    if (!ok) return
     const updated = myThemes.filter(t => t.id !== theme.id)
     onMyThemesChange(updated)
     if (currentThemeId === theme.id) {
@@ -209,26 +259,33 @@ export default function ThemePicker({ currentThemeId, myThemes, onThemeChange, o
   const selectedName = selectedBase?.name ?? selectedCustom?.name ?? ''
 
   return createPortal(
-    <>
-      <div className="tp-backdrop" {...backdropHandlers(() => onClose())}>
-        <div className="tp-modal">
+    <UnsavedContext.Provider value={unsaved.registry}>
+      <div className="tp-backdrop ui-modal-backdrop" {...backdropHandlers(guardedClose)}>
+        <div
+          className="tp-modal ui-modal ui-modal--standard"
+          ref={panelRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+        >
 
-          <div className="tp-header">
-            <span className="tp-title">Theme</span>
-            <div className="tp-tabs">
-              <button className={`tp-tab${tab === 'general' ? ' tp-tab--active' : ''}`} onClick={() => handleTabChange('general')}>General</button>
-              <button className={`tp-tab${tab === 'guild'   ? ' tp-tab--active' : ''}`} onClick={() => handleTabChange('guild')}>Guild</button>
-              <button className={`tp-tab${tab === 'custom'  ? ' tp-tab--active' : ''}`} onClick={() => handleTabChange('custom')}>
+          <div className="ui-modal-head">
+            <span className="ui-modal-title" id={titleId}>Theme</span>
+            <div className="tp-tabs ui-tabs" role="tablist" aria-label="Theme groups">
+              <TabChip active={tab === 'general'} onClick={() => handleTabChange('general')}>General</TabChip>
+              <TabChip active={tab === 'guild'} onClick={() => handleTabChange('guild')}>Guild</TabChip>
+              <TabChip active={tab === 'custom'} onClick={() => handleTabChange('custom')}>
                 Custom{myThemes.length > 0 ? ` (${myThemes.length})` : ''}
-              </button>
+              </TabChip>
             </div>
-            <button className="tp-close" onClick={onClose}>×</button>
+            <button type="button" className="ui-close" onClick={guardedClose} title="Close" aria-label="Close">✕</button>
           </div>
 
           <div className="tp-body">
 
             {/* Left: theme list */}
-            <div className="tp-list">
+            <div className="tp-list" role="listbox" aria-label="Themes">
               {tab === 'custom' && myThemes.length === 0 ? (
                 <div className="tp-list-empty">
                   No custom themes yet.<br />
@@ -243,7 +300,8 @@ export default function ThemePicker({ currentThemeId, myThemes, onThemeChange, o
                     <div
                       key={item.id}
                       className={`tp-list-item${item.id === selectedId ? ' tp-list-item--selected' : ''}`}
-                      onClick={() => isBaseTheme(item) ? handlePickBase(item) : handlePickCustom(item)}
+                      {...pressable(() => isBaseTheme(item) ? handlePickBase(item) : handlePickCustom(item),
+                        { role: 'option', selected: item.id === selectedId })}
                     >
                       <span className="tp-list-dot" style={{ background: dotBg }} />
                       <span className="tp-list-name">{item.name}</span>
@@ -255,7 +313,8 @@ export default function ThemePicker({ currentThemeId, myThemes, onThemeChange, o
 
               {tab === 'custom' && (
                 <div className="tp-list-import">
-                  <button className="tp-import-btn" onClick={() => importRef.current?.click()}>
+                  <button type="button" className="ui-btn ui-btn--sm tp-import-btn" onClick={() => importRef.current?.click()}
+                          title="Add a theme from a .json file someone exported from Lichborne">
                     Import theme…
                   </button>
                   <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} />
@@ -278,14 +337,19 @@ export default function ThemePicker({ currentThemeId, myThemes, onThemeChange, o
                     )}
                     <div className="tp-preview-actions">
                       {selectedBase && (
-                        <button className="tp-action-btn" onClick={() => handleCustomizeBase(selectedBase)}>Customize…</button>
+                        <button type="button" className="ui-btn ui-btn--primary" onClick={() => handleCustomizeBase(selectedBase)}
+                                title="Make your own copy of this theme and open it in the editor">
+                          Customize…
+                        </button>
                       )}
                       {selectedCustom && (
                         <>
-                          <button className="tp-action-btn" onClick={() => handleEditCustom(selectedCustom)}>Edit</button>
-                          <button className="tp-action-btn" onClick={() => handleDuplicate(selectedCustom)}>Duplicate</button>
-                          <button className="tp-action-btn" onClick={() => exportTheme(selectedCustom)}>Export</button>
-                          <button className="tp-action-btn tp-action-btn--danger" onClick={() => handleDelete(selectedCustom)}>Delete</button>
+                          <button type="button" className="ui-btn ui-btn--primary" onClick={() => handleEditCustom(selectedCustom)}>Edit…</button>
+                          <button type="button" className="ui-btn" onClick={() => handleDuplicate(selectedCustom)}
+                                  title="Add a copy of this theme to your custom themes">Duplicate</button>
+                          <button type="button" className="ui-btn" onClick={() => exportTheme(selectedCustom)}
+                                  title="Save this theme as a .json file you can share or import elsewhere">Export</button>
+                          <button type="button" className="ui-btn ui-btn--danger" onClick={() => { void handleDelete(selectedCustom) }}>Delete</button>
                         </>
                       )}
                     </div>
@@ -300,15 +364,32 @@ export default function ThemePicker({ currentThemeId, myThemes, onThemeChange, o
         </div>
       </div>
 
+      {/* `nested`: this dialog's scrim already dims the app, so the editor
+          draws none of its own (B405). */}
       {editingTheme && (
         <ThemeEditor
           theme={editingTheme}
           isNew={isNewTheme}
           onSave={handleEditorSave}
           onCancel={handleEditorCancel}
+          nested
         />
       )}
-    </>,
+    </UnsavedContext.Provider>,
     document.body,
+  )
+}
+
+// A chip tab in the header (UX standard #10). Module scope so it's a stable
+// component type across renders (UX standard #4).
+function TabChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      className={`ui-tab${active ? ' ui-tab--active' : ''}`}
+      onClick={onClick}
+    >{children}</button>
   )
 }

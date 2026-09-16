@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import FloatingWindow from './FloatingWindow'
+import { VIEW_CONTROLS } from './PanelFrame'
 import { experienceById, optionShown, type ExperienceInstance } from '../experiences'
 import type { FloatWindow } from '../freeLayout'
 import '../styles/experiences.css'
@@ -104,6 +105,30 @@ export default function ExperienceLayer({ instances, onInstancesChange, renderCo
   // want to see, e.g. Thoughts on/off"). Both persist on the instance
   // (scopedKey `experiences` → YAML → Transfer, no new plumbing).
   const [optionsFor, setOptionsFor] = useState<string | null>(null)
+  // B345: the ⚙ popover used to close ONLY by clicking ⚙ again. Now an outside
+  // mousedown or Esc closes it too; a press inside it (or on a ⚙, which toggles
+  // on its own click) is left alone. Esc is preventDefault'ed so it can't also
+  // reach useEscapeClose and close a dialog underneath.
+  const optionsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (optionsFor === null) return
+    function onDown(e: MouseEvent) {
+      const t = e.target as Element | null
+      if (optionsRef.current?.contains(t as Node) || t?.closest?.('.exp-inst-gear')) return
+      setOptionsFor(null)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      e.preventDefault()
+      setOptionsFor(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [optionsFor])
 
   function adjustFont(id: string, delta: number) {
     onInstancesChange(instances.map(i => {
@@ -147,6 +172,7 @@ export default function ExperienceLayer({ instances, onInstancesChange, renderCo
             getSnapTargets={getSnapTargets}
             guideRefs={{ v: guideVRef, h: guideHRef }}
             locked={locked}
+            minSize={def.minSize}
           >
             {/* Font override: shadow --game-font-size for this window's
                 subtree — every Experience sizes its text off that var
@@ -157,18 +183,23 @@ export default function ExperienceLayer({ instances, onInstancesChange, renderCo
             >
               {renderContent(inst)}
             </div>
+            {/* B398: tooltips/labels come from PanelFrame's VIEW_CONTROLS, the
+                one set the docked tab variant uses too. */}
             <div className="exp-inst-controls" aria-label={`${def.label} view controls`}>
-              <button type="button" className="panel-font-btn" title="Smaller text in this window"
+              <button type="button" className="panel-font-btn" title={VIEW_CONTROLS.smaller.tip}
+                aria-label={VIEW_CONTROLS.smaller.label}
                 onClick={() => adjustFont(inst.id, -1)}>A−</button>
-              <button type="button" className="panel-font-btn" title="Larger text in this window"
+              <button type="button" className="panel-font-btn" title={VIEW_CONTROLS.larger.tip}
+                aria-label={VIEW_CONTROLS.larger.label}
                 onClick={() => adjustFont(inst.id, 1)}>A+</button>
               {(def.options?.length ?? 0) > 0 && (
-                <button type="button" className="panel-font-btn" title="Choose what this scene shows"
+                <button type="button" className="panel-font-btn exp-inst-gear" title={VIEW_CONTROLS.layers.tip}
+                  aria-label={VIEW_CONTROLS.layers.label} aria-expanded={optionsFor === inst.id}
                   onClick={() => setOptionsFor(o => (o === inst.id ? null : inst.id))}>⚙</button>
               )}
             </div>
             {optionsFor === inst.id && def.options && (
-              <div className="exp-inst-options">
+              <div className="exp-inst-options" ref={optionsRef}>
                 <div className="exp-inst-options-title">Show in this scene</div>
                 {def.options.map(opt => (
                   <label key={opt.id} className="exp-inst-option" title={opt.desc}>

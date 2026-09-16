@@ -82,10 +82,14 @@ export interface ConnectRetryOptions {
 // Only defaults when absent, so a user who has deliberately set a locale keeps
 // it, and only off Windows — Windows Ruby derives its default from the code
 // page, has no LANG convention, and is the platform this already works on.
+//
+// Which locale (B366a): `C.UTF-8` on Linux, because a minimal system may never
+// have generated en_US.UTF-8, while C.UTF-8 ships with current distributions
+// (glibc builds it in from 2.35). macOS always has en_US.UTF-8.
 function spawnEnv(): NodeJS.ProcessEnv | undefined {
   if (process.platform === 'win32') return undefined   // inherit unchanged
   if (process.env.LANG || process.env.LC_ALL) return undefined
-  return { ...process.env, LANG: 'en_US.UTF-8' }
+  return { ...process.env, LANG: process.platform === 'linux' ? 'C.UTF-8' : 'en_US.UTF-8' }
 }
 
 export class LichConnection extends EventEmitter {
@@ -202,6 +206,13 @@ export class LichConnection extends EventEmitter {
           detached: true,
           stdio: logFd === null ? 'ignore' : ['ignore', logFd, logFd],
           env: spawnEnv(),
+          // Off Windows only (B366b): start in the Lich folder, so an rbenv
+          // `.ruby-version` there picks the interpreter — the shim resolves it
+          // from the working directory, and a Finder/dock launch otherwise
+          // inherits `/`. Only for an absolute path (a relative one would then
+          // resolve against the new cwd). Windows keeps its exact spawn shape.
+          ...(process.platform !== 'win32' && path.isAbsolute(lichPath)
+            ? { cwd: path.dirname(lichPath) } : {}),
         })
       } catch (err) {
         if (logFd !== null) { try { fs.closeSync(logFd) } catch { /* ignore */ } }

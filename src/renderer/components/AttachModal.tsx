@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { backdropHandlers } from '../utils/backdropClose'
-// Imported explicitly rather than relying on Launcher having pulled it in:
-// this modal's `attach-backdrop` z-index override lives there, next to the
-// .cne-backdrop rule it overrides.
+import { useEscapeClose } from '../hooks/useEscapeClose'
+// Imported explicitly rather than relying on Launcher having pulled it in: the
+// cne-* chrome this modal reuses lives there, including the `.cne-backdrop`
+// z-index that keeps it above the + tab's Add Character modal.
 import '../styles/character-notes-editor.css'
 
 // Attach to an already-running detachable Lich session.
@@ -73,20 +74,22 @@ export default function AttachModal({ onCancel, onAttach, initial = null, known 
     // eslint-disable-next-line react-hooks/exhaustive-deps -- known is load-once per open
   }, [character])
 
-  // Esc to cancel — same convention as QuickSend and the other modals.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !busy) { e.preventDefault(); onCancel() }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [busy, onCancel])
+  // Esc to cancel, through the shared topmost-dialog hook (B341). Mid-attach it
+  // does nothing, like the disabled ✕ — CONSUMED rather than `enabled: false`,
+  // which would let the key fall through and close the + window this is
+  // usually opened from.
+  useEscapeClose(() => { if (!busy) onCancel() })
 
+  const titleId = useId()
   const portNum = Number(port)
-  const valid =
-    character.trim().length > 0 &&
-    host.trim().length > 0 &&
-    Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535
+  // Why Attach is disabled, or '' when it isn't — the button's tooltip, so a
+  // greyed button says what it is waiting for (B407).
+  const invalidReason =
+    character.trim().length === 0 ? 'Enter the character that Lich session is logged in as'
+    : host.trim().length === 0 ? 'Enter the host Lich is listening on'
+    : !(Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535) ? 'Enter a port from 1 to 65535'
+    : ''
+  const valid = invalidReason === ''
 
   async function handleAttach() {
     if (!valid || busy) return
@@ -103,17 +106,30 @@ export default function AttachModal({ onCancel, onAttach, initial = null, known 
   }
 
   return createPortal(
-    // `attach-backdrop` raises the stacking context — see the CSS note. The
-    // cne-* chrome is reused; only the z-index differs.
-    <div className="cne-backdrop attach-backdrop" {...backdropHandlers(() => onCancel(), !busy)}>
-      <div className="cne-modal">
+    // The cne-* chrome, reused unchanged. `.cne-backdrop` itself now sits above
+    // the + modal (see character-notes-editor.css), so no attach-only override.
+    <div className="cne-backdrop" {...backdropHandlers(() => onCancel(), !busy)}>
+      <div
+        className="cne-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onKeyDown={e => {
+          // B389: Enter in any of the three single-line fields attaches.
+          // handleAttach itself refuses while invalid or busy.
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.target instanceof HTMLInputElement) {
+            e.preventDefault()
+            void handleAttach()
+          }
+        }}
+      >
         <div className="cne-header">
-          <span className="cne-title">Attach to a running Lich</span>
-          <button className="cne-close" onClick={onCancel} disabled={busy} title="Cancel">×</button>
+          <span className="cne-title" id={titleId}>Attach to a running Lich</span>
+          <button type="button" className="ui-close" onClick={onCancel} disabled={busy} title="Close" aria-label="Close">✕</button>
         </div>
 
         <div className="cne-body">
-          <p style={{ margin: '0 0 10px', color: 'var(--text-muted)', fontSize: '0.85em', lineHeight: 1.45 }}>
+          <p className="cne-intro">
             Connects this tab to a Lich session that is <em>already running and
             logged in</em> — started attachably, e.g.{' '}
             <code>lich --login Char --headless 8001</code>. Closing the tab
@@ -134,7 +150,7 @@ export default function AttachModal({ onCancel, onAttach, initial = null, known 
             {/* The protocol carries no character name, so this label is taken
                 on trust — and a wrong one silently mislabels the tab and the
                 profile it loads. Say which session it must match. */}
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.78em', fontWeight: 400 }}>
+            <span className="cne-field-hint">
               Must match the character that Lich session is logged in as —
               the one you passed to <code>--login</code>.
             </span>
@@ -167,24 +183,35 @@ export default function AttachModal({ onCancel, onAttach, initial = null, known 
           </div>
 
           {autofilled && (
-            <p style={{ margin: '6px 0 0', color: 'var(--text-muted)', fontSize: '0.8em' }}>
+            <p className="cne-note">
               Using a saved target — edit freely, it updates on the next successful attach.
             </p>
           )}
 
           {error && (
-            <p style={{ margin: '10px 0 0', color: 'var(--accent-danger, #d66)', fontSize: '0.85em', lineHeight: 1.45 }}>
+            // B324: `--accent-danger` is defined nowhere, so this was always the
+            // fixed #d66 fallback; `.cne-error` uses the theme's --color-danger.
+            <p className="cne-error" role="alert">
               {error}
             </p>
           )}
         </div>
 
         <div className="cne-footer">
-          <button className="cne-btn cne-btn-cancel" onClick={onCancel} disabled={busy}>
+          <button type="button" className="ui-btn" onClick={onCancel} disabled={busy}>
             Cancel
           </button>
-          <button className="cne-btn cne-btn-save" onClick={handleAttach} disabled={busy || !valid}>
-            {busy ? 'Attaching…' : 'Attach'}
+          {/* B345's stable-label shape (Attach → Attaching…), so the button
+              never resizes mid-attach. */}
+          <button
+            type="button"
+            className="ui-btn ui-btn--primary cne-btn--stable"
+            onClick={handleAttach}
+            disabled={busy || !valid}
+            title={busy ? undefined : invalidReason || undefined}
+          >
+            <span className={`cne-btn-label${busy ? ' cne-btn-label--off' : ''}`}>Attach</span>
+            <span className={`cne-btn-label${busy ? '' : ' cne-btn-label--off'}`} aria-hidden={!busy}>Attaching…</span>
           </button>
         </div>
       </div>

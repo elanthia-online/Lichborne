@@ -6,6 +6,802 @@
 
 ---
 
+## v0.19.7 — One-click Reconnect · windows that remember · the full login experience in + · an Overview that shows who you're typing to · an Unconscious indicator · a wordmark that can wear a text effect · a 22-bug UI/UX pass · one control system for every dialog (B367–B409) · Lich 5.21 review
+
+- **F114 (Sekmeht): the app-bar wordmark can wear a text effect, per character.** Settings → Display → **Wordmark effect**, default **Static**, which renders exactly what the bar rendered before.
+  - It reuses the `HighlightEffect` vocabulary highlights and contact templates already use, so there is one effect system and one stylesheet — and the wordmark inherits the epilepsy-safe freeze for free (verified by script: 10 animated classes, 10 frozen).
+  - **Asked whether it belonged in the THEME instead** (Sekmeht), since the theme owns the brand's colours. It doesn't: `lichborne.theme` is a single unscoped global, so a theme-owned effect would be identical for every character and defeat the point. The line drawn instead — the theme decides what colour the brand is, the setting decides what it does with that colour. The effect vars are fed `var(--accent)` / `var(--accent-dim)`, so it follows the theme and the high-contrast overlay anyway. DESIGN §8.3.
+  - The app bar is app-level chrome, so the value rides `SessionStatus.brandEffect` (pitfall #57's route) and was added to the equality gate (pitfall #130). Persistence is free — a field on `settings`, so it rides `state:` → YAML and the Display & Accessibility Transfer category.
+  - **One painter, two callers:** the Settings row shows a live preview through the same `paintBrandMark` the bar calls, so the preview cannot drift from the real thing (the B281 lesson).
+  - **No slash command, by design** — a one-time cosmetic dropdown, matching the `timerStyle` precedent (recorded per Principle #11).
+  - **B427 (Sekmeht), fixed in the same pass:** Wave and Bounce rendered white instead of taking the theme. They are not colour-replacing, so collapsing them to a bare run left them with no colour to inherit. Fixed by keeping the two-tone spans and carrying the stagger across them with a new optional `startIndex` on `effectContent`. New pitfall #147.
+  - Both type-checks clean; tmp-rules-harness 319/1 (the known GemStone case), tmp-cmd-harness 58/0. **Not run in the app** — the visual claims come from the CSS and the built bundle.
+- **B426 (Sekmeht): an Unconscious indicator, decoded from the status prompt.** A capture showed `SUP>` — stunned, unconscious, prone — with the `S` clearing in the same breath as `<indicator id='IconSTUNNED' visible='n'/>`, which is what made the letters worth trusting. Binu supplied the meaning: `U` is unconscious, it needs `set statusprompt`, and it cleared the moment he woke.
+  - **DR has no unconscious indicator tag, and no sibling client decodes the prompt letters.** Lich's ICONMAP lists 11 icons, Genie handles 13, Frostbite 11, and the word appears zero times across all three. The status prompt is the only source that exists.
+  - The parser decodes ONLY the confirmed `U` and emits a synthetic `unconscious` indicator on change. The prompt-dedup flag is sampled BEFORE that emit, so `>` handling is unchanged (pitfall #98).
+  - The icon bar's combat slot ranks bleeding > unconscious > stunned > dead, reusing the stunned styling rather than minting theme vars.
+  - `$unconscious` joins both variable builders and both editor lists, carrying the statusprompt caveat in its description.
+  - It stays blank for a player without statusprompt — inherent to the source, not a gap to fix.
+  - Both type-checks clean; tmp-rules-harness 319/1 (the known GemStone case), tmp-cmd-harness 58/0. **Live confirmation is a tester step** — the chip appearing while out and clearing on waking is not something I can exercise from here.
+- **Final bug check (2026-09-15) — B413–B424 fixed, B425 logged open.** Six read-only reviewers went over the whole uncommitted change by area: the shared foundation and game-window wiring, the Automations family, Contacts and the launcher, the Settings / theme / transfer dialogs, Lich and the Experiences and Overview, and a stylesheet-wide sweep. Each finding was re-checked against the code before any fix.
+  - **Regressions from this session:** a repeated "open this rule" did nothing (B416); the Injuries panel could say "waiting" all session (B422); the vitals bars could be pushed off a narrow window at large fonts (B424).
+  - **Pre-existing bugs the new work exposed:** Fires → Edit copying a character highlight into the global store (B418); a deleted default contact template coming back (B419); a click outside a nested dialog doing nothing (B420, CLAUDE.md pitfall #146).
+  - **Foundation behaviour:** the confirm's focus return no longer undoes what the confirmed action focused (B413); one discard question at a time (B414); the Team Login progress overlay counts as a dialog, so focus can't land in the command bar beneath it (B415).
+  - **Editors:** a colour box no longer counts as an edit on blur (B417), and the Theme Editor no longer freezes palette-following colours into hex (B421).
+  - **Left open:** the Experience ⚙ popover is unusable in a 48px strip (B425) — the real fix is portaling it, too big for a final check.
+  - **Stylesheet sweep: no blocking bugs.** Scripted checks confirmed every class the TSX uses is styled, the ui.css → components → global.css load order holds (no primitive is overridden by accident), no new `rem` in game-area CSS, no `transition: all` left in a changed file, and no undefined custom property anywhere in the renderer. Fixed alongside it: a stale comment claiming the command-bar timer strips ignore the pointer (B333 reversed that so their tooltips work), and the two legacy app-bar hover rules (`.btn-contacts`, `.btn-theme`) that lacked the pitfall #107 active-state exclusion. `.app-bar-more-menu` and `.map-tooltip` keep their 9999 inside their own stacking contexts — recorded in the tier map as benign, not a precedent.
+  - Both type-checks clean; tmp-rules-harness 319/1 (the known GemStone case), tmp-cmd-harness 58/0, check-workflow 11/11. Still not run in the app.
+- **B412 (Sekmeht): an ended Spell Monitor card's hover text no longer blinks.**
+  - Its tooltip carried the live clear-out countdown. A native tooltip can't update while it's showing, so Chromium hid it every second.
+  - It looked like the RT/CT/aim chips (same one-second beat). Sekmeht's test showed only ended cards did it.
+  - The tooltip now says the card clears when its bar runs out; the card still shows the seconds.
+  - The Moons ⟳ had the same bug ("12s ago" ages, re-rendered every 2s) and now lists clock times. Pitfall #145.
+- **B411 (Sekmeht): a Spell Monitor card no longer grows its whole row.** A spent cell kept its last reading ("Fading") as a second row. A grid row takes the height of its tallest cell, so every card beside it stretched.
+  - Every cell is now one line plus a reserved bar slot.
+  - The note goes wherever it adds something:
+    - in the time slot, for fading, percent and unknown readings (`spellSlotText`);
+    - for a timed effect, the minutes stay in the slot and any charge level becomes a small aside (`spellSlotAside`);
+    - a spent cell keeps "ended" and its clear-out countdown, and the stale reading moves to the tooltip.
+  - Kept as they were, on purpose:
+    - DR's "fading" stays separate from our own `<1m` countdown, under the two-stage honesty rule.
+    - The ended countdown Sekmeht asked for in v0.19.6 is unchanged.
+  - 9 new harness cases.
+- **UI/UX consistency pass (2026-09-15): B367–B409 fixed, B410 open.** A second audit logged 44 findings, covering bugs and quality of life plus the question "do similar windows look and behave alike?". The order of work, as agreed with Sekmeht: real bugs, then shared primitives, then dialog conversions, then a label style guide.
+  - **Foundation first, written before any fixer started (DESIGN §43.7):**
+    - `ui.css`: the control classes and tokens. It is imported FIRST in main.tsx so components refine it (pitfall #144). This was found when the first wiring imported it from global.css, which loads last.
+    - `confirm.ts` + `ConfirmHost` + `InlineConfirm`: one confirm, in two shapes.
+    - `useUnsaved.ts`: the draft guard.
+    - Focus ownership in `useEscapeClose`: the covered command bar is blurred when a dialog opens, and home focus returns when the last one closes (pitfall #141(e)).
+    - `--color-warning`.
+  - **Eight parallel fixers, split by FILE:** the Automations family; Contacts; Lich Dashboard / Scripts / Session Log; Settings / Layout / Theme / AI Consent; Transfer / Import / wizard / Quick Send; game window / panels / debug / maps; Experiences / Overview / vitals; launcher / teams.
+  - **Cross-file needs came back as notes and were integrated afterwards:**
+    - GameWindow's app-bar and menu toggles bump a `closeRequest` counter. Automations, Contacts, the Lich Dashboard and the Theme Picker answer it with their guarded close.
+    - `nested` is passed wherever Import, Lich Setup or the Theme Editor opens over another dialog.
+    - The Overview card uses the new `formatUptime`.
+  - **Bugs found beyond the audit:**
+    - Saving any rule snapped an editor back to the rule opened by jump.
+    - A Debug Fires → Edit save duplicated the highlight.
+    - A Contacts save rewound every contact's tracking stats.
+    - Delete team never flushed `_shared.yaml`, so a deleted team could come back.
+    - Settings search said "No settings match" directly above a matching section.
+  - **Behaviour changes, confirmed by Sekmeht (2026-09-15):**
+    - A macro now needs a recorded key before it can be saved.
+    - Settings' Reset to defaults moved from beside the ✕ to the footer.
+    - The AI key's Clear button is now Delete.
+    - The launcher's icon toolbar buttons keep no "…" (recorded in the DESIGN §43.7 label table).
+  - **Removed:** LichScriptsPanel.tsx, LichProfileModal.tsx, the standalone rule-editor modal branches, the launcher's private confirm modal, and dead login.css / lich-panels.css rules.
+  - **Verification:**
+    - Check zero clean in both configs. tmp-rules-harness 310/1 (the known GemStone case), tmp-cmd-harness 58/0, check-workflow 11/11.
+    - **Not run in the app yet.** Every visual claim comes from the CSS, and the test plan's new section lists the Classic Light and keyboard checks.
+- **Dependency patches (2026-09-15):** four updates, all within their existing majors, with the package.json floors raised.
+  - electron 43.4.1 → 43.7.0
+  - @types/node 24.13.3 → 24.13.4
+  - js-yaml 4.3.1 → 4.3.2
+  - react-virtuoso 4.18.12 → 4.18.13
+
+  Details:
+  - Electron 43.7.0 is Node 24.21.0 / Chrome 150 / ABI 148. That is the same ABI, so better-sqlite3 needed no rebuild. This was verified by loading it under the new runtime and running a query.
+  - `npm install -D electron@43.7.0` again skipped Electron's postinstall, leaving an empty `dist/` (the documented gotcha). Fixed with `node node_modules/electron/install.js`.
+  - Both builds, both type-checks and the harnesses re-ran clean.
+  - `npm audit` reports 4 findings, none in the patched packages: xmldom and fast-uri via the build tooling, and vite/esbuild's dev server. Vite's fix is the held Vite 8 major.
+  - I didn't launch the app as a smoke test, because starting it runs the SimuCoin startup pass against store.play.net. The launch check is on the test plan.
+- **B320 (Sekmeht): clicking an Overview card now selects that character
+  everywhere.** Opening the Overview marked the active tab's card "current"
+  with an accent border while the input bar read All characters, and a card
+  click moved the bar's target but not the tab (a tab click moved both).
+  - A card click now sets the input target AND calls `setActive`, and you stay
+    in the Overview. Tab click → card already worked (F101), so the two
+    gestures are mirror images and there is one selection.
+  - The card's `--active` accent border/tint and the "current" chip are gone.
+    The target ring is the only marker — a border only, with no background
+    tint (Sekmeht: the colour change read as the character itself changing).
+    Under All characters every connected card wears it (see F112). The tab
+    strip, visible above the overlay, answers "which tab".
+  - Why remove rather than rename the chip: once clicks sync both ways it could
+    only duplicate the ring or, under All, contradict the bar.
+  - Safe by construction: `setActive` from the Overview is the path a tab click
+    already takes (theme ownership frozen in the view, refocus guarded — DESIGN
+    §47). The card hover tint now applies to every card: with no state setting
+    a background there is nothing for it to dim, and excluding selected cards
+    would have left no hover at all under All characters.
+  - Accepted side effect: leaving the Overview lands on the last card clicked.
+- **F113 (Sekmeht): the + window wears the Lichborne dialog look.** The house
+  modal chrome (UX #10) via the `--modal-*` tokens: themed scrim, the About
+  surface/border/radius/shadow on `.add-character-panel`, and an accent header
+  band titled "Connect a character" with the ✕ (the `.cne-*` recipe). The
+  compact Launcher is now only the scrolling body — its own panel styling,
+  height cap and "Pick a character to connect" heading are gone. Inner contrast
+  is unchanged, since `--modal-bg` is the `--bg-base` it already used.
+- **UI/UX bug sweep (2026-09-15) — B324–B345, all 22 fixed.** Five read-only
+  reviewers (theme safety, overflow and layering, font scaling,
+  self-explanation and accessibility, interaction consistency) logged the
+  findings. Three parallel fixers then took them by FILE rather than by bug, so
+  no two could touch the same file, on top of two shared helpers written first:
+  - **`useEscapeClose`** ([hooks/useEscapeClose.ts](src/renderer/hooks/useEscapeClose.ts)):
+    Esc closes exactly the topmost dialog. A mount-ordered stack is served by
+    one window-level bubble-phase listener, so a search box, a dropdown or the
+    Quit confirm handles Esc first. About 30 dialogs are registered, including
+    every one that had no Esc. About's backdrop 300 → 2010 and toasts
+    200 → 2050 (B341, B329). CLAUDE.md pitfall #141.
+  - **`pressable()`** ([utils/pressable.ts](src/renderer/utils/pressable.ts)):
+    role, tab stop and Enter/Space for clickable rows, tabs and cards; the
+    Settings switches became real `role="switch"` buttons (B335). Pitfall #142.
+  - Theme: undefined variables, `, white)` mixes and literals now come from
+    theme vars (B324–B326). Overflow and layering: width caps on Settings and
+    the wizard, menu-opened dialogs close the + window, bounded and flipped
+    menus and popovers (B327, B328, B330–B332). Explanation: icon-bar chips,
+    compact vitals and timer strips explain themselves, every ✕ is labelled,
+    clearer labels (B333, B334, B336). Font scaling: the Exp bars, the Lich
+    Map's reading text, loose badges (B337–B339). Interaction: about 40 hovers
+    that erased a selected state (B340, pitfall #107 rider), drag-release
+    backdrops (B342), Quick Send's focus return (B343), matched header buttons
+    (B344), and the smaller items (B345).
+  - Two corrections made while fixing. The sweep's B337 values were wrong (the
+    track inherits a 0.82em font, so 1.33em is not 16px; 1.63em is). And a
+    focusable tab would swallow the Space that type-anywhere used to route to
+    the command bar, so a MOUSE click on a panel or character tab now drops
+    focus afterwards (`e.detail > 0`).
+  - Left alone: eight dead CSS rules the fixers edited alongside their live
+    twins (`.btn-debug`, `.btn-session-log`, `.exp-bar-toggle`,
+    `.grp-filter-pill`, `.map-detail-close`, `.map-overlay--error`,
+    `.map-zlevel-chip`, `.wiz-radio` — no markup uses them). Nothing has been
+    eyeballed on a light theme yet.
+- **macOS / Linux bug check (2026-09-15) — 20 findings, 19 fixed.** Three
+  read-only reviewers (main process and OS integration, renderer assumptions,
+  packaging and first run) logged them as **B347–B366**; the key claims were
+  re-read in the code before logging. Two parallel fixers then took the main
+  process and the renderer, and the packaging/CI share was done directly. Fixes
+  that rest on OS behaviour we can't observe from Windows were written to be
+  safe either way (e.g. the Linux window correction applies only a small
+  measured offset, so it changes nothing when there's no creep), and are marked
+  for a tester. **B358** (the AppImage's FUSE 2 runtime) stays open as a
+  decision: the docs now name the package, but switching electron-builder to
+  its static runtime needs a test release first. Both type-checks are now
+  clean — the main one's long-standing baseline error is gone — and CI runs
+  them on Windows and Ubuntu. What the findings were:
+  - The two that matter most: **B352**, the trigger `log` action writes into the
+    install folder (silently lost on a Linux AppImage, wiped by upgrades
+    everywhere), and **B347**, Option/Alt macros on macOS.
+  - Lifecycle: a decoupled window's character logged out even when the Quit is
+    cancelled (B353), macOS restart interrupted (B354).
+  - First run and updates: an old system Ruby saved on a clean Mac (B355), a
+    silent Check for Updates on macOS (B356), the AppImage renamed by every
+    update (B357), FUSE 2 on newer Ubuntu (B358), a stuck check in an extracted
+    AppImage (B364).
+  - This release's window memory (F109): Linux position creep (B360) and macOS
+    fullscreen (B362), both unverified.
+  - Smaller items: fonts (B348), IME keys (B349), Home/End (B350), the devtools
+    hint (B351), macOS notifications (B359), menu and Dock polish (B361), the
+    Linux window icon (B363), CI coverage (B365), hardening (B366).
+  - Docs fixed in the same pass: README and the User Guide now give the
+    AppImage rename and FUSE 2 steps; the Guide's settings appendix and
+    AINOTICE no longer describe Windows-only paths and encryption.
+  - Nothing in this release's new renderer code breaks on Mac or Linux. The
+    bare emoji-capable glyphs (⚙ ⚠ ⚔ ⚡ ▶) remain the pitfall #125 set that B262
+    left waiting on a Mac screenshot.
+- **B346 (Sekmeht): the Experiences button no longer stays highlighted.** It
+  was lit whenever any Experience was showing, and an Experience docked as a
+  panel tab counts — permanent layout, so the button never went dark. B345's
+  stronger open state made it read as stuck. It now follows the rule every
+  other app-bar button follows: lit while its shelf is open. `expAnyOpen` still
+  drives the scene-work gate, and now counts only Experiences the registry
+  knows (an unknown saved id is skipped by the layer, so it could have held
+  scene work on for a window nobody could see or close).
+- **Bug check of the launcher + Overview work (this release).** Two fixes:
+  the tab strip declares `aria-multiselectable` while the Overview is open,
+  since All characters puts `aria-selected` on several tabs at once; and an
+  orphaned "Add card" comment that the F111 rule removal left in launcher.css
+  is gone. Verified: a team run started from + closes it and its result
+  summary still shows (that dialog is App-level); every cne-* dialog clears the
+  + modal; the loading and empty states wear the compact chrome; the remaining
+  `!compact` checks (logo, heading, account Remove) are intended. Known and
+  accepted: under All characters every connected tab is `--active` and tab
+  hover excludes active tabs (pitfall #107), so lit tabs show no hover there —
+  Sekmeht kept the tab styling as-is; and the tabs read connection from
+  SessionsContext while the input bar reads the roster, which can disagree for
+  a moment mid-reconnect.
+- **B323 (Sekmeht): the + window no longer flashes a dark box before the
+  panel.** The Launcher's loading and empty-state early returns lacked
+  `launcher--compact`, so inside the modal they drew with the full-page logon
+  background and no panel frame; and the modal mounts a fresh Launcher per
+  open, so it hit that state every time. Both early returns now carry the
+  compact class, and the list is seeded from the last one this window loaded
+  (`lastLoadedCards`), with the mount-time refresh still correcting it.
+- **F110 (Sekmeht): the + window has the full login experience.** Teams,
+  pinned teams in Favorites, and an action row trimmed to ⟲ Reconnect Last ·
+  ⚡ Team Login · ⇋ Attach now appear in the compact launcher too.
+  `LauncherTopBar` gained a `compact` mode, replacing the Attach-only
+  `CompactAttachRow`, and the `!compact` checks on Teams and `favoriteTeams`
+  are gone. Account Remove, Transfer and Lich Setup stay full-screen only.
+  `runBulkConnect` — the funnel for every team launch — now closes the + window.
+- **B322: dialogs opened from the + window no longer render behind it.** All
+  four `.cne-backdrop` dialogs (Edit Profile, Attach, Team Login, the team
+  editor) are portaled to `document.body`, so they escape the + modal's
+  stacking context, and at `z-index: 100` they painted under its 1000. Attach
+  alone had an override and Edit Profile was a noted latent bug; showing Teams
+  in + would have added the team editor. Fixed at the shared rule
+  (`.cne-backdrop` → 1600) with the per-dialog override removed.
+- **F111 (Sekmeht): "+ Add account" is a slim full-width row** — dashed, the
+  height of an account header row — instead of a grid tile, in both launchers.
+- **F112 (Sekmeht): in the Overview, highlighting shows who a send reaches.**
+  Tabs and cards highlight the input bar's targets: the selected card and its
+  tab, or every CONNECTED card and tab under All characters (the bar's All
+  skips disconnected characters). The first cut lit nothing under All; Sekmeht
+  preferred all-lit. `activeId` is untouched, so Session view still returns
+  where it was.
+- **B321 (Sekmeht): the + modal's close ✕ now sits on the panel.** The ✕ was
+  positioned against the full-window backdrop, so it lived in the window's
+  corner, far from the launcher, and read as missing. The launcher is now
+  wrapped in `.add-character-panel` (position: relative) with the ✕ pinned to
+  its top-right in the house modal-close style (`--modal-ctl-hover`). It sits
+  on the wrapper, not inside the Launcher, because the launcher scrolls. Also
+  drops a `var(--text, #ccc)` that no theme defined. F113 (above) then made
+  that panel the themed dialog and moved the ✕ into its header band.
+- **F108: the app bar offers Reconnect after a drop.** With the active
+  character disconnected, the button used to read **Login**: it destroyed the
+  session, removed the tab (and its scrollback) and opened the picker. The
+  in-place reconnect already existed but only in the tab's right-click menu.
+  The button now calls that same `handleReconnectTab` (Attach re-attaches;
+  failure falls back to the picker with the error) and reads "Reconnecting…"
+  while in flight. `handleLoginActive` is deleted; the + tab covers logging in
+  someone else. The Offline attention chip's tooltip now points at it.
+- **F109: windows remember their size, position and maximized state.** Every
+  window opened at 1400×900. New `src/main/windowState.ts` (I/O) +
+  `src/shared/windowBounds.ts` (pure resolver, rules harness §M).
+  - Machine-local `{userData}/window-state.json`, never a profile: it describes
+    this machine's monitors. Keys `main` and `char:<characterId>` for a
+    decoupled window.
+  - Validated against the monitors attached now: the title bar must land on a
+    display with ≥100px showing, or the window reopens centred with its size
+    kept; a window bigger than its display is clamped; straddling two monitors
+    is left alone on purpose.
+  - Capture on every move/resize/(un)maximize, debounced write, flush on quit.
+    Shutdown and re-home DESTROY windows, and `destroy()` emits no `close`, so
+    reading bounds at close time would have missed them.
+  - `getNormalBounds()`, not `getBounds()`, so a minimized or maximized window
+    saves its restore rect.
+- **Lich 5.20.1 / 5.21.0 compatibility review — no Lichborne change needed.**
+  Recorded in Knowledge.md §17 (plus the new `inventoryManager` feed
+  reference), and the periodic Lich upstream review is now a documented
+  standing exercise in CLAUDE.md.
+
+## v0.19.6 — Spell Monitor: the end of a spell, made visible; Katamba loses its glow
+
+- **Spell Monitor: "Ended effects" (Sekmeht) — a new ⚙ layer, ON by default.**
+  A spent effect now stays on screen, greyed and labelled "ended", instead of
+  vanishing. The point is not to mark that something ended — it is to show
+  **what** ended, so you can see what needs recasting.
+  - **The signal is ABSENCE from the next percWindow block, not our own clock**
+    (Sekmeht's correction — and it inverted the first implementation, which
+    deserves recording). Our anchor floors DR's whole roisaen, so our countdown
+    reaches zero up to a minute EARLY; treating that as "ended" both lied and
+    flickered, since the next repaint re-anchors a spell that is still up. And
+    worse: the first build DELETED the cell at exactly the moment the game
+    finally supplied the truth — it threw away the only reliable evidence it
+    ever gets. `deriveSpellState` now diffs the new block against the previous
+    one; anything the old block listed and the new one doesn't has ended,
+    because the game just said so.
+  - The record lives in `SpellState.ended`, carries forward across later blocks,
+    is cleared by a RECAST (the name reappears, so it must not sit in both
+    lists), and ages out at `SPELL_ENDED_TTL_MS` — **one roisan** (Sekmeht), the
+    game's own unit, derived from `ROISAN_SECONDS` rather than a bare 60_000 so
+    it stays tied to the unit it means. Bounded with no timer anywhere: the
+    ageing-out is itself a state change and commits, and the render pass filters
+    on the same constant, so the cell clears either way. A departure ALWAYS
+    commits, so the delta gate can't swallow it.
+  - The greying is a **selectable ⚙ layer** (`expired`, on by default) — the
+    registry entry, the component's gate and the option-id guard all agree, and
+    it renders in both the floating and tab-hosted ⚙ automatically.
+  - **The converse matters as much:** a timed effect whose anchor has run past
+    is no longer dropped. The game listing it is the evidence it is live; only
+    the game dropping it is evidence otherwise. (An old harness case asserted
+    the opposite and was updated with the reasoning attached.)
+- **Spell Monitor: ENDING IS TWO STAGES, and both are now visible (Sekmeht):**
+  *"if the timer expires, it's important to see it's expired, then have the game
+  show that it's ended by not showing it anymore in percWindow — that shows it's
+  actually not in effect anymore."* Stage one had no appearance of its own: a
+  countdown that had run out read "<1m", indistinguishable from one with fifty
+  seconds left, so the moment you were actually watching for was the one moment
+  the window would not name.
+  - **Stage one — "expired":** the time the game gave us has elapsed. New pure
+    predicate `spellExpired(effect, now)` (timed effects only), a label that
+    says the word outright, and `.sm-cell--expired` — an inset ring plus a
+    heavier label, on a cell that stays fully lit and red. It is marked
+    INDEPENDENTLY of the urgency layer, because an expiry is a STATE rather than
+    a colour band, and turning the traffic light off must not hide it; the ring
+    is neutral by default and takes the band's red only on a cell that is
+    already crit, decided by SPECIFICITY (`.sm-cell--crit.sm-cell--expired`)
+    rather than source order (pitfall #111). Drawn as a `box-shadow`, not a
+    border, because the final-minute pulse ANIMATES the border and an animation
+    always beats a normal declaration — a border rule would have applied only
+    when the pulse layer happened to be off.
+  - **Stage two — "ended":** the game stopped listing it. Unchanged, and still
+    the only authoritative one.
+  - **Why they must stay separate, and why this is not a distinction without a
+    difference:** DR floors its roisaen, so our clock can reach zero with up to
+    59 seconds still to run, and a repaint may legitimately hand an "expired"
+    cell more time and send it straight back to counting down. Stage one is
+    actionable; stage two is settled. The tooltip spells out which one you are
+    looking at (UX #8) — the two are one word apart on screen.
+  - The bar of an expired cell is an EMPTY track: `barFraction` now returns 0
+    past the anchor, ahead of the "no ceiling learned yet ⇒ show it full"
+    fallback, so a `(0 roisaen)` reading can no longer put a full bar beside the
+    word "expired".
+  - No new ⚙ option: nothing is added to or removed from the grid, so there is
+    nothing to toggle. The existing **Ended effects** layer still governs stage
+    two only, and its description now says so.
+  - 16 harness cases pinning the two apart — the boundary instant, a second
+    early, each non-timed kind, ended-beats-expired, and the reversibility that
+    is the whole reason for the split.
+- **Spell Monitor: a spent cell counts down to its own removal (Sekmeht).** The
+  greyed cell gave no sense of how long it was staying, so it read as though it
+  might sit there indefinitely. It now prints the remaining grace beside the
+  word — `ended 45s` — and its BAR drains that roisan rather than sitting empty.
+  - **Seconds here, deliberately, where every other time in this window is
+    whole minutes.** The minutes rule exists because DR reports whole roisaen,
+    so a ticking `28:04` would claim precision the GAME never gave us — but this
+    grace is measured by a timestamp we stamped ourselves against a constant we
+    chose. We know it exactly, so stating it exactly is the honest thing.
+  - The bar is what removes the ambiguity: `45s` next to "ended" could as
+    easily be read as *elapsed since*, whereas a shrinking bar is unmistakably
+    *remaining*. The tooltip spells it out as well.
+  - The countdown is its own element rather than folded into the label, so the
+    WORD stays the primary fact and `spellRemainingLabel` keeps returning one
+    fact — which is what keeps it testable.
+- **Spell Monitor: feed status IN THE HEADER BAR (Sekmeht) — a new ⚙ layer, ON
+  by default.** `updated 3s ago · every ~6s`, modelled on the Lich Scripts
+  footer. It answers the question a still grid otherwise raises — *is this feed
+  alive, or has it hung?* — and lets you anticipate the next repaint.
+  - **It sits in the header rather than a strip of its own (Sekmeht's placement
+    call), and follows that layer:** hide the header and the readout goes with
+    it. It is metadata about the window, so it belongs with the window's
+    identity — and it then costs no row at all, which matters for a surface
+    whose whole point is to shrink to a strip. `margin-left: auto` groups it
+    with the count at the right; it truncates before the title does, because the
+    title is what identifies the window.
+  - **It reports the ARRIVAL, not the last change, and that distinction is the
+    whole feature.** `SpellState.reportedAt` only advances when the delta gate
+    commits, so it can sit still for many minutes while DR repaints constantly;
+    showing that would say "30m ago" about a perfectly live feed. The new
+    `SpellPulse` records every non-empty block, gate or no gate.
+  - **It rides a REF, not a prop value, and that is load-bearing.** Every
+    Experience receives the same props (pitfall #82c), so a timestamp that
+    changes on every repaint would re-render Moons and the Tableau along with
+    it — undoing exactly what the delta gate buys. A ref object's identity never
+    changes, so it breaks no memo and only the one readout that wants it pays.
+    The cost is that a ref write triggers no render, so the reader supplies its
+    own clock.
+  - **The cadence is MEASURED, not claimed.** Lich Scripts can say "polls every
+    5s" because it owns the poll; DR's repaint cadence is push-driven and
+    (per DESIGN) unmeasured, so the strip states the MEDIAN of the last 8 gaps
+    and says nothing at all until it has three of them. Median, not mean: one
+    quiet stretch would drag a mean to "every ~155s" about a feed pulsing every
+    six seconds (a harness case pins exactly that).
+  - **No ⟳ refresh button** — unchanged, and deliberate. No *verified* command
+    forces a `percWindow` repaint, and inventing one would be a guess
+    (Principle #10). The strip at least tells you when the next one is due.
+  - **`formatAgo` is now shared** with the Lich Scripts footer
+    ([utils/formatAgo.ts](src/renderer/utils/formatAgo.ts)) rather than
+    reimplemented, so the two surfaces cannot drift into "3s ago" vs "3 seconds
+    ago" (pitfall #127). It takes `now` as a parameter so a caller with its own
+    clock formats against the instant it rendered. Two small behaviour changes
+    fall out: the Lich Scripts footer gains an hours band (`3h ago` rather than
+    `180m ago`), and a future-dated stamp reads "just now" instead of a negative
+    age.
+  - The clock now runs continuously while the strip is shown — it has no
+    deadline to bid, since "3s ago" changes every second forever. That is the
+    strip's cost, which is why it is a ⚙ layer; and it is bounded by MOUNT, so
+    it never ticks for a background tab. In practice it changes little: the
+    clock already ran whenever any timed effect was up.
+  - 31 harness cases over the countdown, the pulse model and `formatAgo`.
+- **Spell Monitor: it can be shrunk to a strip now (B318, Sekmeht).** The window
+  refused to go below 110px — the `MIN_WIN_PX` floor every `kind: 'panel'`
+  window inherits — while its natural one-row height is about 84px, so there was
+  always ~25px of dead space no drag could remove. `ExperienceDef` gained an
+  optional **`minSize`**, threaded through `ExperienceLayer` to `FloatingWindow`;
+  the Spell Monitor declares `{ w: 180, h: 48 }`.
+  - **The precedent was already in the same file**: the chrome bars got per-kind
+    floors because the panel floor made them "unshrinkable vertically" — the
+    identical complaint, for the identical reason. A grid of short cells is a
+    strip, not a panel of text.
+  - Declared **per Experience rather than lowered globally**: "how short can this
+    usefully be?" is a property of the SCENE. A sky or a tableau needs height,
+    and the default floor stays a fair guard for them.
+- **Moons: Katamba's glow removed (Sekmeht).** It carried a miasmatic
+  dark-violet haze curved against sun elevation — the one "glow" in the scene
+  that was a shadow rather than light. Gone outright: the moon is black as soot
+  and sheds nothing, so the truest rendering is nothing at all, and its soot
+  disc plus violet-grey rim already identify it. Its `glow`/`glowStrength`/
+  `glowR` fields and its gradient went with it rather than lingering as dead
+  data, and `MoonStyle.glow` is now **optional** — so the FIELD is the switch
+  for the gradient defs, the disc layer AND the lake reflections, which can no
+  longer disagree about which moons give light. (All three name-checked
+  `'katamba'`; the reflections were the one the first pass missed, caught in the
+  bug check — pitfall #127, two paths answering one question must share the
+  source. It selects the same moon today; the point is that it cannot stop.)
+- **Bug check (eight fixes; one reported, seven found by audit).**
+  - **The header could WRAP and double its own height (B319)** — `.sm-head-title`
+    was a shrinkable flex item with no `nowrap`, so a narrow header squeezed it
+    until "ACTIVE SPELLS" broke to a second line, doubling a strip that pins
+    `line-height: 1` for exactly one row. Latent since v0.19.5 (reachable at a
+    large game font) and made ordinary by putting the feed readout in the same
+    row. Title and count are now `flex: 0 0 auto`; the readout is the only thing
+    that yields, which is what its ellipsis is for. **The CSS comment beside it
+    already claimed this property while nothing implemented it** — worth
+    remembering that an aspirational comment reads exactly like a guarantee.
+  - **The "Header bar" option under-described itself** once the feed readout
+    moved into it: a toggle that hides more than its text admits is the UX #8
+    failure in miniature. Its description now names the count AND the feed.
+  - **FEED LIVENESS was not recorded for an EMPTY block — which froze the new
+    strip in exactly the case it exists for.** The record was taken inside the
+    non-empty branch, and the empty branch early-returns once `effects` is
+    already empty. So when every spell dropped and DR kept repainting an empty
+    list, the readout sat at "45s ago" beside a perfectly live feed. Now taken
+    for every arrival, ahead of both the delta gate and the empty branch —
+    `undefined` (the stream never touched) records nothing, `[]` (DR sent a
+    clear) counts, because a clear IS an arrival.
+  - **…and the split-flush that made that fix load-bearing.** DR sends a clear
+    then its lines, and main's flush coalescing is LEADING-EDGE on 16ms — so
+    when the client is idle the clear flushes alone and the lines follow in the
+    next batch: one repaint, two arrivals. Counting the ~16ms between them would
+    have dragged the median cadence toward zero precisely when someone is
+    sitting still reading the strip. `recordSpellPulse` now advances the
+    timestamp but discards any gap under `SPELL_PULSE_COALESCE_MS` (250ms) —
+    well above the coalescing window, far below any plausible DR cadence.
+  - **Two MORE Katamba name-checks survived the glow removal**, and one of them
+    justified itself by the haze that had just been deleted ("its violet haze
+    already carries its silhouette"). The earthshine wash and the toward-full
+    brightening both ask the same question as the three already converted —
+    *does this moon shine?* — so all five now read the `glow` FIELD. The comment
+    added a day earlier claiming "asked in THREE places" was itself wrong, which
+    is the pitfall it was citing (#127) doing its work on the person quoting it.
+- **Profiled (DESIGN §45.10), because the clock now runs continuously rather
+  than retiring.** Measured on BOTH axes — §45.8's standing lesson is that
+  timing React alone is blind to the ones that bite. Render+commit is 0.087ms at
+  8 effects and 0.143ms at 25 (cheaper than a Moons render), and a
+  MutationObserver over real ticks shows the only DOM mutation is **one
+  `transform` write per cell plus one text node — and zero childList**, so a
+  tick invalidates no layout. The genuinely NEW cost, an empty grid with just
+  the readout, is **0.007ms and one text node per second**. Deliberately NOT
+  claimed: style recalc, paint, and the compositing of permanently-transitioning
+  bars — unchanged by this version, and named in §45.10 as the axis to measure
+  if a large buff stack is ever reported as heavy.
+- **Harness:** §L grew 98 → **149** cases across this version (the two-stage
+  end, the clear-out countdown, the feed-pulse model, `formatAgo`, and the
+  no-duplicate-on-recast guard Sekmeht asked for). **296 pass overall**; the one
+  failure is the pre-existing `planReconnect` case written against GemStone
+  support that does not exist — the same premise makes `run.mjs` fail to bundle,
+  so run `iso.mjs`.
+  - **`.sm-name` did not grow, which a third cell child would have broken.**
+    `.sm-cell-top` is `justify-content: space-between`, so with the name unable
+    to absorb the free space a third child (the new clear-out countdown) would
+    have had that space split into TWO gaps and floated the time chip into the
+    middle of every spent cell. `flex: 1 1 auto` makes the name eat it; the
+    two-child case renders identically to before. Latent rather than shipped —
+    the bug needed the third child to appear.
+  - **A stale orphan JSDoc above `liveSpellEffects`** still described the
+    dropping behaviour that v0.19.6 deliberately removed, directly contradicting
+    the block beneath it. Pitfall #126 again, and the third stale comment this
+    version has produced — worth noting as a pattern rather than three
+    coincidences.
+  - **The 1 Hz clock could retire with a greyed cell still on screen.** It bid
+    only on live expiries, so once the last countdown ran out `now` froze — and
+    a spent cell's one-roisan grace is measured against `now`, so it sat there
+    until DR happened to repaint, which on a repaint-on-change feed can be many
+    minutes. It now bids on **the next moment the display changes**, which is
+    the union of the live anchors and the ended TTLs (the latter only while the
+    layer is on, since a hidden cell has nothing to expire).
+  - **A reconnect-in-place burst false "ended" cells** — a v0.19.6 regression.
+    "Ended" is a DIFF against the previous block, and a reconnect swaps the
+    sessionId without remounting (pitfall #69), so the first block of the new
+    connection read every effect that had lapsed while you were disconnected as
+    having ended *this instant*: a wall of greyed "recast me" cells, which is
+    exactly the false certainty the two-stage model exists to avoid.
+    `spellPrevRef` now resets alongside the sky-sync flags already reset there.
+    `spellMaxRef` is deliberately KEPT — the learned bar ceilings are facts
+    about the spell, not the connection.
+  - **Two stale Katamba comments** still described the glow that was removed
+    ("its halo is a haze that DARKENS the sky"; "its faint glow reads 'no
+    light'"). Pitfall #126's exact shape — the comment outliving the code it
+    justified — and in this case it had outlived it by a day.
+  - The greyed treatment is deliberately DIFFERENT from `--untimed`, which is
+    quiet-but-live: a spent cell is **desaturated as well as dimmed**, so its
+    skill badge greys out too and the whole thing reads as inert rather than
+    merely unimportant (UX #9's "one artwork in two treatments" — the same cell
+    drained of colour, not a second design). A dashed border says "no longer
+    holding" without needing the word.
+  - It cannot also be traffic-lit: `spellBand` returns `none` for a spent
+    effect, precisely so the grey and the red never fight. It sorts LAST, below
+    even the permanents — it is a reminder, not something counting down, and
+    floating it to the top would contradict the de-emphasis.
+  - 22 harness cases over the departure model, including the redundant-repaint
+    gating and the converse (a past anchor is NOT ended); §L now 98.
+
+## v0.19.5 — Spell Monitor + tab drag fix
+
+- **Experience #3 — Spell Monitor (Sekmeht).** DR's active-spell readout as a
+  grid of live countdowns: one cell per effect, soonest-expiring first, each
+  with a depleting duration bar, running green while full, yellow past
+  halfway and red as it nears its end. Dual-hosted like every Experience — a floating window from the
+  shelf, or an `[e]`-badged tab via a panel's `+` menu. Registry id
+  `spellmonitor` (deliberately not `spells`, so it can never read as the Active
+  Spells PANEL in a tab strip — the Moons stream/experience lesson).
+  **No panel-system file was touched** (§34.8 item 5): one registry entry buys
+  the `+` menu, the shelf and the ⚙ popover.
+  - **Considered and rejected first:** a "right-click Active Spells → Classic /
+    Advanced" panel view toggle. Checked against §34.2's rejected "Interactive
+    Mode" model and **both prongs invert here** — the `spells` panel is not
+    optional equipment (that stream has no main duplicate and no
+    `STREAM_FALLBACK` entry, so its panel is the only place the content ever
+    appears), and unlike the combat HUD this genuinely IS a rendering of stream
+    text (no typed event carries the active list; the `spell` event is the
+    spell being *prepared*). The Experience route also leaves the mature panel
+    system byte-identical, which the toggle would not have.
+  - **No new plumbing.** `percWindow` aliases to `spells`, that stream is
+    clear-and-rewrite with no fallback, and the clear is applied in the batch
+    commit — so `streamLines.spells` is already an exact mirror of the current
+    block. No accumulator, no assess-style batch-boundary guard.
+  - **`parseSpellLine` is tolerant by design:** handles the singular `roisan`
+    as well as plural `roisaen` (a plural-only pattern would silently drop every
+    effect in its final minute), keeps a non-numeric parenthetical
+    (`Trabe Chalice (intact, fading)`, `(indefinite)`) as an untimed effect
+    carrying that note, and keeps a bare name — never a dropped line. 1 roisan =
+    1 real minute via `ROISAN_SECONDS`, never a hardcoded 60_000.
+  - **Expiries anchor on each LINE's own timestamp** (its receipt time) rather
+    than one `Date.now()` per block — not the B192 skew case, since DR gives a
+    duration, not a server absolute time. **Known limitation:** this is NOT
+    replay-correct (`mkLine` stamps `Date.now()` and ignores the timestamp the
+    event carries), so a decouple/remount inflates remaining times until DR's
+    next repaint, which the delta gate then re-anchors. An earlier draft of the
+    docs claimed the opposite; corrected in the same release.
+  - **A delta gate** keeps DR's redundant repaints free: state is re-committed
+    only when the effect set, a note, a max ceiling or a timer's divergence from
+    prediction actually changes — otherwise the prior object identity holds, so
+    no Experience re-renders (pitfall #82c) and no countdown re-anchors. The
+    resolver is pure; one effect owns the refs (pitfall #70).
+  - **The bar's denominator is learned** (DR never states a full duration): the
+    highest roisaen seen per effect, held in a GameWindow ref so it survives the
+    component unmounting on every tab switch.
+  - **Traffic light (Sekmeht): green full → yellow midway → red near the end.**
+    `spellBand()` takes the MORE URGENT of a proportional and an absolute
+    reading — necessary, not belt-and-braces: the proportion denominator is
+    LEARNED, so on the first block after connecting every effect sits at 1.0 and
+    a pure-proportional band would paint the whole grid green including a buff
+    with two minutes left. Colours are three dedicated `--spell-band-*`
+    vars, NOT the vitals health ramp — reusing that was the first cut and was
+    wrong, because it means "this theme's health bar" rather than "traffic
+    light": `classic` takes its vitals from Genie, where health is RED AT FULL,
+    so the light ran red→orange-red→dark-red; `terminal` is monochrome, so the
+    amber band vanished. The replacements are defined once in darkBase as a
+    fixed hue mixed toward the theme's own text, so meaning is fixed while
+    contrast self-corrects. Colour-blind entries are explicit (the vitals answer
+    turns crit amber, which would collide with our mid band). The colour lives
+    in the bar and border, not the numerals — amber cannot clear text contrast
+    on white without ceasing to look amber.
+  - **An empty block clears the grid on a 400ms deferral** — meaningful (all
+    effects dropped) but deferred, because a clear and its lines can straddle a
+    flush boundary and committing the gap would blink the grid empty.
+  - **Two honesty rules:** whole minutes only, never a seconds countdown (DR
+    reports whole roisaen — `29:00` would claim precision we were never given;
+    the last minute reads `<1m`), and an unparsed effect is still shown.
+  - **The percWindow shape catalogue now mirrors LICH'S OWN parser**
+    (`xmlparser.rb`), after reading it turned up four shapes a version written
+    from one captured block got wrong: **`anlaen` is a real unit** (1 anlas = 30
+    roisaen, so Stellar Collector lost its countdown entirely), **`Fading` is
+    the opposite of untimed** (Lich reads duration 0 — lapsing now — while we
+    showed it as a quiet note), **`Indefinite`/`OM` are permanent**, and a
+    stated **percentage** is a proportion rather than a time. `SpellKind` is now
+    timed/fading/permanent/percent/unknown, and the distinction is load-bearing:
+    fading is the most urgent state, permanent the calmest, so the `untimed`
+    layer hides the quiet kinds but never fading, only permanent/unknown are
+    muted, and each kind shows the game's own word rather than a faked duration.
+    A stated percentage also beats the learned ceiling for the bar — a true
+    proportion versus "the most we happen to have seen".
+  - **Skill badges + abbreviations (Sekmeht).** `[A]`ugmentation, `[W]`arding,
+    `[F]`orm and so on, plus an option to show `ECRY` instead of *Eillie's Cry*
+    so what you read is what you type to renew it. Data is Lich's
+    `base-spells.yaml`, snapshotted by `tools/gen-spell-data.mjs` into a
+    COMMITTED `spellData.ts` (430 entries, ~29KB) — committed rather than read
+    live, because this Experience works without Lich; an unknown name gets no
+    badge, never a wrong one. Verified first: percWindow names match the YAML
+    keys verbatim (8/8 on a real capture), the three sections have zero name
+    collisions, and all twelve values have distinct first letters. Metamagic is
+    **X not M** (M is Meditation — unambiguous only by luck is the #55 trap).
+    Found in the source data: 33 `metamagic: true` entries with no `skill`, and
+    **`See the Wind` carries `Skill:` with a capital S — a typo in Lich's own
+    file** that a case-exact read drops silently. Known gap: Thief Khri aren't
+    in that file at all, so Thieves get no badges.
+  - **Badge colours are twelve `--spell-badge-*` vars, and all fifteen Spell
+    Monitor colours are exposed in the Theme Editor's HUD tab** — genuinely
+    user-editable rather than only themeable, which was the actual ask. The chip
+    is a quiet low-alpha tint on purpose: it IDENTIFIES while the traffic light
+    ALARMS, and two loud colour systems in one cell would fight.
+  - **Group by skill (Sekmeht, 2026-09-06).** `groupSpells()` puts each magic
+    skill / ability type under a labelled hairline heading — a Barbarian gets
+    exactly four blocks (Form 15 · Berserk 13 · Roar 11 · Meditation 9), casters
+    5–7, Warrior Mage 7. Three decisions: it **composes** with Soonest-first
+    (grouping preserves the caller's within-group order, so sort-then-group
+    leaves each group internally sorted) — which is why two booleans still
+    suffice and no enum control was needed; the group ORDER is **fixed**, not
+    derived from what's currently up, since a self-reordering list reshuffles
+    the grid while you're reading it; and the heading is a **hairline divider,
+    not a padded header**, because a Warrior Mage would otherwise spend seven
+    rows on chrome in a strip-shaped window. Unknown names bucket into "Other"
+    last, which makes grouping inert for a **Thief** — Khri aren't in Lich's
+    data at all. 9 harness cases.
+  - **Data fix found while measuring the group shapes:** the generator dropped
+    the guild for all 14 `battle_cries`, because that section separates Bardic
+    Screams from Barbarian Roars with **YAML COMMENTS**, which no parser can
+    read. The `type` is the reliable signal and the split is 1:1 (scream→Bard,
+    roar→Barbarian). Lesson: when a section's grouping lives only in comments,
+    derive it from a real field rather than dropping it. (The nine guild-less
+    entries in `spell_data` — Dispel, Imbue, Lay Ward… — are correct: they're
+    the universal spells every magic guild learns.)
+  - Nine ⚙ layers, the last five added at Sekmeht's ask. **Abbreviations,
+    Soonest-first and Group-by-skill are OPT-IN** (`defaultHidden`, Sekmeht 2026-09-06) — so DR's
+    own ordering is the default, which is stable as timers tick where ours
+    re-arranges under the reader; the urgency colour still marks a lapsing
+    effect, it just isn't moved. Consequence worth knowing: `spellSortRank`'s
+    fading-first priority applies only when that layer is on.
+  - **⚙ prefs were already persistent — verified rather than assumed, and now
+    harness-locked.** `ExperienceInstance.hidden` rides `scopedKey('experiences')`
+    → `state:` → YAML, `experiences` is already a Transfer category,
+    `setExperienceOption` find-or-creates an `open:false` prefs record so a
+    tab-only user still gets one, and it seeds `defaultHiddenMap(def)` so a
+    default-off layer persists explicitly. The reason it's safe is that
+    **`loadExperiences` filters with a type GUARD instead of rebuilding each
+    record** — a rebuild is the pitfall #121 shape that has destroyed a field
+    three times now, so the round trip is locked with a test.
+  - **New `check-options.mjs` guard**: the registry's option ids and the ids the
+    component queries via `shown()` are two hand-written lists of the same names
+    (pitfall #127), and `shown()` falls back to TRUE for an unknown id — so a
+    typo would silently force a default-off layer permanently ON. Asserted equal.
+  - Epilepsy-safe drops the pulse but keeps the colour (UX #9b). Bounded + scrollable
+    (pitfall #109), tabular numerals (#103), em chain anchored (#58a), `.sm-`
+    prefix verified unique (#55c). Works direct-SGE — no Lich needed.
+    No slash command by design (§34.6), recorded rather than skipped.
+  - 77 harness cases (`tmp-rules-harness` §L) over the verbatim capture, the
+    traffic light's first-sighting trap, and every shape in Lich's catalogue.
+  - **Layout pass (Sekmeht: the header "feels cramped into the top left").** Its
+    `line-height: 1` was right (UX #7) but the padding was `0.25em 0.6em` — 3px
+    /7px at the default font, where the house strip standard (`.sl-header`) is
+    `2px 12px`, so barely half the horizontal inset. Now `0.4em 0.9em`, kept em
+    so it scales with the scene font, and deliberately the SAME horizontal value
+    as `.sm-grid` so the title and the first cell share a left edge — a label
+    lining up with nothing below it was much of what read as off. The count chip
+    also moved to the far right (`margin-left: auto`) so the strip spans the
+    window instead of huddling in the corner.
+  - **The ⚙ popover was unbounded — a real clip, and it predates this feature.**
+    `.exp-inst-options` had no `max-height` while `.fl-body` /
+    `.panel-frame-body` are both `overflow: hidden`, so in a short window the
+    top options were simply CUT OFF with no scrollbar and nothing to indicate
+    they existed. Its height is the option COUNT, which varies per Experience —
+    **Moons declares 17** — against a freely-resizable, often deliberately short
+    window. Bounded to `calc(100% - 40px)` with `overflow-y: auto` and
+    `overscroll-behavior: contain` (pitfall #109); fixes Moons and the tab-hosted
+    ⚙ at the same time.
+  - **B314 — Theme Editor rows for a cascading var showed a BLACK swatch.**
+    Found auditing the 15 colour rows this feature added, and it turned out to
+    hit pre-existing rows too. darkBase deliberately stores expressions rather
+    than literals (`var(--text-dim)`, `color-mix(… var(--text-primary))`), and
+    `createCustomThemeFrom` copies the whole of darkBase into a new custom
+    theme — so those expressions reach the editor verbatim, and
+    `<input type="color">` silently falls back to black on anything that isn't
+    `#rrggbb`. So the editor was showing black for colours that actually paint
+    teal, rose and slate. `resolveDisplayHex` now asks the BROWSER what the
+    expression evaluates to (hidden probe + `getComputedStyle().color`), which
+    is the only correct answer since it depends on the live theme; literal hex
+    takes exactly the old path, and the commit path is untouched so an edit
+    still writes plain hex.
+  - **The empty state stopped lying.** With "Untimed effects" off and only
+    untimed effects up, the window insisted there were none. "Nothing is up" and
+    "everything up is filtered out" are different facts; it now says which, and
+    names the toggle that is hiding them.
+  - **Profiled (Sekmeht asked about redraw cost). One real find; the rest free.**
+    Measured by bundling the real modules: the 1 Hz clock's whole derivation
+    chain is **0.24–0.94 µs/tick** (8 → 25 effects, grouped) and the always-on
+    parse — paid whether or not the window is open — is **4.4 µs per repaint at
+    8 effects, 20.5 µs at 25**, i.e. 0.006% of a core even assuming DR repaints
+    on every prompt. Two structural properties matter more than the numbers:
+    **zero per-line cost** (the derive is an effect on `streamLines.spells`, not
+    a branch in the stream-text loop), and a background TAB is unmounted so its
+    clock doesn't run. A background CHARACTER's floating window does tick —
+    left alone deliberately, since gating on `isActive` buys nothing measurable
+    and costs a stale label on return (the §45.7 trade). Also worth recording:
+    the delta gate does NOT save parse work — a gated repaint measures slightly
+    slower, because it parses and then compares. Its value is entirely the
+    avoided re-render, which is what the design claims.
+  - **The bar animated `width` — the one genuine perf bug.** Because it drains
+    on every tick it sits in a CONTINUOUS transition the whole time the window
+    is open, and `width` invalidates layout on every animation frame: 25 bars ×
+    60fps × each open window × each character, forever. Now `transform:
+    scaleX()` with `transform-origin: left`, which is compositor-only. The fill
+    drops its own border-radius (scaling squashes it); the track's
+    `overflow: hidden` rounds the left end and a square leading edge is right
+    for a progress bar. Pitfall #126's family. The other two animations audited
+    clean: the cell's background/border transition is paint-only and fires only
+    on a real band change, and the pulse animates border-color on the 0–2 cells
+    in their last minute.
+  - **"Fading" printed twice, and the extra row inflated the cell** (Sekmeht,
+    screenshot: `Tenebrous Sense (Fading)`). The label already renders the word
+    for a `fading` reading, and the note row rendered the parenthetical — the
+    same word, plus a whole second line, which is what made those cells look
+    oversized next to their neighbours. The rule is now that **the note exists
+    to add what the LABEL does not already say**: it's compared
+    case-insensitively against the label rather than switched on `kind`, so a
+    bare `(Fading)` or a bare `(94%)` collapses to one row while a COMPOUND
+    reading survives — "0%, fading" against a "0%" label genuinely adds a word.
+    `spellRemainingLabel` and `spellNoteText` moved OUT of the component into
+    experiences.ts as pure functions to make this harnessable: neither reads
+    correctly alone, and it's their PAIRING that produced the bug, so the tests
+    assert them together (9 cases).
+  - **Bug-check finds, fixed the same day:** a liberal `\bfading\b` match would
+    have painted every `Trabe Chalice (intact, fading)` permanently red (Lich
+    anchors its duration group right after the `(`, so only a bare `(Fading)`
+    means lapsing); and `spellBand` compared percent with `=== null`, so an
+    absent field became NaN, failed every threshold and landed on the CALMEST
+    band — a reading we don't have must fail toward no colour, never toward
+    "this one is fine".
+  - **Open:** DR's repaint cadence is unmeasured (the gate is correct either
+    way); no ⟳ button, since no *verified* command forces a `percWindow`
+    repaint and one wasn't guessed.
+
+
+- **B311 (Sekmeht): moving a stream tab between windowed panels left the SOURCE
+  frame's tabs jittering indefinitely and collapsed the map's animation FPS.**
+  Cross-frame adoption removes the tab from the source frame, unmounting the
+  element that carries `onDragEnd` — the browser fires `dragend` on a detached
+  node, React never sees it, so `dragTabId` stayed set forever. The F46 FLIP
+  layoutEffect has NO dep array, PanelFrame re-renders on every game batch, and
+  its only guard is `dragTabId === null`: it therefore re-measured (forced
+  reflow) and re-transformed every tab per batch, reading positions
+  MID-TRANSITION so the next render always saw a >1px delta and re-animated —
+  self-sustaining while text flowed. The per-batch forced layout is what starved
+  the main thread and wrecked the map's FPS (pitfall #126's contention
+  signature: an unrelated subsystem degrading is the tell that the cost is
+  per-render layout, not a fault in the thing that looks broken). Fixed with a
+  state-derived reset — clear `dragTabId` when the dragged tab is no longer in
+  `tabs`, which is exact because the frame re-renders with the new list.
+  Requires the source window to keep ≥2 tabs (an emptied one closes outright).
+  **PRE-EXISTING since v0.18.2**, when cross-frame adoption shipped — NOT from
+  PR #2; `PanelFrame.tsx` is untouched by that merge. Pitfall #137 records both
+  halves: `dragend` is unreliable when the source can unmount, and a no-deps
+  effect gated on a flag is only as safe as that flag's worst clearing path.
+- **B312 (Sekmeht): panel content "quivered" and highlighted text appeared to
+  bold then revert — intermittent, across many versions, never reproducible.**
+  Seen alongside B311 but INDEPENDENT of it and long predating it. The unread
+  dot is a conditionally-rendered 6px flex child, so a stream tab going
+  unread/read changes width; `.panel-tab-list` has content-driven height and
+  `.panel-frame-body` is `flex: 1`, so crossing the overflow threshold made the
+  horizontal scrollbar appear, ADD its height to the strip, and take it out of
+  the body — reflowing every line of game text, repeatedly, as unread states
+  churned. It read as a FONT bug because a highlight's filled background makes
+  the subpixel re-raster obvious (the reporter uses no text effects at all), and
+  it was unreproducible because it needs the strip sitting right AT the
+  threshold (panel width × tab count × label length × font size).
+  **Compounded by an inert rule:** `scrollbar-width: thin` was set, which per
+  **B178** disables ALL `::-webkit-scrollbar` styling in modern Chromium — so
+  the `height: 3px` rule never applied and the real bar was Chromium's native
+  ~11px, making each toggle a large jump. Fixed with `overflow-x: scroll` (the
+  gutter is always reserved, so the height is constant) plus removing
+  `scrollbar-width`/`scrollbar-color` so the themed 3px bar returns — which is
+  what makes the permanent gutter visually free, since its track is
+  `var(--bg-sunken)`, the strip's own background. Pitfall #138. **This also
+  retires the earlier text-effect hypothesis**, which was wrong: the
+  `hl-fx-*` effects do change rasterization (six of them use
+  `background-clip: text`, and `fire` animates `filter: brightness`), but none
+  were in use.
+- **Investigation note — the "bolding" was NOT a text-effect or transform
+  artifact.** First hypothesis was compositor-layer promotion from an animated
+  highlight effect; it was wrong, because the reporter uses none. Reading the
+  effect CSS was still worth recording: six effects (`shimmer`/`rainbow`/`gold`/
+  `gradient`/`fire`/`frost`) use `-webkit-background-clip: text` +
+  `text-fill-color: transparent`, which permanently disables subpixel
+  antialiasing, and `fire` animates `filter: brightness(1 → 1.18)` — so those
+  DO alter apparent weight, just not here. The actual cause was B312's reflow.
+  Kept because the next "text looks wrong" report should check effects first,
+  then container reflow.
+
 ## v0.19.4 — Attach to a running Lich (PR #2, Kahlen)
 
 **Lichborne's first external code contribution.** Merged as a `--no-ff` merge
@@ -14,7 +810,7 @@ commit so all 12 of the author's commits and their reasoning survive in history
 AI-assisted — so the human attribution lives in the merge commit, credits.ts and
 release-notes.md).
 
-- **F104 (Kahlen): attach mode — a third connection mode** beside Lich-launch and
+- **F107 (Kahlen): attach mode — a third connection mode** beside Lich-launch and
   Direct. `AttachConnection` (new, electron-free so a plain-node harness can
   exercise it) opens a bare TCP connection to an already-running detachable Lich
   (`--headless PORT` / `--detachable-client=`). No account, no password, no Ruby
@@ -3208,3 +4004,4 @@ Only shows "Migrated" item counts. Users never see what was counted but not impo
 | 2026-05-13 | Detail panel tracks current room — `useEffect` on `currentRoom?.id` updates `selectedId` to `currentRoom.id` while the panel is open, so the panel follows the player as they move; `selectedOrphan` also cleared on move to prevent stale dual-selection state |
 | 2026-05-13 | B48/B49/B50/B51 fixes — see BUGS.md |
 | 2026-05-13 | F13 shelved (world map) — continuous multi-zone SVG stitching deferred; design spec remains in DESIGN.md §25.8 Phase 2; zone-by-zone graph view ships first; added to BUGS.md Open Feature Requests and DESIGN.md §19.12 Future Work |
+

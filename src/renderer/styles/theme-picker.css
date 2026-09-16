@@ -1,88 +1,16 @@
-.tp-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
-}
+/* Theme Picker — the About look (B400, v0.19.7). The backdrop, panel, header
+   band, chip tabs, ✕ and buttons come from ui.css (.ui-modal*, .ui-tab,
+   .ui-btn); this file keeps the list + preview layout. `.tp-` is exclusively
+   this dialog's prefix since the Triggers panel moved to `.trg-` (v0.18.0). */
 
-.tp-modal {
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  width: var(--modal-w-standard);
-  max-width: 95vw;
-  height: var(--modal-h-standard);
-  max-height: var(--modal-h-standard);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
-}
+.tp-backdrop { z-index: 200; }
 
-/* ── Header ─────────────────────────────────────────────────────── */
+/* Focused on open (B397) so keyboard users start inside the dialog; the panel
+   isn't a control, so it draws no focus ring of its own. */
+.tp-modal[tabindex="-1"]:focus { outline: none; }
 
-.tp-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--bg-hover);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.tp-title {
-  font-weight: 700;
-  color: var(--accent);
-  font-size: 0.9rem;
-  letter-spacing: 1px;
-  flex-shrink: 0;
-}
-
-.tp-tabs {
-  display: flex;
-  gap: 4px;
-  flex: 1;
-}
-
-.tp-tab {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: 4px;
-  padding: 4px 14px;
-  font-family: inherit;
-  font-size: 0.78rem;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.tp-tab:hover {
-  border-color: var(--accent-dim);
-  color: var(--accent);
-}
-
-.tp-tab--active {
-  border-color: var(--accent-dim);
-  color: var(--accent);
-  background: var(--accent-bg);
-}
-
-.tp-close {
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  font-size: 1.4rem;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-.tp-close:hover { color: var(--text-secondary); }
+/* The chip tabs take the free space between the title and the ✕. */
+.tp-tabs { flex: 1; min-width: 0; }
 
 /* ── Body: list + preview ────────────────────────────────────────── */
 
@@ -95,15 +23,6 @@
 
 /* ── Left: theme list ────────────────────────────────────────────── */
 
-/* Scoped to a DIRECT child of .tp-body (the theme-picker structure) so this
-   rule does NOT leak onto the Triggers panel's `.tp-list` — the `.tp-` prefix
-   collides between theme-picker.css and triggers.css (same global classes). The
-   triggers rule list is `.tp-body > .tp-sidebar > .tp-list` (a grandchild), so
-   the `>` combinator excludes it; without this, `width: 210px` pinned the
-   triggers list to 210px inside its (now wider) sidebar, leaving a gap. The
-   raised specificity (0,1,1) also stops triggers' bare `.tp-list{flex:1}` from
-   leaking back onto the theme list. See CLAUDE.md pitfall #55 (the `.tp-`
-   collision) — a proper prefix rename is the real fix; this is the surgical one. */
 .tp-body > .tp-list {
   width: 210px;
   flex-shrink: 0;
@@ -123,10 +42,12 @@
   color: var(--text-secondary);
   font-size: 0.82rem;
   user-select: none;
-  transition: background 0.1s, color 0.1s;
+  transition: background-color var(--ui-transition), color var(--ui-transition);
 }
 
-.tp-list-item:hover {
+/* The selected row is excluded rather than re-declared under its own :hover
+   (pitfall #107) — an exclusion can't be outranked by a later edit. */
+.tp-list-item:not(.tp-list-item--selected):hover {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
@@ -136,17 +57,15 @@
   color: var(--accent);
 }
 
-.tp-list-item--selected:hover {
-  background: var(--accent-bg);
-  color: var(--accent);
-}
-
 .tp-list-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  /* From the text colour, not white-alpha: the white dots of Classic Light
+     and Ivory had no visible edge on a light theme, and the dot is the one
+     cue telling the two "Classic" rows apart (B326, pitfall #35). */
+  border: 1px solid color-mix(in srgb, var(--text-primary) 25%, transparent);
 }
 
 .tp-list-name {
@@ -176,6 +95,9 @@
   border-top: 1px solid var(--border-subtle);
 }
 
+/* Full width at the foot of the list; everything else is .ui-btn. */
+.tp-import-btn { width: 100%; }
+
 /* ── Right: preview pane ─────────────────────────────────────────── */
 
 .tp-preview-pane {
@@ -198,10 +120,12 @@
 }
 
 /* ── Preview mock ────────────────────────────────────────────────── */
+/* Painted with the PREVIEWED theme's own colours (inline styles in
+   ThemePicker's PreviewMock), not the active theme's — that's the point. */
 
 .tp-mock {
   border: 1px solid;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 14px;
   font-size: 0.8rem;
   line-height: 1.65;
@@ -218,7 +142,7 @@
   display: inline-block;
   width: 22px;
   height: 12px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .tp-mock-room-name {
@@ -243,7 +167,7 @@
 
 .tp-mock-exit {
   padding: 2px 8px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   border: 1px solid;
   font-size: 0.7rem;
 }
@@ -288,46 +212,4 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-}
-
-.tp-action-btn {
-  background: var(--bg-btn);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: 4px;
-  padding: 5px 14px;
-  font-family: inherit;
-  font-size: 0.78rem;
-  cursor: pointer;
-  transition: all 0.12s;
-}
-
-.tp-action-btn:hover {
-  border-color: var(--accent-dim);
-  color: var(--accent);
-}
-
-.tp-action-btn--danger:hover {
-  border-color: var(--color-danger-dim) !important;
-  color: var(--color-danger) !important;
-}
-
-/* ── Import button ───────────────────────────────────────────────── */
-
-.tp-import-btn {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: 4px;
-  padding: 4px 10px;
-  font-family: inherit;
-  font-size: 0.74rem;
-  cursor: pointer;
-  width: 100%;
-  transition: all 0.15s;
-}
-
-.tp-import-btn:hover {
-  border-color: var(--accent-dim);
-  color: var(--accent);
 }

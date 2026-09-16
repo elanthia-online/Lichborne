@@ -31,7 +31,12 @@ function readStore(): Record<string, string> {
 }
 
 function writeStore(store: Record<string, string>) {
-  fs.writeFileSync(filePath(), JSON.stringify(store), 'utf-8')
+  const p = filePath()
+  // Owner-only (B366d, hardening — the keys are already safeStorage-encrypted).
+  // `mode` applies only when the file is CREATED, so an existing file is
+  // chmod'ed too; Windows keeps its ACL-based defaults.
+  fs.writeFileSync(p, JSON.stringify(store), { encoding: 'utf-8', mode: 0o600 })
+  if (process.platform !== 'win32') { try { fs.chmodSync(p, 0o600) } catch { /* best effort */ } }
 }
 
 export function setAIKey(cap: AICapability, key: string): void {

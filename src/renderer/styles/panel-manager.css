@@ -1,93 +1,30 @@
-.pm-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
+/* Layout Manager — the About look (B400, v0.19.7). The backdrop, panel, header
+   band, ✕ and buttons come from ui.css (.ui-modal*, .ui-btn); this file keeps
+   the manager's own section/row layout. The mode chooser cards (.pm-mode*),
+   described rows and the lock checkbox are styled in free-layout.css. */
 
-.pm-modal {
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  /* v0.8.1: widened from 380px → 580px (~53% bigger) so the new longer
-     button labels ("Top-Right" / "Middle-Right" / "Bottom-Right") and
-     the four zones' Move/Add button rows fit comfortably without the
-     last button clipping.
-     v0.8.2: widened again 580px → 870px (~50% bigger) — the per-stream
-     row now carries ◀/▶ reorder buttons in addition to the move/remove
-     buttons, and the previous width was visibly cramped on the 3-button
-     move rows. */
-  /* The content (zone rows, banner, stream lists) is narrow, so the full 88vw
-     standard width left everything stretched edge-to-edge with big empty gaps
-     (Sekmeht). Cap at a comfortable width that still fits the widest 3-button
-     zone rows; falls back to 94vw on small screens. */
-  width: var(--modal-w-standard);
-  max-width: min(900px, 94vw);
-  height: var(--modal-h-standard);
-  max-height: var(--modal-h-standard);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
-}
+.pm-backdrop { z-index: 100; }
 
-.pm-header {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  background: var(--bg-hover);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
+/* The standard modal width is 88vw; the content (zone rows, mode cards,
+   stream lists) is narrow, so at full width everything stretched edge-to-edge
+   with big empty gaps (Sekmeht). Capped at a width that still fits the widest
+   3-button zone rows. */
+.pm-modal { max-width: min(900px, 100%); }
 
-.pm-title {
-  flex: 1;
-  font-weight: 700;
-  color: var(--accent);
-  font-size: 0.9rem;
-  letter-spacing: 1px;
-}
-
-.pm-reset {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  border-radius: 3px;
-  font-size: 0.72rem;
-  cursor: pointer;
-  padding: 2px 8px;
-  margin-right: 8px;
-}
-
-.pm-reset:hover { border-color: var(--accent-dim); color: var(--text-secondary); }
-
-.pm-close {
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  font-size: 1.4rem;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-  transition: color 0.15s;
-}
-
-.pm-close:hover { color: var(--text-secondary); }
+/* Focused on open (B397); the panel isn't a control, so no ring of its own. */
+.pm-modal[tabindex="-1"]:focus { outline: none; }
 
 .pm-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 10px 0;
 }
 
-/* v0.8.1: clearer section + row separation in the Panel Manager. Sections
-   get a top border + extra top padding so each zone reads as a distinct
-   block. Rows get a thin divider between them so each stream row is
-   individually scannable. */
+/* v0.8.1: clearer section + row separation. Sections get a top border + extra
+   top padding so each zone reads as a distinct block. Rows get a thin divider
+   between them so each stream row is individually scannable. */
 .pm-section {
   margin-bottom: 4px;
   border-top: 1px solid var(--border);
@@ -99,52 +36,32 @@
   padding-top: 0;
 }
 
+/* Section labels inside the body stay small, uppercase and muted — only the
+   top header is an accent band (UX standard #10). This used to be an accent
+   band of its own, which flattened the hierarchy. */
 .pm-section-label {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 0.74rem;
+  font-size: var(--modal-label-size);
   font-weight: 700;
-  color: var(--accent);
+  color: var(--text-dim);
   text-transform: uppercase;
-  letter-spacing: 1.5px;
-  padding: 6px 14px;
-  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  letter-spacing: 0.09em;
+  line-height: 1.2;
+  padding: 10px 14px 6px;
 }
 
 .pm-section-label-text { flex: 1; }
 
-/* v0.8.1 (Panel Manager V2): the "Add Panel" button in the Panel Locations
-   section. Accent-coloured because it's the primary action — adds a new
-   panel slot to the layout. */
-.pm-btn-add-panel {
-  background: transparent;
-  border: 1px solid var(--accent-dim);
-  color: var(--accent);
-  border-radius: 3px;
-  font-size: 0.72rem;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  cursor: pointer;
-  padding: 2px 8px;
-  font-family: inherit;
-}
-
-.pm-btn-add-panel:hover {
-  border-color: var(--accent);
-  color: color-mix(in srgb, var(--accent) 60%, white);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-
-/* v0.8.1: status pill alongside each Panel Locations row. Shows the
-   current state in muted text so the action button reads as the
-   interactive element. */
+/* v0.8.1: status pill alongside each Panel locations row. Shows the current
+   state in muted text so the action button reads as the interactive element. */
 .pm-zone-status {
   font-size: 0.7rem;
   letter-spacing: 0.5px;
   text-transform: uppercase;
   padding: 2px 8px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border-faint);
 }
 
@@ -154,15 +71,15 @@
 }
 
 .pm-zone-status--removed {
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-style: italic;
 }
 
-/* Inline empty-state hint inside an Available Stream row when no panel
-   is added — explains why there are no "+" buttons. */
+/* Inline empty-state hint inside an Available streams row when no panel is
+   added — explains why there are no "+" buttons. */
 .pm-empty-inline {
   font-size: 0.78rem;
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-style: italic;
 }
 
@@ -186,52 +103,16 @@
   font-size: 0.85rem;
 }
 
-.pm-row-actions { display: flex; gap: 6px; align-items: center; }
+.pm-row-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 
-/* v0.8.2: ◀ / ▶ reorder buttons — narrower than the move/remove buttons
-   so the row reads "reorder cluster, then move cluster, then remove" at
-   a glance. Disabled state dims them so the end-of-list state is obvious. */
-.pm-btn-reorder {
-  background: var(--bg-btn);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: 3px;
-  padding: 3px 6px;
-  font-family: inherit;
-  font-size: 0.78rem;
-  line-height: 1;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.pm-btn-reorder:hover:not(:disabled) { border-color: var(--accent-dim); color: var(--accent); }
-.pm-btn-reorder:disabled { opacity: 0.35; cursor: default; }
-
-.pm-row-actions button {
-  background: var(--bg-btn);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: 3px;
-  padding: 3px 8px;
-  font-family: inherit;
-  font-size: 0.75rem;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s;
-}
-
-.pm-row-actions button:hover {
-  border-color: var(--accent-dim);
-  color: var(--accent);
-}
-
-.pm-btn-remove:hover {
-  border-color: var(--color-danger-border) !important;
-  color: var(--color-danger) !important;
-}
+/* v0.8.2: ◀ / ▶ reorder buttons — narrower than the move/remove buttons so
+   the row reads "reorder cluster, then move cluster, then remove" at a
+   glance. Everything else about them is .ui-btn. */
+.pm-btn-reorder { padding: 4px 6px; }
 
 .pm-empty {
   padding: 4px 14px;
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: 0.8rem;
   font-style: italic;
 }

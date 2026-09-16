@@ -23,7 +23,9 @@
 .icon-row {
   display: flex;
   align-items: center;
-  padding: 4px 12px;
+  /* B395: em off the strip's game-font anchor (4px 12px at the default 12px),
+     so the strip's padding scales with the rest of it. */
+  padding: 0.33em 1em;
   gap: 0;
 }
 
@@ -106,12 +108,16 @@
   text-align: center;
   font-size: 0.84em;
   font-weight: 600;
-  padding: 2px 6px;
+  /* B395 (UX #7): a chip in a strip is text-height plus minimal padding.
+     `line-height: 1.5` made each chip ~50% taller than its own text and set the
+     height of the whole icon row; `1` + em padding (≈2.5px 6px at default)
+     keeps the chip hugging its label at every font size. */
+  padding: 0.25em 0.6em;
   border-radius: 3px;
   border: 1px solid transparent;
   white-space: nowrap;
   letter-spacing: 0.02em;
-  line-height: 1.5;
+  line-height: 1;
   margin-right: 4px;
 }
 

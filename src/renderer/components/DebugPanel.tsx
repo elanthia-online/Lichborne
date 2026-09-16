@@ -1,7 +1,7 @@
 // DebugPanel — the diagnostics surface: three tabs over buffers GameWindow
 // owns — Fires (highlight/trigger fire log, with an "Edit →" that opens the
 // source rule via `onGotoFireRule`), Events (parsed GameEvents as JSON), and
-// Raw XML — plus Copy All, Export CSV (F45), Clear, and a right-click menu.
+// Raw XML — plus Copy all, Export CSV… (F45), Clear, and a right-click menu.
 //
 // Pure view: every buffer and every clear comes in as a prop. It is hosted
 // TWO ways from one component (v0.11.5): docked as the bottom strip of the
@@ -32,8 +32,14 @@ interface Props {
   // Wired to GameWindow.gotoFireRule.
   onGotoFireRule?: (kind: 'highlight' | 'trigger', ruleId: string) => void
   // v0.10.1: close the panel from its own toolbar (X) so the user doesn't
-  // have to find the Debug button again to dismiss it.
+  // have to find the Debug button again to dismiss it. Docked strip only.
   onClose?: () => void
+  // B391: close the Debug TAB when hosted in a PanelFrame (a zone tab or a
+  // floating window). Offered in the right-click menu only — the tab strip
+  // already carries its own ×, so no toolbar ✕ here. Without it a floating
+  // Debug window had no Close at all: this panel's menu claims the right-click
+  // before FloatingWindow's own Close menu can.
+  onCloseTab?: () => void
   // v0.11.5: when docked as the bottom strip (GameWindow), the panel is
   // drag-resizable and its height persists per-character. When rendered inside
   // a panel zone (PanelFrame) it fills the zone instead — `resizable` is false
@@ -46,7 +52,7 @@ const MIN_HEIGHT = 150
 const DEFAULT_HEIGHT = 300
 const maxHeight = () => Math.round(window.innerHeight * 0.7)
 
-export default function DebugPanel({ events, onClear, rawXmlLines, onClearRawXml, fireLog, onClearFireLog, onGotoFireRule, onClose, resizable = false, character = '' }: Props) {
+export default function DebugPanel({ events, onClear, rawXmlLines, onClearRawXml, fireLog, onClearFireLog, onGotoFireRule, onClose, onCloseTab, resizable = false, character = '' }: Props) {
   const [tab, setTab] = useState<'fires' | 'events' | 'rawxml'>('fires')
 
   // v0.11.5: drag-resizable height, persisted per-character. A scopedKey write
@@ -149,6 +155,8 @@ export default function DebugPanel({ events, onClear, rawXmlLines, onClearRawXml
   }, [tab])
 
   const activeOnClear = tab === 'events' ? onClear : tab === 'rawxml' ? onClearRawXml : onClearFireLog
+  // B391: the right-click Close — the docked strip's ✕, or the hosting tab.
+  const menuClose = onClose ?? onCloseTab
 
   // ── Export CSV (F45) — the ACTIVE tab's buffer, for offline analysis ──────
   // One file per export, schema per tab:
@@ -243,13 +251,16 @@ export default function DebugPanel({ events, onClear, rawXmlLines, onClearRawXml
             Raw XML ({rawXmlLines.length})
           </button>
         </div>
-        <button className="debug-copy" onClick={handleCopy}>Copy All</button>
-        <button className="debug-copy" onClick={handleExportCsv}
+        {/* B407: sentence case; "…" because Export opens a save dialog. */}
+        <button className="debug-copy" onClick={handleCopy}
+          title="Copy the active tab's contents to the clipboard">Copy all</button>
+        <button className="debug-copy debug-export" onClick={handleExportCsv}
           title="Save the active tab's contents as a CSV file">
-          {exportedTick ? 'Saved ✓' : 'Export CSV'}</button>
-        <button className="debug-clear" onClick={activeOnClear}>Clear</button>
+          {exportedTick ? 'Saved ✓' : 'Export CSV…'}</button>
+        <button className="debug-clear" onClick={activeOnClear}
+          title="Empty the active tab">Clear</button>
         {onClose && (
-          <button className="debug-close" onClick={onClose} title="Close debug panel" aria-label="Close debug panel">✕</button>
+          <button className="debug-close" onClick={onClose} title="Close" aria-label="Close">✕</button>
         )}
       </div>
 
@@ -270,7 +281,7 @@ export default function DebugPanel({ events, onClear, rawXmlLines, onClearRawXml
             <span className="fire-log-goto" aria-hidden>Goto</span>
           </div>
           {fireLog.length === 0 && (
-            <div className="fire-log-empty">No fires yet. Highlights and triggers that match will appear here.</div>
+            <div className="ui-empty">No fires yet. Highlights and triggers that match will appear here.</div>
           )}
           {fireLog.map(entry => (
             <div key={entry.id} className={`fire-log-entry fire-log-entry--${entry.kind}`}>
@@ -308,6 +319,10 @@ export default function DebugPanel({ events, onClear, rawXmlLines, onClearRawXml
             <span className="debug-type">Type</span>
             <span className="debug-body">Payload</span>
           </div>
+          {/* B385: say so when there's nothing yet, instead of a blank pane. */}
+          {events.length === 0 && (
+            <div className="ui-empty">No events yet. Each parsed game event appears here as it arrives.</div>
+          )}
           {events.map((evt, i) => (
             <div key={eventBaseRef.current + i} className={`debug-event debug-event--${evt.type}`}>
               <span className="debug-type">{evt.type}</span>
@@ -322,6 +337,9 @@ export default function DebugPanel({ events, onClear, rawXmlLines, onClearRawXml
         <div className="debug-scroll" ref={rawScrollRef} onScroll={handleRawScroll}
           onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY }) }}>
           <div className="rawxml-header">Raw XML stream</div>
+          {rawXmlLines.length === 0 && (
+            <div className="ui-empty">No raw XML yet. The game's unparsed stream appears here as it arrives.</div>
+          )}
           {rawXmlLines.map((line, i) => (
             <div key={rawBaseRef.current + i} className="rawxml-line">
               <span className="rawxml-body">{line}</span>
@@ -331,11 +349,16 @@ export default function DebugPanel({ events, onClear, rawXmlLines, onClearRawXml
         </div>
       )}
 
+      {/* B391: the shared menu shape — content (Copy all), divider, then
+          Clear and Close with Close LAST. Close is the toolbar ✕'s action when
+          docked, or closes the Debug tab when hosted in a PanelFrame. */}
       {ctxMenu && (
         <ContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)}
           items={[
-            { label: 'Copy All', onClick: handleCopy },
+            { label: 'Copy all', onClick: handleCopy },
+            { label: null },
             { label: 'Clear', onClick: activeOnClear },
+            ...(menuClose ? [{ label: 'Close', onClick: menuClose }] : []),
           ]}
         />
       )}

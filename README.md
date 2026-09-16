@@ -30,7 +30,7 @@ It isn't a replacement for Lich — Lich still owns your scripts, maps, and auto
 - **Panels that float or dock.** Keep the tidy docked layout, or switch to Windowed Panels and drag everything where you want it — windows snap to each other, then lock so nothing moves by accident.
 - **Your session can outlive the client.** Start Lich headless and Lichborne will *attach* to that already-logged-in session, so closing the window doesn't log you out — reopen later, recover from a crash, or pick the same character up from another machine. ([how](Lichborne-User-Guide.md#3b-or-attach-to-a-lich-thats-already-running))
 - **Bring your old config with you.** The import wizard reads Genie, Frostbite, and Wrayth configs: highlights with their colours, macros, name lists, gags, substitutions, and colour presets. It shows you exactly what it will import before it does.
-- **Graphical Experiences.** Optional scenes that float over your layout: a Living Tableau that draws the room and everyone in it, and a Moons view that puts Elanthia's sky — phases, weather, sunrise — in front of you. Both are beta, and both cost nothing until you open them.
+- **Graphical Experiences.** Optional views that float over your layout — or dock into a panel: a Living Tableau that draws the room and everyone in it, a Moons view that puts Elanthia's sky — phases, weather, sunrise — in front of you, and a Spell Monitor showing everything currently on you as live countdowns. All beta, and all cost nothing until you open them.
 - **Configure it without a mouse.** Type `/` in the command bar and a palette lists every client command. `/highlight add "goblin" red` while you're hunting, `/mute add "swirling fog"` when the spam starts, `/help` when you forget.
 - **AI is optional and stays out of the way.** Bring your own Anthropic key and Catch Me Up will summarise what you missed. It's off unless you turn it on, it never sends commands to the game, and your credentials are scrubbed before anything leaves your machine — details in [AINOTICE.md](AINOTICE.md).
 
@@ -51,10 +51,10 @@ And if you already run Lich, Lichborne sits alongside it. Same install, same pat
 **1. Download and install.** Grab the [latest release](https://github.com/SekmehtDR/Lichborne/releases/latest).
 
 - **Windows** — run the installer. SmartScreen may warn you (the app isn't code-signed yet): **More info → Run anyway**.
-- **Linux** — download the `.AppImage`, `chmod +x` it, run it.
+- **Linux** — download `Lichborne.AppImage`, `chmod +x` it, run it. On Ubuntu 22.04 or newer you may need FUSE 2 first: `sudo apt install libfuse2t64` (24.04) or `libfuse2` (22.04). If you have an older download with a version number in its name, rename it once to `Lichborne.AppImage` so updates keep the same name.
 - **macOS** — open the `.dmg` and drag Lichborne to Applications. macOS will call it *"damaged"* on first launch; it isn't — that's how Apple Silicon phrases *"not notarized"*. Clear it once with `xattr -cr /Applications/Lichborne.app`.
 
-**2. Set up Lich (recommended).** If you already run [Lich5](https://github.com/elanthia-online/lich-5), point Lichborne at it: **⚙ Lich Setup → Auto Detect**. On macOS and Linux you'll need Ruby 4 installed too. Skipping this is fine — pick **Direct** on a character tile and you'll connect straight to the game without Lich's features.
+**2. Set up Lich (recommended).** If you already run [Lich5](https://github.com/elanthia-online/lich-5), point Lichborne at it: **⚙ Lich Setup → Auto-detect**. On macOS and Linux you'll need Ruby 4 installed too. Skipping this is fine — pick **Direct** on a character tile and you'll connect straight to the game without Lich's features.
 
 **3. Add your account.** Click **+ Add account** and sign in. Lichborne finds your characters and makes a tile for each one. You do this once per account.
 

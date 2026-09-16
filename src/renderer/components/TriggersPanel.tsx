@@ -7,8 +7,10 @@
 // TEST: a sample line + stream run through the REAL `buildTriggerRegex` and
 // `interpolate` (with placeholder vars) to show what would fire.
 //
-// Hosted INLINE by AutomationsPanel or standalone as its own modal when
-// `inline` is false. Per character via `useCharacter()` — in the Automations
+// Hosted inline by AutomationsPanel, its only caller (the never-rendered
+// standalone modal branch was removed in v0.19.7, B408). Unsaved edits are
+// tracked against `baseline` and guarded the HighlightsPanel way (B368).
+// Per character via `useCharacter()` — in the Automations
 // "All Characters" scope that provider is re-pointed at the virtual `_global`
 // store, so `loadTriggers`/`saveTriggers` edit global rules unchanged
 // (`scope='global'` hides Groups; `onMoveScope` renders the F63 "Applies to"
@@ -22,9 +24,11 @@
 // action. Classes are `.trg-*`. Analytics is opt-in via `analyticsOn`.
 
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { backdropHandlers } from "../utils/backdropClose"
+import { pressable } from '../utils/pressable'
 import { ResizeDivider } from './ResizeDivider'
-import { createPortal } from 'react-dom'
+import InlineConfirm from './InlineConfirm'
+import { confirmDelete, confirmDiscard } from '../confirm'
+import { useReportUnsaved, differs } from '../hooks/useUnsaved'
 import {
   type TriggerRule, type TriggerAction, type StateGate, type ActionType,
   type GateVariable, type GateOperator,
@@ -37,11 +41,12 @@ import {
 import { playWavFile } from '../hooks/useTriggerEngine'
 import { useCharacter } from '../CharacterContext'
 import { scopedKey } from '../characterScope'
-import { useRuleAnalytics, AnalyticsReview, RuleBadges } from './AutomationAnalytics'
+import { useRuleAnalytics, AnalyticsReview, RuleBadges, ruleListKeyDown, enterToSave } from './AutomationAnalytics'
 import { analyzeTriggers } from '../automationHealth'
 import GroupPicker from './GroupPicker'
 import '../styles/triggers.css'
 import { normalizeColorInput, COLOR_INPUT_TITLE } from '../colors'
+import { IS_MAC } from '../lichSettings'
 import '../styles/groups.css'
 
 const ACTION_LABELS: Record<ActionType, string> = {
@@ -58,16 +63,29 @@ const ACTION_LABELS: Record<ActionType, string> = {
 
 const ACTION_TYPES: ActionType[] = ['command', 'echo', 'notify', 'sound', 'flash', 'beep', 'log', 'webhook', 'variable']
 
+// B379: why a draft can't be saved, or null. A text trigger with no pattern
+// used to save (buildTriggerRegex returns null for it, so it never fired); a
+// variable trigger needs the variable it watches instead of a pattern.
+function triggerSaveBlock(d: TriggerRule | null): string | null {
+  if (!d) return 'Select a trigger to save'
+  if ((d.triggerType ?? 'text') === 'text') {
+    if (!d.pattern.trim()) return 'Enter a pattern to save'
+    if (d.mode === 'regex' && !isValidTriggerRegex(d.pattern)) return 'Fix the regular expression to save'
+  } else if (!d.watchVariable?.trim()) {
+    return 'Enter the variable to watch'
+  }
+  if (d.actions.every(a => a.type === 'command' && !a.command?.trim())) return 'Enter a command, or add another action'
+  return null
+}
+
 interface Props {
-  onClose: () => void
   onSaved?: () => void
   prefillPattern?: string
   openRuleId?: string // v0.8.2: open an existing trigger for edit (Fires GOTO)
-  inline?: boolean
   analyticsOn?: boolean
   // F37/F63 (v0.15.2): which store this panel edits ('global' = All Characters
   // scope — groups row hidden) + the cross-store MOVE callback for the
-  // editor's "Applies to" control. Both absent when hosted standalone.
+  // editor's "Applies to" control (only rendered when a callback is given).
   scope?: 'character' | 'global'
   onMoveScope?: (rule: TriggerRule) => void
 }
@@ -159,7 +177,7 @@ function ActionCard({ action, canRemove, onChange, onRemove }: ActionCardProps) 
           ))}
         </select>
         {canRemove && (
-          <button type="button" className="trg-action-remove" onClick={onRemove} title="Remove action">×</button>
+          <button type="button" className="trg-action-remove" onClick={onRemove} title="Remove action" aria-label="Remove action">×</button>
         )}
       </div>
 
@@ -217,7 +235,7 @@ function ActionCard({ action, canRemove, onChange, onRemove }: ActionCardProps) 
                 value={action.echoColor ?? ''}
                 title={COLOR_INPUT_TITLE}
                 onChange={e => up({ echoColor: e.target.value })}
-                onBlur={e => up({ echoColor: normalizeColorInput(e.target.value) })}
+                onBlur={e => { const v = normalizeColorInput(e.target.value); if (v !== e.target.value) up({ echoColor: v }) }}
                 placeholder="(default color)"
               />
             </div>
@@ -246,6 +264,10 @@ function ActionCard({ action, canRemove, onChange, onRemove }: ActionCardProps) 
               onChange={v => up({ logMessage: v })}
               placeholder="Text to append to the file…"
             />
+            {/* B352: say where the file lands (main writes it under userData). */}
+            <div className="trg-action-note">
+              Saved in the TriggerLogs folder inside Lichborne's data folder.
+            </div>
           </>
         )}
 
@@ -263,6 +285,12 @@ function ActionCard({ action, canRemove, onChange, onRemove }: ActionCardProps) 
               onChange={v => up({ notifyBody: v })}
               placeholder="$line"
             />
+            {IS_MAC && (
+              // B359: mirrors the Dock bounce useTriggerEngine adds on macOS.
+              <div className="trg-action-note">
+                On macOS this also bounces the Dock icon, in case the notification doesn't appear.
+              </div>
+            )}
           </>
         )}
 
@@ -295,24 +323,26 @@ function ActionCard({ action, canRemove, onChange, onRemove }: ActionCardProps) 
                 />
                 <button
                   type="button"
-                  className="trg-btn trg-btn--browse"
+                  className="ui-btn ui-btn--sm"
                   onClick={async () => {
                     const file = await window.api.browseFile([{ name: 'Sound Files', extensions: ['wav', 'mp3', 'ogg'] }])
                     if (file) onChange({ ...actionRef.current, soundFile: file })
                   }}
-                >Browse</button>
+                >Browse…</button>
                 {action.soundFile && (
                   <>
                     <button
                       type="button"
-                      className="trg-btn trg-btn--play"
+                      className="ui-btn ui-btn--sm"
                       title="Test sound"
+                      aria-label="Test sound"
                       onClick={() => playWavFile(action.soundFile!)}
                     >▶</button>
                     <button
                       type="button"
-                      className="trg-btn trg-btn--clear"
-                      title="Remove WAV file"
+                      className="ui-btn ui-btn--sm ui-btn--ghost"
+                      title="Clear WAV file"
+                      aria-label="Clear WAV file"
                       onClick={() => up({ soundFile: undefined })}
                     >✕</button>
                   </>
@@ -407,49 +437,65 @@ function GateRow({ gate, onChange, onRemove }: GateRowProps) {
         onChange={e => onChange({ ...gate, value: e.target.value })}
         placeholder={varDef?.numeric ? '50' : 'value'}
       />
-      <button type="button" className="trg-gate-remove" onClick={onRemove} title="Remove condition">×</button>
+      <button type="button" className="trg-gate-remove" onClick={onRemove} title="Remove condition" aria-label="Remove condition">×</button>
     </div>
   )
 }
 
 // ── Main panel ────────────────────────────────────────────────────────────────
 
-export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRuleId, inline = false, analyticsOn = false, scope = 'character', onMoveScope }: Props) {
+export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, analyticsOn = false, scope = 'character', onMoveScope }: Props) {
   const hideGroups = scope === 'global'
   const character = useCharacter()
   const [rules, setRules]       = useState<TriggerRule[]>(() => loadTriggers(character))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const an = useRuleAnalytics(character, rules, analyzeTriggers, analyticsOn, onSaved)
   const [draft, setDraft]       = useState<TriggerRule | null>(null)
+  // B368: what the draft is compared against (stored / fresh / just saved).
+  const [baseline, setBaseline] = useState<TriggerRule | null>(null)
   const [isPendingNew, setIsPendingNew] = useState(false)
-  const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [search, setSearch]     = useState('')
   const [testInput, setTestInput] = useState('')
   const [testStream, setTestStream] = useState('main')
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const appliedOpenRef = useRef<string | undefined>(undefined)
+
+  const dirty = !!draft && !!baseline && differs(draft, baseline)
+  useReportUnsaved(dirty)
 
   useEffect(() => {
     if (!prefillPattern) return
-    const r = newTrigger(prefillPattern)
-    setDraft({ ...r })
-    setSelectedId(r.id)
-    setIsPendingNew(true)
-    setTimeout(() => nameInputRef.current?.focus(), 0)
+    confirmDiscard(dirty, () => {
+      const r = newTrigger(prefillPattern)
+      setDraft({ ...r })
+      setBaseline({ ...r })
+      setSelectedId(r.id)
+      setIsPendingNew(true)
+      setTimeout(() => nameInputRef.current?.focus(), 0)
+    })
   }, [prefillPattern]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // v0.8.2: open EXISTING trigger by id (Fires GOTO). Re-runs when openRuleId
   // changes so clicking → on a different fire entry switches the editor's
   // draft. Looks up against the current rules list — if the rule was deleted
   // since the fire was logged, this is a no-op (the user just sees the
-  // empty editor pane, no crash).
+  // empty editor pane, no crash). Applied ONCE per id: it also re-ran on every
+  // `rules` change, so saving another trigger snapped the editor back here.
   useEffect(() => {
-    if (!openRuleId) return
+    // Reset when the request clears, so a second Fires → Edit on the SAME
+    // trigger (after something else opened the editor) opens it again.
+    if (!openRuleId) { appliedOpenRef.current = undefined; return }
+    if (appliedOpenRef.current === openRuleId) return
     const r = rules.find(x => x.id === openRuleId)
     if (!r) return
-    setDraft({ ...r })
-    setSelectedId(r.id)
-    setIsPendingNew(false)
-  }, [openRuleId, rules])
+    appliedOpenRef.current = openRuleId
+    confirmDiscard(dirty, () => {
+      setDraft({ ...r })
+      setBaseline({ ...r })
+      setSelectedId(r.id)
+      setIsPendingNew(false)
+    })
+  }, [openRuleId, rules]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Test result ──────────────────────────────────────────────────────────
 
@@ -500,25 +546,33 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
   function selectRule(r: TriggerRule) {
     setSelectedId(r.id)
     setDraft({ ...r })
+    setBaseline({ ...r })
     setIsPendingNew(false)
-    setDeleteConfirm(false)
     setTestInput('')
+  }
+
+  // B368: the user-facing switches — they ask before an unsaved draft is lost.
+  function requestSelect(r: TriggerRule) {
+    if (r.id === selectedId) return
+    confirmDiscard(dirty, () => selectRule(r))
   }
 
   function createNew() {
     const r = newTrigger()
     setDraft({ ...r })
+    setBaseline({ ...r })
     setSelectedId(r.id)
     setIsPendingNew(true)
-    setDeleteConfirm(false)
     setTestInput('')
     setTimeout(() => nameInputRef.current?.focus(), 0)
   }
 
+  const saveBlock = triggerSaveBlock(draft)
+
   function saveDraft() {
-    if (!draft) return
+    if (!draft || saveBlock) return
     const trimmed = { ...draft, pattern: draft.pattern.trim() }
-    if (!trimmed.name) trimmed.name = trimmed.pattern || 'Unnamed trigger'
+    if (!trimmed.name) trimmed.name = trimmed.pattern || trimmed.watchVariable?.trim() || 'Unnamed trigger'
     let updated: TriggerRule[]
     if (isPendingNew) {
       updated = [...rules, trimmed]
@@ -529,6 +583,7 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
     saveTriggers(character, updated)
     onSaved?.()
     setDraft(trimmed)
+    setBaseline(trimmed)
     setIsPendingNew(false)
   }
 
@@ -536,11 +591,11 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
     if (isPendingNew) {
       setSelectedId(null)
       setDraft(null)
+      setBaseline(null)
       setIsPendingNew(false)
     } else {
       const original = rules.find(r => r.id === selectedId)
-      if (original) setDraft({ ...original })
-      setDeleteConfirm(false)
+      if (original) { setDraft({ ...original }); setBaseline({ ...original }) }
     }
   }
 
@@ -557,8 +612,8 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
     if (selectedId === id) {
       setSelectedId(null)
       setDraft(null)
+      setBaseline(null)
       setIsPendingNew(false)
-      setDeleteConfirm(false)
     }
   }
 
@@ -567,7 +622,11 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
     setRules(updated)
     saveTriggers(character, updated)
     onSaved?.()
-    if (draft?.id === id) setDraft(prev => prev ? { ...prev, enabled: !prev.enabled } : prev)
+    // Saved immediately, so the baseline moves too — not an unsaved edit.
+    if (draft?.id === id) {
+      setDraft(prev => prev ? { ...prev, enabled: !prev.enabled } : prev)
+      setBaseline(prev => prev ? { ...prev, enabled: !prev.enabled } : prev)
+    }
   }
 
   function updateAction(actionId: string, updated: TriggerAction) {
@@ -609,7 +668,7 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
 
           {/* Sidebar */}
           <div className="trg-sidebar">
-            <button className="trg-new-btn" onClick={createNew}>+ New Trigger</button>
+            <button type="button" className="trg-new-btn" onClick={() => confirmDiscard(dirty, createNew)}>+ New trigger</button>
             <div className="sidebar-search">
               <input
                 className="sidebar-search-input"
@@ -617,29 +676,34 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
-              {search && <button className="sidebar-search-clear" onClick={() => setSearch('')}>✕</button>}
+              {search && <button className="sidebar-search-clear" onClick={() => setSearch('')} title="Clear search" aria-label="Clear search">✕</button>}
               {search && (
                 <span className="sidebar-search-count">
                   {rules.filter(r => (r.name + ' ' + r.pattern).toLowerCase().includes(search.toLowerCase())).length}/{rules.length}
                 </span>
               )}
             </div>
-            <div className="trg-list">
+            <div className="trg-list" role="listbox" aria-label="Triggers" onKeyDown={ruleListKeyDown}>
               {rules.length === 0 && !isPendingNew && (
-                <div className="trg-empty">No triggers yet.<br />Right-click game text or click New Trigger.</div>
+                <div className="trg-empty">No triggers yet.<br />Right-click game text, or use + New trigger.</div>
               )}
-              {(search ? rules.filter(r => (r.name + ' ' + r.pattern).toLowerCase().includes(search.toLowerCase())) : rules).map(r => (
+              {(search ? rules.filter(r => (r.name + ' ' + r.pattern).toLowerCase().includes(search.toLowerCase())) : rules).map(r => {
+                const label = r.name || r.pattern || r.watchVariable
+                return (
                 <div
                   key={r.id}
                   className={`trg-list-item${selectedId === r.id ? ' trg-list-item--active' : ''}${!r.enabled ? ' trg-list-item--disabled' : ''}`}
-                  onClick={() => selectRule(r)}
+                  {...pressable(() => requestSelect(r), { role: 'option', selected: selectedId === r.id })}
                 >
                   <button
+                    type="button"
                     className={`trg-toggle${r.enabled ? ' trg-toggle--on' : ''}`}
                     title={r.enabled ? 'Disable' : 'Enable'}
+                    aria-label={r.enabled ? 'Disable' : 'Enable'}
                     onClick={e => { e.stopPropagation(); toggleEnabled(r.id) }}
                   />
-                  <span className="trg-list-label">{r.name || r.pattern || <em>Unnamed</em>}</span>
+                  {/* B396: the full label, since the row truncates it. */}
+                  <span className="trg-list-label" title={label || undefined}>{label || <em>Unnamed</em>}</span>
                   <div className="trg-list-badges" style={{ marginLeft: 'auto' }}>
                     {r.actions.slice(0, 3).map(a => (
                       <span key={a.id} className="trg-badge" title={ACTION_LABELS[a.type]}>
@@ -649,13 +713,17 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
                     {r.actions.length > 3 && <span className="trg-badge">+{r.actions.length - 3}</span>}
                   </div>
                   {an.on && <RuleBadges ruleId={r.id} report={an.report} stats={an.stats} />}
+                  {/* B370: a row ✕ deletes something that isn't open, so it asks. */}
                   <button
+                    type="button"
                     className="list-item-delete"
                     title="Delete"
-                    onClick={e => { e.stopPropagation(); deleteRuleById(r.id) }}
+                    aria-label={`Delete ${label || 'trigger'}`}
+                    onClick={async e => { e.stopPropagation(); if (await confirmDelete('trigger', label)) deleteRuleById(r.id) }}
                   >✕</button>
                 </div>
-              ))}
+                )
+              })}
               {isPendingNew && draft && (
                 <div className="trg-list-item trg-list-item--active trg-list-item--pending">
                   <span className="trg-toggle trg-toggle--on" />
@@ -672,7 +740,8 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
               <div className="trg-no-selection">Select a trigger or create a new one.</div>
             ) : (
               <>
-                <div className="trg-form">
+                {/* B389: Enter in a single-line field saves (not the Test field). */}
+                <div className="trg-form" onKeyDown={enterToSave(saveDraft)}>
 
                   {/* ── WHEN ── */}
                   <div className="trg-section">
@@ -700,7 +769,7 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
                           type="button"
                           className={`grp-all-btn${draft.allGroups ? ' grp-all-btn--on' : ''}`}
                           onClick={() => setDraft({ ...draft, allGroups: !draft.allGroups, groupIds: [] })}
-                        >All Groups</button>
+                        >All groups</button>
                         {!draft.allGroups && (
                           <GroupPicker
                             groupIds={draft.groupIds ?? []}
@@ -725,7 +794,7 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
                           title={scope === 'character'
                             ? 'This trigger belongs to this character'
                             : 'Move this trigger to the character you have open — every OTHER character stops getting it'}
-                        >This Character</button>
+                        >This character</button>
                         <button
                           type="button"
                           className={`rule-scope-btn${scope === 'global' ? ' rule-scope-btn--on' : ''}`}
@@ -733,8 +802,8 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
                           onClick={() => onMoveScope(draft)}
                           title={scope === 'global'
                             ? 'This trigger applies to every character'
-                            : 'Move this trigger to All Characters — it will fire for every character on every account (group gating is removed; global rules are always active)'}
-                        >All Characters</button>
+                            : 'Move this trigger to All characters — it will fire for every character on every account (group gating is removed; global rules are always active)'}
+                        >All characters</button>
                       </div>
                     </div>
                     )}
@@ -750,7 +819,7 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
                             onClick={() => setDraft({ ...draft, triggerType: tt })}
                             title={tt === 'text' ? 'Fires when game text matches a pattern' : 'Fires when a variable changes value'}
                           >
-                            {tt === 'text' ? 'Game Text' : 'Variable Change'}
+                            {tt === 'text' ? 'Game text' : 'Variable change'}
                           </button>
                         ))}
                       </div>
@@ -761,8 +830,7 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
                       <label className="trg-label">Pattern</label>
                       <div className="trg-pattern-row">
                         <input
-                          className={`trg-input${draft.mode === 'regex' && draft.pattern && !isValidTriggerRegex(draft.pattern) ? ' trg-input--error' : ''}`}
-                          style={{ flex: 1 }}
+                          className={`trg-input trg-input--pattern${draft.mode === 'regex' && draft.pattern && !isValidTriggerRegex(draft.pattern) ? ' trg-input--error' : ''}`}
                           value={draft.pattern}
                           onChange={e => setDraft({ ...draft, pattern: e.target.value })}
                           placeholder="Text to match…"
@@ -910,7 +978,7 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
                       <div className="trg-section-line" />
                     </div>
 
-                    <div className="trg-test-row">
+                    <div className="trg-test-row" data-enter-save="off">
                       <input
                         className="trg-input"
                         style={{ flex: 1 }}
@@ -946,34 +1014,30 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
 
                 </div>
 
-                {/* Footer */}
+                {/* Footer rail: [Delete] …spacer… [Revert/Cancel] [Save]. */}
                 <div className="trg-actions">
-                  {deleteConfirm ? (
-                    <>
-                      <span className="trg-confirm-text">Delete this trigger?</span>
-                      <button className="trg-btn trg-btn--danger" onClick={deleteRule}>Yes, delete</button>
-                      <button className="trg-btn" onClick={() => setDeleteConfirm(false)}>Cancel</button>
-                    </>
-                  ) : (
-                    <>
-                      {!isPendingNew && (
-                        <button className="trg-btn trg-btn--delete" onClick={() => setDeleteConfirm(true)}>Delete</button>
-                      )}
-                      <button className="trg-btn" onClick={discardOrCancel}>
-                        {isPendingNew ? 'Cancel' : 'Revert'}
-                      </button>
-                      <button
-                        className="trg-btn trg-btn--save"
-                        onClick={saveDraft}
-                        disabled={!draft.pattern.trim() && draft.actions.every(a => {
-                          if (a.type === 'command') return !a.command?.trim()
-                          return false
-                        })}
-                      >
-                        Save
-                      </button>
-                    </>
+                  {!isPendingNew && (
+                    <InlineConfirm question="Delete this trigger?" onConfirm={deleteRule} resetKey={selectedId} />
                   )}
+                  <span className="ui-modal-foot-spacer" />
+                  <button
+                    type="button"
+                    className="ui-btn"
+                    onClick={discardOrCancel}
+                    disabled={!isPendingNew && !dirty}
+                    title={!isPendingNew && !dirty ? 'No changes to revert' : undefined}
+                  >
+                    {isPendingNew ? 'Cancel' : 'Revert'}
+                  </button>
+                  <button
+                    type="button"
+                    className="ui-btn ui-btn--primary"
+                    onClick={saveDraft}
+                    disabled={!!saveBlock}
+                    title={saveBlock ?? undefined}
+                  >
+                    Save
+                  </button>
                 </div>
               </>
             )}
@@ -982,35 +1046,23 @@ export default function TriggersPanel({ onClose, onSaved, prefillPattern, openRu
         </div>
   )
 
-  const content = an.on ? (
+  if (!an.on) return body
+  return (
     <div className="aa-host">
       <AnalyticsReview rules={rules} report={an.report} stats={an.stats}
         nameOf={r => r.name || r.pattern}
-        onJump={id => { const r = rules.find(x => x.id === id); if (r) selectRule(r) }}
+        onJump={id => { const r = rules.find(x => x.id === id); if (r) requestSelect(r) }}
         onReset={an.reset}
         onBulkRemove={ids => {
           const s = new Set(ids); const u = rules.filter(r => !s.has(r.id))
           setRules(u); saveTriggers(character, u)
-          setSelectedId(null); setDraft(null); setIsPendingNew(false)
+          // Only drop the editor if its rule was among those removed.
+          if (selectedId && s.has(selectedId)) {
+            setSelectedId(null); setDraft(null); setBaseline(null); setIsPendingNew(false)
+          }
           onSaved?.()
         }} />
       {body}
     </div>
-  ) : body
-
-  if (inline) return content
-
-  const modal = (
-    <div className="trg-backdrop" {...backdropHandlers(() => onClose())}>
-      <div className="trg-modal">
-        <div className="trg-header">
-          <span className="trg-title">Triggers</span>
-          <button className="trg-close" onClick={onClose}>✕</button>
-        </div>
-        {content}
-      </div>
-    </div>
   )
-
-  return createPortal(modal, document.body)
 }

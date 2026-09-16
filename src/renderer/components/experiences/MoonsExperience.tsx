@@ -489,7 +489,8 @@ interface MoonStyle {
   atmo: number
   r: number
   label: string
-  glow: string           // soft SKY halo colour (Sekmeht/Elanthipedia lore): Xibar a
+  glow?: string          // soft SKY halo colour; ABSENT = this moon sheds no light (Katamba)
+                         // (Sekmeht/Elanthipedia lore): Xibar a
                          // silvery-blue glow through Elanthia's atmosphere, Yavash a
                          // vivid ruby/crimson, and Katamba EMITS SHADOW — a BLACK halo
                          // that darkens its surroundings by day (invisible at night;
@@ -510,7 +511,11 @@ const MOON_STYLE: Record<MoonKey, MoonStyle> = {
   // Katamba's rim also moved off neutral grey onto a violet-grey: "miasmatic"
   // is the word its lore uses, and its sky halo is already dark violet — a
   // colourless ring read as a generic outline rather than that atmosphere.
-  katamba: { rim: '#6b5f7a', atmo: 0.4, r: 13, label: 'Katamba', glow: '#2a123f', glowStrength: 1.45, glowR: 2.25, tones: { lit: '#332d3a', mid: '#161219', shadow: '#050409' } },
+  // Katamba has NO `glow` — deliberately, and that absence is what drives it
+  // (see the glow gradient + disc layers, which both key off the field rather
+  // than the name). It is black as soot and sheds nothing; it carried a
+  // miasmatic violet haze until 2026-09-06, when Sekmeht had it removed.
+  katamba: { rim: '#6b5f7a', atmo: 0.4, r: 13, label: 'Katamba', tones: { lit: '#332d3a', mid: '#161219', shadow: '#050409' } },
   yavash:  { rim: '#ff8496', atmo: 1,   r: 9,  label: 'Yavash',  glow: '#e01430', glowStrength: 1.25, glowR: 2.0, tones: { lit: '#f0384e', mid: '#a01828', shadow: '#3a0810' } },
   xibar:   { rim: '#88bce6', atmo: 0,   r: 7,  label: 'Xibar',   glow: '#dbe9f5', tones: { lit: '#5db4f7', mid: '#2472db', shadow: '#123f8f' } },
 }
@@ -682,12 +687,12 @@ const SUN_LORE = 'The Elanthian Sun — its rising and setting mark the days of 
 // heavily, being the largest of the three and the one its own lore says
 // "dominates the tides of Elanthia".
 //
-// What did NOT change is anything VISIBLE. Katamba still drives no glow
-// scaling, no disc brightening, and no lake reflection, because those depict
-// light you can see and it genuinely sheds none — its halo is a haze that
-// DARKENS the sky. So: dark to the eye, bright to a Moon Mage. Don't
-// "reconcile" the two by making one follow the other; they answer different
-// questions.
+// What did NOT change is anything VISIBLE. Katamba drives no glow, no disc
+// brightening and no lake reflection, because all three depict light you can
+// see and it genuinely sheds none — as of 2026-09-06 it has no halo at all
+// (Sekmeht had the violet haze removed). So: dark to the eye, bright to a Moon
+// Mage. Don't "reconcile" the two by making one follow the other; they answer
+// different questions.
 //
 // Weights are RELATIVE presentation values, not mined game constants (the
 // standing rule against inventing DR math) — they sum to 1 so all three, full
@@ -737,13 +742,6 @@ function ridgePath(w: number, scale: number, offset: number): string {
     i++
   }
   return d + ` L ${w} ${HORIZON_Y} Z`
-}
-
-function ageLabel(reportedAt: number, now: number): string {
-  const mins = Math.floor((now - reportedAt) / 60_000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  return `${Math.floor(mins / 60)}h ${mins % 60}m ago`
 }
 
 // Slow expanding (rising) / contracting (setting) horizon rings — rendered
@@ -1156,13 +1154,20 @@ function MoonsExperience({ moons, hidden, settings, weather, calendar, serverClo
   const landSun = sunLightPos && sunElev != null && sunElev > 0.02
     ? { x: sunLightPos.x, up: clamp01(sunElev) } : null
   // Lake reflections (Sekmeht): the sun (by day) + the LIT moons cast shimmering
-  // columns on the water where they pass above it. Katamba emits no light → no
-  // reflection; skipped entirely when the lake is iced over (winter).
+  // columns on the water where they pass above it. Skipped entirely when the
+  // lake is iced over (winter).
+  //
+  // "Which moons give light" is asked in FIVE places — the glow gradient, the
+  // disc bloom, the earthshine wash, the toward-full brightening, and here — so
+  // all five read the same `glow` FIELD rather than name-checking Katamba
+  // (pitfall #127: paths answering one question must share the source, or they
+  // drift the day one of them is edited). It happens to select the same moon
+  // today; the point is that it cannot stop doing so.
   const lakeReflect: Array<{ x: number; color: string; strong: boolean }> =
     (showLandscape && landSeason !== 'winter')
       ? [
           ...(sunPhase?.day && sunLightPos ? [{ x: sunLightPos.x, color: '#ffe08a', strong: true }] : []),
-          ...upBodies.filter(b => b.k !== 'katamba').map(b => ({
+          ...upBodies.filter(b => !!b.s.glow).map(b => ({
             x: b.x, color: b.k === 'yavash' ? '#ff5a6e' : '#7fc0ff', strong: false,
           })),
         ]
@@ -1263,8 +1268,8 @@ function MoonsExperience({ moons, hidden, settings, weather, calendar, serverClo
   // through moonwatch, phase is computed here and has nothing to correct against.
   const moonsSegTitle = `Each moon, the phase it is in now, and its next rise or set.\n\n${moonsSegTip}\n\nRise and set come from moonwatch; phases are computed.`
   // Pill chips mirror the corrected lore colours (see MOON_STYLE): golden sun,
-  // soot-dark Katamba (the shadow moon — its faint glow reads "no light"), ruby
-  // Yavash, vivid ice-blue Xibar.
+  // soot-dark Katamba (the shadow moon, which sheds no light and now throws no
+  // halo either), ruby Yavash, vivid ice-blue Xibar.
   const PILL_DOT: Record<string, string> = { sun: '#f5b921', katamba: '#2b2733', yavash: '#e0203f', xibar: '#3f90ea' }
   const pillBodies: Array<{ key: string; label: string; up: boolean; min: number; assumed: boolean }> = [
     ...(sunPhase ? [{ key: 'sun', label: 'Sun', up: sunPhase.day, min: sunPhase.toNextMin, assumed: !!sunPhase.assumed }] : []),
@@ -1280,10 +1285,21 @@ function MoonsExperience({ moons, hidden, settings, weather, calendar, serverClo
   // session's silent pulls) so the data-honesty signal (§32.4 — stale must never
   // read as live) is one hover away without cluttering the strips with three
   // competing "just now"s. moons.reportedAt always exists here.
+  // B412: clock TIMES, not "12s ago". A native tooltip can't update while it's
+  // showing — Chromium hides it when its text changes — and this scene
+  // re-renders every 2s, so a relative age made the tooltip blink for as long as
+  // you hovered it (pitfall #145). The ⟳ turning amber still says when the data
+  // is old. The date is added only for a reading from an earlier day.
+  const clock = (ts: number) => {
+    const d = new Date(ts)
+    return d.toDateString() === new Date(now).toDateString()
+      ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
   const freshnessTitle = 'Last data received —\n' + [
-    `Moonwatch (moons/sun): ${ageLabel(moons.reportedAt, now)}`,
-    weather ? `Weather: ${ageLabel(weather.observedAt, now)}` : null,
-    calendar ? `Date: ${ageLabel(calendar.observedAt, now)}` : null,
+    `Moonwatch (moons/sun): ${clock(moons.reportedAt)}`,
+    weather ? `Weather: ${clock(weather.observedAt)}` : null,
+    calendar ? `Date: ${clock(calendar.observedAt)}` : null,
   ].filter(Boolean).join('\n')
   // "Stale" = the game-pull data (weather + date — what ⟳ refreshes; the
   // moonwatch moons extrapolate live from orbital math, so THEIR age doesn't make
@@ -1494,13 +1510,18 @@ function MoonsExperience({ moons, hidden, settings, weather, calendar, serverClo
           ))}
           {/* Soft primary-colour SKY glow per moon (Sekmeht) — a small radial bloom
               behind each up-moon in its lore hue. */}
+          {/* A moon with no `glow` gets no gradient — the FIELD is the switch,
+              not a name check, so this and the disc layer below can never
+              disagree about which moons glow. Katamba is the one without. */}
           {MOON_KEYS.map(k => {
+            const glow = MOON_STYLE[k].glow
+            if (!glow) return null
             const gs = MOON_STYLE[k].glowStrength ?? 1
             return (
               <radialGradient key={`glow-${k}`} id={`${uid}-glow-${k}`} cx="50%" cy="50%" r="50%">
-                <stop offset="0%"   stopColor={MOON_STYLE[k].glow} stopOpacity={0.45 * gs} />
-                <stop offset="55%"  stopColor={MOON_STYLE[k].glow} stopOpacity={0.2 * gs} />
-                <stop offset="100%" stopColor={MOON_STYLE[k].glow} stopOpacity="0" />
+                <stop offset="0%"   stopColor={glow} stopOpacity={0.45 * gs} />
+                <stop offset="55%"  stopColor={glow} stopOpacity={0.2 * gs} />
+                <stop offset="100%" stopColor={glow} stopOpacity="0" />
               </radialGradient>
             )
           })}
@@ -1631,29 +1652,20 @@ function MoonsExperience({ moons, hidden, settings, weather, calendar, serverClo
               )
             })()}
             {/* Soft primary-colour glow behind the disc (Sekmeht, ⚙ Moon glow).
-                Katamba emits an ominous MIASMATIC (dark-violet) haze — it darkens a
-                bright day sky AND reads as a shadowy purple on a dark one. It HOLDS
-                at full through the day and all of dusk, fading only once the sun is
-                well below the horizon (true night): clamp01((sunElev+0.35)/0.3) is 1
-                at sunset (sunElev≈0) and reaches 0 around sunElev −0.35. The light
-                moons glow at full strength always. */}
-            {showMoonGlow && (() => {
+                KATAMBA HAS NONE (Sekmeht, 2026-09-06). It used to carry a
+                miasmatic dark-violet haze curved against sun elevation — the one
+                "glow" that was a shadow rather than light. Removed outright: the
+                moon is black as soot and sheds nothing, so the truest rendering
+                is nothing at all, and its soot disc + violet-grey rim already
+                identify it. Its `glow`/`glowStrength`/`glowR` fields and its
+                gradient went with it rather than lingering as dead data.
+                Do not reinstate it without a fresh ask. */}
+            {showMoonGlow && b.s.glow && (() => {
               // Glow scales with the LIT FRACTION (Sekmeht): a full moon floods
               // the sky, a thin crescent barely marks it. Superlinear on purpose
               // — real moonlight behaves that way (a full moon is many times a
               // half moon, not twice), so a linear ramp reads flat and washed.
               //
-              // KATAMBA IS EXEMPT. Its "glow" is not moonlight at all: it is the
-              // miasmatic haze that DARKENS the sky, already curved against sun
-              // elevation by a documented decision (it holds through dusk and
-              // fades into true night). Scaling a shadow by how much sunlight
-              // hits it would be backwards, and it would undo that curve. This
-              // is the same reason it weighs zero in MOON_LUMENS.
-              const isHaze = b.k === 'katamba'
-              if (isHaze) {
-                return <circle cx={b.x} cy={b.y} r={b.s.r * (b.s.glowR ?? 1.85)} fill={gref(`glow-${b.k}`)}
-                  opacity={sunElev == null ? 0.8 : clamp01((sunElev + 0.35) / 0.3)} />
-              }
               // Phase-off (⚙) keeps the old uniform look — one toggle, one idea.
               const illum = showPhase && phase ? phase.illum : 1
               const baseR = b.s.r * (b.s.glowR ?? 1.85)
@@ -1727,9 +1739,13 @@ function MoonsExperience({ moons, hidden, settings, weather, calendar, serverClo
                       in daylight the real dark limb is genuinely invisible, and
                       a grey disc against a blue sky is the exact artefact this
                       rewrite removes. Strongest near new, fading as the lit part
-                      takes over. Katamba gets none: it sheds no light, and its
-                      violet haze already carries its silhouette. */}
-                  {phasing && illum < 0.9 && b.k !== 'katamba' && sunElev != null && sunElev < -0.05 && (
+                      takes over. A moon that sheds no light gets none — for
+                      Katamba this is a dark wash on an already-soot disc, which
+                      adds nothing to a night sky. (Keyed on the `glow` FIELD
+                      like every other "does this moon shine" test; the older
+                      justification here cited its violet haze, which no longer
+                      exists.) */}
+                  {phasing && illum < 0.9 && !!b.s.glow && sunElev != null && sunElev < -0.05 && (
                     <circle cx={b.x} cy={b.y} r={b.s.r} fill={b.s.tones.shadow}
                       opacity={0.30 * (1 - illum)} />
                   )}
@@ -1761,7 +1777,7 @@ function MoonsExperience({ moons, hidden, settings, weather, calendar, serverClo
                         brighter OBJECT, not merely one wearing a bigger halo. A
                         wash of the moon's OWN lit tone, so Yavash stays ruby and
                         Xibar stays ice rather than bleaching toward each other. */}
-                    {showPhase && phase && b.k !== 'katamba' && phase.illum > 0.55 && (
+                    {showPhase && phase && !!b.s.glow && phase.illum > 0.55 && (
                       <circle cx={b.x} cy={b.y} r={b.s.r} fill={b.s.tones.lit}
                         opacity={0.3 * ((phase.illum - 0.55) / 0.45)} />
                     )}

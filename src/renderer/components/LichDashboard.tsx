@@ -19,14 +19,22 @@
 // scrollToLine handle, `useGutterSync` for the line gutter, and an LCS
 // `computeDiff` review before any `writeLichScript` / `writeLichProfile`.
 // `readOk` gates Edit so a failed read's placeholder can never be saved back
-// over a real file, and paths are composed with forward slashes. A
+// over a real file, and paths are composed with forward slashes. Both editors
+// report an in-progress edit (`useReportUnsaved`) into the shell's
+// `useUnsavedScope`, so a tab switch, Esc, the ✕ or a backdrop click asks
+// before discarding it (B369). The shell wears the About-modal chrome with
+// `ui-*` tabs, buttons and ✕ (B400). A
 // `[diag B236]` console logger for the search-highlight offset is still in
 // place and marked for removal. The Lich path comes from
 // `lichborne.advancedSettings`; the Scripts / Variables / Settings / Profiles
 // tabs each degrade to an `ld-empty` notice without it.
 
-import { useState, useEffect, useMemo, useCallback, useRef, useImperativeHandle, forwardRef } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, useImperativeHandle, forwardRef, useId } from 'react'
 import { backdropHandlers } from "../utils/backdropClose"
+import { useEscapeClose } from '../hooks/useEscapeClose'
+import { useUnsavedScope, useReportUnsaved, UnsavedContext } from '../hooks/useUnsaved'
+import { confirmDelete } from '../confirm'
+import { pressable } from '../utils/pressable'
 import { useResizableColumn } from '../hooks/useResizableColumn'
 import { scopedKey } from '../characterScope'
 import hljs from 'highlight.js/lib/core'
@@ -82,6 +90,11 @@ interface Props {
   // the optimistic UI is the user-facing feedback, so echoing the raw Ruby
   // would just be noise. Must actually run, not sit in the command bar.
   onRunCommand: (cmd: string) => void
+  // A close asked for from OUTSIDE the dialog (the app-bar Lich button, the
+  // native menu): GameWindow increments this instead of unmounting us, so that
+  // path gets the same unsaved-changes guard as the ✕ (B369). A counter that
+  // persists across openings — only a CHANGE after mount means "close".
+  closeRequest?: number
 }
 
 // ── Session pill ──────────────────────────────────────────────────────────────
@@ -158,6 +171,12 @@ function ScriptsTab({ lichPath, session, onSendCommand }: { lichPath: string; se
   // Everything after the script name on the command line. Reset per selection.
   const [runArgs,         setRunArgs]         = useState('')
   const viewRef = useRef<YamlViewHandle | null>(null)
+
+  // B369: an edit in progress is unsaved work. Reported up so the Dashboard
+  // asks before a tab switch, Esc, the ✕ or a backdrop click unmounts this tab
+  // and throws it away. Save (confirmSave) and Cancel both clear editContent,
+  // so both leave it false; the baseline is the file as last read or saved.
+  useReportUnsaved(editContent !== null && originalContent !== null && editContent !== originalContent)
 
   useEffect(() => {
     if (!lichPath) { setLoading(false); return }
@@ -247,18 +266,20 @@ function ScriptsTab({ lichPath, session, onSendCommand }: { lichPath: string; se
         </div>
         <div className="lp-filter-tabs lp-filter-tabs--rail">
           {(['custom', 'core', 'all'] as const).map(f => (
-            <button key={f} className={`lp-filter-tab${filter === f ? ' lp-filter-tab--active' : ''}`}
+            <button key={f} type="button" className={`ui-tab${filter === f ? ' ui-tab--active' : ''}`}
+              aria-pressed={filter === f}
               title={FILTER_TITLE[f]}
               onClick={() => setFilter(f)}>{FILTER_LABEL[f]}</button>
           ))}
         </div>
-        <div className="lp-body">
+        <div className="lp-body" role="listbox" aria-label="Scripts">
           {filtered.length === 0
             ? <div className="ld-empty">No scripts match.</div>
             : filtered.map(s => (
               <div key={`${s.source}/${s.name}`}
                 className={`lp-row${selected?.name === s.name && selected?.source === s.source ? ' lp-row--selected' : ''}${isEditing && !(selected?.name === s.name && selected?.source === s.source) ? ' lp-row--locked' : ''}`}
-                onClick={() => { if (!isEditing) selectScript(s) }}
+                {...pressable(() => { if (!isEditing) selectScript(s) },
+                  { role: 'option', selected: selected?.name === s.name && selected?.source === s.source })}
               >
                 <span className={`lp-source-badge lp-source-badge--${s.source}`}
                       title={FILTER_TITLE[s.source]}>{SOURCE_LABEL[s.source]}</span>
@@ -289,13 +310,15 @@ function ScriptsTab({ lichPath, session, onSendCommand }: { lichPath: string; se
             </div>
             {saveError && <div className="ld-error ld-diff-error">{saveError}</div>}
             <div className="ld-diff-footer">
-              <button className="ld-btn ld-btn--secondary" onClick={() => setShowAllDiff(v => !v)}>
+              <button type="button" className="ui-btn ui-btn--sm" onClick={() => setShowAllDiff(v => !v)}>
                 {showAllDiff ? 'Changes only' : 'Show all lines'}
               </button>
               <span className="ld-edit-gap" />
-              <button className="ld-btn ld-btn--secondary" onClick={() => setShowDiff(false)} disabled={saving}>Go Back</button>
-              <button className="ld-btn ld-btn--danger" onClick={confirmSave} disabled={saving}>
-                {saving ? 'Saving…' : 'Overwrite File'}
+              <button type="button" className="ui-btn ui-btn--sm" onClick={() => setShowDiff(false)} disabled={saving}
+                title={saving ? 'Saving…' : 'Back to the editor'}>Back</button>
+              <button type="button" className="ui-btn ui-btn--sm ui-btn--danger" onClick={confirmSave} disabled={saving}
+                title={saving ? 'Saving…' : undefined}>
+                {saving ? 'Saving…' : 'Overwrite file'}
               </button>
             </div>
           </div>
@@ -311,8 +334,10 @@ function ScriptsTab({ lichPath, session, onSendCommand }: { lichPath: string; se
                   onFind={() => { const line = viewRef.current?.find(yamlSearch) ?? -1; if (line >= 0) setLastFoundLine(line) }} />
                 <span className="ld-edit-gap" />
                 <span className="ld-edit-mode-note">ruby</span>
-                <button className="ld-btn ld-btn--secondary" onClick={() => { setEditContent(null); setSaveError(null) }}>Cancel</button>
-                <button className="ld-btn ld-btn--primary" onClick={() => { setShowAllDiff(false); setShowDiff(true) }}>Review &amp; Save…</button>
+                <button type="button" className="ui-btn ui-btn--sm" title="Discard your edits and go back to viewing the file"
+                  onClick={() => { setEditContent(null); setSaveError(null) }}>Cancel</button>
+                <button type="button" className="ui-btn ui-btn--sm ui-btn--primary" title="See exactly what will change before anything is written"
+                  onClick={() => { setShowAllDiff(false); setShowDiff(true) }}>Review &amp; save…</button>
               </>
             ) : (
               <>
@@ -330,8 +355,9 @@ function ScriptsTab({ lichPath, session, onSendCommand }: { lichPath: string; se
                   onChange={e => setRunArgs(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') runSelected() }}
                 />
-                <button className="ld-btn ld-btn--secondary" onClick={runSelected}>▶ Run</button>
-                <button className="ld-btn ld-btn--secondary" disabled={!readOk} title={readOk ? '' : "Can't edit — this file couldn't be read"} onClick={() => setEditContent(originalContent!)}>Edit</button>
+                <button type="button" className="ui-btn ui-btn--sm" onClick={runSelected}
+                  title="Put the command in your command bar to review and send">▶ Run</button>
+                <button type="button" className="ui-btn ui-btn--sm" disabled={!readOk} title={readOk ? undefined : "Can't edit — this file couldn't be read"} onClick={() => setEditContent(originalContent!)}>Edit</button>
               </>
             )}
           </div>
@@ -458,8 +484,14 @@ function EditableVarRow({ name, val, canEdit, onSave, onDelete }: {
 }) {
   const [editing,    setEditing]    = useState(false)
   const [draft,      setDraft]      = useState('')
-  const [confirmDel, setConfirmDel] = useState(false)
   const isString = typeof val === 'string'
+
+  // B401: a row ✕ asks through the ONE themed confirm (confirm.ts) — it used to
+  // be a bespoke inline "Delete?" that looked like nothing else in the app.
+  const askDelete = () => {
+    void confirmDelete('variable', name, "It's removed from Lich's memory and saved to lich.db3 straight away.")
+      .then(ok => { if (ok) onDelete() })
+  }
 
   const startEdit = () => { setDraft(isString ? (val as string) : ''); setEditing(true) }
   const commit    = () => { onSave(draft); setEditing(false) }
@@ -473,7 +505,7 @@ function EditableVarRow({ name, val, canEdit, onSave, onDelete }: {
             <span className="ld-var-edit">
               <input className="ld-var-input" value={draft} autoFocus
                 onChange={e => setDraft(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') commit(); else if (e.key === 'Escape') setEditing(false) }} />
+                onKeyDown={e => { if (e.key === 'Enter') commit(); else if (e.key === 'Escape') { e.preventDefault(); setEditing(false) } }} />
               <button className="ld-var-btn ld-var-btn--save" onClick={commit} title="Save (;vars set)">✓</button>
               <button className="ld-var-btn" onClick={() => setEditing(false)} title="Cancel">✕</button>
             </span>
@@ -482,15 +514,8 @@ function EditableVarRow({ name, val, canEdit, onSave, onDelete }: {
       </div>
       {canEdit && !editing && (
         <span className="ld-var-actions">
-          {isString && <button className="ld-var-btn" onClick={startEdit} title="Edit value">✎</button>}
-          {confirmDel
-            ? (
-              <>
-                <button className="ld-var-btn ld-var-btn--del" onClick={() => { onDelete(); setConfirmDel(false) }} title="Confirm delete">Delete?</button>
-                <button className="ld-var-btn" onClick={() => setConfirmDel(false)} title="Cancel">✕</button>
-              </>
-            )
-            : <button className="ld-var-btn ld-var-btn--del-trigger" onClick={() => setConfirmDel(true)} title="Delete variable">✕</button>}
+          {isString && <button type="button" className="ld-var-btn" onClick={startEdit} title="Edit value">✎</button>}
+          <button type="button" className="ld-var-btn ld-var-btn--del-trigger" onClick={askDelete} title="Delete variable" aria-label={`Delete ${name}`}>✕</button>
         </span>
       )}
     </div>
@@ -717,7 +742,7 @@ function SettingsTab({ lichPath }: { lichPath: string }) {
       <div className="lp-body">
         {flags.length > 0 && (
           <>
-            <div className="ld-section-label">Feature Flags</div>
+            <div className="ld-section-label">Feature flags</div>
             {flags.map(r => {
               const bare = r.name.replace('feature_flag:', '')
               const info = LICH_FLAG_INFO[bare]
@@ -738,7 +763,7 @@ function SettingsTab({ lichPath }: { lichPath: string }) {
         )}
         {other.length > 0 && (
           <>
-            <div className="ld-section-label">System Settings</div>
+            <div className="ld-section-label">System settings</div>
             {other.map(r => (
               <div key={r.name} className="ld-setting-row">
                 <span className="ld-setting-name">{r.name}</span>
@@ -1119,10 +1144,10 @@ function YamlSearchField({ value, onChange, onFind, placeholder = 'Search…' }:
       />
       <button
         type="button"
-        className="ld-btn ld-btn--secondary ld-yaml-search-btn"
+        className="ui-btn ui-btn--sm"
         onClick={onFind}
         disabled={!value}
-        title="Find (or press Enter). Each click cycles to the next match."
+        title={value ? 'Find (or press Enter). Each click cycles to the next match.' : 'Type something to find'}
       >
         Find
       </button>
@@ -1234,6 +1259,9 @@ function ProfilesTab({ lichPath, session }: { lichPath: string; session: Session
   const [yamlSearch,      setYamlSearch]      = useState('')
   const [lastFoundLine,   setLastFoundLine]   = useState<number | null>(null)
   const yamlViewRef = useRef<YamlViewHandle | null>(null)
+
+  // B369: same unsaved-edit report as the Scripts tab — see the note there.
+  useReportUnsaved(editContent !== null && originalContent !== null && editContent !== originalContent)
 
   useEffect(() => {
     if (!lichPath) { setLoading(false); return }
@@ -1361,11 +1389,11 @@ function ProfilesTab({ lichPath, session }: { lichPath: string; session: Session
             </select>
           )}
         </div>
-        <div className="lp-body">
+        <div className="lp-body" role="listbox" aria-label="Profiles">
           {filtered.map(p => (
             <div key={p}
               className={`lp-row${selected === p ? ' lp-row--selected' : ''}${isEditing && selected !== p ? ' lp-row--locked' : ''}`}
-              onClick={() => { if (!isEditing) selectProfile(p) }}
+              {...pressable(() => { if (!isEditing) selectProfile(p) }, { role: 'option', selected: selected === p })}
             >
               <span className="lp-script-name">{p}</span>
             </div>
@@ -1396,13 +1424,15 @@ function ProfilesTab({ lichPath, session }: { lichPath: string; session: Session
             </div>
             {saveError && <div className="ld-error ld-diff-error">{saveError}</div>}
             <div className="ld-diff-footer">
-              <button className="ld-btn ld-btn--secondary" onClick={() => setShowAllDiff(v => !v)}>
+              <button type="button" className="ui-btn ui-btn--sm" onClick={() => setShowAllDiff(v => !v)}>
                 {showAllDiff ? 'Changes only' : 'Show all lines'}
               </button>
               <span className="ld-edit-gap" />
-              <button className="ld-btn ld-btn--secondary" onClick={() => setShowDiff(false)} disabled={saving}>Go Back</button>
-              <button className="ld-btn ld-btn--danger"    onClick={confirmSave}              disabled={saving}>
-                {saving ? 'Saving…' : 'Overwrite File'}
+              <button type="button" className="ui-btn ui-btn--sm" onClick={() => setShowDiff(false)} disabled={saving}
+                title={saving ? 'Saving…' : 'Back to the editor'}>Back</button>
+              <button type="button" className="ui-btn ui-btn--sm ui-btn--danger" onClick={confirmSave} disabled={saving}
+                title={saving ? 'Saving…' : undefined}>
+                {saving ? 'Saving…' : 'Overwrite file'}
               </button>
             </div>
           </div>
@@ -1428,9 +1458,12 @@ function ProfilesTab({ lichPath, session }: { lichPath: string; session: Session
                 />
                 <span className="ld-edit-gap" />
                 <span className="ld-edit-mode-note">yaml</span>
-                <button className="ld-btn ld-btn--secondary" onClick={validateYaml}>Validate</button>
-                <button className="ld-btn ld-btn--secondary" onClick={() => { setEditContent(null); setSaveError(null); setValidation(null) }}>Cancel</button>
-                <button className="ld-btn ld-btn--primary"   onClick={() => { setShowAllDiff(false); setShowDiff(true) }}>Review & Save…</button>
+                <button type="button" className="ui-btn ui-btn--sm" onClick={validateYaml}
+                  title="Check the YAML parses, without saving anything">Validate</button>
+                <button type="button" className="ui-btn ui-btn--sm" title="Discard your edits and go back to viewing the file"
+                  onClick={() => { setEditContent(null); setSaveError(null); setValidation(null) }}>Cancel</button>
+                <button type="button" className="ui-btn ui-btn--sm ui-btn--primary" title="See exactly what will change before anything is written"
+                  onClick={() => { setShowAllDiff(false); setShowDiff(true) }}>Review &amp; save…</button>
               </>
             ) : (
               <>
@@ -1445,8 +1478,9 @@ function ProfilesTab({ lichPath, session }: { lichPath: string; session: Session
                   }}
                 />
                 <span className="ld-edit-gap" />
-                <button className="ld-btn ld-btn--secondary" onClick={validateYaml}>Validate</button>
-                <button className="ld-btn ld-btn--secondary" disabled={!readOk} title={readOk ? '' : "Can't edit — this file couldn't be read"} onClick={() => setEditContent(originalContent!)}>Edit</button>
+                <button type="button" className="ui-btn ui-btn--sm" onClick={validateYaml}
+                  title="Check the YAML parses, without saving anything">Validate</button>
+                <button type="button" className="ui-btn ui-btn--sm" disabled={!readOk} title={readOk ? undefined : "Can't edit — this file couldn't be read"} onClick={() => setEditContent(originalContent!)}>Edit</button>
               </>
             )}
           </div>
@@ -1458,7 +1492,7 @@ function ProfilesTab({ lichPath, session }: { lichPath: string; session: Session
             <span className="ld-validation-icon">{validation.ok ? '✓' : '✗'}</span>
             {validation.line != null && <span className="ld-validation-loc">Line {validation.line}:</span>}
             <span className="ld-validation-msg">{validation.message}</span>
-            <button className="ld-validation-dismiss" onClick={() => setValidation(null)}>✕</button>
+            <button className="ld-validation-dismiss" onClick={() => setValidation(null)} title="Dismiss" aria-label="Dismiss">✕</button>
           </div>
         )}
 
@@ -1627,43 +1661,89 @@ function DrInfomonTab({ lichPath, session, onSendCommand }: { lichPath: string; 
 
 // ── Dashboard shell ───────────────────────────────────────────────────────────
 
-const TABS: { id: DashTab; label: string }[] = [
-  { id: 'scripts',   label: 'Scripts'    },
-  { id: 'variables', label: 'Variables'  },
-  { id: 'drinfomon', label: 'DR Infomon' },
-  { id: 'settings',  label: 'Settings'   },
-  { id: 'profiles',  label: 'Profile (YAMLs)' },
+// `title` is the tab's tooltip — what the section IS, since a one-word label
+// doesn't say (UX standard #8).
+const TABS: { id: DashTab; label: string; title: string }[] = [
+  { id: 'scripts',   label: 'Scripts',    title: 'Browse, run and edit the .lic scripts in your Lich install' },
+  { id: 'variables', label: 'Variables',  title: "Lich's Vars for each character — editable for the connected one" },
+  { id: 'drinfomon', label: 'DR Infomon', title: "The game values Lich's drinfomon keeps in memory, and how to use them in a script" },
+  { id: 'settings',  label: 'Settings',   title: "Lich's own settings and feature flags, read from lich.db3 (read-only)" },
+  { id: 'profiles',  label: 'Profile (YAMLs)', title: 'The YAML profiles in scripts/profiles — view, validate and edit' },
 ]
 
-export default function LichDashboard({ session, initialTab = 'scripts', onClose, onSendCommand, onRunCommand }: Props) {
+export default function LichDashboard({ session, initialTab = 'scripts', onClose, onSendCommand, onRunCommand, closeRequest }: Props) {
   const lichPath = getLichPath()
   const [tab, setTab] = useState<DashTab>(initialTab)
+  const titleId = useId()
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // B369: the Scripts and Profiles editors report an in-progress edit into this
+  // scope. Every way out asks before discarding it — a tab switch (the tabs
+  // render conditionally, so leaving one unmounts its editor), Esc, the ✕, a
+  // backdrop click and an outside `closeRequest` all route through
+  // `unsaved.guard`.
+  const unsaved = useUnsavedScope()
+  const requestClose = () => unsaved.guard(onClose)
+  useEscapeClose(requestClose)
+
+  // The outside close (app-bar Lich button / native menu). `onClose` is a fresh
+  // arrow from GameWindow every render, so read the guarded close through a
+  // latest-closure ref (pitfall #31); ignore the counter's value at mount, since
+  // it isn't reset between openings.
+  const requestCloseRef = useRef(requestClose)
+  useEffect(() => { requestCloseRef.current = requestClose })
+  const closeReqAtMount = useRef(closeRequest)
+  useEffect(() => {
+    if (closeRequest !== undefined && closeRequest !== closeReqAtMount.current) requestCloseRef.current()
+  }, [closeRequest])
+
+  // B397: open with the keyboard inside the dialog. The panel itself, not a
+  // tab's filter box — the Profiles filter clears its character default on
+  // first focus, so focusing it for the user would throw that default away.
+  useEffect(() => {
+    const p = panelRef.current
+    if (p && !p.contains(document.activeElement)) p.focus()
+  }, [])
 
   const modal = (
-    <div className="lp-backdrop" {...backdropHandlers(() => onClose())}>
-      <div className="lp-modal lp-modal--dashboard">
+    <div className="lp-backdrop" {...backdropHandlers(requestClose)}>
+      <div
+        className="lp-modal lp-modal--dashboard"
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
 
-        {/* Header */}
+        {/* Header — the title, pill and tabs wrap inside .lp-header-main so the
+            ✕ beside it is never pushed off-screen (B373). */}
         <div className="lp-header">
-          <span className="lp-title">Lich Dashboard</span>
-          {session.useLich && <SessionPill lichPath={lichPath} session={session} />}
-          <div className="ld-tab-nav">
-            {TABS.map(t => (
-              <button key={t.id} className={`ld-tab${tab === t.id ? ' ld-tab--active' : ''}`}
-                onClick={() => setTab(t.id)}>{t.label}</button>
-            ))}
+          <div className="lp-header-main">
+            <span className="lp-title" id={titleId}>Lich Dashboard</span>
+            {session.useLich && <SessionPill lichPath={lichPath} session={session} />}
+            <div className="ui-tabs ld-tab-nav" role="tablist" aria-label="Lich Dashboard sections">
+              {TABS.map(t => (
+                <button key={t.id} type="button" role="tab" aria-selected={tab === t.id}
+                  className={`ui-tab${tab === t.id ? ' ui-tab--active' : ''}`}
+                  title={t.title}
+                  onClick={() => { if (t.id !== tab) unsaved.guard(() => setTab(t.id)) }}>{t.label}</button>
+              ))}
+            </div>
           </div>
-          <button className="lp-close" onClick={onClose}>✕</button>
+          <button type="button" className="ui-close" onClick={requestClose} title="Close" aria-label="Close">✕</button>
         </div>
 
         {/* Body — each tab manages its own scroll */}
-        <div className="ld-body">
-          {tab === 'scripts'   && <ScriptsTab   lichPath={lichPath} session={session} onSendCommand={onSendCommand} />}
-          {tab === 'variables' && <VarsTab      lichPath={lichPath} session={session} onRunCommand={onRunCommand} />}
-          {tab === 'drinfomon' && <DrInfomonTab lichPath={lichPath} session={session} onSendCommand={onSendCommand} />}
-          {tab === 'settings'  && <SettingsTab  lichPath={lichPath} />}
-          {tab === 'profiles'  && <ProfilesTab  lichPath={lichPath} session={session} />}
-        </div>
+        <UnsavedContext.Provider value={unsaved.registry}>
+          <div className="ld-body">
+            {tab === 'scripts'   && <ScriptsTab   lichPath={lichPath} session={session} onSendCommand={onSendCommand} />}
+            {tab === 'variables' && <VarsTab      lichPath={lichPath} session={session} onRunCommand={onRunCommand} />}
+            {tab === 'drinfomon' && <DrInfomonTab lichPath={lichPath} session={session} onSendCommand={onSendCommand} />}
+            {tab === 'settings'  && <SettingsTab  lichPath={lichPath} />}
+            {tab === 'profiles'  && <ProfilesTab  lichPath={lichPath} session={session} />}
+          </div>
+        </UnsavedContext.Provider>
 
       </div>
     </div>

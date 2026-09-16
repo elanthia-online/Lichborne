@@ -10,6 +10,10 @@
   z-index: 200;
 }
 
+/* Focused programmatically on open only when the active tab has nothing
+   better to focus (B397) — no ring round the whole dialog. */
+.at-modal:focus { outline: none; }
+
 .at-modal {
   /* Canonical modal chrome (global.css tokens) — the About-modal look. */
   background: var(--modal-bg);
@@ -60,19 +64,33 @@
   justify-content: flex-end;
 }
 
+/* B344: every button in the header row shares ONE metrics rule (pitfall #113).
+   The Analytics and scope buttons set no font-family, so they drew in
+   Chromium's default UI font beside the game-font tabs, and Import sat shorter
+   (0.75rem / 3px against 0.78rem / 4px). Each rule below sets only its own
+   horizontal padding and chrome. The scope buttons have no border of their own
+   — their .at-scope wrapper carries it — so all four rows come out equal. */
+.at-tab,
+.at-scope-btn,
+.at-analytics-btn,
+.at-import-btn {
+  font-family: inherit;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  padding-block: 3px;
+}
+
 .at-tab {
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-muted);
   border-radius: 999px;
-  padding: 3px 12px;
-  font-family: inherit;
-  font-size: 0.78rem;
+  padding-inline: 12px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background var(--ui-transition), color var(--ui-transition), border-color var(--ui-transition);
 }
 
-.at-tab:hover {
+.at-tab:not(.at-tab--active):hover {
   background: var(--modal-ctl-hover);
   color: var(--text-primary);
 }
@@ -95,12 +113,10 @@
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-muted);
-  border-radius: 4px;
-  padding: 3px 10px;
-  font-family: inherit;
-  font-size: 0.75rem;
+  border-radius: var(--radius-sm);
+  padding-inline: 10px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background var(--ui-transition), color var(--ui-transition), border-color var(--ui-transition);
 }
 .at-import-btn:hover {
   color: var(--accent);
@@ -108,23 +124,7 @@
   background: var(--bg-hover);
 }
 
-.at-close {
-  width: 1.7rem;
-  height: 1.7rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  color: var(--text-muted);
-  font-size: 0.95rem;
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
-}
-
-.at-close:hover { background: var(--modal-ctl-hover); color: var(--text-primary); }
+/* The ✕ is the shared ui-close (ui.css); .at-close was retired in v0.19.7. */
 
 /* ── Body ────────────────────────────────────────────────────────────────── */
 
@@ -153,14 +153,13 @@
   background: var(--bg-sunken);
   color: var(--text-muted);
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  padding: 4px 10px;
-  font-size: 0.78rem;
+  border-radius: var(--radius-sm);
+  padding-inline: 10px;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
 }
-.at-analytics-btn:hover { color: var(--text-primary); border-color: var(--border); }
+.at-analytics-btn:not(.at-analytics-btn--on):hover { color: var(--text-primary); border-color: var(--border); }
 .at-analytics-btn--on {
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
@@ -173,20 +172,19 @@
   display: flex;
   flex-shrink: 0;
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 .at-scope-btn {
   background: var(--bg-sunken);
   color: var(--text-muted);
   border: none;
-  padding: 4px 10px;
-  font-size: 0.78rem;
+  padding-inline: 10px;
   cursor: pointer;
   white-space: nowrap;
 }
 .at-scope-btn + .at-scope-btn { border-left: 1px solid var(--border-subtle); }
-.at-scope-btn:hover:not(:disabled) { color: var(--text-primary); }
+.at-scope-btn:not(.at-scope-btn--on):not(:disabled):hover { color: var(--text-primary); }
 .at-scope-btn--on {
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, var(--bg-sunken));
@@ -203,7 +201,7 @@
 .rule-scope-row {
   display: inline-flex;
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 .rule-scope-btn {
@@ -211,6 +209,8 @@
   color: var(--text-muted);
   border: none;
   padding: 3px 10px;
+  /* B344: a button doesn't inherit the font by default. */
+  font-family: inherit;
   font-size: 0.78rem;
   cursor: pointer;
   white-space: nowrap;
@@ -257,9 +257,12 @@
   background: none;
   border: 1px solid var(--border-subtle);
   color: var(--text-muted);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 2px 8px;
+  /* B344: a button doesn't inherit the font by default. */
+  font-family: inherit;
   font-size: 0.92em;
+  line-height: 1.3;
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -274,9 +277,12 @@
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
   color: var(--text-secondary);
 }
+/* B402: status hues come from --color-danger / --color-warning (warning is
+   already mixed toward the text colour in darkBase). The obsolete teal is an
+   informational hue with no status token, so it stays a fixed mix. */
 .aa-chip--broken,
-.aa-chip--conflict { background: color-mix(in srgb, #d9534f 22%, transparent); color: color-mix(in srgb, #d9534f 72%, var(--text-primary)); }
-.aa-chip--dup { background: color-mix(in srgb, #d0a020 22%, transparent); color: color-mix(in srgb, #d0a020 78%, var(--text-primary)); }
+.aa-chip--conflict { background: color-mix(in srgb, var(--color-danger) 22%, transparent); color: color-mix(in srgb, var(--color-danger) 72%, var(--text-primary)); }
+.aa-chip--dup { background: color-mix(in srgb, var(--color-warning) 22%, transparent); color: var(--color-warning); }
 .aa-chip--obsolete { background: color-mix(in srgb, #3d9aa0 22%, transparent); color: color-mix(in srgb, #3d9aa0 78%, var(--text-primary)); }
 .aa-chip--zero { background: color-mix(in srgb, var(--text-primary) 6%, transparent); color: var(--text-faint); }
 
@@ -288,7 +294,7 @@
   border-top: 1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent);
 }
 .aa-empty-msg, .aa-clean { color: var(--text-muted); padding: 4px 2px; }
-.aa-clean { color: color-mix(in srgb, var(--color-success, #5cb85c) 80%, var(--text-primary)); }
+.aa-clean { color: color-mix(in srgb, var(--color-success) 80%, var(--text-primary)); }
 
 /* Each category = a collapsed-by-default <details> section (one summary line). */
 .aa-sec { border-top: 1px solid color-mix(in srgb, var(--border-subtle) 45%, transparent); }
@@ -315,7 +321,7 @@
 .aa-sec-sum:hover { background: color-mix(in srgb, var(--text-primary) 4%, transparent); }
 .aa-sec-icon { flex-shrink: 0; }
 .aa-sec-name { font-weight: 600; color: var(--text-secondary); }
-.aa-sec--warn .aa-sec-name { color: color-mix(in srgb, #d9534f 72%, var(--text-primary)); }
+.aa-sec--warn .aa-sec-name { color: color-mix(in srgb, var(--color-danger) 72%, var(--text-primary)); }
 .aa-sec-count {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
@@ -326,11 +332,12 @@
   font-size: 0.92em;
 }
 .aa-sec-count--broken,
-.aa-sec-count--conflict { color: color-mix(in srgb, #d9534f 72%, var(--text-primary)); background: color-mix(in srgb, #d9534f 18%, transparent); }
-.aa-sec-count--dup { color: color-mix(in srgb, #d0a020 78%, var(--text-primary)); background: color-mix(in srgb, #d0a020 18%, transparent); }
+.aa-sec-count--conflict { color: color-mix(in srgb, var(--color-danger) 72%, var(--text-primary)); background: color-mix(in srgb, var(--color-danger) 18%, transparent); }
+.aa-sec-count--dup { color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 18%, transparent); }
 .aa-sec-count--obsolete { color: color-mix(in srgb, #3d9aa0 80%, var(--text-primary)); background: color-mix(in srgb, #3d9aa0 18%, transparent); }
 .aa-sec-body { padding: 2px 2px 8px 1.7em; }
-.aa-sec-desc { color: var(--text-faint); font-style: italic; margin-bottom: 5px; }
+/* The explanation is meant to be READ (UX #8) — --text-muted, not faint. */
+.aa-sec-desc { color: var(--text-muted); font-style: italic; margin-bottom: 5px; }
 .aa-sec-none { color: var(--text-faint); opacity: 0.7; }
 
 .aa-set {
@@ -342,18 +349,9 @@
   border-top: 1px solid color-mix(in srgb, var(--border-subtle) 30%, transparent);
 }
 .aa-set:first-child { border-top: none; }
-.aa-action {
-  display: inline-block;
-  margin-bottom: 6px;
-  background: color-mix(in srgb, #d9534f 16%, var(--bg-base));
-  color: color-mix(in srgb, #d9534f 78%, var(--text-primary));
-  border: 1px solid color-mix(in srgb, #d9534f 45%, transparent);
-  border-radius: 4px;
-  padding: 4px 10px;
-  font: inherit;
-  cursor: pointer;
-}
-.aa-action:hover { background: color-mix(in srgb, #d9534f 26%, var(--bg-base)); }
+/* The bulk-remove buttons are ui-btn ui-btn--danger ui-btn--sm (B399/B402);
+   this only spaces them from the list below. */
+.aa-action { margin-bottom: 6px; }
 .aa-set-n { color: var(--text-faint); font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .aa-set-by { color: var(--text-faint); font-style: italic; flex-shrink: 0; }
 .aa-top-row { padding: 2px 0; }
@@ -391,16 +389,16 @@
 }
 .aa-issue { font-size: 0.82rem; line-height: 1; }
 .aa-issue--broken,
-.aa-issue--conflict { color: color-mix(in srgb, #d9534f 75%, var(--text-primary)); }
-.aa-issue--duplicate { color: color-mix(in srgb, #d0a020 78%, var(--text-primary)); }
+.aa-issue--conflict { color: color-mix(in srgb, var(--color-danger) 75%, var(--text-primary)); }
+.aa-issue--duplicate { color: var(--color-warning); }
 .aa-issue--obsolete { color: color-mix(in srgb, #3d9aa0 80%, var(--text-primary)); }
 
 /* Polish: faint idle dash on clean/unfired rows; healthy chip; muted empty
    category; the issues/usage divider label. */
 .aa-badges--idle { color: var(--text-faint); opacity: 0.45; padding-right: 2px; }
 .aa-chip--ok {
-  background: color-mix(in srgb, var(--color-success, #5cb85c) 18%, transparent);
-  color: color-mix(in srgb, var(--color-success, #5cb85c) 80%, var(--text-primary));
+  background: color-mix(in srgb, var(--color-success) 18%, transparent);
+  color: color-mix(in srgb, var(--color-success) 80%, var(--text-primary));
 }
 .aa-sec--empty > .aa-sec-sum { opacity: 0.5; }
 .aa-sec--empty > .aa-sec-sum .aa-sec-count {

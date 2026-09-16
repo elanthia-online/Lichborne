@@ -17,8 +17,9 @@
 // the per-account "↺ Refresh" path; the blank "+ Add account" path starts
 // empty by design (v0.18.2).
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useId, type KeyboardEvent } from 'react'
 import { backdropHandlers } from "../utils/backdropClose"
+import { useEscapeClose } from '../hooks/useEscapeClose'
 import { createPortal } from 'react-dom'
 import { GAMES, IS_MAC, IS_WINDOWS } from '../lichSettings'
 import { useSessions } from '../SessionsContext'
@@ -67,6 +68,14 @@ type Step = 1 | 2
 interface DiscoveredCharacter {
   name: string
   existing: boolean   // already has a profile YAML — checkbox disabled
+}
+
+// An Esc-to-close entry for an inline dialog, registered while it is MOUNTED —
+// useEscapeClose's stack is mount-ordered, so the conflict prompt below sits
+// above the wizard and Esc closes only the prompt (B341).
+function EscToClose({ onClose }: { onClose: () => void }) {
+  useEscapeClose(onClose)
+  return null
 }
 
 export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSetup, prefillAccount, reason }: Props) {
@@ -125,6 +134,19 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
   // connected, we offer to disconnect it and proceed rather than flat-refuse.
   const [pendingConflict, setPendingConflict] = useState<{ character: string; sessionId: string; game: string } | null>(null)
   const [conflictBusy, setConflictBusy] = useState(false)
+
+  // B341: Esc does what the header ✕ does — which stays live even mid-fetch.
+  useEscapeClose(onCancel)
+  const titleId = useId()
+
+  // B389: Enter in the Account or Password field advances, as it does in
+  // every other form. There's no <form> here (the footer buttons live outside
+  // the body), so each step-1 field handles the key itself.
+  function onStep1Enter(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing || busy) return
+    e.preventDefault()
+    void nextFromStep1()
+  }
 
   function backOne() {
     setError('')
@@ -325,12 +347,12 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
 
   return createPortal(
     <div className="wiz-backdrop" {...backdropHandlers(() => onCancel())}>
-      <div className="wiz-modal">
+      <div className="wiz-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
 
         <div className="wiz-header">
-          <span className="wiz-title">Add Account</span>
+          <span className="wiz-title" id={titleId}>Add account</span>
           <span className="wiz-step">Step {step} of 2</span>
-          <button className="wiz-close" onClick={onCancel} title="Cancel">×</button>
+          <button type="button" className="ui-close" onClick={onCancel} title="Close" aria-label="Close">✕</button>
         </div>
 
         <div className="wiz-body">
@@ -347,8 +369,11 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
                   type="text"
                   value={account}
                   onChange={e => setAccount(e.target.value)}
+                  onKeyDown={onStep1Enter}
                   autoComplete="username"
-                  autoFocus
+                  // B397: the ↺ Refresh path arrives with the account filled
+                  // in, so the field you still have to type in is the password.
+                  autoFocus={!prefillAccount}
                   disabled={busy}
                 />
               </label>
@@ -361,7 +386,9 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
+                  onKeyDown={onStep1Enter}
                   autoComplete="current-password"
+                  autoFocus={!!prefillAccount}
                   disabled={busy}
                 />
               </label>
@@ -465,35 +492,55 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
           {error && <div className="wiz-error">{error}</div>}
         </div>
 
-        <div className="wiz-footer">
-          <button className="wiz-btn-back" onClick={backOne} disabled={busy || step === 1}>
-            ← Back
-          </button>
+        {/* Footer order (UX standard #10): the side trip on the left, then
+            Cancel · Back · the primary action. Every button is `ui-btn`, so
+            they share one metrics rule (pitfall #113). */}
+        <div className="ui-modal-foot wiz-footer">
           <button
             type="button"
-            className="wiz-btn-lich-setup"
+            className="ui-btn ui-btn--ghost"
             onClick={onOpenLichSetup}
             disabled={busy}
-            title="Verify or change Lich path, Ruby path, etc."
+            title={busy ? 'Wait for the account check to finish' : 'Check or change the Ruby and Lich paths without losing what you typed here'}
           >
             ⚙ Lich Setup…
           </button>
-          <button className="wiz-btn-cancel" onClick={onCancel} disabled={busy}>
+          <span className="ui-modal-foot-spacer" />
+          <button
+            type="button"
+            className="ui-btn"
+            onClick={onCancel}
+            disabled={busy}
+            title={busy ? 'Wait for the account check to finish, or close with ✕' : undefined}
+          >
             Cancel
+          </button>
+          <button
+            type="button"
+            className="ui-btn"
+            onClick={backOne}
+            disabled={busy || step === 1}
+            title={step === 1 ? 'This is the first step' : busy ? 'Wait for the account check to finish' : undefined}
+          >
+            ← Back
           </button>
           {step === 1 ? (
             <button
-              className="wiz-btn-next"
+              type="button"
+              className="ui-btn ui-btn--primary"
               onClick={nextFromStep1}
               disabled={busy}
+              title={busy ? 'Checking your account with Simutronics…' : undefined}
             >
               {busy ? 'Fetching…' : 'Next →'}
             </button>
           ) : (
             <button
-              className="wiz-btn-finish"
+              type="button"
+              className="ui-btn ui-btn--primary"
               onClick={finish}
               disabled={busy || picked.size === 0}
+              title={picked.size === 0 ? 'Tick at least one character above' : undefined}
             >
               {busy
                 ? 'Saving…'
@@ -506,6 +553,9 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
 
         {pendingConflict && (
           <div className="launcher-connecting" {...backdropHandlers(() => cancelConflict(), !conflictBusy)}>
+            {/* cancelConflict is a no-op mid-disconnect, so Esc is swallowed
+                then rather than falling through to close the wizard. */}
+            <EscToClose onClose={cancelConflict} />
             <div className="launcher-connecting-card launcher-dialog">
               <div className="launcher-dialog-head">Account already in use</div>
               <div className="launcher-dialog-body">

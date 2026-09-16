@@ -249,6 +249,7 @@ export const INTERPOLATABLE_VARS: { name: string; desc: string }[] = [
   { name: 'poisoned',      desc: 'true/false' },
   { name: 'diseased',      desc: 'true/false' },
   { name: 'stunned',       desc: 'true/false' },
+  { name: 'unconscious',   desc: 'true/false (needs statusprompt)' },
   { name: 'webbed',        desc: 'true/false' },
   { name: 'joined',        desc: 'true/false' },
   { name: 'hidden',        desc: 'true/false' },

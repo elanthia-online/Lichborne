@@ -95,6 +95,11 @@ export const darkBase: ThemeVars = {
   '--color-danger-bg':     '#2e1a1a',
   '--color-danger-border': '#5a2d2d',
   '--color-success':       '#5cb85c',
+  // B402: the one WARNING hue (stale, waiting, caution). Defined ONCE, here,
+  // with no per-theme overrides: a fixed amber mixed toward --text-primary —
+  // the pitfall-#63 idiom — so it stays legible on light and dark themes
+  // alike. Status UI uses this instead of a hand-picked amber.
+  '--color-warning':       'color-mix(in srgb, #d99a1e 80%, var(--text-primary))',
 
   '--scrollbar-track':       '#111111',
   '--scrollbar-thumb':       '#555555',
@@ -297,6 +302,56 @@ export const darkBase: ThemeVars = {
   '--experience-scene-text':  'var(--text-secondary)',
   '--experience-scene-muted': 'var(--text-dim)',
   '--experience-chip-border': 'var(--border)',
+  // Spell Monitor traffic light (v0.19.5): green while full → amber past halfway
+  // → red near the end.
+  //
+  // These are DELIBERATELY NOT the `--vital-health-*` ramp, which was the first
+  // implementation and was wrong. That ramp means "this theme's health bar",
+  // not "traffic light", and two shipped themes prove the difference: `classic`
+  // pulls its vitals verbatim from Genie's presets.cfg, where health is RED AT
+  // FULL (`--vital-health-ok-end: #dd0000`), so a full spell would have screamed
+  // "expiring"; and `terminal` is monochrome, so its mid stop is green and the
+  // middle band vanished. Reusing a var whose SEMANTICS differ from your need is
+  // the pitfall #34/#75 family — the cascade must follow meaning, not hue.
+  //
+  // Defined ONCE here in the pitfall-#63 `--syntax-*` shape: a fixed hue mixed
+  // toward `var(--text-primary)`, which resolves in each theme's own context at
+  // use time. So every theme gets a value that keeps its MEANING while its
+  // CONTRAST self-corrects — darkened against a light background, brightened
+  // against a dark one — with no per-theme work and no way for a theme to
+  // silently invert the signal. A theme may still override deliberately.
+  //
+  // The hues are MID-TONE on purpose (UX standard #9's SimuCoin lesson): a true
+  // yellow measures ~1.5:1 on a white theme and simply disappears, so the middle
+  // band is an AMBER. There is no yellow that survives both ends.
+  '--spell-band-ok':   'color-mix(in srgb, #35b04a 75%, var(--text-primary))',
+  '--spell-band-mid':  'color-mix(in srgb, #e0a81c 75%, var(--text-primary))',
+  '--spell-band-crit': 'color-mix(in srgb, #e04040 75%, var(--text-primary))',
+  // Spell Monitor SKILL BADGES — one hue per magic skill / ability type, so a
+  // glance groups "all my Augmentations" without reading a word. Same
+  // self-correcting mix as the bands, and all twelve are exposed in the Theme
+  // Editor's HUD tab so they are genuinely user-editable rather than only
+  // themeable (Sekmeht asked for changeable badge colours).
+  //
+  // Hues deliberately AVOID the band greens/ambers/reds where they can: the
+  // badge chip and the traffic light share a cell, and the badge identifies
+  // while the light alarms — two colour systems that must not be confused.
+  // A character realistically sees at most ~7 of these at once (one guild's
+  // skills, or a Barbarian's ability types), so cross-group reuse would have
+  // been safe; they are kept distinct anyway so no pairing is correct only by
+  // luck (pitfall #55).
+  '--spell-badge-a': 'color-mix(in srgb, #2e9d8f 75%, var(--text-primary))',  // Augmentation
+  '--spell-badge-u': 'color-mix(in srgb, #6b7f99 75%, var(--text-primary))',  // Utility
+  '--spell-badge-t': 'color-mix(in srgb, #c0517a 75%, var(--text-primary))',  // Targeted Magic
+  '--spell-badge-d': 'color-mix(in srgb, #8a5cc0 75%, var(--text-primary))',  // Debilitation
+  '--spell-badge-w': 'color-mix(in srgb, #3f7fc0 75%, var(--text-primary))',  // Warding
+  '--spell-badge-c': 'color-mix(in srgb, #7d7d7d 75%, var(--text-primary))',  // Cantrip
+  '--spell-badge-x': 'color-mix(in srgb, #a87838 75%, var(--text-primary))',  // Metamagic
+  '--spell-badge-f': 'color-mix(in srgb, #4e9c3a 75%, var(--text-primary))',  // Form
+  '--spell-badge-b': 'color-mix(in srgb, #c05a30 75%, var(--text-primary))',  // Berserk
+  '--spell-badge-m': 'color-mix(in srgb, #5f8fb0 75%, var(--text-primary))',  // Meditation
+  '--spell-badge-r': 'color-mix(in srgb, #b0863a 75%, var(--text-primary))',  // Roar
+  '--spell-badge-s': 'color-mix(in srgb, #a8579a 75%, var(--text-primary))',  // Scream
   // Moons experience — the ONLY themeable cue in an otherwise realistic sky
   // (sky gradients, moon lore colors, shadow landscape are fixed nature/lore
   // data, the Principle #4 exception like the map's baked tiles). This tints the

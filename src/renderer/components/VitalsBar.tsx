@@ -14,10 +14,22 @@ interface VitalState {
   max: number
 }
 
+/** The two health boundaries a band is cut at. Structurally the same fields as
+ *  the Overview's `AttentionThresholds`, so a card can pass its options as-is. */
+export interface HealthThresholds {
+  healthCritPct: number
+  healthLowPct: number
+}
+
 interface Props {
   vitals: Record<string, VitalState>
   labels?: Record<string, string>
   compact?: boolean
+  /** B382: the boundaries the health fill's colour bands are cut at. The
+   *  Overview card passes its configurable attention thresholds so its bar and
+   *  its header percentage (and its Critical/Hurt chips) agree; omitted, the
+   *  game window's bar keeps its long-standing bands. */
+  thresholds?: HealthThresholds
 }
 
 const VITAL_ORDER = ['health', 'mana', 'concentration', 'stamina', 'spirit'] as const
@@ -25,17 +37,37 @@ const VITAL_LABELS: Record<string, string> = {
   health: 'Health', mana: 'Mana', concentration: 'Concentration', stamina: 'Stamina', spirit: 'Spirit',
 }
 
-function vitalFillClass(id: string, pct: number): string {
-  if (id === 'health') {
-    if (pct < 30) return 'vital-fill vital-fill--health-crit'
-    if (pct < 50) return 'vital-fill vital-fill--health-low'
-    if (pct < 80) return 'vital-fill vital-fill--health-mid'
-    return 'vital-fill vital-fill--health-ok'
-  }
+/** Above the low threshold there is one more, quieter band before "fine". It
+ *  has no flag behind it on either surface — a gradient toward trouble. */
+export const HEALTH_WARN_PCT = 80
+
+/** The game window's bands, unchanged since they shipped. Deliberately NOT the
+ *  Overview's thresholds (B382): those are Overview options, set with
+ *  `/view set`, and recolouring the Session bar from an Overview command would
+ *  be a surprising reach across views. */
+export const SESSION_HEALTH_THRESHOLDS: HealthThresholds = { healthCritPct: 30, healthLowPct: 50 }
+
+export type HealthBand = 'crit' | 'low' | 'mid' | 'ok'
+
+/**
+ * B382: the ONE place a health percentage becomes a colour band. The Overview
+ * card's header percentage and its vitals bar both come through here with the
+ * same thresholds, so one card can never show two health colours again (the
+ * bar used a hardcoded 30/50/80 while the header used the configurable ones).
+ */
+export function healthBand(pct: number, t: HealthThresholds): HealthBand {
+  if (pct < t.healthCritPct) return 'crit'
+  if (pct < t.healthLowPct)  return 'low'
+  if (pct < HEALTH_WARN_PCT) return 'mid'
+  return 'ok'
+}
+
+function vitalFillClass(id: string, pct: number, t: HealthThresholds): string {
+  if (id === 'health') return `vital-fill vital-fill--health-${healthBand(pct, t)}`
   return `vital-fill vital-fill--${id}`
 }
 
-export default function VitalsBar({ vitals, labels, compact = false }: Props) {
+export default function VitalsBar({ vitals, labels, compact = false, thresholds = SESSION_HEALTH_THRESHOLDS }: Props) {
   return (
     <div className={`vitals-strip${compact ? ' vitals-strip--compact' : ''}`}>
       <div className="vitals-row">
@@ -54,9 +86,12 @@ export default function VitalsBar({ vitals, labels, compact = false }: Props) {
             : fullLabel
           const sep = compact ? ': ' : ' '
           return (
-            <div key={id} className="vital-bar">
+            // B333: compact mode shows only an acronym (H / M / IF…), so the
+            // tooltip spells it out; regular mode already shows the full name.
+            <div key={id} className="vital-bar"
+              title={compact ? `${fullLabel}${v.max > 0 ? `: ${v.current}%` : ''}` : undefined}>
               <div className="vital-track">
-                <div className={vitalFillClass(id, pct)} style={{ width: `${pct}%` }} />
+                <div className={vitalFillClass(id, pct, thresholds)} style={{ width: `${pct}%` }} />
               </div>
               <span className="vital-text">
                 {/* GS4 support: shows the COMPUTED percentage, not raw

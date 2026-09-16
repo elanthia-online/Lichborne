@@ -15,9 +15,15 @@
 // `scheduleSharedProfileSave`, skipping the mount run; date ranges and the
 // export stream selection are deliberately transient. The tail's
 // `useLayoutEffect` keeps content anchored when older lines are prepended.
+//
+// Classes are `.slog-` (session-log.css) — NOT `.sl-`, which belongs to the
+// Lich Scripts panel; sharing it let each restyle the other (B367). Chrome is
+// the About look via the shared ui.css primitives (B400).
 
-import { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback, useId } from 'react'
 import { backdropHandlers } from "../utils/backdropClose"
+import { useEscapeClose } from '../hooks/useEscapeClose'
+import { pressable } from '../utils/pressable'
 import { createPortal } from 'react-dom'
 import type { SessionLogDay, SessionLogSearchHit, SessionLogExportSpec } from '../../shared/types'
 import { loadSessionLogSettings, saveSessionLogSettings } from '../sessionLogSettings'
@@ -29,7 +35,7 @@ import '../styles/session-log.css'
 // Search ("when did X happen?"), and Export ("create a clean log file from
 // these streams over this range"). The modal is NOT a viewer for 30 MB files —
 // it paginates, never loads a whole day at once, and points serious review at
-// the raw files via "Open Logs Folder".
+// the raw files via "Open logs folder".
 
 interface Props {
   character: string
@@ -76,6 +82,11 @@ const PRESETS: { label: string; keep: string[] | 'all' }[] = [
   { label: 'Quiet',  keep: ['main', 'sys'] },
 ]
 
+// UX #8: the preset chip names a layer, the tooltip says what it keeps.
+function presetTitle(keep: string[] | 'all'): string {
+  return keep === 'all' ? 'Show every stream' : `Show only: ${keep.join(', ')}`
+}
+
 function pad(n: number): string { return String(n).padStart(2, '0') }
 function dateStr(d: Date): string { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }
 function todayStr(): string { return dateStr(new Date()) }
@@ -86,11 +97,17 @@ function daysAgoStr(n: number): string {
 }
 
 function streamClass(stream: string): string {
-  if (stream === 'cmd') return 'sl-chip sl-chip--cmd'
-  if (stream === 'sys') return 'sl-chip sl-chip--sys'
-  if (stream === 'main') return 'sl-chip sl-chip--main'
-  return 'sl-chip'
+  if (stream === 'cmd') return 'slog-chip slog-chip--cmd'
+  if (stream === 'sys') return 'slog-chip slog-chip--sys'
+  if (stream === 'main') return 'slog-chip slog-chip--main'
+  return 'slog-chip'
 }
+
+const VIEWS: { id: 'tail' | 'search' | 'export'; label: string; title: string }[] = [
+  { id: 'tail',   label: 'Recent', title: 'The latest lines of one day, filtered by stream' },
+  { id: 'search', label: 'Search', title: 'Find lines across your logs, then jump to one in Recent' },
+  { id: 'export', label: 'Export', title: 'Write selected streams over a date range to a clean log file' },
+]
 
 // The Recent-tail filter and the Export-builder format preferences both live in
 // the app-wide Session Log settings (sessionLogSettings.ts / _shared.yaml) —
@@ -102,6 +119,11 @@ export default function SessionLogModal({ character, initialSearch, onClose }: P
   // Log" entry point — opens the Search view with a blank query, while `null`
   // (the plain Logs button) opens Recent.
   const [view, setView] = useState<'tail' | 'search' | 'export'>(initialSearch != null ? 'search' : 'tail')
+
+  const titleId = useId()
+  const dayId = useId()
+  const timeId = useId()
+  const panelRef = useRef<HTMLDivElement>(null)
 
   // ── Recent Tail state ──────────────────────────────────────────────────────
   const [days, setDays]           = useState<SessionLogDay[]>([])
@@ -182,11 +204,18 @@ export default function SessionLogModal({ character, initialSearch, onClose }: P
   }, [exTimestamps, exTags, exDedup, exSummary, exSplit])
 
   // ── Esc closes ─────────────────────────────────────────────────────────────
+  // Through the shared stack (B341): this used to be its own window listener,
+  // which fired alongside any other dialog's, so one Esc could close two.
+  useEscapeClose(onClose)
+
+  // ── Focus on open (B397) ───────────────────────────────────────────────────
+  // The Search view's input takes focus itself (autoFocus runs during commit,
+  // before this effect); otherwise the panel does, so the keyboard is inside the
+  // dialog rather than left on the covered command bar or nowhere.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+    const p = panelRef.current
+    if (p && !p.contains(document.activeElement)) p.focus()
+  }, [])
 
   // ── "Show in Log" — run the pre-filled search once on open ─────────────────
   useEffect(() => {
@@ -441,40 +470,49 @@ export default function SessionLogModal({ character, initialSearch, onClose }: P
     ...(exTags ? [exSplit ? '[combat]' : '[main]'] : []),
     'The troll swings at you and connects!',
   ].join(' ')
+  // Disabled buttons say why (B407).
+  const exBlockedTitle = exBusy ? 'Working on the last export…'
+    : exSelectedCount === 0 ? 'Select at least one stream to export'
+    : undefined
 
   // ───────────────────────────────────────────────────────────────────────────
   return createPortal(
-    <div className="sl-backdrop" {...backdropHandlers(() => onClose())}>
-      <div className="sl-modal">
+    <div className="slog-backdrop" {...backdropHandlers(() => onClose())}>
+      <div
+        className="slog-modal"
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
 
-        <div className="sl-header">
-          <span className="sl-title">
-            {character} — {view === 'tail' ? 'Recent' : view === 'search' ? 'Quick Search' : 'Create Log File'}
-          </span>
-          <div className="sl-tabs">
-            <button
-              className={`sl-tab${view === 'tail' ? ' sl-tab--active' : ''}`}
-              onClick={() => setView('tail')}
-            >Recent</button>
-            <button
-              className={`sl-tab${view === 'search' ? ' sl-tab--active' : ''}`}
-              onClick={() => setView('search')}
-            >Search</button>
-            <button
-              className={`sl-tab${view === 'export' ? ' sl-tab--active' : ''}`}
-              onClick={() => setView('export')}
-            >Export</button>
+        <div className="slog-header">
+          <span className="slog-title" id={titleId}>Session Log — {character}</span>
+          <div className="ui-tabs" role="tablist" aria-label="Session Log views">
+            {VIEWS.map(v => (
+              <button
+                key={v.id}
+                type="button"
+                role="tab"
+                aria-selected={view === v.id}
+                className={`ui-tab${view === v.id ? ' ui-tab--active' : ''}`}
+                title={v.title}
+                onClick={() => setView(v.id)}
+              >{v.label}</button>
+            ))}
           </div>
-          <button className="sl-close" onClick={onClose}>×</button>
+          <button type="button" className="ui-close" onClick={onClose} title="Close" aria-label="Close">✕</button>
         </div>
 
         {view === 'tail' && (
           <>
-            <div className="sl-controls">
-              <div className="sl-control-row">
-                <label className="sl-inline-label">Day</label>
+            <div className="slog-controls">
+              <div className="slog-control-row">
+                <label className="ui-section-label" htmlFor={dayId}>Day</label>
                 <select
-                  className="sl-select"
+                  id={dayId}
+                  className="ui-field slog-select"
                   value={date}
                   onChange={e => { setDate(e.target.value); refreshDay(e.target.value) }}
                 >
@@ -485,26 +523,32 @@ export default function SessionLogModal({ character, initialSearch, onClose }: P
                     </option>
                   ))}
                 </select>
-                <button className="sl-btn" onClick={() => refreshDay(date)} disabled={loading}>
+                <button
+                  type="button"
+                  className="ui-btn ui-btn--sm"
+                  onClick={() => refreshDay(date)}
+                  disabled={loading}
+                  title={loading ? 'Loading…' : 'Re-read this day from disk'}
+                >
                   Refresh
                 </button>
-                <div className="sl-presets">
+                <div className="slog-presets">
                   {PRESETS.map(p => (
-                    <button key={p.label} className="sl-preset" onClick={() => applyPreset(p.keep)}>
+                    <button key={p.label} type="button" className="slog-preset" title={presetTitle(p.keep)} onClick={() => applyPreset(p.keep)}>
                       {p.label}
                     </button>
                   ))}
                 </div>
-                <label className="sl-check sl-check--dedup">
+                <label className="slog-check slog-check--dedup" title="Merge a line repeated across streams (speech DR sends to two streams) into one row">
                   <input type="checkbox" checked={dedup} onChange={e => setDedup(e.target.checked)} />
                   Dedup
                 </label>
               </div>
 
-              <div className="sl-streams">
-                {allStreams.length === 0 && <span className="sl-muted">No streams in this day.</span>}
+              <div className="slog-streams">
+                {allStreams.length === 0 && <span className="slog-muted">No streams in this day.</span>}
                 {allStreams.map(s => (
-                  <label key={s} className="sl-check">
+                  <label key={s} className="slog-check">
                     <input
                       type="checkbox"
                       checked={!hidden.has(s)}
@@ -516,14 +560,14 @@ export default function SessionLogModal({ character, initialSearch, onClose }: P
               </div>
             </div>
 
-            <div className="sl-list" ref={listRef}>
+            <div className="slog-list" ref={listRef}>
               {oldestNo > 1 && (
-                <button className="sl-load-older" onClick={loadOlder} disabled={loading}>
+                <button type="button" className="slog-load-older" onClick={loadOlder} disabled={loading}>
                   {loading ? 'Loading…' : `⬆ Load older (${oldestNo - 1} above)`}
                 </button>
               )}
               {rows.length === 0 && !loading && (
-                <div className="sl-empty">
+                <div className="slog-empty">
                   {totalLines === 0
                     ? `No log for ${character} on ${date}.`
                     : 'No lines match the current stream filter.'}
@@ -533,53 +577,60 @@ export default function SessionLogModal({ character, initialSearch, onClose }: P
                 <div
                   key={r.lineNo}
                   data-no={r.lineNo}
-                  className={`sl-row${highlightNo === r.lineNo ? ' sl-row--hit' : ''}`}
+                  className={`slog-row${highlightNo === r.lineNo ? ' slog-row--hit' : ''}`}
                 >
-                  <span className="sl-time">{r.time}</span>
-                  <span className="sl-chips">
+                  <span className="slog-time">{r.time}</span>
+                  <span className="slog-chips">
                     {r.streams.map(s => (
                       <span key={s} className={streamClass(s)}>{s}</span>
                     ))}
                   </span>
-                  <span className="sl-text">{r.text}</span>
+                  <span className="slog-text">{r.text}</span>
                 </div>
               ))}
             </div>
 
-            <div className="sl-footer">
-              <button className="sl-btn" onClick={() => window.api.sessionLogOpenFolder(character)}>
-                Open Logs Folder
+            <div className="ui-modal-foot">
+              <button type="button" className="ui-btn" onClick={() => window.api.sessionLogOpenFolder(character)}>
+                Open logs folder
               </button>
-              <div className="sl-footer-spacer" />
-              <button className="sl-btn" onClick={() => setView('search')}>Quick Search…</button>
-              <button className="sl-btn" onClick={() => setView('export')}>Create Log File…</button>
+              <div className="ui-modal-foot-spacer" />
+              <button type="button" className="ui-btn" onClick={() => setView('search')}>Search logs</button>
+              <button type="button" className="ui-btn" onClick={() => setView('export')}>Create log file</button>
             </div>
           </>
         )}
 
         {view === 'search' && (
           <>
-            <div className="sl-controls">
-              <div className="sl-control-row">
+            <div className="slog-controls">
+              <div className="slog-control-row">
                 <input
-                  className="sl-search-input"
+                  className="ui-field slog-search-input"
                   placeholder="Search session logs…"
+                  aria-label="Search session logs"
                   value={query}
                   autoFocus
                   onChange={e => setQuery(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') runSearch() }}
                 />
-                <label className="sl-check">
+                <label className="slog-check" title="Treat the search text as a regular expression">
                   <input type="checkbox" checked={regex} onChange={e => setRegex(e.target.checked)} />
                   Regex
                 </label>
-                <button className="sl-btn sl-btn--primary" onClick={runSearch} disabled={searching || !query.trim()}>
+                <button
+                  type="button"
+                  className="ui-btn ui-btn--primary"
+                  onClick={runSearch}
+                  disabled={searching || !query.trim()}
+                  title={searching ? 'Searching…' : !query.trim() ? 'Type something to search for' : undefined}
+                >
                   {searching ? 'Searching…' : 'Search'}
                 </button>
               </div>
-              <div className="sl-control-row">
-                <label className="sl-inline-label">Time</label>
-                <select className="sl-select" value={range} onChange={e => setRange(e.target.value as typeof range)}>
+              <div className="slog-control-row">
+                <label className="ui-section-label" htmlFor={timeId}>Time</label>
+                <select id={timeId} className="ui-field slog-select" value={range} onChange={e => setRange(e.target.value as typeof range)}>
                   <option value="today">Today</option>
                   <option value="7d">Last 7 days</option>
                   <option value="30d">Last 30 days</option>
@@ -587,18 +638,18 @@ export default function SessionLogModal({ character, initialSearch, onClose }: P
                 </select>
                 {range === 'custom' && (
                   <>
-                    <input type="date" className="sl-date" value={customFrom} max={customTo}
-                           onChange={e => setCustomFrom(e.target.value)} />
-                    <span className="sl-muted">to</span>
-                    <input type="date" className="sl-date" value={customTo} min={customFrom} max={todayStr()}
-                           onChange={e => setCustomTo(e.target.value)} />
+                    <input type="date" className="ui-field slog-date" value={customFrom} max={customTo}
+                           aria-label="From" onChange={e => setCustomFrom(e.target.value)} />
+                    <span className="slog-muted">to</span>
+                    <input type="date" className="ui-field slog-date" value={customTo} min={customFrom} max={todayStr()}
+                           aria-label="To" onChange={e => setCustomTo(e.target.value)} />
                   </>
                 )}
               </div>
               {searched && searchStreams.length > 0 && (
-                <div className="sl-streams">
+                <div className="slog-streams">
                   {searchStreams.map(s => (
-                    <label key={s} className="sl-check">
+                    <label key={s} className="slog-check">
                       <input
                         type="checkbox"
                         checked={!searchHidden.has(s)}
@@ -615,83 +666,85 @@ export default function SessionLogModal({ character, initialSearch, onClose }: P
               )}
             </div>
 
-            <div className="sl-list">
+            <div className="slog-list">
               {searched && (
-                <div className="sl-result-count">
+                <div className="slog-result-count">
                   {hits.length === 0
                     ? 'No matches.'
                     : `${filteredHits.length} shown${filteredHits.length !== hits.length ? ` of ${hits.length}` : ''}${hits.length >= 1000 ? ' (capped at 1000)' : ''}`}
                 </div>
               )}
-              {!searched && <div className="sl-empty">Enter a search term to find lines across your logs.</div>}
+              {!searched && <div className="slog-empty">Enter a search term to find lines across your logs.</div>}
               {filteredHits.map((x, i) => {
                 const prev = filteredHits[i - 1]
                 const showDate = !prev || prev.hit.date !== x.hit.date
                 return (
                   <div key={`${x.hit.date}-${x.hit.lineNo}`}>
-                    {showDate && <div className="sl-result-date">{x.hit.date}</div>}
+                    {showDate && <div className="slog-result-date">{x.hit.date}</div>}
                     <div
-                      className="sl-row sl-row--clickable"
-                      onClick={() => jumpToLine(x.hit.date, x.hit.lineNo, x.p.stream)}
+                      className="slog-row slog-row--clickable"
+                      {...pressable(() => jumpToLine(x.hit.date, x.hit.lineNo, x.p.stream))}
                       title="Jump to this line in Recent"
                     >
-                      <span className="sl-time">{x.p.time}</span>
-                      <span className="sl-chips"><span className={streamClass(x.p.stream)}>{x.p.stream}</span></span>
-                      <span className="sl-text">{x.p.text}</span>
+                      <span className="slog-time">{x.p.time}</span>
+                      <span className="slog-chips"><span className={streamClass(x.p.stream)}>{x.p.stream}</span></span>
+                      <span className="slog-text">{x.p.text}</span>
                     </div>
                   </div>
                 )
               })}
             </div>
 
-            <div className="sl-footer">
-              <button className="sl-btn" onClick={() => window.api.sessionLogOpenFolder(character)}>
-                Open Logs Folder
+            <div className="ui-modal-foot">
+              <button type="button" className="ui-btn" onClick={() => window.api.sessionLogOpenFolder(character)}>
+                Open logs folder
               </button>
-              <div className="sl-footer-spacer" />
-              <button className="sl-btn" onClick={() => setView('tail')}>Back to Recent</button>
+              <div className="ui-modal-foot-spacer" />
+              <button type="button" className="ui-btn" onClick={() => setView('tail')}>Back to recent</button>
             </div>
           </>
         )}
 
         {view === 'export' && (
           <>
-            <div className="sl-controls">
-              <div className="sl-control-row">
-                <label className="sl-inline-label">Range</label>
+            <div className="slog-controls">
+              <div className="slog-control-row">
+                <span className="ui-section-label">Range</span>
                 <input
-                  type="date" className="sl-date" value={exFrom} max={exTo}
+                  type="date" className="ui-field slog-date" value={exFrom} max={exTo}
+                  aria-label="From"
                   onChange={e => setExFrom(e.target.value)}
                 />
-                <span className="sl-muted">to</span>
+                <span className="slog-muted">to</span>
                 <input
-                  type="date" className="sl-date" value={exTo} min={exFrom} max={todayStr()}
+                  type="date" className="ui-field slog-date" value={exTo} min={exFrom} max={todayStr()}
+                  aria-label="To"
                   onChange={e => setExTo(e.target.value)}
                 />
-                <div className="sl-presets">
-                  <button className="sl-preset" onClick={() => applyExportRange(1)}>Today</button>
-                  <button className="sl-preset" onClick={() => applyExportRange(7)}>7 days</button>
-                  <button className="sl-preset" onClick={() => applyExportRange(30)}>30 days</button>
+                <div className="slog-presets">
+                  <button type="button" className="slog-preset" onClick={() => applyExportRange(1)}>Today</button>
+                  <button type="button" className="slog-preset" onClick={() => applyExportRange(7)}>7 days</button>
+                  <button type="button" className="slog-preset" onClick={() => applyExportRange(30)}>30 days</button>
                 </div>
               </div>
 
-              <div className="sl-control-row">
-                <span className="sl-inline-label">Streams</span>
-                <div className="sl-presets">
+              <div className="slog-control-row">
+                <span className="ui-section-label">Streams</span>
+                <div className="slog-presets">
                   {PRESETS.map(p => (
-                    <button key={p.label} className="sl-preset" onClick={() => applyExportPreset(p.keep)}>
+                    <button key={p.label} type="button" className="slog-preset" title={presetTitle(p.keep)} onClick={() => applyExportPreset(p.keep)}>
                       {p.label}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="sl-streams">
-                {exScanning && <span className="sl-muted">Scanning date range…</span>}
+              <div className="slog-streams">
+                {exScanning && <span className="slog-muted">Scanning date range…</span>}
                 {!exScanning && exStreams.length === 0 &&
-                  <span className="sl-muted">No streams found in this date range.</span>}
+                  <span className="slog-muted">No streams found in this date range.</span>}
                 {!exScanning && exStreams.map(s => (
-                  <label key={s} className="sl-check">
+                  <label key={s} className="slog-check">
                     <input
                       type="checkbox"
                       checked={!exHidden.has(s)}
@@ -707,56 +760,60 @@ export default function SessionLogModal({ character, initialSearch, onClose }: P
               </div>
             </div>
 
-            <div className="sl-export-body">
-              <div className="sl-export-section">Format</div>
-              <div className="sl-export-opts">
-                <label className="sl-check">
+            <div className="slog-export-body">
+              <div className="ui-section-label slog-export-section">Format</div>
+              <div className="slog-export-opts">
+                <label className="slog-check">
                   <input type="checkbox" checked={exTimestamps} onChange={e => setExTimestamps(e.target.checked)} />
                   Include timestamps
                 </label>
-                <label className="sl-check">
+                <label className="slog-check">
                   <input type="checkbox" checked={exTags} onChange={e => setExTags(e.target.checked)} />
                   Include stream tags
                 </label>
-                <label className="sl-check">
+                <label className="slog-check">
                   <input type="checkbox" checked={exDedup} onChange={e => setExDedup(e.target.checked)} />
                   Collapse duplicate lines
                 </label>
-                <label className="sl-check">
+                <label className="slog-check">
                   <input type="checkbox" checked={exSummary} onChange={e => setExSummary(e.target.checked)} />
                   Add summary header
                 </label>
-                <label className="sl-check">
+                <label className="slog-check">
                   <input type="checkbox" checked={exSplit} onChange={e => setExSplit(e.target.checked)} />
                   One file per stream
                 </label>
               </div>
 
-              <div className="sl-export-section">Sample line</div>
-              <code className="sl-export-sample">{exSampleLine}</code>
+              <div className="ui-section-label slog-export-section">Sample line</div>
+              <code className="slog-export-sample">{exSampleLine}</code>
 
-              {exResult && <div className="sl-export-result">{exResult}</div>}
+              {exResult && <div className="slog-export-result">{exResult}</div>}
             </div>
 
-            <div className="sl-footer">
-              <button className="sl-btn" onClick={() => window.api.sessionLogOpenFolder(character)}>
-                Open Logs Folder
+            <div className="ui-modal-foot">
+              <button type="button" className="ui-btn" onClick={() => window.api.sessionLogOpenFolder(character)}>
+                Open logs folder
               </button>
-              <span className="sl-muted">{exSelectedCount} of {exStreams.length} streams</span>
-              <div className="sl-footer-spacer" />
+              <span className="slog-muted">{exSelectedCount} of {exStreams.length} streams</span>
+              <div className="ui-modal-foot-spacer" />
               <button
-                className="sl-btn"
+                type="button"
+                className="ui-btn"
                 onClick={() => runExport('clipboard')}
                 disabled={exBusy || exSelectedCount === 0}
+                title={exBlockedTitle}
               >
-                Copy to Clipboard
+                Copy to clipboard
               </button>
               <button
-                className="sl-btn sl-btn--primary"
+                type="button"
+                className="ui-btn ui-btn--primary"
                 onClick={() => runExport('file')}
                 disabled={exBusy || exSelectedCount === 0}
+                title={exBlockedTitle}
               >
-                {exBusy ? 'Working…' : exSplit ? 'Save Files…' : 'Save File…'}
+                {exBusy ? 'Working…' : exSplit ? 'Save files…' : 'Save file…'}
               </button>
             </div>
           </>

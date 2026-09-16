@@ -16,7 +16,7 @@
 // active character's GameWindow stays laid out underneath, so its virtualised
 // scrollback keeps measuring and returning to Session view needs no re-snap.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   useDigests, useOverviewOptions, digestFlags, useOverviewNow,
   startOverviewClock, stopOverviewClock, setFeedCapacity, setOverviewTarget,
@@ -64,6 +64,23 @@ export default function OverviewShell({ open, characterCount, activeCharacterId,
     })
     ro.observe(el)
     return () => ro.disconnect()
+  }, [hostRef])
+
+  // B342: click-to-deselect fires only when the MOUSEDOWN also started on empty
+  // grid space, so a press on a card that is released over a gap no longer
+  // deselects. A NATIVE listener, not React's onMouseDown: the cards are
+  // PORTALED in by their GameWindows, so their React events bubble through
+  // GameWindow and never reach this grid — a React handler here (or the shared
+  // backdropHandlers flag) would simply never hear a mousedown on a card and
+  // keep a stale value. Natively the cards ARE descendants of the grid, and this
+  // listener runs before any card's React handler could stop the event.
+  const downOnEmptyGridRef = useRef(false)
+  useEffect(() => {
+    const el = hostRef.current
+    if (!el) return
+    const onDown = (e: MouseEvent) => { downOnEmptyGridRef.current = e.target === el }
+    el.addEventListener('mousedown', onDown)
+    return () => el.removeEventListener('mousedown', onDown)
   }, [hostRef])
 
   // B296: subscribe THIS component to the 1 Hz clock. The fresh-per-render
@@ -126,7 +143,8 @@ export default function OverviewShell({ open, characterCount, activeCharacterId,
         // Clicking the EMPTY grid (not a card — cards stop propagation by
         // handling their own click) widens the input bar back to all
         // characters. The gesture reads as "deselect", which is what it is.
-        onClick={e => { if (e.target === e.currentTarget) setOverviewTarget(null) }}
+        // Both ends must be on empty space (B342, the listener above).
+        onClick={e => { if (e.target === e.currentTarget && downOnEmptyGridRef.current) setOverviewTarget(null) }}
         style={{
           ['--ov-cols' as string]: String(plan.columns),
           ['--ov-row-min' as string]: `${plan.rowMinPx}px`,
@@ -187,9 +205,20 @@ function OverviewSummaryStrip() {
         <strong>{connected}</strong> connected
       </span>
 
-      {needing === 0 ? (
-        <span className="ov-summary-calm" title="Nothing needs your attention right now">✓ all calm</span>
-      ) : (
+      {/* B393: "all calm" and the chips are NOT either/or. "All calm" answers
+          "does anyone need me?" — but the informational chips below the alert
+          floor (idle, mind locked) were hidden behind it, so a parked character
+          or a skill at lock vanished from the one strip that summarises every
+          character. They sit BESIDE the calm marker now, in their own muted
+          treatment, so the strip reads calm and still tells you what it knows
+          (UX #1: quiet by default, never by hiding a real signal). */}
+      {needing === 0 && (
+        <span className="ov-summary-calm"
+              title={chips.length > 0
+                ? 'Nothing needs your attention right now — the grey chips beside this are informational'
+                : 'Nothing needs your attention right now'}>✓ all calm</span>
+      )}
+      {chips.length > 0 && (
         <span className="ov-summary-flags">
           {chips.map(([flag, n]) => (
             <span key={flag} className={`ov-flag ov-flag--${ATTENTION_DEFS[flag].cls}`} title={ATTENTION_DEFS[flag].desc}>

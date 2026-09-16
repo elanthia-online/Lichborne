@@ -34,8 +34,9 @@ export default function OverviewInputBar({ activeCharacterId }: Props) {
   // falls back to the whole roster while the id is unknown.
   const { myRoster } = useRoster()
   // The target is SHARED state now (overviewStore): a card click aims at that
-  // character, clicking empty space widens back to everyone, and the view button
-  // does the same — so the bar can no longer own it privately. `null` === all.
+  // character (and, B320, makes it the active tab too), clicking empty space
+  // widens back to everyone, and the view button does the same — so the bar can
+  // no longer own it privately. `null` === all.
   const targetId = useOverviewTarget()
   const target = targetId ?? ALL
   const setTarget = (v: string) => setOverviewTarget(v === ALL ? null : v)
@@ -112,9 +113,11 @@ export default function OverviewInputBar({ activeCharacterId }: Props) {
 
   // FOLLOW the active character (Sekmeht). Switching tabs from the Overview —
   // Ctrl+1..9, Ctrl+Tab, or clicking a tab in the app bar, all of which run
-  // through the same `setActive` — retargets this bar at that character, so the
-  // card highlighted as "current" and the character you are about to type at are
-  // never two different people.
+  // through the same `setActive` — retargets this bar at that character. A card
+  // click goes the other way (B320: it sets the target AND calls `setActive`), so
+  // the active tab and the character you are about to type at are ONE selection
+  // whichever end you pick it from. Under All characters every connected card
+  // and tab is highlighted instead, since a send reaches all of them.
   //
   // Only on a CHANGE, never on mount: the ref is seeded with the value it has at
   // mount precisely so the first render is NOT treated as a switch. That keeps
@@ -162,6 +165,9 @@ export default function OverviewInputBar({ activeCharacterId }: Props) {
   }
 
   function onKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    // B349: keys during IME composition belong to the input method (Esc
+    // cancels the candidate, ↑/↓ choose one) — never clear or browse history.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
     if (e.key === 'Escape') {
       e.preventDefault()
       setText('')
@@ -198,6 +204,13 @@ export default function OverviewInputBar({ activeCharacterId }: Props) {
   // With one character there is nothing to choose — "All" would be that
   // character under a second name (UX standard #1, the QuickSend precedent).
   const single = connected.length === 1
+  // B336: says WHO receives it. It read a bare "Send" for one character, and
+  // "Send to all 1 connected characters" under All with one connected.
+  const sendTitle =
+    targets.length === 1 ? `Send to ${targets[0].character}`
+    : targets.length > 1 ? `Send to all ${targets.length} connected characters`
+    : lostTarget ? 'That character is offline — pick another target'
+    : 'No connected characters to send to'
 
   return (
     <form className="ov-inputbar" onSubmit={send}>
@@ -249,7 +262,7 @@ export default function OverviewInputBar({ activeCharacterId }: Props) {
         type="submit"
         className="ov-inputbar-send"
         disabled={!text.trim() || targets.length === 0}
-        title={target === ALL ? `Send to all ${connected.length} connected characters` : 'Send'}
+        title={sendTitle}
       >Send</button>
 
       {lostTarget && (

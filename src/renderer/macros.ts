@@ -106,29 +106,77 @@ const NUMPAD_CODE_MAP: Record<string, string> = {
   Numpad8: 'Num8', Numpad9: 'Num9',
 }
 
-export function formatKeyCombo(e: KeyboardEvent): string {
-  // Meta chords (Cmd on macOS, Win key elsewhere) are NEVER macro-bindable —
-  // bail so they can't match anything. Without this, formatKeyCombo ignored
-  // metaKey entirely, so on a Mac Cmd+C formatted as plain 'C' and a macro
-  // bound to bare C would swallow the OS copy chord (v0.18.0 cross-platform).
-  // No stored combo can contain a Meta modifier (this same function records
-  // combos in the Macros editor), so nothing legitimate is lost.
-  if (e.metaKey) return ''
-  const mods: string[] = []
-  if (e.ctrlKey)  mods.push('Ctrl')
-  if (e.altKey)   mods.push('Alt')
-  if (e.shiftKey) mods.push('Shift')
+// B347: on macOS, Option REWRITES the character a key produces (Option+T is
+// `†`, Option+E is a dead key), so `e.key` can't name an Option chord. These
+// are the physical keys we name from `e.code` instead, as a US layout names
+// them — the same string Windows gets from `e.key` for that chord, so a macro
+// imported or transferred from Windows (`Alt+T`, `Alt+Shift+!`) matches.
+// [unshifted, shifted]; letters are uppercased either way, as today.
+const MAC_OPTION_CODE_MAP: Record<string, [string, string]> = {
+  Digit1: ['1', '!'], Digit2: ['2', '@'], Digit3: ['3', '#'], Digit4: ['4', '$'],
+  Digit5: ['5', '%'], Digit6: ['6', '^'], Digit7: ['7', '&'], Digit8: ['8', '*'],
+  Digit9: ['9', '('], Digit0: ['0', ')'],
+  Minus: ['-', '_'], Equal: ['=', '+'], BracketLeft: ['[', '{'], BracketRight: [']', '}'],
+  Backslash: ['\\', '|'], Semicolon: [';', ':'], Quote: ["'", '"'], Comma: [',', '<'],
+  Period: ['.', '>'], Slash: ['/', '?'], Backquote: ['`', '~'],
+  // Option+Space types a non-breaking space, which would display as a blank.
+  Space: ['Space', 'Space'],
+}
+
+/** `mac` is passed in (never read from lichSettings) so this file stays
+ *  bundleable by the tmp-cmd-harness without a window.api stub. */
+export interface KeyComboOptions { mac?: boolean }
+
+function comboFromKey(e: KeyboardEvent, mods: string[]): string {
   const key = e.key
-  if (MODIFIER_KEYS.has(key)) return ''
   // e.code distinguishes numpad keys from their keyboard twins (e.g. NumpadSubtract vs Minus)
   const display = NUMPAD_CODE_MAP[e.code]
     ?? (key === ' ' ? 'Space' : key.length === 1 ? key.toUpperCase() : key)
   return [...mods, display].join('+')
 }
 
-export function matchKeyCombo(combo: string, e: KeyboardEvent): boolean {
+function comboMods(e: KeyboardEvent): string[] | null {
+  // Meta chords (Cmd on macOS, Win key elsewhere) are NEVER macro-bindable —
+  // bail so they can't match anything. Without this, formatKeyCombo ignored
+  // metaKey entirely, so on a Mac Cmd+C formatted as plain 'C' and a macro
+  // bound to bare C would swallow the OS copy chord (v0.18.0 cross-platform).
+  // No stored combo can contain a Meta modifier (this same function records
+  // combos in the Macros editor), so nothing legitimate is lost.
+  if (e.metaKey) return null
+  if (MODIFIER_KEYS.has(e.key)) return null
+  const mods: string[] = []
+  if (e.ctrlKey)  mods.push('Ctrl')
+  if (e.altKey)   mods.push('Alt')
+  if (e.shiftKey) mods.push('Shift')
+  return mods
+}
+
+export function formatKeyCombo(e: KeyboardEvent, opts: KeyComboOptions = {}): string {
+  const mods = comboMods(e)
+  if (!mods) return ''
+  // B347: a mac Option chord is named from the PHYSICAL key. Numpad keys keep
+  // NUMPAD_CODE_MAP; anything not listed (F-keys, arrows, Enter — whose e.key
+  // is a name, not a character Option can rewrite) falls through to e.key.
+  if (opts.mac && e.altKey && !NUMPAD_CODE_MAP[e.code]) {
+    const code = e.code ?? ''
+    const letter = /^Key([A-Z])$/.exec(code)
+    if (letter) return [...mods, letter[1]].join('+')
+    const mapped = MAC_OPTION_CODE_MAP[code]
+    if (mapped) return [...mods, mapped[e.shiftKey ? 1 : 0]].join('+')
+  }
+  return comboFromKey(e, mods)
+}
+
+export function matchKeyCombo(combo: string, e: KeyboardEvent, opts: KeyComboOptions = {}): boolean {
   if (!combo) return false
-  return formatKeyCombo(e) === combo
+  if (formatKeyCombo(e, opts) === combo) return true
+  // B347: before the fix a Mac recorded Option chords from e.key (`Alt+†`).
+  // Keep those firing: on mac, the legacy e.key form still matches too.
+  if (opts.mac && e.altKey) {
+    const mods = comboMods(e)
+    return !!mods && comboFromKey(e, mods) === combo
+  }
+  return false
 }
 
 // ── Typed-input command separator (F59, v0.15.2) ─────────────────────────────
@@ -253,10 +301,11 @@ export function resolveMacro(
   e: KeyboardEvent,
   macros: MacroRule[],
   gameVars: Record<string, string>,
+  opts: KeyComboOptions = {},
 ): { commands: string[]; delayMs: number; ruleId: string } | null {
   for (const macro of macros) {
     if (!macro.enabled || !macro.key) continue
-    if (matchKeyCombo(macro.key, e)) {
+    if (matchKeyCombo(macro.key, e, opts)) {
       const commands = macro.commands.map(c => interpolate(c, gameVars).trim()).filter(Boolean)
       return { commands, delayMs: macro.delayMs, ruleId: macro.id }
     }
@@ -301,6 +350,7 @@ export const MACRO_VARS: { name: string; desc: string }[] = [
   { name: 'poisoned',      desc: 'true/false' },
   { name: 'diseased',      desc: 'true/false' },
   { name: 'stunned',       desc: 'true/false' },
+  { name: 'unconscious',   desc: 'true/false (needs statusprompt)' },
   { name: 'webbed',        desc: 'true/false' },
   { name: 'joined',        desc: 'true/false' },
   { name: 'hidden',        desc: 'true/false' },

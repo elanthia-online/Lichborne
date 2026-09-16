@@ -1,5 +1,5 @@
 /* Character Notes Editor — modal for per-character guild / circle / notes.
-   Opened from a launcher tile's ⋯ menu → "Edit Profile…". Persists to the
+   Opened from a launcher tile's ⋯ menu → "Edit profile…". Persists to the
    character's YAML profile. v0.8.0 (F20). */
 
 /* v0.18.0: converted to the canonical About-modal chrome (about.css) — the
@@ -15,23 +15,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
-}
-
-/* Attach mode: AttachModal reuses this chrome, and inherited the
-   z-index above with it — 100, which is BELOW .add-character-modal (1000,
-   character-tabs.css). Opened from the compact launcher inside that modal —
-   the only route to attaching a second character while one is connected —
-   it rendered BEHIND the backdrop, so the button appeared to do nothing.
-   Same failure .launcher-connecting documents in launcher.css, so the same
-   fix: above every login/launcher surface including that overlay (1500),
-   still below QuickSend (2000).
-
-   NOTE: Edit Profile… (this file's own modal) has the identical latent bug
-   when opened from the compact launcher. Left alone deliberately — it is
-   pre-existing and unrelated to attach mode, so fixing it belongs in its own
-   change rather than riding along in a feature patch. */
-.cne-backdrop.attach-backdrop {
+  /* ABOVE the + tab's Add Character modal (.add-character-modal, 1000 —
+     character-tabs.css) and the connect overlay (.launcher-connecting, 1500);
+     below QuickSend (2000) and context menus (2100).
+     Every dialog on this chrome — Edit Profile, Attach, Team Login, and the
+     team editor — is PORTALED to document.body, so it escapes the + modal's
+     stacking context entirely, and all four can be opened from the compact
+     launcher inside that modal. At the old 100 they rendered BEHIND it and the
+     button that opened them appeared to do nothing. That was first fixed for
+     Attach alone with an `attach-backdrop` override, with Edit Profile noted as
+     the same latent bug; v0.19.7 put Team Login and the Teams section into
+     the compact launcher too, so the fix moved here, to the ONE rule they
+     share, rather than growing an override per dialog. */
   z-index: 1600;
 }
 
@@ -52,7 +47,7 @@
 .cne-header {
   display: flex;
   align-items: center;
-  padding: 0.85rem 1.1rem;
+  padding: var(--modal-head-pad);
   gap: 8px;
   background: var(--modal-head-bg);
   border-bottom: 1px solid var(--modal-head-border);
@@ -60,32 +55,14 @@
 
 .cne-title {
   flex: 1;
-  font-size: 1rem;
+  font-size: var(--modal-title-size);
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--modal-head-color);
 }
 
-.cne-close {
-  width: 1.7rem;
-  height: 1.7rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  color: var(--text-muted);
-  font-size: 0.95rem;
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
-}
-
-.cne-close:hover {
-  background: var(--modal-ctl-hover);
-  color: var(--text-primary);
-}
+/* The ✕ is the shared `.ui-close` (ui.css) since v0.19.7 (B399) — the private
+   `.cne-close` copy of the About recipe is gone. */
 
 .cne-body {
   padding: 14px;
@@ -126,7 +103,7 @@
   background: var(--modal-input-bg);
   border: 1px solid var(--border);
   color: var(--text-primary);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 6px 8px;
   font-family: inherit;
   font-size: 0.85rem;
@@ -153,37 +130,50 @@
   border-top: 1px solid var(--border);
 }
 
-.cne-btn {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  border-radius: 4px;
-  padding: 5px 14px;
-  font-family: inherit;
-  font-size: 0.82rem;
-  cursor: pointer;
-  transition: border-color 0.12s, color 0.12s, background 0.12s;
-}
+/* Footer buttons are the shared `.ui-btn` / `.ui-btn--primary` (ui.css) since
+   v0.19.7 (B399) — the private `.cne-btn` / `.cne-btn-save` chips are gone, so
+   these four dialogs' buttons match every other dialog's. */
 
-.cne-btn:hover:not(:disabled) {
-  border-color: var(--accent-dim);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 6%, transparent);
-}
+/* B345: a button whose label changes mid-action (Save → Saving…, Attach →
+   Attaching…) renders BOTH labels in one grid cell and hides the inactive one,
+   so it is always as wide as the wider label and never resizes — whatever the
+   font (pitfall #103). Refines `.ui-btn`'s inline-flex: this file loads after
+   ui.css, so at equal specificity the grid wins. */
+.cne-btn--stable { display: inline-grid; justify-items: center; }
+.cne-btn--stable > .cne-btn-label { grid-area: 1 / 1; }
+.cne-btn--stable > .cne-btn-label--off { visibility: hidden; }
 
-.cne-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
+/* Body copy for the dialogs on this chrome (Attach). These were inline
+   `style={{}}` objects (UX standard #11) — classes now, so they follow one rule. */
+.cne-intro {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+  font-size: 0.85em;
+  line-height: 1.45;
 }
-
-.cne-btn-save {
-  background: var(--accent-bg);
-  border-color: var(--accent-dim);
-  color: var(--accent);
+/* A hint that sits UNDER its field, inside the field's label. */
+.cne-field-hint {
+  color: var(--text-muted);
+  font-size: 0.78em;
+  font-weight: 400;
+  line-height: 1.4;
 }
-
-.cne-btn-save:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 14%, var(--accent-bg));
+.cne-note {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 0.8em;
+}
+.cne-error {
+  margin: 10px 0 0;
+  color: color-mix(in srgb, var(--color-danger) 85%, var(--text-primary));
+  font-size: 0.85em;
+  line-height: 1.45;
+}
+/* Command lines in dialog copy (`lich --login …`) take the shared code stack
+   instead of the UA's bare `monospace` (B406). */
+.cne-body code {
+  font-family: var(--code-font-family);
+  font-size: 0.95em;
 }
 
 /* ── Team Login (F85, v0.18.3) ─────────────────────────────────────────────
@@ -215,13 +205,8 @@
   padding-top: 10px;
   border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
-.tl-section-label {
-  font-size: 0.68rem;
-  line-height: 1;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: var(--text-faint);
-}
+/* The label itself is the shared `.ui-section-label` (ui.css) since v0.19.7 —
+   the private copy used --text-faint, ~2.4:1 on Classic Light's white. */
 /* "3 of 5" — the running answer to "what will Connect actually do". */
 .tl-section-count {
   font-size: 0.7rem;
@@ -237,14 +222,6 @@
   gap: 8px;
   flex-wrap: wrap;
 }
-.tl-row-label {
-  font-size: 0.68rem;
-  line-height: 1;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: var(--text-faint);
-  flex-shrink: 0;
-}
 .tl-grow { flex: 1; min-width: 150px; }
 
 /* One account. The whole row is the label so the checkbox and the name share a
@@ -253,30 +230,21 @@
 .tl-account { display: flex; flex-direction: column; gap: 4px; flex: 1; }
 .tl-account-head { display: flex; align-items: center; gap: 8px; }
 .tl-account-name { color: var(--text-primary); font-weight: 600; }
-.tl-account-note { font-size: 0.7rem; color: var(--text-faint); }
+/* --text-muted, not --text-faint: this note is the only thing saying WHY an
+   account is greyed out, and faint is ~2.4:1 on Classic Light (pitfall #55a). */
+.tl-account-note { font-size: 0.7rem; color: var(--text-muted); }
 /* Excluded / unavailable accounts recede rather than disappear — the row keeps
    its place so the list never reflows as sessions come and go (standard #2). */
 .tl-account--off { opacity: 0.55; }
 .tl-account .cne-input { margin-left: 22px; }   /* clears the checkbox column */
 
-/* Hint that sits WITH its control instead of in a preamble. */
-.tl-hint {
-  font-size: 0.72rem;
-  line-height: 1.45;
-  color: var(--text-muted);
-}
+/* Hints that sit WITH their control instead of in a preamble are the shared
+   `.ui-hint` (ui.css) since v0.19.7. The unused `.tl-btn-danger` (team deletion
+   moved to the launcher's Teams ⋯ menu) and `.tl-row-label` went with it. */
 
 /* The save row reserves its height whether it shows a button or the name
    field, so starting a save never shifts the account list (standard #2). */
 .tl-saverow { min-height: 30px; }
-
-/* Destructive, and only on hover — quiet at rest (standard #1), matching the
-   account Remove button rather than wearing the neutral cancel style. */
-.tl-btn-danger:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--color-danger) 55%, transparent);
-  color: var(--color-danger);
-  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
-}
 
 /* Connect options live INSIDE the body. This checkbox used to sit between the
    body and the footer with a hardcoded 16px inset against the body's 14px —

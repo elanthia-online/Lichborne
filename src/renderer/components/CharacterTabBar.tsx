@@ -20,6 +20,8 @@ import { useSessions, type CharacterId, type SessionRecord } from '../SessionsCo
 import { useRoster } from '../RosterContext'
 import ContextMenu from './ContextMenu'
 import { buildCharacterMenu } from '../characterMenu'
+import { useViewMode, useOverviewTarget } from '../overviewStore'
+import { activateOnKey } from '../utils/pressable'
 import '../styles/character-tabs.css'
 
 interface Props {
@@ -44,6 +46,21 @@ function healthClassName(pct: number | null): string {
 
 export default function CharacterTabBar({ onAdd, onClose, onReconnect, reconnectingIds }: Props) {
   const { sessions, activeId, setActive } = useSessions()
+  // WHICH tabs read as selected (Sekmeht, v0.19.7). In Session view: the active
+  // tab, as always. In the OVERVIEW: whoever the input bar is aimed at, because
+  // the Overview has one selection (B320) — who you are typing at. A selected
+  // card lights just its tab; "All characters" lights EVERY connected tab,
+  // since that is exactly who a send reaches (the bar's All skips disconnected
+  // characters, so their tabs stay unlit rather than claim to be targeted).
+  // `activeId` itself is untouched: it is still the tab Session view returns
+  // to. Both hooks return primitives, so overviewStore's card-digest publishes
+  // never re-render this strip.
+  const viewMode = useViewMode()
+  const overviewTarget = useOverviewTarget()
+  const isHighlighted = (s: SessionRecord) =>
+    viewMode !== 'overview' ? s.characterId === activeId
+      : overviewTarget === null ? s.status.connected
+        : s.characterId === overviewTarget
   // isPrimary === false means THIS is a decoupled (secondary) window, so its
   // characters can be re-homed to the main window. null (unknown) is treated as
   // primary, so "Move to main window" doesn't flash during cold start.
@@ -93,12 +110,15 @@ export default function CharacterTabBar({ onAdd, onClose, onReconnect, reconnect
     : []
 
   return (
-    <div className="character-tabs" role="tablist">
+    // In the Overview, "All characters" highlights EVERY connected tab, so the
+    // tablist is genuinely multi-select there — several tabs carry
+    // aria-selected="true", which is only valid with aria-multiselectable.
+    <div className="character-tabs" role="tablist" aria-multiselectable={viewMode === 'overview' ? true : undefined}>
       {sessions.map(s => (
         <CharacterTab
           key={s.characterId}
           session={s}
-          isActive={s.characterId === activeId}
+          isActive={isHighlighted(s)}
           now={now}
           reconnecting={reconnectingIds.has(s.characterId)}
           onSelect={setActive}
@@ -165,7 +185,16 @@ function CharacterTab({
       className={classes}
       role="tab"
       aria-selected={isActive}
-      onClick={() => onSelect(session.characterId)}
+      // B335: a tab stop + Enter/Space, so a tab is reachable without the mouse
+      // (Ctrl+Tab / Ctrl+1–9 cycle, but only from the keyboard's current spot).
+      // activateOnKey ignores keys aimed at the nested ✕, which is a real
+      // <button> and keeps its own Enter/Space.
+      tabIndex={0}
+      // A MOUSE click must not leave focus parked on the tab, or a following
+      // Space re-selects it instead of reaching the command bar through
+      // type-anywhere (F60). `detail` is 0 for keyboard clicks.
+      onClick={e => { onSelect(session.characterId); if (e.detail > 0) e.currentTarget.blur() }}
+      onKeyDown={activateOnKey(() => onSelect(session.characterId))}
       onContextMenu={e => { e.preventDefault(); onContextMenu(e.clientX, e.clientY) }}
     >
       {/* Name + L/D + Game cluster rendered tight in a sub-container so the

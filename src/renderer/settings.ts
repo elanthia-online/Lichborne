@@ -22,6 +22,9 @@
 // is silently erased. `initSettings` runs it once at boot with defaults.
 
 import type { ThemeVars } from './themes'
+// Type-only, so it is erased at compile time and adds no runtime dependency
+// on the (much larger) highlights module.
+import type { HighlightEffect } from './highlights'
 
 export interface AppSettings {
   fontSize: number       // game text size in px, 10–24
@@ -69,6 +72,14 @@ export interface AppSettings {
   // means "use the global --game-font-size." Bounds 8–24 enforced at
   // the UI layer. Persists via the existing settings save pipeline.
   panelFontSizes: Record<string, number>
+  // v0.19.7: the text effect worn by the "Lichborne" wordmark in the app bar,
+  // reusing the SAME `HighlightEffect` vocabulary as highlights and contact
+  // templates — one effect system, one stylesheet (pitfall #127). 'none' is
+  // the default and means "inherit the theme", i.e. the accent / accent-dim
+  // two-tone the brand has always had. Purely cosmetic: it identifies which
+  // character you are looking at, so it is per-character on purpose, and the
+  // app bar reads the ACTIVE session's value through SessionStatus.
+  brandEffect: HighlightEffect
   // NOTE: Session Log preferences are NOT here — they are app-wide, not
   // per-character. See sessionLogSettings.ts (stored in _shared.yaml).
 }
@@ -101,6 +112,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   mapAnimations: true,
   textWeight: 0,
   panelFontSizes: {},
+  // Static — the wordmark takes its colours from the theme, as it always has.
+  brandEffect: 'none',
 }
 
 // v0.18.0 cross-platform: Menlo (macOS) and DejaVu/Liberation (Linux) appended
@@ -108,11 +121,48 @@ export const DEFAULT_SETTINGS: AppSettings = {
 // without named fallbacks the other platforms fell to the browser's generic
 // monospace pick. Appended AFTER the Windows names so Windows rendering is
 // byte-identical.
+// B348: the cross-platform TAILS, shared by the presets below and by any raw
+// font name (a Windows font arriving via Transfer, or the Segoe UI / Georgia /
+// Lucida Console that SettingsPanel's LEGACY_KEYS migrates to). Declared ABOVE
+// FONT_FAMILIES, which builds from them at module load.
+const MONO_TAIL  = "'Menlo', 'DejaVu Sans Mono', monospace"
+const SANS_TAIL  = "system-ui, -apple-system, sans-serif"
+const SERIF_TAIL = "'Times New Roman', 'Liberation Serif', serif"
+
 export const FONT_FAMILIES: Record<string, string> = {
-  cascadia:  "'Cascadia Code', 'Fira Code', 'Consolas', 'Menlo', 'DejaVu Sans Mono', monospace",
+  cascadia:  `'Cascadia Code', 'Fira Code', 'Consolas', ${MONO_TAIL}`,
   terminal:  "'Lucida Console', 'Courier New', 'Menlo', 'Liberation Mono', monospace",
   sansserif: "system-ui, -apple-system, 'Segoe UI', sans-serif",
-  serif:     "Georgia, 'Times New Roman', 'Liberation Serif', serif",
+  serif:     `Georgia, ${SERIF_TAIL}`,
+}
+
+// B348: which tail a RAW font name gets. Before this every raw name fell to
+// bare `monospace`, so a sans or serif preference rendered in the platform's
+// generic monospace wherever the named font isn't installed (Segoe UI on a
+// Mac). Mono keywords win first ("DejaVu Sans Mono" is mono, not sans); an
+// unrecognised name keeps the mono tail, which is today's behaviour.
+const SANS_FONTS = new Set([
+  'segoe ui', 'segoe ui variable', 'arial', 'helvetica', 'helvetica neue', 'verdana',
+  'tahoma', 'calibri', 'candara', 'corbel', 'trebuchet ms', 'lucida grande', 'ubuntu',
+  'roboto', 'inter', 'cantarell', 'century gothic', 'sf pro', 'sf pro text',
+  'sf pro display', 'san francisco',
+])
+const SERIF_FONTS = new Set([
+  'georgia', 'times new roman', 'times', 'cambria', 'constantia', 'palatino',
+  'palatino linotype', 'book antiqua', 'garamond', 'baskerville', 'charter', 'hoefler text',
+])
+function fontFallbackTail(name: string): string {
+  const n = name.trim().toLowerCase()
+  if (/\b(mono|code|console|courier|terminal|typewriter)\b/.test(n)) return MONO_TAIL
+  if (SERIF_FONTS.has(n) || (/\bserif\b/.test(n) && !/\bsans\b/.test(n))) return SERIF_TAIL
+  if (SANS_FONTS.has(n) || /\bsans\b/.test(n)) return SANS_TAIL
+  return MONO_TAIL
+}
+
+/** The CSS font-family value for a stored setting: a preset key's chain, or a
+ *  raw font name followed by the matching cross-platform tail (B348). */
+export function resolveFontFamily(font: string): string {
+  return FONT_FAMILIES[font] ?? `'${font}', ${fontFallbackTail(font)}`
 }
 
 export const FONT_FAMILY_LABELS: Record<string, string> = {
@@ -191,6 +241,10 @@ const COLORBLIND_VARS: Record<string, Partial<ThemeVars>> = {
   deuteranopia: {
     '--vital-health-ok-start': '#0a5a6a',
     '--vital-health-ok-end':   '#18a8b8',
+    // Spell Monitor traffic light: GREEN is the problem stop, so it moves to the
+    // same teal the health bar uses here. Amber and red are left alone — teal /
+    // amber / red separate comfortably for a deuteranope.
+    '--spell-band-ok':   'color-mix(in srgb, #18a8b8 80%, var(--text-primary))',
     '--ind-hidden-color':  '#60a8ff',
     '--ind-hidden-bg':     '#061428',
     '--ind-hidden-border': '#103058',
@@ -216,6 +270,14 @@ const COLORBLIND_VARS: Record<string, Partial<ThemeVars>> = {
   protanopia: {
     '--vital-health-crit-start': '#7a5500',
     '--vital-health-crit-end':   '#e8a800',
+    // Spell Monitor traffic light. The vitals' own answer does NOT transfer: it
+    // turns crit AMBER, which is exactly our MID band, so the two most urgent
+    // states would collide. Move green→teal (as deuteranopia does) and keep red
+    // but LIGHTEN it — a protanope reads red as very dark, so lightness carries
+    // the separation from amber alongside hue. Colour is the secondary cue
+    // either way: the bar's LENGTH and the printed time say the same thing (§34.7).
+    '--spell-band-ok':   'color-mix(in srgb, #18a8b8 80%, var(--text-primary))',
+    '--spell-band-crit': 'color-mix(in srgb, #ff7a5a 85%, var(--text-primary))',
     '--vital-health-low-start':  '#7a4800',
     '--vital-health-low-end':    '#e09000',
     '--ind-bleeding-color':  '#ff8030',
@@ -273,7 +335,7 @@ export function applySettingsToDOM(s: AppSettings): void {
   const lineHeight = s.largePrint ? 1.8 : s.lineHeight
   setVar('--game-font-size',   `${fontSize}px`)
   setVar('--game-line-height', `${lineHeight}`)
-  setVar('--game-font-family', FONT_FAMILIES[s.fontFamily] ?? `'${s.fontFamily}', monospace`)
+  setVar('--game-font-family', resolveFontFamily(s.fontFamily))
   // B113: textWeight = 0 → default font-weight 400, no stroke (no change
   // vs pre-B113). Positive values add a -webkit-text-stroke for faux-bold.
   // Negative values lower CSS font-weight below 400 — only visible on

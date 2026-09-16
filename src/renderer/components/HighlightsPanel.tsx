@@ -2,8 +2,9 @@
 // rule store: pattern (text / phrase / regex, case toggle), line-or-match
 // scope, style (colors, bold, text effect), an optional sound, and groups.
 //
-// Hosted INLINE by AutomationsPanel (the normal case) or standalone as its own
-// modal when `inline` is false. It runs per character via `useCharacter()`,
+// Hosted inline by AutomationsPanel, its only caller (the never-rendered
+// standalone modal branch was removed in v0.19.7, B408). It runs per
+// character via `useCharacter()`,
 // and inside the Automations "All Characters" scope that provider is
 // re-pointed at the virtual `_global` store, so the same
 // `loadHighlights`/`saveHighlights` calls edit global rules unchanged
@@ -20,11 +21,18 @@
 // (v0.11.3; see the note above the sidebar). Analytics is opt-in via
 // `analyticsOn`. The `.hp-*` classes here are the layout MutePanel /
 // SubstitutesPanel mirror.
+//
+// B368: the draft is compared against `baseline` (the stored rule, or the fresh
+// factory draft), and every switch that would replace it — another row, "+ New",
+// a prefill, an openRuleId — asks first when it differs; `useReportUnsaved`
+// tells the Automations dialog so its close / tab / scope switches ask too.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { backdropHandlers } from "../utils/backdropClose"
+import { pressable } from '../utils/pressable'
 import { ResizeDivider } from './ResizeDivider'
-import { createPortal } from 'react-dom'
+import InlineConfirm from './InlineConfirm'
+import { confirmDelete, confirmDiscard } from '../confirm'
+import { useReportUnsaved, differs } from '../hooks/useUnsaved'
 import {
   type HighlightRule, type HighlightEffect,
   buildHighlightRegex, isValidRegex,
@@ -35,7 +43,7 @@ import { resolveEffect, effectContent } from '../utils/highlightEffects'
 import { playWavFile } from '../hooks/useTriggerEngine'
 import { useCharacter } from '../CharacterContext'
 import { scopedKey } from '../characterScope'
-import { useRuleAnalytics, AnalyticsReview, RuleBadges } from './AutomationAnalytics'
+import { useRuleAnalytics, AnalyticsReview, RuleBadges, ruleListKeyDown } from './AutomationAnalytics'
 import { analyzeHighlights } from '../automationHealth'
 import GroupPicker from './GroupPicker'
 import '../styles/highlights.css'
@@ -55,52 +63,67 @@ function swatchStyle(color: string): React.CSSProperties {
 }
 
 interface Props {
-  onClose: () => void
   onSaved?: () => void
   prefill?: HighlightRule
   initialTestText?: string
   openRuleId?: string // v0.14.6: open an existing rule for edit (slash /highlight edit)
-  inline?: boolean
   analyticsOn?: boolean
   // F37/F63 (v0.15.2): which store this panel is editing ('global' = the
   // Automations panel's All Characters scope — groups row hidden, since global
   // rules are always-active) + the cross-store MOVE callback for the editor's
-  // "Applies to" control. Both absent when the panel is hosted standalone.
+  // "Applies to" control (the control only renders when a callback is given).
   scope?: 'character' | 'global'
   onMoveScope?: (rule: HighlightRule) => void
 }
 
-export default function HighlightsPanel({ onClose, onSaved, prefill, initialTestText, openRuleId, inline = false, analyticsOn = false, scope = 'character', onMoveScope }: Props) {
+export default function HighlightsPanel({ onSaved, prefill, initialTestText, openRuleId, analyticsOn = false, scope = 'character', onMoveScope }: Props) {
   const hideGroups = scope === 'global'
   const character = useCharacter()
   const [rules, setRules]       = useState<HighlightRule[]>(() => loadHighlights(character))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const an = useRuleAnalytics(character, rules, analyzeHighlights, analyticsOn, onSaved)
   const [draft, setDraft]       = useState<HighlightRule | null>(null)
+  // B368: what the draft is compared against — the stored rule, the fresh
+  // "+ New" / prefill draft, or the rule as just saved.
+  const [baseline, setBaseline] = useState<HighlightRule | null>(null)
   const [isPendingNew, setIsPendingNew] = useState(false)
-  const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [testInput, setTestInput] = useState(initialTestText ?? '')
   const [search, setSearch]     = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const appliedOpenRef = useRef<string | undefined>(undefined)
+
+  const dirty = !!draft && !!baseline && differs(draft, baseline)
+  useReportUnsaved(dirty)
 
   useEffect(() => {
     if (!prefill) return
-    setDraft({ ...prefill })
-    setSelectedId(prefill.id)
-    setIsPendingNew(true)
-    setTimeout(() => nameInputRef.current?.focus(), 0)
+    confirmDiscard(dirty, () => {
+      // An EXISTING rule can arrive here too (the Debug Fires "Edit" jump
+      // passes the stored rule): that's an edit, not a new rule — treating it
+      // as pending would append a second copy with the same id on Save.
+      const existing = rules.some(r => r.id === prefill.id)
+      setDraft({ ...prefill })
+      setBaseline({ ...prefill })
+      setSelectedId(prefill.id)
+      setIsPendingNew(!existing)
+      setTimeout(() => nameInputRef.current?.focus(), 0)
+    })
   }, [prefill?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // v0.14.6: open an EXISTING rule by id (slash `/highlight edit`) — the
   // TriggersPanel openRuleId pattern. No-op if the rule was deleted since.
+  // Applied ONCE per id: it also re-ran on every `rules` change, so saving a
+  // different rule snapped the editor back to this one.
   useEffect(() => {
-    if (!openRuleId) return
+    // Reset when the request clears, so asking for the SAME rule again later
+    // (a second Fires → Edit, a repeated slash `edit`) opens it again.
+    if (!openRuleId) { appliedOpenRef.current = undefined; return }
+    if (appliedOpenRef.current === openRuleId) return
     const r = rules.find(x => x.id === openRuleId)
     if (!r) return
-    setDraft({ ...r })
-    setSelectedId(r.id)
-    setIsPendingNew(false)
-  }, [openRuleId, rules])
+    appliedOpenRef.current = openRuleId
+    confirmDiscard(dirty, () => selectRule(r))
+  }, [openRuleId, rules]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Live preview ─────────────────────────────────────────────────────────
 
@@ -164,25 +187,37 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
   function selectRule(r: HighlightRule) {
     setSelectedId(r.id)
     setDraft({ ...r })
+    setBaseline({ ...r })
     setIsPendingNew(false)
-    setDeleteConfirm(false)
     setTestInput('')
+  }
+
+  // B368: the user-facing switches — they ask before an unsaved draft is lost.
+  function requestSelect(r: HighlightRule) {
+    if (r.id === selectedId) return
+    confirmDiscard(dirty, () => selectRule(r))
   }
 
   function createNew() {
     const r = newHighlight()
     setDraft({ ...r })
+    setBaseline({ ...r })
     setSelectedId(r.id)
     setIsPendingNew(true)
-    setDeleteConfirm(false)
     setTestInput('')
     setTimeout(() => nameInputRef.current?.focus(), 0)
   }
 
+  // B379: why Save is unavailable, or null. Shown as the disabled button's
+  // title, and checked by saveDraft so Enter can't get round it.
+  const saveBlock = !draft ? 'Select a highlight to save'
+    : !draft.pattern.trim() ? 'Enter a pattern to save'
+    : draft.mode === 'regex' && !isValidRegex(draft.pattern) ? 'Fix the regular expression to save'
+    : null
+
   function saveDraft() {
-    if (!draft) return
+    if (!draft || saveBlock) return
     const trimmed = { ...draft, pattern: draft.pattern.trim() }
-    if (!trimmed.pattern) return
     if (!trimmed.name) trimmed.name = trimmed.pattern
     let updated: HighlightRule[]
     if (isPendingNew) {
@@ -193,6 +228,7 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
     setRules(updated)
     saveHighlights(character, updated)
     setDraft(trimmed)
+    setBaseline(trimmed)
     setIsPendingNew(false)
     onSaved?.()
   }
@@ -201,11 +237,11 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
     if (isPendingNew) {
       setSelectedId(null)
       setDraft(null)
+      setBaseline(null)
       setIsPendingNew(false)
     } else {
       const original = rules.find(r => r.id === selectedId)
-      if (original) setDraft({ ...original })
-      setDeleteConfirm(false)
+      if (original) { setDraft({ ...original }); setBaseline({ ...original }) }
     }
   }
 
@@ -221,8 +257,8 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
     if (selectedId === id) {
       setSelectedId(null)
       setDraft(null)
+      setBaseline(null)
       setIsPendingNew(false)
-      setDeleteConfirm(false)
     }
     onSaved?.()
   }
@@ -231,7 +267,12 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
     const updated = rules.map(r => r.id === id ? { ...r, enabled: !r.enabled } : r)
     setRules(updated)
     saveHighlights(character, updated)
-    if (draft?.id === id) setDraft(prev => prev ? { ...prev, enabled: !prev.enabled } : prev)
+    // The toggle saves immediately, so the baseline moves with the draft — a
+    // row toggle must not read as an unsaved edit.
+    if (draft?.id === id) {
+      setDraft(prev => prev ? { ...prev, enabled: !prev.enabled } : prev)
+      setBaseline(prev => prev ? { ...prev, enabled: !prev.enabled } : prev)
+    }
     onSaved?.()
   }
 
@@ -255,7 +296,7 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
 
           {/* Sidebar */}
           <div className="hp-sidebar">
-            <button className="hp-new-btn" onClick={createNew}>+ New Rule</button>
+            <button type="button" className="hp-new-btn" onClick={() => confirmDiscard(dirty, createNew)}>+ New highlight</button>
             <div className="sidebar-search">
               <input
                 className="sidebar-search-input"
@@ -264,7 +305,7 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
                 onChange={e => setSearch(e.target.value)}
               />
               {search && (
-                <button className="sidebar-search-clear" onClick={() => setSearch('')}>✕</button>
+                <button className="sidebar-search-clear" onClick={() => setSearch('')} title="Clear search" aria-label="Clear search">✕</button>
               )}
               {search && (
                 <span className="sidebar-search-count">
@@ -272,36 +313,45 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
                 </span>
               )}
             </div>
-            <div className="hp-list">
+            <div className="hp-list" role="listbox" aria-label="Highlights" onKeyDown={ruleListKeyDown}>
               {rules.length === 0 && !isPendingNew && (
-                <div className="hp-empty">No highlights yet.<br />Right-click game text or click New Rule.</div>
+                <div className="hp-empty">No highlights yet.<br />Right-click game text, or use + New highlight.</div>
               )}
-              {(search ? rules.filter(r => (r.name + ' ' + r.pattern).toLowerCase().includes(search.toLowerCase())) : rules).map(r => (
+              {(search ? rules.filter(r => (r.name + ' ' + r.pattern).toLowerCase().includes(search.toLowerCase())) : rules).map(r => {
+                const label = r.name || r.pattern
+                return (
                 <div
                   key={r.id}
                   className={`hp-list-item${selectedId === r.id ? ' hp-list-item--active' : ''}${!r.enabled ? ' hp-list-item--disabled' : ''}`}
-                  onClick={() => selectRule(r)}
+                  {...pressable(() => requestSelect(r), { role: 'option', selected: selectedId === r.id })}
                 >
                   <button
+                    type="button"
                     className={`hp-toggle${r.enabled ? ' hp-toggle--on' : ''}`}
                     title={r.enabled ? 'Disable' : 'Enable'}
+                    aria-label={r.enabled ? 'Disable' : 'Enable'}
                     onClick={e => { e.stopPropagation(); toggleEnabled(r.id) }}
                   />
                   <span className="hp-list-swatch" style={listItemSwatch(r)} />
-                  <span className="hp-list-label">{r.name || r.pattern || <em className="hp-unnamed">Unnamed</em>}</span>
+                  {/* B396: the full label, since the row truncates it. */}
+                  <span className="hp-list-label" title={label || undefined}>{label || <em className="hp-unnamed">Unnamed</em>}</span>
                   {an.on ? <RuleBadges ruleId={r.id} report={an.report} stats={an.stats} /> : <span className="hp-list-scope">{r.scope}</span>}
+                  {/* B370: a row ✕ deletes something that isn't open, so it asks. */}
                   <button
+                    type="button"
                     className="list-item-delete"
                     title="Delete"
-                    onClick={e => { e.stopPropagation(); deleteRuleById(r.id) }}
+                    aria-label={`Delete ${label || 'highlight'}`}
+                    onClick={async e => { e.stopPropagation(); if (await confirmDelete('highlight', label)) deleteRuleById(r.id) }}
                   >✕</button>
                 </div>
-              ))}
+                )
+              })}
               {isPendingNew && draft && (
                 <div className="hp-list-item hp-list-item--active hp-list-item--pending">
                   <span className="hp-toggle hp-toggle--on" />
                   <span className="hp-list-swatch" style={listItemSwatch(draft)} />
-                  <span className="hp-list-label"><em>New rule…</em></span>
+                  <span className="hp-list-label"><em>New highlight…</em></span>
                   <span className="hp-list-scope">{draft.scope}</span>
                 </div>
               )}
@@ -312,7 +362,7 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
           <ResizeDivider storageKey={scopedKey(character, 'automationsSidebarWidth')} />
           <div className="hp-detail">
             {!draft ? (
-              <div className="hp-no-selection">Select a rule or create a new one.</div>
+              <div className="hp-no-selection">Select a highlight or create a new one.</div>
             ) : (
               <>
               <div className="hp-form">
@@ -336,7 +386,7 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
                       type="button"
                       className={`grp-all-btn${draft.allGroups ? ' grp-all-btn--on' : ''}`}
                       onClick={() => setDraft({ ...draft, allGroups: !draft.allGroups, groupIds: [] })}
-                    >All Groups</button>
+                    >All groups</button>
                     {!draft.allGroups && (
                       <GroupPicker
                         groupIds={draft.groupIds ?? []}
@@ -361,7 +411,7 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
                       title={scope === 'character'
                         ? 'This rule belongs to this character'
                         : 'Move this rule to the character you have open — every OTHER character stops getting it'}
-                    >This Character</button>
+                    >This character</button>
                     <button
                       type="button"
                       className={`rule-scope-btn${scope === 'global' ? ' rule-scope-btn--on' : ''}`}
@@ -369,8 +419,8 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
                       onClick={() => onMoveScope(draft)}
                       title={scope === 'global'
                         ? 'This rule applies to every character'
-                        : 'Move this rule to All Characters — it will fire for every character on every account (group gating is removed; global rules are always active)'}
-                    >All Characters</button>
+                        : 'Move this rule to All characters — it will fire for every character on every account (group gating is removed; global rules are always active)'}
+                    >All characters</button>
                   </div>
                 </div>
                 )}
@@ -389,6 +439,7 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
                       {(['text', 'phrase', 'regex'] as const).map(m => (
                         <button
                           key={m}
+                          type="button"
                           className={`hp-mode-btn${draft.mode === m ? ' hp-mode-btn--active' : ''}`}
                           onClick={() => setDraft({ ...draft, mode: m })}
                           title={
@@ -402,6 +453,7 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
                       ))}
                     </div>
                     <button
+                      type="button"
                       className={`hp-mode-btn hp-mode-btn--case${draft.caseSensitive ? ' hp-mode-btn--active' : ''}`}
                       onClick={() => setDraft({ ...draft, caseSensitive: !draft.caseSensitive })}
                       title={draft.caseSensitive ? 'Case-sensitive — click to ignore case' : 'Case-insensitive — click to match exact case'}
@@ -451,7 +503,7 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
                           placeholder="transparent"
                           title={COLOR_INPUT_TITLE}
                           onChange={e => setDraft({ ...draft, style: { ...draft.style, textColor: e.target.value } })}
-                          onBlur={e => setDraft({ ...draft, style: { ...draft.style, textColor: normalizeColorInput(e.target.value) } })}
+                          onBlur={e => { const v = normalizeColorInput(e.target.value); if (v !== e.target.value) setDraft({ ...draft, style: { ...draft.style, textColor: v } }) }}
                         />
                       </div>
                     </div>
@@ -476,13 +528,13 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
                           placeholder="transparent"
                           title={COLOR_INPUT_TITLE}
                           onChange={e => setDraft({ ...draft, style: { ...draft.style, bgColor: e.target.value } })}
-                          onBlur={e => setDraft({ ...draft, style: { ...draft.style, bgColor: normalizeColorInput(e.target.value) } })}
+                          onBlur={e => { const v = normalizeColorInput(e.target.value); if (v !== e.target.value) setDraft({ ...draft, style: { ...draft.style, bgColor: v } }) }}
                         />
                       </div>
                     </div>
 
                     <div className="hp-style-col">
-                      <label className="hp-style-sublabel">Text Effect</label>
+                      <label className="hp-style-sublabel">Text effect</label>
                       <select
                         className="hp-input"
                         value={effectiveEffect(draft.style)}
@@ -508,7 +560,7 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
                             value={draft.style.glowColor}
                             title={COLOR_INPUT_TITLE}
                             onChange={e => setDraft({ ...draft, style: { ...draft.style, glowColor: e.target.value } })}
-                            onBlur={e => setDraft({ ...draft, style: { ...draft.style, glowColor: normalizeColorInput(e.target.value) } })}
+                            onBlur={e => { const v = normalizeColorInput(e.target.value); if (v !== e.target.value) setDraft({ ...draft, style: { ...draft.style, glowColor: v } }) }}
                           />
                         </div>
                       )}
@@ -539,24 +591,26 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
                     />
                     <button
                       type="button"
-                      className="hp-btn hp-btn--browse"
+                      className="ui-btn ui-btn--sm"
                       onClick={async () => {
                         const file = await window.api.browseFile([{ name: 'Sound Files', extensions: ['wav', 'mp3', 'ogg'] }])
                         if (file) setDraft(prev => prev ? { ...prev, soundFile: file } : prev)
                       }}
-                    >Browse</button>
+                    >Browse…</button>
                     {draft.soundFile && (
                       <>
                         <button
                           type="button"
-                          className="hp-btn hp-btn--play"
+                          className="ui-btn ui-btn--sm"
                           title="Test sound"
+                          aria-label="Test sound"
                           onClick={() => playWavFile(draft.soundFile!)}
                         >▶</button>
                         <button
                           type="button"
-                          className="hp-btn hp-btn--clear"
-                          title="Remove sound"
+                          className="ui-btn ui-btn--sm ui-btn--ghost"
+                          title="Clear sound"
+                          aria-label="Clear sound"
                           onClick={() => setDraft({ ...draft, soundFile: undefined })}
                         >✕</button>
                       </>
@@ -579,25 +633,24 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
 
               </div>{/* /hp-form — Delete/Revert/Save pinned below as a fixed footer */}
 
+              {/* Footer rail: [Delete] …spacer… [Revert/Cancel] [Save]. B401: the
+                  editor's own Delete is the inline two-step. */}
               <div className="hp-actions">
-                  {deleteConfirm ? (
-                    <>
-                      <span className="hp-confirm-text">Delete this rule?</span>
-                      <button className="hp-btn hp-btn--danger" onClick={deleteRule}>Yes, delete</button>
-                      <button className="hp-btn" onClick={() => setDeleteConfirm(false)}>Cancel</button>
-                    </>
-                  ) : (
-                    <>
-                      {!isPendingNew && (
-                        <button className="hp-btn hp-btn--delete" onClick={() => setDeleteConfirm(true)}>Delete</button>
-                      )}
-                      <button className="hp-btn" onClick={discardOrCancel}>
-                        {isPendingNew ? 'Cancel' : 'Revert'}
-                      </button>
-                      <button className="hp-btn hp-btn--save" onClick={saveDraft}
-                        disabled={!draft.pattern.trim()}>Save</button>
-                    </>
+                  {!isPendingNew && (
+                    <InlineConfirm question="Delete this highlight?" onConfirm={deleteRule} resetKey={selectedId} />
                   )}
+                  <span className="ui-modal-foot-spacer" />
+                  <button
+                    type="button"
+                    className="ui-btn"
+                    onClick={discardOrCancel}
+                    disabled={!isPendingNew && !dirty}
+                    title={!isPendingNew && !dirty ? 'No changes to revert' : undefined}
+                  >
+                    {isPendingNew ? 'Cancel' : 'Revert'}
+                  </button>
+                  <button type="button" className="ui-btn ui-btn--primary" onClick={saveDraft}
+                    disabled={!!saveBlock} title={saveBlock ?? undefined}>Save</button>
               </div>
               </>
             )}
@@ -606,35 +659,24 @@ export default function HighlightsPanel({ onClose, onSaved, prefill, initialTest
         </div>
   )
 
-  const content = an.on ? (
+  if (!an.on) return body
+  return (
     <div className="aa-host">
       <AnalyticsReview rules={rules} report={an.report} stats={an.stats}
         nameOf={r => r.name || r.pattern}
-        onJump={id => { const r = rules.find(x => x.id === id); if (r) selectRule(r) }}
+        onJump={id => { const r = rules.find(x => x.id === id); if (r) requestSelect(r) }}
         onReset={an.reset}
         onBulkRemove={ids => {
           const s = new Set(ids); const u = rules.filter(r => !s.has(r.id))
           setRules(u); saveHighlights(character, u)
-          setSelectedId(null); setDraft(null); setIsPendingNew(false)
+          // Only drop the editor if its rule was among those removed — an
+          // unrelated (possibly unsaved) draft stays open.
+          if (selectedId && s.has(selectedId)) {
+            setSelectedId(null); setDraft(null); setBaseline(null); setIsPendingNew(false)
+          }
           onSaved?.()
         }} />
       {body}
     </div>
-  ) : body
-
-  if (inline) return content
-
-  const modal = (
-    <div className="hp-backdrop" {...backdropHandlers(() => onClose())}>
-      <div className="hp-modal">
-        <div className="hp-header">
-          <span className="hp-title">Highlights</span>
-          <button className="hp-close" onClick={onClose}>✕</button>
-        </div>
-        {content}
-      </div>
-    </div>
   )
-
-  return createPortal(modal, document.body)
 }

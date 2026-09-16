@@ -39,7 +39,7 @@ export interface AttentionDef {
 // things you can, and a state the GAME put you in sits above one you chose.
 export const ATTENTION_DEFS: Record<AttentionFlag, AttentionDef> = {
   dead:         { severity: 100, label: 'Dead',        cls: 'dead',        desc: 'This character is dead. Decay is running.' },
-  disconnected: { severity:  95, label: 'Offline',     cls: 'offline',     desc: 'The connection dropped. Reconnect from the character tab.' },
+  disconnected: { severity:  95, label: 'Offline',     cls: 'offline',     desc: 'The connection dropped. Use Reconnect in the app bar, or the tab or card menu.' },
   'health-crit':{ severity:  90, label: 'Critical',    cls: 'crit',        desc: 'Health is below the critical threshold.' },
   bleeding:     { severity:  80, label: 'Bleeding',    cls: 'bleeding',    desc: 'Actively losing health to a bleed.' },
   stunned:      { severity:  70, label: 'Stunned',     cls: 'stunned',     desc: 'Stunned — commands will not go through.' },

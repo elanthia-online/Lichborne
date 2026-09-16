@@ -9,10 +9,13 @@
  * file — `rem` is pinned to the 16px html root and would ignore the per-character
  * font setting entirely (Principle #9, pitfall #45).
  *
- * COLOUR: theme vars and `color-mix` only. Severity hues are mixed TOWARD a
- * theme var so the hue stays meaningful while contrast self-corrects on light
- * themes — the one place a fixed hue is allowed (polish standard #6). The only
- * literal is the drop shadow, which is a sanctioned exception (Principle #4).
+ * COLOUR: theme vars and `color-mix` only. Severity hues come from the status
+ * tokens — `--color-danger` / `--color-success` / `--color-warning` (B402; they
+ * used to be hand-picked hexes), with the in-between "bad" orange mixed from
+ * warning + danger — and are mixed TOWARD a theme var so contrast self-corrects
+ * on light themes (polish standard #6). The one remaining fixed hue is the blue
+ * of the Direct-connection chip and the mid mindstate bucket, which has no
+ * semantic token.
  */
 
 /* ── The overlay ──────────────────────────────────────────────────────────────
@@ -59,7 +62,7 @@
 .ov-summary-mode { margin-left: auto; color: var(--text-muted); font-size: 0.85em; }
 
 .ov-summary-calm {
-  color: color-mix(in srgb, #34a853 70%, var(--text-primary));
+  color: color-mix(in srgb, var(--color-success) 70%, var(--text-primary));
   font-weight: 600;
 }
 
@@ -124,17 +127,19 @@
   overflow: hidden;
 }
 
-/* B295: hover must not OUTRANK the state borders. An unqualified `:hover` is
+/* B295: hover must not OUTRANK the state treatments. An unqualified `:hover` is
  * (0,2,0) against a state class's (0,1,0), so mousing over an urgent card
  * erased its red border at the exact moment you moved to confirm it — pitfall
  * #107's shape, and #107's fix: EXCLUDE the states from the selector, never
- * duel specificity. The background tint stays as the hover affordance on
- * everything but --active (whose own stronger tint would be dimmed by it);
- * the border is owned by whichever state the card is in. */
-.ov-card:not(.ov-card--active):hover {
+ * duel specificity. The border is owned by whichever severity the card is in.
+ * The background tint is the hover affordance on EVERY card: no state sets a
+ * background any more (--selected is ring-only), so there is nothing for hover
+ * to dim — and excluding --selected would leave no hover at all under All
+ * characters, where every connected card is selected. */
+.ov-card:hover {
   background: color-mix(in srgb, var(--accent) 4%, var(--bg-raised));
 }
-.ov-card:not(.ov-card--urgent):not(.ov-card--alert):not(.ov-card--active):hover {
+.ov-card:not(.ov-card--urgent):not(.ov-card--alert):hover {
   border-color: var(--accent-dim);
 }
 
@@ -146,25 +151,25 @@
 /* Severity as a left edge — hierarchy from muting and a rule, not from size
  * (polish standard #5), so cards stay a uniform grid however bad things get. */
 .ov-card--calm    { opacity: 0.94; }
-.ov-card--alert   { border-color: color-mix(in srgb, #e6a23c 45%, var(--border)); }
-.ov-card--urgent  { border-color: color-mix(in srgb, #d93025 55%, var(--border)); }
+.ov-card--alert   { border-color: color-mix(in srgb, var(--color-warning) 45%, var(--border)); }
+.ov-card--urgent  { border-color: color-mix(in srgb, var(--color-danger) 55%, var(--border)); }
 .ov-card--offline { opacity: 0.7; }
 .ov-card--offline .ov-card-name { font-style: italic; }
 
-/* SELECTED — this card is where the input bar is aimed. Distinct from --active
- * (which marks the character Session view would show) because in the Overview
- * they are genuinely different facts: you can be typing at one character while
- * another is the one you would land on. Accent ring rather than a fill, so it
- * reads as focus without competing with the severity border colours. */
+/* SELECTED — where the input bar is aimed, and (B320) the ONLY selection marker
+ * a card wears. A card click also makes that character the active tab, so this
+ * ring and the tab strip above always agree. Under All characters EVERY
+ * connected card (and tab) wears it, because a send reaches all of them. Cards
+ * used to mark the active tab separately (an `--active` border + a "current"
+ * chip), which in the default All state made ONE card look selected while the
+ * bar said everyone was — the tab strip already answers "which tab".
+ * RING ONLY, no background tint (Sekmeht): the border shows focus, while a
+ * colour change to the card read as the character itself changing. The ring is
+ * an inset box-shadow rather than a border so it never fights the severity
+ * border colours, and the pulse animation (which animates the background)
+ * leaves it untouched. */
 .ov-card--selected {
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent);
-}
-
-/* The character Session view is currently showing. Accent hairline, matching
- * the chip treatment the character tabs wear. */
-.ov-card--active {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
-  background: color-mix(in srgb, var(--accent) 6%, var(--bg-raised));
 }
 
 .ov-card--compact { gap: 0.32em; padding: 0.5em 0.6em; }
@@ -204,20 +209,47 @@
 
 /* Absolute so aim and cast can share the lower lane and overlap, with cast
    painting ON TOP — cast is the PvP-critical one, the same precedence the
-   command bar's TimerDisplay uses. */
+   command bar's TimerDisplay uses.
+
+   B393: FULL width, drained by an inline `transform: scaleX()` from the left
+   edge — NEVER a `width` transition. A roundtime keeps this in a continuous
+   transition for its whole length, and animating `width` invalidates layout on
+   every frame, per lane, per card; `transform` is compositor-only. No
+   border-radius of its own: scaling would squash it, and the lane's
+   `overflow: hidden` already rounds the ends. */
 .ov-timer-fill {
   position: absolute;
   left: 0;
   top: 0;
+  width: 100%;
   height: 100%;
-  border-radius: 1px;
-  /* Matches the command bar's own drain, so the two surfaces move alike. */
-  transition: width 0.1s linear;
+  transform-origin: left center;
+  /* Matches the command bar's own drain cadence, so the two surfaces move alike. */
+  transition: transform 0.1s linear;
 }
 
 .ov-timer-fill--rt  { background: var(--rt-end); }
 .ov-timer-fill--ct  { background: var(--ct-end); }
 .ov-timer-fill--aim { background: var(--aim-end); }
+
+/* B393: the CHIPS timer style (Settings → Timer Style) — one chip per second,
+   like the command bar. Fixed-width chips so the n-th second of the aim row and
+   the cast row line up (cast, later in the DOM, paints over aim); the lane's
+   `overflow: hidden` clips a timer longer than the card is wide, exactly as the
+   command bar does. em off the card's anchor so it scales with the font. */
+.ov-timer-chips {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  gap: 0.2em;
+}
+.ov-timer-chip {
+  flex: 0 0 0.9em;
+  height: 100%;
+}
+.ov-timer-chip--rt  { background: var(--rt-end); }
+.ov-timer-chip--ct  { background: var(--ct-end); }
+.ov-timer-chip--aim { background: var(--aim-end); }
 
 /* Tight tiles have no room for a strip that is not carrying information; the
    flags, vitals and feed matter more at this size. Matches the tier the other
@@ -288,13 +320,13 @@
    the hue stays meaningful while contrast self-corrects on light themes. */
 .ov-exp-row--low    { color: var(--text-muted); }
 .ov-exp-row--mid    { color: color-mix(in srgb, #4285f4 45%, var(--text-primary)); }
-.ov-exp-row--high   { color: color-mix(in srgb, #e6a23c 55%, var(--text-primary)); }
-.ov-exp-row--locked { color: color-mix(in srgb, #d93025 55%, var(--text-primary)); font-weight: 600; }
+.ov-exp-row--high   { color: color-mix(in srgb, var(--color-warning) 55%, var(--text-primary)); }
+.ov-exp-row--locked { color: color-mix(in srgb, var(--color-danger) 55%, var(--text-primary)); font-weight: 600; }
 
 /* Pinned reads as deliberate; a fresh rank is worth a beat of attention. */
 .ov-exp-row--pinned .ov-exp-name { font-weight: 600; }
 .ov-exp-row--rankup {
-  background: color-mix(in srgb, #34a853 14%, transparent);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
   border-radius: 2px;
 }
 
@@ -345,7 +377,6 @@
   .ov-card-room { display: none; }
   .ov-card-game { display: none; }
   .ov-card-mode { display: none; }
-  .ov-card-current { display: none; }
   /* One line of chips at most — the worst one is the one that matters. */
   .ov-card-flags { flex-wrap: nowrap; overflow: hidden; }
 }
@@ -362,12 +393,12 @@
  * beside for the length of a fight. */
 @keyframes ov-pulse {
   0%, 100% {
-    border-color: color-mix(in srgb, #d93025 55%, var(--border));
+    border-color: color-mix(in srgb, var(--color-danger) 55%, var(--border));
     background: var(--bg-raised);
   }
   50% {
-    border-color: color-mix(in srgb, #d93025 95%, var(--border));
-    background: color-mix(in srgb, #d93025 12%, var(--bg-raised));
+    border-color: color-mix(in srgb, var(--color-danger) 95%, var(--border));
+    background: color-mix(in srgb, var(--color-danger) 12%, var(--bg-raised));
   }
 }
 
@@ -378,15 +409,15 @@
  * effect was carrying. */
 :root[data-epilepsy-safe='true'] .ov-card--pulse {
   animation: none;
-  border-color: color-mix(in srgb, #d93025 75%, var(--border));
-  background: color-mix(in srgb, #d93025 10%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--color-danger) 75%, var(--border));
+  background: color-mix(in srgb, var(--color-danger) 10%, var(--bg-raised));
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ov-card--pulse {
     animation: none;
-    border-color: color-mix(in srgb, #d93025 75%, var(--border));
-    background: color-mix(in srgb, #d93025 10%, var(--bg-raised));
+    border-color: color-mix(in srgb, var(--color-danger) 75%, var(--border));
+    background: color-mix(in srgb, var(--color-danger) 10%, var(--bg-raised));
   }
 }
 
@@ -416,9 +447,9 @@
   border: 1px solid transparent;
 }
 .ov-card-mode--lich {
-  color: color-mix(in srgb, #34a853 65%, var(--text-primary));
-  background: color-mix(in srgb, #34a853 15%, transparent);
-  border-color: color-mix(in srgb, #34a853 40%, transparent);
+  color: color-mix(in srgb, var(--color-success) 65%, var(--text-primary));
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
+  border-color: color-mix(in srgb, var(--color-success) 40%, transparent);
 }
 .ov-card-mode--direct {
   color: color-mix(in srgb, #4285f4 65%, var(--text-primary));
@@ -429,27 +460,17 @@
 .ov-card-game { font-size: 0.75em; color: var(--text-muted); letter-spacing: 0.05em; }
 .ov-card-head-spacer { flex: 1 1 auto; }
 
-.ov-card-current {
-  font-size: 0.7em;
-  color: var(--accent);
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  border-radius: 0.8em;
-  padding: 0.15em 0.45em;
-  line-height: 1;
-}
-
 .ov-card-hp { font-size: 0.85em; font-weight: 600; line-height: 1; }
-.ov-hp--ok   { color: color-mix(in srgb, #34a853 60%, var(--text-primary)); }
-.ov-hp--warn { color: color-mix(in srgb, #e6a23c 70%, var(--text-primary)); }
-.ov-hp--bad  { color: color-mix(in srgb, #e8710a 75%, var(--text-primary)); }
-.ov-hp--crit { color: color-mix(in srgb, #d93025 75%, var(--text-primary)); }
+.ov-hp--ok   { color: color-mix(in srgb, var(--color-success) 60%, var(--text-primary)); }
+.ov-hp--warn { color: color-mix(in srgb, var(--color-warning) 70%, var(--text-primary)); }
+.ov-hp--bad  { color: color-mix(in srgb, color-mix(in srgb, var(--color-warning) 50%, var(--color-danger)) 75%, var(--text-primary)); }
+.ov-hp--crit { color: color-mix(in srgb, var(--color-danger) 75%, var(--text-primary)); }
 
 .ov-card-dot {
   width: 0.55em;
   height: 0.55em;
   border-radius: 50%;
-  background: color-mix(in srgb, #34a853 75%, var(--bg-raised));
+  background: color-mix(in srgb, var(--color-success) 75%, var(--bg-raised));
   flex: 0 0 auto;
 }
 /* Hollow = off, filled = on. A muted FILL had to win a contrast fight against
@@ -482,7 +503,7 @@
   /* A comfortable hit target without making the header taller: the padding is
      horizontal-dominant and the header pins `line-height: 1`. */
   padding: 0.15em 0.45em;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   border: 1px solid color-mix(in srgb, var(--text-primary) 20%, transparent);
   background: color-mix(in srgb, var(--text-primary) 7%, transparent);
   color: var(--text-secondary);
@@ -531,25 +552,25 @@
 /* Each severity keeps its hue but mixes toward the surface, so the same chip is
  * legible on Classic Light and on the default dark theme. */
 .ov-flag--calm {
-  color: color-mix(in srgb, #34a853 65%, var(--text-primary));
-  background: color-mix(in srgb, #34a853 12%, transparent);
-  border-color: color-mix(in srgb, #34a853 30%, transparent);
+  color: color-mix(in srgb, var(--color-success) 65%, var(--text-primary));
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-success) 30%, transparent);
 }
 .ov-flag--dead,
 .ov-flag--crit,
 .ov-flag--bleeding {
-  color: color-mix(in srgb, #d93025 60%, var(--text-primary));
-  background: color-mix(in srgb, #d93025 14%, transparent);
-  border-color: color-mix(in srgb, #d93025 38%, transparent);
+  color: color-mix(in srgb, var(--color-danger) 60%, var(--text-primary));
+  background: color-mix(in srgb, var(--color-danger) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 38%, transparent);
 }
 .ov-flag--stunned,
 .ov-flag--poisoned,
 .ov-flag--diseased,
 .ov-flag--low,
 .ov-flag--webbed {
-  color: color-mix(in srgb, #e6a23c 70%, var(--text-primary));
-  background: color-mix(in srgb, #e6a23c 14%, transparent);
-  border-color: color-mix(in srgb, #e6a23c 38%, transparent);
+  color: color-mix(in srgb, var(--color-warning) 70%, var(--text-primary));
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-warning) 38%, transparent);
 }
 .ov-flag--spoken {
   color: color-mix(in srgb, var(--accent) 75%, var(--text-primary));
@@ -624,9 +645,9 @@
 
 /* A posture that isn't upright is a liability, not neutral context. */
 .ov-cond--warn {
-  color: color-mix(in srgb, #e6a23c 70%, var(--text-primary));
-  background: color-mix(in srgb, #e6a23c 12%, transparent);
-  border-color: color-mix(in srgb, #e6a23c 34%, transparent);
+  color: color-mix(in srgb, var(--color-warning) 70%, var(--text-primary));
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-warning) 34%, transparent);
 }
 .ov-cond--held  { color: var(--text-secondary); }
 .ov-cond--spell {
@@ -656,25 +677,25 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ov-card-here--hostile { color: color-mix(in srgb, #e6a23c 55%, var(--text-muted)); }
+.ov-card-here--hostile { color: color-mix(in srgb, var(--color-warning) 55%, var(--text-muted)); }
 
 .ov-card-dim { color: var(--text-muted); font-size: 0.82em; }
 
 /* Wound severity, worn by a chip in the flag row. */
 .ov-flag--wound-1 {
-  color: color-mix(in srgb, #e6a23c 70%, var(--text-primary));
-  background: color-mix(in srgb, #e6a23c 14%, transparent);
-  border-color: color-mix(in srgb, #e6a23c 38%, transparent);
+  color: color-mix(in srgb, var(--color-warning) 70%, var(--text-primary));
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-warning) 38%, transparent);
 }
 .ov-flag--wound-2 {
-  color: color-mix(in srgb, #e8710a 72%, var(--text-primary));
-  background: color-mix(in srgb, #e8710a 15%, transparent);
-  border-color: color-mix(in srgb, #e8710a 40%, transparent);
+  color: color-mix(in srgb, color-mix(in srgb, var(--color-warning) 50%, var(--color-danger)) 72%, var(--text-primary));
+  background: color-mix(in srgb, color-mix(in srgb, var(--color-warning) 50%, var(--color-danger)) 15%, transparent);
+  border-color: color-mix(in srgb, color-mix(in srgb, var(--color-warning) 50%, var(--color-danger)) 40%, transparent);
 }
 .ov-flag--wound-3 {
-  color: color-mix(in srgb, #d93025 65%, var(--text-primary));
-  background: color-mix(in srgb, #d93025 16%, transparent);
-  border-color: color-mix(in srgb, #d93025 42%, transparent);
+  color: color-mix(in srgb, var(--color-danger) 65%, var(--text-primary));
+  background: color-mix(in srgb, var(--color-danger) 16%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 42%, transparent);
 }
 
 /* ── Stat chips ───────────────────────────────────────────────────────────── */
@@ -804,7 +825,7 @@
   color: var(--text-secondary);
   background: color-mix(in srgb, var(--text-primary) 7%, transparent);
   border: 1px solid color-mix(in srgb, var(--text-primary) 20%, transparent);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
@@ -872,7 +893,7 @@
   color: var(--text-secondary);
   background: var(--bg-input);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 .ov-inputbar-target option { background: var(--bg-raised); color: var(--text-primary); }
@@ -903,7 +924,7 @@
   font-size: 0.82em;
   line-height: 1;
   padding: 0.45em 0.9em;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--accent);
@@ -917,7 +938,7 @@
 .ov-inputbar-warn {
   font-size: 0.75em;
   line-height: 1;
-  color: color-mix(in srgb, #e6a23c 70%, var(--text-primary));
+  color: color-mix(in srgb, var(--color-warning) 70%, var(--text-primary));
   flex: 0 0 auto;
 }
 
@@ -968,9 +989,9 @@
   line-height: 1;
   padding: 0.15em 0.35em;
   border-radius: 0.8em;
-  color: color-mix(in srgb, #d93025 55%, var(--text-primary));
-  background: color-mix(in srgb, #d93025 18%, transparent);
-  border: 1px solid color-mix(in srgb, #d93025 40%, transparent);
+  color: color-mix(in srgb, var(--color-danger) 55%, var(--text-primary));
+  background: color-mix(in srgb, var(--color-danger) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent);
 }
 
 /* Motion is decoration, colour is signal: under epilepsy-safe the transitions

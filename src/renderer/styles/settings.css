@@ -1,12 +1,8 @@
-.sp-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
+/* Settings — the About look (B400, v0.19.7). The backdrop, panel, header band,
+   ✕, footer rail, buttons and chip filters come from ui.css (.ui-modal*,
+   .ui-btn, .ui-tab); this file keeps the form's own layout. */
+
+.sp-backdrop { z-index: 100; }
 
 /* DELIBERATE EXEMPTION from --modal-w-standard (Sekmeht, v0.16.0).
    Every other big management window (Panel Manager, Automations, Lich Dashboard,
@@ -18,65 +14,15 @@
    but read badly). The right answer is simply a narrower window — half the standard
    width, one column, comfortable measure. Keep the HEIGHT token: only the width is
    the problem, and every other modal still retunes from one place.
-   min-width keeps the nav rail + form usable on a small display. */
+   min-width keeps the nav rail + form usable on a small display, but it must
+   never exceed the window: the window floor is 480px, and a bare 560px beat
+   max-width and pushed the ✕ off-screen (B327). `100%` is the backdrop's
+   padded content box; .ui-modal caps max-width and max-height to the window. */
 .sp-modal {
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 6px;
   width: calc(var(--modal-w-standard) / 2);
-  min-width: 560px;
-  max-width: 95vw;
+  min-width: min(560px, 100%);
   height: var(--modal-h-standard);
-  max-height: var(--modal-h-standard);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
 }
-
-/* ── Header ──────────────────────────────────────────────────────── */
-
-.sp-header {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  background: var(--bg-hover);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.sp-title {
-  flex: 1;
-  font-weight: 700;
-  color: var(--accent);
-  font-size: 0.9rem;
-  letter-spacing: 1px;
-}
-
-.sp-reset {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  border-radius: 3px;
-  font-size: 0.72rem;
-  cursor: pointer;
-  padding: 2px 8px;
-  margin-right: 8px;
-}
-
-.sp-reset:hover { border-color: var(--accent-dim); color: var(--text-secondary); }
-
-.sp-close {
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  font-size: 1.4rem;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-}
-
-.sp-close:hover { color: var(--text-secondary); }
 
 /* ── Settings search + section nav (F61) ─────────────────────────── */
 
@@ -90,12 +36,14 @@
   flex-shrink: 0;
 }
 
-/* Styled like the font list's .sp-font-search, standalone (all corners). */
+/* Styled like the font list's .sp-font-search, standalone (all corners). Every
+   field here sits on --modal-input-bg, never a bare --bg-input — on Classic
+   Light that is the same #fff as the dialog (pitfall #55). */
 .sp-search-input {
   flex: 1;
-  background: var(--bg-input);
+  background: var(--modal-input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   padding: 5px 8px;
   font-family: inherit;
@@ -140,7 +88,7 @@
 .sp-nav-item {
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   font-family: inherit;
   font-size: 0.78rem;
@@ -149,7 +97,7 @@
   cursor: pointer;
 }
 
-.sp-nav-item:hover { background: var(--bg-hover); color: var(--accent); }
+.sp-nav-item:hover { background: var(--modal-ctl-hover); color: var(--text-primary); }
 
 .sp-search-empty {
   padding: 24px 16px;
@@ -182,7 +130,7 @@
 .sp-sec {
   margin: 0 14px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--text-primary) 3%, var(--bg-base));
   /* Clips the full-width row hover to the rounded corners. Safe: nothing
      inside a section escapes its box (the toggle knob is the only absolutely
@@ -196,11 +144,11 @@
    in the BORDER (not a ::before) so the label text still starts at 16px and
    lines up with the field rows below it. */
 .sp-section-label {
-  font-size: 0.74rem;
+  font-size: var(--modal-label-size);
   font-weight: 700;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 1.2px;
+  letter-spacing: 0.09em;
   line-height: 1;
   padding: 9px 16px 9px 13px;
   border-left: 3px solid var(--accent);
@@ -237,10 +185,10 @@
 }
 
 .sp-select {
-  background: var(--bg-input);
+  background: var(--modal-input-bg);
   border: 1px solid var(--border);
   color: var(--text-secondary);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 4px 8px;
   font-family: inherit;
   font-size: 0.8rem;
@@ -263,7 +211,7 @@
   background: var(--bg-btn);
   border: 1px solid var(--border);
   color: var(--text-secondary);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   width: 24px;
   height: 24px;
   font-size: 1rem;
@@ -273,16 +221,16 @@
   justify-content: center;
   line-height: 1;
   padding: 0;
-  transition: all 0.12s;
+  transition: border-color var(--ui-transition), color var(--ui-transition);
 }
 
 .sp-num-btn:hover { border-color: var(--accent-dim); color: var(--accent); }
 
 .sp-number-input {
-  background: var(--bg-input);
+  background: var(--modal-input-bg);
   border: 1px solid var(--border);
   color: var(--text-secondary);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 3px 6px;
   font-family: inherit;
   font-size: 0.82rem;
@@ -326,21 +274,8 @@
   display: inline-block;
 }
 
-/* ── Inline button (Open Logs Folder, etc.) ──────────────────────── */
-
-.sp-button {
-  background: var(--bg-btn);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  border-radius: 4px;
-  padding: 5px 12px;
-  font-family: inherit;
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: all 0.12s;
-}
-
-.sp-button:hover { border-color: var(--accent-dim); color: var(--accent); }
+/* (Inline buttons — Open logs folder, Open Lich Setup…, the AI key row, Check
+   now — are .ui-btn.ui-btn--sm since v0.19.7; the old .sp-button is gone.) */
 
 /* ── Disk-usage readout (Session Log) ────────────────────────────── */
 
@@ -397,6 +332,15 @@
   flex-shrink: 0;
   transition: background 0.2s, border-color 0.2s;
   cursor: pointer;
+  /* A real <button role="switch"> since B335. Strip the button chrome so it
+     draws exactly like the div it replaced: content-box keeps the 36×20 track
+     plus its border (a button defaults to border-box, which would shrink it
+     and misplace the thumb). */
+  appearance: none;
+  box-sizing: content-box;
+  padding: 0;
+  margin: 0;
+  font: inherit;
 }
 
 .sp-toggle--on {
@@ -448,12 +392,12 @@
   align-items: flex-start;
   gap: 10px;
   padding: 5px 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background-color var(--ui-transition);
 }
 
-.sp-radio-row:hover { background: var(--bg-hover); }
+.sp-radio-row:not(.sp-radio-row--active):hover { background: var(--bg-hover); }
 
 .sp-radio-row--active .sp-radio-label { color: var(--accent); }
 
@@ -507,27 +451,10 @@
   margin-bottom: 5px;
 }
 
-.sp-font-filter {
-  background: var(--bg-btn);
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  border-radius: 3px;
-  font-family: inherit;
-  font-size: 0.72rem;
-  padding: 2px 10px;
-  cursor: pointer;
-}
-
-.sp-font-filter:hover { border-color: var(--accent-dim); color: var(--text-secondary); }
-
-.sp-font-filter--active {
-  border-color: var(--accent-dim);
-  color: var(--accent);
-  background: var(--accent-bg);
-}
+/* (The All / Monospace filters are .ui-tab chips since v0.19.7.) */
 
 .sp-font-search {
-  background: var(--bg-input);
+  background: var(--modal-input-bg);
   border: 1px solid var(--border);
   border-bottom: none;
   border-radius: 4px 4px 0 0;
@@ -547,7 +474,7 @@
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 0 0 4px 4px;
-  background: var(--bg-input);
+  background: var(--modal-input-bg);
 }
 
 .sp-font-item {
@@ -558,14 +485,16 @@
   user-select: none;
 }
 
-.sp-font-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+/* Excludes the active font instead of re-declaring its colour under its own
+   :hover, which left the hover background painting over --bg-active (pitfall #107). */
+.sp-font-item:not(.sp-font-item--active):hover { background: var(--bg-hover); color: var(--text-primary); }
 
+/* An accent tint, not --bg-active: darkBase never defines --bg-active, so on
+   the default theme the selected font had no background at all. */
 .sp-font-item--active {
   color: var(--accent);
-  background: var(--bg-active);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
 }
-
-.sp-font-item--active:hover { color: var(--accent); }
 
 .sp-font-empty {
   padding: 8px;
@@ -579,7 +508,7 @@
 .sp-preview {
   margin: 6px 16px 2px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
@@ -624,9 +553,9 @@
   min-width: 0;
   max-width: 340px;
   padding: 6px 8px;
-  background: var(--bg-input);
+  background: var(--modal-input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 0.8rem;
@@ -635,16 +564,20 @@
 /* The persona field is a real (unmasked) free-text input — give it more room to
    read than the masked key field's 340px cap. */
 .sp-ai-persona-input { max-width: 480px; }
-/* Fixed-hue status text over the theme's text color — legible on light and dark
-   alike (pitfall #55/#63: color-mix a fixed hue toward --text-primary). */
+/* Status text from the theme's success / danger tokens, mixed toward the text
+   colour so it stays legible on light and dark alike (pitfall #55/#63; B402 —
+   these were hand-picked hex). */
 .sp-ai-status {
   font-size: 0.78rem;
   padding: 0 16px 8px;
 }
-.sp-ai-status--ok  { color: color-mix(in srgb, #3fb950 70%, var(--text-primary)); }
-.sp-ai-status--err { color: color-mix(in srgb, #f85149 70%, var(--text-primary)); }
-/* Group-level description under the model radio (what it drives + cost). */
-.sp-ai-hint {
+.sp-ai-status--ok  { color: color-mix(in srgb, var(--color-success) 70%, var(--text-primary)); }
+.sp-ai-status--err { color: color-mix(in srgb, var(--color-danger) 70%, var(--text-primary)); }
+/* Group-level description under the model radio (what it drives + cost).
+   `.sp-field-desc` (the command-history explanation) shares it — that class
+   had no rule at all, so its line rendered at the body's 14px with no gutter. */
+.sp-ai-hint,
+.sp-field-desc {
   padding: 0 16px 8px;
   font-size: 0.75rem;
   color: var(--text-muted);

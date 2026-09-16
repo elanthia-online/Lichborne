@@ -55,6 +55,10 @@ interface Props {
   getSnapTargets: (excludeId: string) => { x: number[]; y: number[] }
   guideRefs: { v: React.RefObject<HTMLDivElement>; h: React.RefObject<HTMLDivElement> }
   locked: boolean   // §33.8 — no drag/resize/nudge/handles when true
+  // Override the per-kind resize floor. An Experience whose natural shape is a
+  // STRIP declares its own (ExperienceDef.minSize) — the panel floor is sized
+  // for a panel of text and would leave it unshrinkable well above its content.
+  minSize?: { w: number; h: number }
   // Close the window's ACTIVE tab (and the window with it, if that was the
   // last one). Supplied only by hosts whose windows hold tabs — see the
   // right-click menu below for why "Close" means the stream, not the window.
@@ -62,7 +66,7 @@ interface Props {
   children: React.ReactNode
 }
 
-export default function FloatingWindow({ win, container, focused, onFocus, onChange, onClose, getSnapTargets, guideRefs, locked, onCloseActiveTab, children }: Props) {
+export default function FloatingWindow({ win, container, focused, onFocus, onChange, onClose, getSnapTargets, guideRefs, locked, minSize, onCloseActiveTab, children }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const [renaming, setRenaming] = useState(false)
   const [draft, setDraft] = useState(win.title ?? '')
@@ -138,7 +142,8 @@ export default function FloatingWindow({ win, container, focused, onFocus, onCha
     e.stopPropagation()
     const startX = e.clientX, startY = e.clientY
     const start = { ...px }
-    const min = minSizeFor(win.kind)
+    // A caller may override the per-kind floor (see the prop).
+    const min = minSize ?? minSizeFor(win.kind)
     // Floors are the SMALLER of the per-kind minimum and the window's CURRENT
     // size. "Fit bars to content" can legitimately put a chrome window UNDER the
     // interactive minimum — a compact vitals bar is genuinely tiny — and that
@@ -251,7 +256,7 @@ export default function FloatingWindow({ win, container, focused, onFocus, onCha
   // experience..."). So on a tabbed window it closes the ACTIVE STREAM, and the
   // window only goes with it if that was the last tab. An Experience has no
   // tabs and IS the content, so there Close closes it. Right-clicking an
-  // individual TAB keeps PanelFrame's own richer menu (Clear / Close tab),
+  // individual TAB keeps PanelFrame's own richer menu (Timestamps / Clear / Close),
   // which already targets that specific stream.
   //
   // CHROME BARS AND THE GAME WINDOW ARE EXCLUDED ENTIRELY (Sekmeht) — see
@@ -337,7 +342,9 @@ export default function FloatingWindow({ win, container, focused, onFocus, onCha
               onBlur={commitRename}
               onKeyDown={e => {
                 if (e.key === 'Enter') commitRename()
-                if (e.key === 'Escape') setRenaming(false)
+                // preventDefault: a consumed Esc must not also reach
+                // useEscapeClose and close a dialog underneath (B341).
+                if (e.key === 'Escape') { e.preventDefault(); setRenaming(false) }
                 e.stopPropagation()
               }}
               maxLength={40}
@@ -363,7 +370,11 @@ export default function FloatingWindow({ win, container, focused, onFocus, onCha
       ) : (
         <div
           className="fl-grip"
-          title="Drag to move — double-click to show the name bar · right-click to close"
+          // B383: only promise the right-click Close where there IS one —
+          // `noCloseMenu` strips it from the chrome bars and the game window.
+          title={noCloseMenu
+            ? 'Drag to move — double-click to show the name bar'
+            : 'Drag to move — double-click to show the name bar · right-click to close'}
           onMouseDown={beginDrag}
           onDoubleClick={() => onChange(win.id, { showTitle: true })}
         />

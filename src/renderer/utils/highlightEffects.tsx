@@ -49,9 +49,15 @@ export function resolveEffect(
 
 // wave / bounce animate per LETTER, so split into character spans (staggered by
 // --i in CSS); everything else renders the plain string.
-export function effectContent(text: string, perLetter: boolean): ReactNode {
+//
+// `startIndex` continues the stagger across a run that a caller had to split
+// into several elements — the app-bar wordmark paints "Lich" and "borne" in
+// two different theme colours, and without an offset the second span would
+// restart the wave at zero and break it mid-word. Defaults to 0, so every
+// single-run caller is unaffected.
+export function effectContent(text: string, perLetter: boolean, startIndex = 0): ReactNode {
   if (!perLetter) return text
   return [...text].map((ch, i) => (
-    <span key={i} className="hl-fx-ch" style={{ '--i': i } as CSSProperties}>{ch}</span>
+    <span key={i} className="hl-fx-ch" style={{ '--i': startIndex + i } as CSSProperties}>{ch}</span>
   ))
 }
