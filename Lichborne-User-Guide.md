@@ -70,108 +70,46 @@ A few ideas shape everything:
 
 ## What's New in the Latest Version
 
-**v0.19.7**
+**v0.19.8**
 
-- **One-click Reconnect after a drop.** The button at the right of the top bar
-  now reads **Reconnect** when your character is disconnected, and brings them
-  back in the same tab with the scrollback intact. (It used to say Login, close
-  the tab and send you to the character list.)
-- **Windows remember where you left them** — size, position and maximized, for
-  the main window and any character in its own window. A window whose monitor is
-  gone opens on your main screen instead.
-- **The Lichborne wordmark can wear a text effect.** Pick one per character in
-  **Settings → Display → Wordmark effect** — Glow, Rainbow, Gold, Wave and
-  eight more, with a live preview beside the dropdown. Because it's per
-  character, it's an easy way to tell which one is in front when you're playing
-  several. **Static** is the default and looks exactly as it always has. Your
-  theme still supplies the colours, and Epilepsy safe mode holds every effect
-  still.
-- **An Unconscious marker in the icon bar.** DragonRealms never announces
-  "unconscious" the way it does stunned or bleeding — the only place it says so
-  is the letter **U** in the status prompt. Lichborne now reads that letter, and
-  `$unconscious` is available in triggers, macros and aliases. This one needs the
-  status prompt turned on in game: type `set statusprompt` once. Without it the
-  game sends no letters, so the marker can never appear.
-- **The Overview has one selection.** Clicking a card aims the input bar at that
-  character and makes it the active tab; with **All characters** chosen, every
-  connected card and tab lights up, so you can always see who your next command
-  will reach.
-- **The + window has the full login experience** — your Teams, Reconnect Last,
-  Team Login and Attach are all there, not just single characters.
-- **"+ Add account" is a slim row** under your accounts, instead of a big tile.
-- **The + window is a proper Lichborne dialog** — titled **Connect a
-  character**, in the same style as About Lichborne — opens straight to your
-  characters, and dialogs opened from it (Edit profile, Team Login) no longer
-  hide behind it.
-- **Esc and the keyboard work everywhere.** Esc closes the dialog on top, and
-  only that one, and every tab, list and switch can be reached with Tab. A round
-  of polish also fixed text that was hard to read on light themes, menus that
-  ran off screen, and hover states that hid what was selected — and the
-  **Experiences** button now lights only while its shelf is open, like the other
-  top-bar buttons.
-- **Every window matches, and nothing is lost by accident.**
-  - All dialogs now share the About Lichborne look.
-  - Deleting asks first.
-  - Closing an editor with unsaved changes asks whether to discard them.
-  - The cursor leaves the command bar while a dialog is open, and comes back when it closes.
-- **A round of macOS and Linux fixes.** Option-key macros work on a Mac, the
-  Linux download keeps one name (`Lichborne.AppImage`) so updates no longer
-  break your shortcuts, and trigger "log to file" actions save into a
-  **TriggerLogs** folder in Lichborne's data folder (see
-  [Where your settings live](#appendix-c--where-your-settings-live)).
-
-**v0.19.6**
-
-- **The Spell Monitor now shows an effect ending in two steps.** When your
-  countdown runs out the cell says **"expired"** and stays lit — the moment to
-  act. When the game itself stops listing the effect it turns **"ended"**, greyed
-  out, so you can see what lapsed and needs recasting instead of watching it
-  disappear. The greyed cell **counts down to its own removal**, so you know how
-  long you have to notice it. The greying is a ⚙ toggle, on by default.
-- **The Spell Monitor's header shows its feed status** — *updated 3s ago ·
-  every ~6s* — when the game last refreshed the list and roughly how often it
-  does, so a motionless grid reads as "nothing has changed" rather than
-  "something has hung".
-- **The Spell Monitor shrinks to a strip.** It can now be resized down to about
-  one row of cells, so it can sit as a thin band across the top of your layout.
-- **Katamba no longer casts a glow** in the Moons view — the black moon sheds no
-  light, so it now renders as the dark disc it is.
-
-**v0.19.5**
-
-- **New Experience: Spell Monitor.** Everything currently on you as a grid of
-  live countdowns, each with
-  a duration bar that drains as the effect does, running green while full, amber
-  past halfway and red near the end. Optional **skill badges** ([A]ugmentation,
-  [W]arding, [F]orm…) and **abbreviations** (ECRY rather than Eillie's Cry) make
-  it quick to see what to renew. Open it from the **Experiences** shelf, or dock
-  it as a panel tab from any panel's **+** menu. Works without Lich.
-- **Dragging a tab between windowed panels no longer leaves the strip jittering**
-  — a fix that also restores the map's animation smoothness, which the same bug
-  was quietly slowing down.
-
-**v0.19.4**
-
-- **Attach to a Lich that's already running.** A third way to connect, beside
-  launching Lich and going direct. Start Lich headless, and Lichborne can attach
-  to that already-logged-in session — which means **closing Lichborne no longer
-  logs you out.** Close the window and reopen it later, recover from a crash with
-  your login intact, or pick the same character up from another machine. See
-  [Getting Started → Or: attach to a running Lich](#3b-or-attach-to-a-lich-thats-already-running).
-  Contributed by **Kahlen** — Lichborne's first outside code contribution.
-- **Vitals no longer flash empty right after attaching**, and a reconnected tab
-  no longer stays greyed out while text is streaming into it.
-
-**v0.19.3**
-
-- **`shop` shows its listing again.** At DragonRealms' newer surface-based shops,
-  `shop` and `shop <item>` printed nothing unless you happened to have a Shopping
-  panel open. The listing now falls back to the game window like any other
-  narrative stream.
-- **Catch Me Up can't vanish into a background tab.** `/ai catchup` put its recap
-  into an lbAI panel if one merely existed anywhere in your layout, even hidden
-  behind another tab. It now goes to the game window unless the lbAI panel is
-  actually on screen.
+- **Name your own colours.** Make a colour once in **Automations → Colors**
+  ("Buff drop", "Danger") and pick it anywhere a colour is chosen — highlights,
+  trigger echoes, contact templates, groups. Change it later and everything
+  using it changes with it, immediately. The Colors tab shows what uses each one.
+- **The Theme Editor picks from your colours too** — but a theme *copies* the
+  colour rather than following it, so a theme file still works perfectly for
+  someone who doesn't have your palette.
+- **Style a trigger's echo.** The **Echo** action can now set a background, go
+  bold and wear any of the text effects, with a live preview in the editor — so
+  the line a trigger writes for you is as easy to spot as anything else.
+- **Bold works again if you lowered your Text weight.** Below the default
+  setting, bold had been rendering identically to normal text everywhere —
+  highlights, creature names, room titles, contact templates. If you run a
+  thinner text weight, bold will now look noticeably stronger.
+- **Contact templates got clearer.** The template card is grouped under labelled
+  dividers — Contact name, Tag, Preview, Applies to — instead of one long ladder
+  of fields, and the **tag** can be bold independently of the name.
+- **Line highlights show their effects in the game**, and layer properly: a word
+  with its own highlight keeps its own effect while the rest of the line keeps
+  the line's.
+- **A polish pass over the whole interface.** The headline one: **"Compact" line
+  height now actually is compact** — every line of game text had been floored at
+  the next setting up, so you were losing roughly six lines of visible text on a
+  normal window. Also: you can see which rule you have selected in Highlights,
+  Triggers, Macros, Aliases, Groups and Lich Scripts (on several themes a
+  *hovered* row looked more selected than the one you were editing); the
+  **Connect** button on your character cards is readable on hover on every theme;
+  line height and **Large Print** now reach the Experience, Injuries and Lich
+  Scripts panels; macros no longer fire — and typing no longer lands in a hidden
+  command bar — while a dialog is open; and the panel **+** menu opens the right
+  way up near the top of the window.
+- **Tidier Automations and Lich Dashboard headers.** The Automations title bar
+  was holding five different kinds of control in one row; the tabs now have a
+  row of their own, the character/global switch sits with them under an
+  **"Applies to"** label, and Analytics and **Import from another client…** moved
+  into a **⋯** menu beside the ✕ (it shows a dot while Analytics is on). The Lich
+  Dashboard's five tabs moved to their own row too. Nothing is more than one
+  click from where it used to be.
 
 ## On the Horizon (Roadmap)
 
@@ -407,10 +345,11 @@ Open the **Theme** picker for a gallery of built-in light and dark themes, or cr
 The **Automations** window (the **Automations** button on the app bar) is home base for the client's native automation — **all of it works with or without Lich.** It's tabbed by rule type:
 
 - **Highlights** — color words, names, or patterns wherever they appear in game text. Match a plain word, a phrase, or a full regex; choose whether it paints just the match or the whole line; give it a text color, background, bold, or a **text effect** — Glow, Shimmer, Rainbow, Pulse, Gold, Gradient, Fire, Frost, and more (animated effects hold still when epilepsy-safe mode is on). Overlapping highlights are resolved automatically (the most specific one wins per color property), so you never manage a priority list. Contact templates support the same effects — on the name, on the **tag**, or each with its own — and the template editor previews them live as you pick.
-- **Triggers** — "when I see X, do Y." The action can send a command, play a sound, echo a note to a stream, and more. Add **gates** (only while a Group/Mode is active) and a **cooldown** so a trigger can't spam. There's a quick form (`"pattern" do "command"`) for the common case and the full editor for multi-step triggers.
+- **Triggers** — "when I see X, do Y." The action can send a command, play a sound, echo a note to a stream (which you can colour, bold, give a background or a text effect, just like a highlight), and more. Add **gates** (only while a Group/Mode is active) and a **cooldown** so a trigger can't spam. There's a quick form (`"pattern" do "command"`) for the common case and the full editor for multi-step triggers.
 - **Macros** — bind a key (F1–F12, Ctrl/Alt/Shift combos, the numpad) to a command or a whole sequence (with optional delays between steps). Put an **`@`** anywhere in the command to drop your cursor there — perfect for fill-in-the-blank macros like `get @ from my pack`.
 - **Aliases** — typed shortcuts that expand as you send them: `hh` → `health;heal`. Use `$1`, `$2`, `$rest` to pass along whatever you typed after the alias.
 - **Mutes & Substitutes** — two more tabs, covered [just above](#mutes--substitutes).
+- **Colors** — name the colors you use again and again, like "Buff drop" or "Danger". Pick one anywhere you choose a color (highlights, trigger echoes, contact templates, groups) and it stays linked: **change the color once and everything using it changes with it.** Click the **▾** beside any color box to choose one, or start typing a color's name and pick it from the suggestions. You can also pick any color and choose **Save as a color…** from that same list. Your colors are shared by all your characters, and the tab shows what uses each one. **The Theme Editor is the one exception:** you can pick your colors there too, but a theme **copies** the color instead of following it — so the theme still looks right when you share the file with someone who doesn't have your palette. Change that color later and your highlights update while the theme keeps the shade it took; re-pick it if you want the new one.
 
 **How to create them — two ways, identical result:**
 1. **The editors** — open the tab, click **New**, fill in the fields, save.
@@ -437,7 +376,7 @@ Organize your highlights, triggers, macros, and contacts into **groups**, then f
 
 ### Automation Analytics
 
-Got hundreds of rules (especially after importing) and no idea which still matter? Turn on **Analytics** in the Automations panel and Lichborne shows you, per rule: which are **broken**, exact **duplicates**, **obsolete** (already covered by a broader rule), **conflicting** (two macros on one key), **do nothing**, your **heavy hitters**, and which have gone **quiet**. Each category explains itself with an example, a one-click **Remove duplicate copies** clears the cruft, and clicking a rule jumps to it. It's **off by default** and tracks nothing until you turn it on.
+Got hundreds of rules (especially after importing) and no idea which still matter? Turn it on from **Automations → ⋯ → Automation Analytics** (the ⋯ sits beside the ✕; it shows a dot while Analytics is on) and Lichborne shows you, per rule: which are **broken**, exact **duplicates**, **obsolete** (already covered by a broader rule), **conflicting** (two macros on one key), **do nothing**, your **heavy hitters**, and which have gone **quiet**. Each category explains itself with an example, a one-click **Delete duplicate copies** clears the cruft, and clicking a rule jumps to it. It's **off by default** and tracks nothing until you turn it on.
 
 ### Contacts
 
@@ -589,7 +528,7 @@ The **Lich** button opens a dashboard for the Lich features Lichborne surfaces (
 
 ### Coming from another client
 
-Switching from **Genie**, **Frostbite**, or **Wrayth**? The **import wizard** brings your setup with you. Open it from **Automations → "Import from another client…"**, pick your old client, and point it at that client's config files.
+Switching from **Genie**, **Frostbite**, or **Wrayth**? The **import wizard** brings your setup with you. Open it from **Automations → ⋯ → "Import from another client…"** (the ⋯ sits beside the ✕), pick your old client, and point it at that client's config files.
 
 **What maps to what:**
 
@@ -754,7 +693,7 @@ Type `/` for the live palette; type `/help` in-game for the always-current list,
 - `/mode <Name>` (bare `/mode` lists modes) · `/group on|off <Name>`
 - `/panel open|close <stream>` · `/theme <name>` · `/clear`
 - `/timestamps on|off` · `/log search "text"`
-- `/colors` (shows every named color) · `/colors add "ember" #ff6a30`
+- `/colors` (shows every named color) · `/colors add "Buff drop" #ff9040` · `/colors rename "Buff drop" "Buffs"` · `/colors remove "Buffs"` · `/colors manage` (opens the Colors tab)
 
 **AI**
 - `/ai` (status) · `/ai on|off` · `/ai key` (points to Settings) · `/ai catchup [30m|2h|7d|1y]` · `/ai stop`

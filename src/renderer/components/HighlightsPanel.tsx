@@ -13,8 +13,10 @@
 // write is `setRules` → `saveHighlights` (localStorage) → `onSaved` (the
 // host's scheduled profile save → YAML); the list is loaded ONCE on mount and
 // the host remounts the panel after an import or scope move. The live Preview
-// runs the REAL `buildHighlightRegex` + `resolveEffect`/`effectContent`, so
-// what it shows is what the game window will paint. Entry points: `prefill`
+// compiles the draft the way the game does and renders it through the game
+// window's own `renderHighlightedLine`, so what it shows is what the game will
+// paint. (Merely sharing the regex and effect helpers was not enough: a
+// hand-written copy showed line effects the game never did, B428.) Entry points: `prefill`
 // (right-click "Highlight …" → unsaved draft, with `initialTestText`) and
 // `openRuleId` (slash `/highlight edit`, v0.14.6). There is deliberately NO
 // reorder UI — overlap precedence is by match specificity, not list order
@@ -37,9 +39,11 @@ import {
   type HighlightRule, type HighlightEffect,
   buildHighlightRegex, isValidRegex,
   loadHighlights, saveHighlights, newHighlight,
-  HIGHLIGHT_EFFECTS, effectiveEffect, FX_USES_COLOR,
+  HIGHLIGHT_EFFECTS, effectiveEffect, FX_USES_COLOR, effectColorNote,
 } from '../highlights'
-import { resolveEffect, effectContent } from '../utils/highlightEffects'
+import { renderHighlightedLine } from '../utils/renderSegmentFull'
+import type { CompiledRule } from '../HighlightsContext'
+import { literalGate } from '../regexLiteral'
 import { playWavFile } from '../hooks/useTriggerEngine'
 import { useCharacter } from '../CharacterContext'
 import { scopedKey } from '../characterScope'
@@ -47,20 +51,10 @@ import { useRuleAnalytics, AnalyticsReview, RuleBadges, ruleListKeyDown } from '
 import { analyzeHighlights } from '../automationHealth'
 import GroupPicker from './GroupPicker'
 import '../styles/highlights.css'
-import { normalizeColorInput, COLOR_INPUT_TITLE } from '../colors'
+import ColorField from './ColorField'
 import '../styles/groups.css'
 
 const PREVIEW_TEXT = "You notice Torgin has a deep cut that is bleeding profusely."
-
-function colorPickerValue(v: string | undefined, fallback = '#000000'): string {
-  if (!v || v === 'transparent') return fallback
-  return v.startsWith('#') ? v : '#' + v
-}
-
-function swatchStyle(color: string): React.CSSProperties {
-  if (!color || color === 'transparent') return {}
-  return { background: color }
-}
 
 interface Props {
   onSaved?: () => void
@@ -129,57 +123,22 @@ export default function HighlightsPanel({ onSaved, prefill, initialTestText, ope
 
   const previewSource = testInput || PREVIEW_TEXT
 
+  // The draft is compiled exactly as the game compiles a rule (including the
+  // `literalGate` pre-filter) and rendered by the game's own
+  // `renderHighlightedLine`. It used to be a hand-written copy, and that copy
+  // painted line-scope effects and bold the game window never did (B428).
   const previewNodes = useMemo(() => {
     if (!draft) return <span>{previewSource}</span>
     const regex = buildHighlightRegex(draft)
     if (!regex || !draft.pattern.trim()) return <span>{previewSource}</span>
-
-    const rfx = resolveEffect(effectiveEffect(draft.style), draft.style.textColor, draft.style.glowColor)
-
-    if (draft.scope === 'line') {
-      regex.lastIndex = 0
-      const matched = regex.test(previewSource)
-      const lineStyle: React.CSSProperties = matched ? {
-        ...(draft.style.bgColor && draft.style.bgColor !== 'transparent'
-          ? { backgroundColor: draft.style.bgColor } : {}),
-        ...(draft.style.textColor && draft.style.textColor !== 'transparent' && !rfx.colorReplacing
-          ? { color: draft.style.textColor } : {}),
-        ...(rfx.glowShadow ? { textShadow: rfx.glowShadow } : {}),
-        ...(matched ? rfx.vars : {}),
-      } : {}
-      const cls = matched && rfx.className ? rfx.className : undefined
-      const content = matched ? effectContent(previewSource, rfx.perLetter) : previewSource
-      return draft.style.bold && matched
-        ? <strong className={cls} style={lineStyle}>{content}</strong>
-        : <span className={cls} style={lineStyle}>{content}</span>
-    }
-
-    // match scope — split and highlight
-    regex.lastIndex = 0
-    const parts: React.ReactNode[] = []
-    let last = 0
-    let n = 0
-    let m: RegExpExecArray | null
-    while ((m = regex.exec(previewSource)) !== null) {
-      if (m[0].length === 0) { regex.lastIndex++; continue }
-      if (m.index > last) parts.push(<span key={n++}>{previewSource.slice(last, m.index)}</span>)
-      const hlStyle: React.CSSProperties = {
-        ...(draft.style.bgColor && draft.style.bgColor !== 'transparent'
-          ? { backgroundColor: draft.style.bgColor } : {}),
-        ...(draft.style.textColor && draft.style.textColor !== 'transparent' && !rfx.colorReplacing
-          ? { color: draft.style.textColor } : {}),
-        ...(rfx.glowShadow ? { textShadow: rfx.glowShadow } : {}),
-        ...rfx.vars,
-      }
-      const word = previewSource.slice(m.index, m.index + m[0].length)
-      const cls = `hl-match${rfx.className ? ` ${rfx.className}` : ''}`
-      parts.push(draft.style.bold
-        ? <strong key={n++} className={cls} style={hlStyle}>{effectContent(word, rfx.perLetter)}</strong>
-        : <span key={n++} className={cls} style={hlStyle}>{effectContent(word, rfx.perLetter)}</span>)
-      last = m.index + m[0].length
-    }
-    if (last < previewSource.length) parts.push(<span key={n++}>{previewSource.slice(last)}</span>)
-    return <>{parts}</>
+    const compiled: CompiledRule = { rule: draft, regex, fastLower: literalGate(draft.mode, draft.pattern) }
+    const { style, nodes } = renderHighlightedLine([{ text: previewSource }], {
+      matchRules: draft.scope === 'match' ? [compiled] : [],
+      lineRules: draft.scope === 'line' ? [compiled] : [],
+      contacts: [], templates: [], nameRegex: null,
+      autoLinkUrls: false, webLinkSafety: false,
+    })
+    return <div style={style ?? undefined}>{nodes}</div>
   }, [draft, previewSource])
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -488,49 +447,29 @@ export default function HighlightsPanel({ onSaved, prefill, initialTestText, ope
                   <label className="hp-label">Style</label>
                   <div className="hp-style-grid">
 
+                    {/* F115: ColorField — pick one of your colors and the rule
+                        stays linked to it. Functional updates, because the
+                        popover's native picker fires onChange in a stream. */}
                     <div className="hp-style-col">
                       <span className="hp-style-sublabel">Text</span>
-                      <div className="hp-style-picker-row">
-                        <input
-                          type="color"
-                          className="hp-color-picker"
-                          value={colorPickerValue(draft.style.textColor)}
-                          onChange={e => setDraft({ ...draft, style: { ...draft.style, textColor: e.target.value } })}
-                        />
-                        <input
-                          className="hp-input hp-input--hex"
-                          value={draft.style.textColor}
-                          placeholder="transparent"
-                          title={COLOR_INPUT_TITLE}
-                          onChange={e => setDraft({ ...draft, style: { ...draft.style, textColor: e.target.value } })}
-                          onBlur={e => { const v = normalizeColorInput(e.target.value); if (v !== e.target.value) setDraft({ ...draft, style: { ...draft.style, textColor: v } }) }}
-                        />
-                      </div>
+                      <ColorField
+                        label="Text color"
+                        value={draft.style.textColor}
+                        none={{ value: 'transparent', label: 'No color' }}
+                        placeholder="transparent"
+                        onChange={v => setDraft(d => d ? { ...d, style: { ...d.style, textColor: v } } : d)}
+                      />
                     </div>
 
                     <div className="hp-style-col">
                       <span className="hp-style-sublabel">Background</span>
-                      <div className="hp-style-picker-row">
-                        <div
-                          className="hp-color-picker hp-color-checker"
-                          style={swatchStyle(draft.style.bgColor)}
-                        >
-                          <input
-                            type="color"
-                            className="hp-color-overlay"
-                            value={colorPickerValue(draft.style.bgColor)}
-                            onChange={e => setDraft({ ...draft, style: { ...draft.style, bgColor: e.target.value } })}
-                          />
-                        </div>
-                        <input
-                          className="hp-input hp-input--hex"
-                          value={draft.style.bgColor}
-                          placeholder="transparent"
-                          title={COLOR_INPUT_TITLE}
-                          onChange={e => setDraft({ ...draft, style: { ...draft.style, bgColor: e.target.value } })}
-                          onBlur={e => { const v = normalizeColorInput(e.target.value); if (v !== e.target.value) setDraft({ ...draft, style: { ...draft.style, bgColor: v } }) }}
-                        />
-                      </div>
+                      <ColorField
+                        label="Background color"
+                        value={draft.style.bgColor}
+                        none={{ value: 'transparent', label: 'No background' }}
+                        placeholder="transparent"
+                        onChange={v => setDraft(d => d ? { ...d, style: { ...d.style, bgColor: v } } : d)}
+                      />
                     </div>
 
                     <div className="hp-style-col">
@@ -547,22 +486,16 @@ export default function HighlightsPanel({ onSaved, prefill, initialTestText, ope
                       >
                         {HIGHLIGHT_EFFECTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
+                      {/* B445 */}
+                      {effectColorNote(effectiveEffect(draft.style)) && (
+                        <div className="ui-hint">{effectColorNote(effectiveEffect(draft.style))}</div>
+                      )}
                       {FX_USES_COLOR.has(effectiveEffect(draft.style)) && (
-                        <div className="hp-style-picker-row">
-                          <input
-                            type="color"
-                            className="hp-color-picker"
-                            value={colorPickerValue(draft.style.glowColor)}
-                            onChange={e => setDraft({ ...draft, style: { ...draft.style, glowColor: e.target.value } })}
-                          />
-                          <input
-                            className="hp-input hp-input--hex"
-                            value={draft.style.glowColor}
-                            title={COLOR_INPUT_TITLE}
-                            onChange={e => setDraft({ ...draft, style: { ...draft.style, glowColor: e.target.value } })}
-                            onBlur={e => { const v = normalizeColorInput(e.target.value); if (v !== e.target.value) setDraft({ ...draft, style: { ...draft.style, glowColor: v } }) }}
-                          />
-                        </div>
+                        <ColorField
+                          label="Effect color"
+                          value={draft.style.glowColor}
+                          onChange={v => setDraft(d => d ? { ...d, style: { ...d.style, glowColor: v } } : d)}
+                        />
                       )}
                     </div>
 

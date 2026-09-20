@@ -24,7 +24,8 @@ import { confirmDiscard } from '../confirm'
 import { backdropHandlers } from '../utils/backdropClose'
 import { applyCustomTheme, type ThemeVars } from '../themes'
 import type { CustomTheme } from '../myThemes'
-import { resolveColor, COLOR_INPUT_TITLE } from '../colors'
+import { THEME_COLOR_INPUT_TITLE } from '../colors'
+import ColorField from './ColorField'
 import '../styles/theme-editor.css'
 
 // ── Field type definitions ─────────────────────────────────────────────────
@@ -32,16 +33,16 @@ import '../styles/theme-editor.css'
 // `desc` is the hover-tooltip identifying WHERE in the UI this var paints
 // (B112). Surfaced via `title` on the row label so the tester can hover to
 // learn what a row drives without having to bind, save, and visually hunt.
-type ColorField    = { type: 'color';    key: string; label: string; desc?: string }
+type ColorRowField = { type: 'color';    key: string; label: string; desc?: string }
 type GradientField = { type: 'gradient'; label: string; startKey: string; endKey: string; desc?: string }
 type RgbaField     = { type: 'rgba';     key: string;  label: string; desc?: string }
 type PresetField   = { type: 'preset';   label: string; fgKey: string; bgKey: string; desc?: string }
-type Field = ColorField | GradientField | RgbaField | PresetField
+type Field = ColorRowField | GradientField | RgbaField | PresetField
 
 interface FieldGroup { label: string; fields: Field[] }
 interface EditorTab  { id: string; label: string; groups: FieldGroup[] }
 
-const c  = (key: string, label: string, desc?: string): ColorField    => ({ type: 'color',    key, label, desc })
+const c  = (key: string, label: string, desc?: string): ColorRowField => ({ type: 'color',    key, label, desc })
 const g  = (label: string, s: string, e: string, desc?: string): GradientField => ({ type: 'gradient', label, startKey: s, endKey: e, desc })
 const r  = (key: string, label: string, desc?: string): RgbaField     => ({ type: 'rgba',     key, label, desc })
 const p  = (label: string, fgKey: string, bgKey: string, desc?: string): PresetField => ({ type: 'preset', label, fgKey, bgKey, desc })
@@ -298,79 +299,17 @@ function resolveDisplayHex(value: string): string {
 }
 
 /**
- * The typed half of a colour row. ONE component for the plain colour rows and
- * the preset rows, so they commit the same way (B387 — the preset rows used to
- * apply every keystroke that matched `#[0-9a-f]{0,6}`, so a half-typed `#3f`
- * repainted the whole app mid-word).
+ * One colour row. The control is the SHARED ColorField (UX #12) — swatch,
+ * typable box with type-ahead, and the popover offering your colours and the
+ * built-ins — rather than a native picker plus a private text input.
  *
- * v0.14.6: the field accepts NAMED colours too (red, lime, ember — the /colors
- * palette), resolved to hex on COMMIT (blur/Enter). A local draft lets the user
- * type freely ("emb…" isn't valid yet); a draft that is already a complete
- * #rrggbb still applies as you type, because it IS a valid colour. Anything
- * that doesn't resolve reverts to the stored value. Theme vars always STORE
- * hex — a theme must never depend on the palette existing.
- *
- * `allowNone` is a preset's highlight: an empty field means "no highlight",
- * stored as `transparent`, and is committed like any other value.
+ * Two props carry the difference between a theme and a rule:
+ *   allowLink={false}  a theme COPIES the hex, so it never depends on a palette
+ *                      entry its recipient doesn't have (DESIGN §37.2, §49).
+ *   commitTyped        this onChange repaints the app live, so half-typed text
+ *                      must not be applied (B387).
  */
-function ColorText({ value, onCommit, allowNone, placeholder, title = COLOR_INPUT_TITLE }: {
-  value: string
-  onCommit: (v: string) => void
-  allowNone?: boolean
-  placeholder?: string
-  title?: string
-}) {
-  const [draft, setDraft] = useState<string | null>(null)
-  // If the stored value changes from OUTSIDE this field (the picker swatch, a
-  // reset) while a name is half-typed, drop the draft so it can't mask the
-  // new value. (A committed full-hex edit produces value === what was typed,
-  // so this never interrupts hex typing.)
-  useEffect(() => { setDraft(null) }, [value])
-  const commit = (raw: string) => {
-    const t = raw.trim()
-    if (allowNone && t === '') {
-      if (value !== '') onCommit('transparent')
-      setDraft(null)
-      return
-    }
-    const resolved = t.startsWith('#')
-      ? (HEX6.test(t) ? t : null)
-      // A bare "3fb950" is still a hex the user meant (the preset fields used
-      // to accept it); a name wins if one happens to match first.
-      : (resolveColor(t) ?? (/^[0-9a-fA-F]{6}$/.test(t) ? '#' + t : null))
-    // Only when it's a CHANGE. The field shows a resolved hex for a var stored
-    // as var(--x) / color-mix(…); committing that same hex back would freeze the
-    // expression into a literal and mark the theme unsaved on a mere click.
-    if (resolved && resolved.toLowerCase() !== value.toLowerCase()) onCommit(resolved)
-    setDraft(null) // revert to the stored value when unresolvable
-  }
-  return (
-    <input
-      type="text" value={draft ?? value} maxLength={24}
-      title={title}
-      placeholder={placeholder}
-      onChange={e => {
-        const v = e.target.value
-        setDraft(v)
-        if (HEX6.test(v)) onCommit(v)
-      }}
-      // Commit only what was TYPED: tabbing or clicking through an untouched
-      // field must never rewrite it (see commit()). A complete hex has already
-      // been applied by onChange, which clears the draft.
-      onBlur={e => { if (draft !== null) commit(e.target.value) }}
-      onKeyDown={e => {
-        if (e.key === 'Enter') { if (draft !== null) commit((e.target as HTMLInputElement).value) }
-        // Esc with a half-typed value throws the draft away and is consumed,
-        // so the editor stays open (pitfall #141). With no draft it falls
-        // through to the dialog's own close.
-        else if (e.key === 'Escape' && draft !== null) { e.preventDefault(); setDraft(null) }
-      }}
-      className="te-hex-text"
-    />
-  )
-}
-
-function ColorRow({ field, vars, onChange }: { field: ColorField; vars: ThemeVars; onChange: (k: string, v: string) => void }) {
+function ColorRow({ field, vars, onChange }: { field: ColorRowField; vars: ThemeVars; onChange: (k: string, v: string) => void }) {
   const stored = vars[field.key] ?? '#000000'
   // Recomputed only when the stored value changes — the probe touches the DOM,
   // and this editor re-renders on every keystroke.
@@ -379,28 +318,53 @@ function ColorRow({ field, vars, onChange }: { field: ColorField; vars: ThemeVar
     <div className="te-row">
       <span className="te-row-label" title={field.desc}>{field.label}{field.desc && <span className="te-row-info" aria-hidden> ⓘ</span>}</span>
       <div className="te-row-inputs">
-        <input
-          type="color" value={value}
-          onChange={e => onChange(field.key, e.target.value)}
-          className="te-color-swatch"
-          aria-label={field.label}
+        <ColorField
+          label={field.label}
+          value={value}
+          onChange={v => onChange(field.key, v)}
+          allowLink={false}
+          commitTyped
+          title={THEME_COLOR_INPUT_TITLE}
         />
-        <ColorText value={value} onCommit={v => onChange(field.key, v)} />
       </div>
     </div>
   )
 }
 
 function GradientRow({ field, vars, onChange }: { field: GradientField; vars: ThemeVars; onChange: (k: string, v: string) => void }) {
-  const sv = vars[field.startKey] ?? '#000000'
-  const ev = vars[field.endKey]   ?? '#000000'
+  // resolveDisplayHex on BOTH ends: every gradient value is a literal hex today,
+  // but a value stored as var() / color-mix() would otherwise render a black
+  // swatch here — the hole B314 closed for ColorRow and PresetRow and left open
+  // on this one.
+  // Keyed on the stored STRINGS, never the `vars` object: that object gets a new
+  // identity on every keystroke, so depending on it would re-run the DOM probe
+  // for both ends of every gradient row on every character typed (the reason
+  // ColorRow memoizes the same way).
+  const svStored = vars[field.startKey] ?? '#000000'
+  const evStored = vars[field.endKey]   ?? '#000000'
+  const sv = useMemo(() => resolveDisplayHex(svStored), [svStored])
+  const ev = useMemo(() => resolveDisplayHex(evStored), [evStored])
   return (
     <div className="te-row">
       <span className="te-row-label" title={field.desc}>{field.label}{field.desc && <span className="te-row-info" aria-hidden> ⓘ</span>}</span>
       <div className="te-row-inputs te-row-inputs--gradient">
-        <input type="color" value={sv} onChange={e => onChange(field.startKey, e.target.value)} className="te-color-swatch" />
+        <ColorField
+          label={`${field.label} start`}
+          value={sv}
+          onChange={v => onChange(field.startKey, v)}
+          allowLink={false}
+          commitTyped
+          title={THEME_COLOR_INPUT_TITLE}
+        />
         <span className="te-arrow">→</span>
-        <input type="color" value={ev} onChange={e => onChange(field.endKey,   e.target.value)} className="te-color-swatch" />
+        <ColorField
+          label={`${field.label} end`}
+          value={ev}
+          onChange={v => onChange(field.endKey, v)}
+          allowLink={false}
+          commitTyped
+          title={THEME_COLOR_INPUT_TITLE}
+        />
         <div className="te-gradient-preview" style={{ background: `linear-gradient(90deg, ${sv}, ${ev})` }} />
       </div>
     </div>
@@ -444,21 +408,24 @@ function PresetRow({ field, vars, onChange }: { field: PresetField; vars: ThemeV
     <div className="te-row">
       <span className="te-row-label" title={field.desc}>{field.label}{field.desc && <span className="te-row-info" aria-hidden> ⓘ</span>}</span>
       <div className="te-row-inputs te-row-inputs--preset">
-        <input type="color" value={fg}
-          onChange={e => onChange(field.fgKey, e.target.value)}
-          className="te-color-swatch" title="Text color" aria-label={`${field.label} text color`} />
-        <ColorText value={fg} onCommit={v => onChange(field.fgKey, v)} />
+        <ColorField
+          label={`${field.label} text color`}
+          value={fg}
+          onChange={v => onChange(field.fgKey, v)}
+          allowLink={false}
+          commitTyped
+          title={THEME_COLOR_INPUT_TITLE}
+        />
         <span className="te-preset-divider">·</span>
-        <input type="color" value={bgHex || '#000000'}
-          onChange={e => onChange(field.bgKey, e.target.value)}
-          className={`te-color-swatch${!hasHighlight ? ' te-color-swatch--none' : ''}`}
-          title="Highlight color" aria-label={`${field.label} highlight color`} />
-        <ColorText
+        <ColorField
+          label={`${field.label} highlight color`}
           value={bgHex}
-          allowNone
+          onChange={v => onChange(field.bgKey, v)}
+          allowLink={false}
+          commitTyped
           placeholder="none"
-          title={`${COLOR_INPUT_TITLE}. Leave it empty for no highlight.`}
-          onCommit={v => onChange(field.bgKey, v)}
+          none={{ value: 'transparent', label: 'No highlight' }}
+          title={`${THEME_COLOR_INPUT_TITLE} Leave it empty for no highlight.`}
         />
       </div>
     </div>

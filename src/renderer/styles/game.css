@@ -487,7 +487,14 @@
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text-primary);
-  min-height: 1.4em;
+  /* A blank game line still holds exactly ONE row — expressed in the row's own
+     metric so it cannot clamp the line-height that renders it. A literal 1.4em
+     floored every row at 1.4 while the SHIPPED DEFAULT is 1.2 (settings.ts), so
+     "Compact" was indistinguishable from 1.4 and cost ~6 lines of visible text
+     on a 40-row window. The Overview's copy of this rule already had the
+     correct form (overview.css, B277) — two surfaces rendering the same
+     component disagreed. */
+  min-height: calc(1em * var(--game-line-height, 1.4));
   /* F31 (v0.8.5): respect per-panel font override when set. .text-line
      is rendered in TWO places — the main scroll (outside any
      .panel-frame-body, so --panel-font-size is undefined and the var

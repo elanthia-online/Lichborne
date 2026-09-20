@@ -38,7 +38,10 @@ import yaml from 'js-yaml'
 import { nanoid } from 'nanoid'
 import { scopedKey, GLOBAL_RULES_SCOPE, asGlobalRules } from './characterScope'
 import { loadMyThemes, saveMyThemes, type CustomTheme } from './myThemes'
-import { loadCustomColors, saveCustomColors, type CustomColor } from './colors'
+import {
+  loadCustomColors, saveCustomColors, coerceCustomColors, mergeCustomColors,
+  collectColorLinkIds, remapColorLinks, type CustomColor,
+} from './colors'
 import { hlKey, trKey, maKey, alKey, muteKey, subKey, type RuleKeyFn } from './ruleIdentity'
 import { loadHighlights, saveHighlights } from './highlights'
 import { loadTriggers, saveTriggers } from './triggers'
@@ -118,7 +121,7 @@ export const TRANSFER_CATEGORIES: TransferCategory[] = [
   },
   {
     id: 'colors', label: 'Named Colors', kind: 'config',
-    desc: 'Your custom named colors (/colors add). Note: the color palette is app-wide — importing merges these into this machine’s shared palette (same-name colors take the imported value).',
+    desc: 'Your named colors (Automations → Colors). Shared by all characters — importing merges them into this machine’s colors, and a color with the same name takes the imported value. Colors your imported rules use always come along, even with this unticked.',
     suffixes: [], // special-cased (shared customColors, not per-character state)
   },
   { id: 'highlights', label: 'Highlights', kind: 'rules', desc: 'Text/regex highlight rules.', suffixes: ['highlights'] },
@@ -160,6 +163,12 @@ export interface ProfileExportFile {
   // Per category: a bag of suffix → value (the parsed `state` representation).
   // The Theme category instead carries { theme, customTheme? }.
   categories: Partial<Record<TransferCategoryId, Record<string, unknown>>>
+  // F115 (v0.19.8): the palette entries the bundle's rules LINK to, carried
+  // whether or not Named Colors is ticked, so an imported rule never points at
+  // a color the target machine lacks. Optional → no format bump: an older
+  // file simply has none, and an older build ignores it (its rules still
+  // render through each link's fallback hex).
+  linkedColors?: CustomColor[]
 }
 
 const EXPORT_FORMAT_VERSION = 1 as const
@@ -204,7 +213,11 @@ export async function buildProfileExport(
     if (cat.id === 'colors') {
       // Shared-palette data (like the custom-theme definition) — the exporter's
       // APP-WIDE custom colors, not anything from the source character's YAML.
-      categories.colors = { customColors: loadCustomColors() }
+      // Empty carries nothing, so it's left out entirely rather than offered on
+      // the import screen as a category with no contents (every other category
+      // below does the same).
+      const customColors = loadCustomColors()
+      if (customColors.length > 0) categories.colors = { customColors }
       continue
     }
 
@@ -250,6 +263,11 @@ export async function buildProfileExport(
     if (Object.keys(bag).length > 0) categories[cat.id] = bag
   }
 
+  // F115: the colors anything above links to, retired ones included (a
+  // retired color still paints what uses it).
+  const linkIds = collectColorLinkIds(categories)
+  const linkedColors = linkIds.size > 0 ? loadCustomColors().filter(c => linkIds.has(c.id)) : []
+
   return {
     kind: 'lichborne-profile',
     formatVersion: EXPORT_FORMAT_VERSION,
@@ -257,6 +275,7 @@ export async function buildProfileExport(
     exportedBy: sourceCharacter,
     exportedAt: new Date().toISOString(),
     categories,
+    ...(linkedColors.length > 0 ? { linkedColors } : {}),
   }
 }
 
@@ -385,7 +404,7 @@ export async function applyProfileImport(
   const result: TargetResult = {
     character: targetCharacter, active: isActive, appliedCategories: [], themeAppWideNote: false,
   }
-  const categories = file.categories ?? {}
+  let categories = file.categories ?? {}
 
   // For inactive targets, stage onto a copy of the existing YAML state so the
   // whole merge is one atomic write that preserves every untouched key + all
@@ -404,6 +423,34 @@ export async function applyProfileImport(
   }
 
   const store = isActive ? activeStore(targetCharacter) : stagedStore(stagedState!)
+
+  // F115: COLORS FIRST, before any rule lands. A rule may link to one of the
+  // exporter's colors (`var(--lb-color-<id>, …)`), so the palette must hold
+  // that id before the rule arrives:
+  //  - the Named Colors category, when ticked, merges with "imported value wins";
+  //  - the colors the bundle's rules link to (`linkedColors`) come along ALWAYS,
+  //    ticked or not, but only fill gaps — they never overwrite your colors.
+  // A color that matches one of yours BY NAME under a different id is the same
+  // color, so its links are rewritten to your id (the remap) rather than
+  // minting a duplicate. Idempotent, so running once per target is fine.
+  {
+    let palette = loadCustomColors()
+    let changed = false
+    const remap: Record<string, string> = {}
+    const named = opts.selected.has('colors')
+      ? coerceCustomColors((categories.colors as Record<string, unknown> | undefined)?.customColors)
+      : []
+    const passes: [CustomColor[], boolean][] = [[named, true], [coerceCustomColors(file.linkedColors), false]]
+    for (const [incoming, takeValues] of passes) {
+      if (incoming.length === 0) continue
+      const merged = mergeCustomColors(palette, incoming, takeValues)
+      palette = merged.list
+      changed = changed || merged.changed
+      Object.assign(remap, merged.remap)
+    }
+    if (changed) saveCustomColors(palette)
+    categories = remapColorLinks(categories, remap)
+  }
 
   // Process in a fixed order so Display runs before Layout (both touch
   // `settings`), and rules last.
@@ -444,7 +491,9 @@ export async function applyProfileImport(
       case 'substitutes': applyRuleArray(store, 'substitutes', bag.substitutes, opts.merge, regenSimple, subKey, globalKeySet(loadSubstitutes(GLOBAL_RULES_SCOPE), subKey)); break
       case 'groupsModes': applyGroupsModes(store, bag, opts.merge); break
       case 'contacts':   applyContacts(store, bag, opts.merge); break
-      case 'colors':     applyNamedColors(bag); break
+      // Merged above, before the rules (F115) — listed so the category still
+      // counts as applied and the order/switch invariant holds.
+      case 'colors':     break
       case 'globalRules': applyGlobalRules(bag); break
       // B(v0.14.0 latent, fixed v0.14.6): experiences exported but never
       // applied — it was missing from `order` + this switch.
@@ -463,26 +512,6 @@ export async function applyProfileImport(
 }
 
 // ── Config-category apply helpers ───────────────────────────────────────────────
-
-// Named Colors: SHARED-palette merge (the myThemes precedent) — target-
-// character-independent; union with the machine's existing customs, imported
-// value wins a same-name collision (checking the category = choosing to take
-// the exporter's palette). Persisted by the modal's post-import _shared.yaml
-// flush. Resolve-at-entry means existing rules never depend on this merge.
-function applyNamedColors(bag: Record<string, unknown>) {
-  const incoming = Array.isArray(bag.customColors)
-    ? (bag.customColors as unknown[]).filter((c): c is CustomColor =>
-        !!c && typeof (c as CustomColor).name === 'string' && typeof (c as CustomColor).hex === 'string')
-    : []
-  if (incoming.length === 0) return
-  const merged = [...loadCustomColors()]
-  for (const c of incoming) {
-    const i = merged.findIndex(x => x.name.toLowerCase() === c.name.toLowerCase())
-    if (i >= 0) merged[i] = c
-    else merged.push(c)
-  }
-  saveCustomColors(merged)
-}
 
 function applyDisplay(store: TargetStore, bag: Record<string, unknown>) {
   const incoming = (bag.settings ?? {}) as Record<string, unknown>

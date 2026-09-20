@@ -1,215 +1,204 @@
-## v0.19.7
+## v0.19.8
 
-### New: one-click Reconnect after a drop
+### New: your own named colors, and a Colors tab to manage them
 
-When your connection dropped, the button at the right of the top bar used to
-say **Login**, and clicking it closed the character's tab and sent you back to
-the character list, losing everything on screen. It now says **Reconnect**:
-one click logs that character straight back in, in the same tab, with your
-scrollback intact. It shows **Reconnecting…** while it works. To log in a
-different character, use the **+** tab as usual.
+Thanks to **Elore** for this one. If you use the same shade for a whole set of
+highlights (every buff that drops in one orange, say), you no longer need to
+remember its hex code, and you'll never end up with orange that's slightly off.
 
-### New: windows remember where you left them
+- Open **Automations → Colors** and make a color, like "Buff drop" or "Danger".
+- Anywhere you choose a color (highlights, trigger echoes, contact templates,
+  groups), click the **▾** beside the color box to pick one of your colors, or
+  just start typing its name and choose it from the suggestions. Or pick any
+  color you like and choose **Save as a color…** to name it on the spot.
+- **Change a color once and everything using it changes with it**, right away.
+  The Colors tab shows what uses each color.
+- Your colors are shared by all your characters.
+- Removing a color takes it out of your lists, but anything already using it
+  keeps its color, and you can restore it.
+- Built-in colors (red, gold, and the rest) never change, so picking one still
+  just uses that color. **Make an editable copy** gives you one you can tune.
+- Slash commands: `/colors add "Buff drop" #ff9040`, `/colors rename`,
+  `/colors remove` and `/colors manage`. `/highlight add "fades" "Buff drop"`
+  uses your color.
+- Profile Transfer brings along the colors your highlights and templates use.
 
-Lichborne used to open at the same size in the same place every time. Now each
-window — the main one and any character you've moved into its own window —
-reopens at the size and position you left it, maximized if it was maximized.
+### New: bold your contact tags, and a clearer template card
 
-If a window was on a monitor that isn't connected any more, it opens in the
-middle of your main screen instead of somewhere you can't reach, and a window
-too big for your current screen is shrunk to fit.
+The **tag** on a contact template can now be **bold**, independently of the
+name — it had colour, a background and text effects, but not the one thing the
+name had. `/template add … tagbold` sets it too.
 
-### New: the + window has the full login experience
+Ticking **Bold name text** also now visibly bolds the template in the list
+behind the editor. It always applied in game; the list row was forcing its own
+bold weight, so a bolded template looked identical to an unbolded one in the
+one place you go to check.
 
-Clicking **+** to bring in another character now offers everything the logon
-screen does for that: your saved **Teams** (and any teams pinned to
-Favorites), **⟲ Reconnect Last**, **⚡ Team Login** and **⇋ Attach**. Launching
-a team from here skips anyone already playing, keeps to one character per
-account, and asks before switching an account that already has someone on.
-The window closes once the team starts connecting.
+The template card is now grouped under labelled dividers — **Contact name**,
+**Tag**, **Preview**, **Applies to** — instead of one long ladder of fields
+where a tag option could end up sitting beside a name option. Picking an effect
+adds its colour box inside the relevant group rather than shuffling everything
+below it, and the tag's styling only appears once you've given it a tag.
 
-### Changed: the + window matches the rest of Lichborne
+### New: style a trigger's echo the way you style everything else
 
-The window the **+** tab opens is now a proper Lichborne dialog, in the same
-style as **About Lichborne**: a titled header — **Connect a character** — with
-the close button, rounded corners, and colours that follow your theme.
+A trigger's **Echo** action could pick a colour. It can now also set a
+**background**, go **bold**, and wear any of the **text effects** highlights and
+contact templates offer — with a live preview in the editor so you can see it
+before the trigger ever fires.
 
-### Changed: "+ Add account" matches your account list
+The point is that the one line a trigger writes for you should be as easy to
+spot as anything else on screen. A "your buff dropped" echo can shimmer; a
+danger warning can sit on a red background.
 
-**+ Add account** is now a slim, full-width row under your accounts — it looks
-like the next account slot, with a dashed outline — instead of a large tile.
-Same on the logon screen and in the + window.
+### Changed: tidier Automations and Lich Dashboard headers
 
-### Changed: in the Overview, highlighting shows who you're typing to
+Thanks to **Sekmeht** for calling this one out. The Automations title bar was
+carrying five different kinds of control in a single row — the tabs, the
+character/global switch, the Analytics toggle, the import button and the close
+button — all at the same size and spacing, with nothing to separate them.
 
-The highlighted tabs and cards are now exactly the characters your next command
-will reach. Select a card and just that card and its tab light up. Choose
-**All characters** and every connected card and tab lights up. A highlighted
-card shows an accent border; the card itself doesn't change colour.
+- **The tabs now have a row of their own**, so they read left to right instead
+  of competing for space with everything else.
+- **The character/global switch sits with them, under an "Applies to" label** —
+  the same words the rule editors use when you move a single rule between your
+  character and all characters.
+- **Analytics and "Import from another client…" moved into a "⋯" menu** beside
+  the close button. The ⋯ shows a small dot while Analytics is switched on, so
+  you can still tell at a glance.
+- **The Lich Dashboard got the same treatment** — its five tabs moved to their
+  own row, which also means its close button can no longer get squeezed off the
+  edge on a narrow window.
+- **Dropdown menus inside dialogs now match each other.** The group picker, the
+  macro variable list, the colour picker and the new ⋯ menu were four separate
+  implementations of the same thing that had drifted apart; they now share one.
+  You may notice two small differences: the highlight that follows your cursor
+  is slightly softer, and two of those menus sit on the same background shade as
+  the other two now. Menus in the game area — the app bar's ⋯, the right-click
+  menu, the mode switcher, a panel's **+** — are deliberately untouched, because
+  those still scale with your font size setting.
 
-### Changed: every window looks and works the same way
+Nothing moved out of reach: everything is one click from where it was, and the
+tabs, switch and buttons all keep working exactly as before.
 
-Every dialog now has the same look as **About Lichborne**. That includes Settings, the Layout Manager, the Lich Dashboard, the Session Log, the theme picker and editor, Transfer, Import, Add account, Lich Setup, Quick Send, the AI consent window, the Experiences shelf and the Maps window. Buttons, fields, tabs and close buttons look the same everywhere. Delete buttons are red, and labels follow one set of rules.
+### Fixed: a polish pass over the whole interface
 
-### New: Lichborne asks before throwing work away
+- **"Compact" line height now actually is compact.** Every line of game text was
+  being floored at the next setting up, so the default spacing was wider than it
+  claimed and you were losing roughly six lines of visible text on a normal
+  window. This is the most noticeable change in the release.
+- **You can see which rule you have selected.** In Highlights, Triggers, Macros,
+  Aliases, Groups and Lich Scripts the selected row was nearly invisible on
+  several themes -- and merely hovering a row looked *more* selected than the one
+  you were editing.
+- **The Connect button on your character cards is readable on hover** on every
+  theme. On Terminal it was very nearly invisible.
+- **Line height and Large Print now reach the Experience, Injuries and Lich
+  Scripts panels.** They were stuck at a fixed spacing, so they sat taller than
+  the panel beside them and ignored Large Print entirely.
+- **Macros no longer fire while a dialog is open, and typing no longer lands in
+  a command bar you can't see.** Typing a port number into Attach could walk
+  your character, and the digit never reached the field.
+- **Switching character while the Overview is open** no longer puts your cursor
+  in a command bar you cannot see (where Enter still went to the game).
+- **The panel + menu opens the right way up** when a panel sits near the top of
+  the window, instead of showing a sliver.
+- Smaller things: the Team Login summary says **Close** rather than Done; the
+  Debug panel's close button no longer flashes red; the map's search results show
+  which one is selected; and the vitals percentages stop jittering on the
+  proportional fonts.
+- **Clearer wording on a destructive action:** Automation Analytics' bulk
+  clean-up now says **Delete** rather than Remove, because it permanently deletes
+  rules -- the same word the single-rule delete beside it already used.
 
-- **Deleting asks first.** These all ask in one themed dialog, with Cancel selected so a stray Enter can't delete anything:
-  - a rule's ✕;
-  - deleting a team, profile, custom theme, group or mode;
-  - removing an account;
-  - Reset to defaults, Reset panels and Rebuild.
+### Fixed: Shimmer, Gold and Rainbow no longer go patchy
 
-  An editor's own Delete button asks right there in the editor.
-- **Unsaved edits aren't lost.** Say you've changed a rule, contact, template, theme, profile, team or Lich script, and you pick something else or close the window. Lichborne now asks whether to discard your changes first.
-- **The keyboard follows the dialog.** Opening a dialog takes the cursor out of the command bar, so Enter can't send a half-typed command to the game underneath. Closing it puts the cursor back, so you can type straight away.
+The painted effects — Shimmer, Rainbow, Gold, Gradient and Frost — work by
+clipping a moving gradient to the letters. Whenever one of your word highlights
+matched something inside the line, the line was cut into pieces and **each piece
+started the gradient again**, so a short word squeezed the whole colour ramp into
+a few characters while a long stretch spread it out. That's what made effects
+look patchy, made Shimmer seem to appear in random places, and made ticking
+**Bold** look like it switched the effect off — bold only changed the letter
+widths, so a short piece landed on a flat part of its own gradient.
 
-### Fixed: a round of consistency fixes
+Now every piece of a line shares one gradient and takes its own slice of it, so
+the effect reads as continuous however many highlights overlap it. This fixes it
+for **line highlights on game text too**, not just trigger echoes.
 
-- **Contacts:**
-  - New contacts, new templates and deleted templates show up in the game text right away.
-  - Saving a contact no longer resets other contacts' "last seen".
-  - Search has a clear button and a count, and the list is sorted.
-  - The built-in **Friends** and **Enemies** templates no longer offer a Delete that didn't stick — they always came back.
-- **Editing and saving:**
-  - **+ New** no longer leaves an empty "Unnamed" entry behind if you change your mind.
-  - Enter saves in every editor. It also submits Attach, Edit profile, the team editor and the Add account password.
-  - A trigger can't be saved without a pattern it can match, and a disabled Save button tells you why.
-  - A macro now needs a key before it can be saved.
-- **Panels:**
-  - Right-clicking a panel's text now offers Mute, Substitute and Show in Log, like the main window.
-  - Every panel's right-click menu is laid out the same way.
-- **Staying reachable:**
-  - The Lich Dashboard's close button stays on screen in narrow windows.
-  - The Experience A−/A+/⚙ buttons stay reachable in short windows.
-- **Import and export:**
-  - The Import window no longer closes if you click outside it mid-import.
-  - A double-clicked Export writes only one file.
-- **Empty panels:**
-  - Empty panels say so instead of showing nothing.
-  - The Injuries and Experience panels wait for the game before saying there's nothing to show.
-- **Overview:**
-  - Overview cards use the same health colours in the header and the bar.
-  - Their timers follow your Timer style setting.
-- **Spell Monitor:** a card with an extra note, like a spell that has just ended, no longer makes every other card in its row taller. The note now sits where the time goes, and the full text is in the card's tooltip. Hovering a spell that has just ended no longer makes its tooltip flicker, and neither does hovering the Moons refresh button.
-- **Stacked windows:** clicking outside a window that opened on top of another one now closes it, such as Lich Setup over Settings. It used to do nothing.
-- **Naming:**
-  - The Lich Scripts panel and the Spell Monitor are titled the same as their tabs.
-  - Script uptime reads like the Overview's (1h 23m).
+**Gold, Rainbow, Fire and Frost use their own fixed colours**, so the Color you
+pick won't tint them — Shimmer, Gradient and Glow do use it. The editors now say
+so under the effect, instead of leaving you to wonder why the colour did
+nothing.
 
-### Fixed: Esc closes the dialog you're looking at
+Two details worth knowing:
 
-Esc now closes whichever dialog is on top, and only that one. It used to do
-nothing in Automations, Contacts, Settings, the Maps window, the + window, Lich
-Setup and more, and in a couple of places one press closed two dialogs at once.
-A search box clears first, and a dialog that's busy saving ignores Esc.
+- Your existing echoes are untouched. An echo that only sets a colour behaves
+  exactly as it did, including how it interacts with your highlight rules.
+- Once an echo carries its own styling, that styling wins over a **Line**
+  highlight that also matches it — the echo was written for that exact message.
+  Word highlights still paint on top either way.
 
-### Fixed: everything reachable from the keyboard
+### Fixed: bold works again if you've lowered your text weight
 
-Panel tabs, character tabs, rule lists, Settings switches and the panel **+**
-menu can all be reached with Tab and used with Enter or Space. Clicking a
-Settings switch's label now flips it too.
+If you set **Settings → Text weight** below Default, **bold stopped doing
+anything at all** — not just on contact templates, but everywhere: highlights,
+creature names, room titles, panel headings. It looked like bold was broken;
+really it was being asked for in a weight your font doesn't have.
 
-### Fixed: a round of polish
+Most monospaced fonts (Consolas among them) ship exactly two weights, normal
+and bold. Lowering the text weight also lowered the *bold* weight, and once
+both requests fell below what the font has, the browser rounded them to the
+same one — so bold text and normal text came out as the same letters. Only the
+Default text weight escaped it, which is why it went unnoticed for so long.
 
-- Text that was hard to read on light themes — Quick Send's typing, the update
-  banner, several highlight and map colours — now follows your theme.
-- Hovering a selected tab or list row no longer hides that it's selected, and
-  open buttons on the top bar are clearly marked.
-- The **Experiences** button lights up only while its shelf is open, like the
-  other top-bar buttons. It used to stay lit whenever an Experience was docked
-  in a panel.
-- Settings and the Add Character wizard fit small windows, toasts and About no
-  longer appear behind other dialogs, and long menus scroll instead of running
-  off screen.
-- Status chips, compact vitals, the roundtime strips and every ✕ explain
-  themselves when you hover them.
-- The Experience panel's bars and the Lich Map's room details grow with your
-  font size.
-- Closing Quick Send puts your cursor back where it was.
+Bold now has a floor, so it always lands on a genuinely heavier weight than
+your body text whichever font and text weight you pick. If you run a thinner
+text weight, bold will look noticeably stronger than it did.
 
-### Fixed: a round of macOS and Linux fixes
+One related fix: the **contact popover** (clicking a contact's name in game)
+painted names its own way — it ignored the tag's bold, showed no text effects,
+and used a fixed bold weight. It now renders exactly like the game text and the
+template preview.
 
-- **Trigger "log to file" actions work on Linux again, and no longer vanish on
-  upgrade anywhere.** The files are saved in a **TriggerLogs** folder inside
-  Lichborne's data folder. They used to be written next to the program itself,
-  which is read-only on Linux and replaced by every upgrade.
-- **macOS:** Option-key macros work, including ones imported from Genie or
-  Frostbite or brought over from Windows. The app menu reads "Lichborne",
-  clicking the Dock icon brings a minimized window back, Help → Check for
-  Updates tells you updates are manual, a notify trigger also bounces the Dock
-  icon, and restarting the Mac no longer stalls on Lichborne. First-time setup
-  no longer picks an old system Ruby that Lich can't use.
-- **Linux:** the download is now always called `Lichborne.AppImage`, so updates
-  keep the name and your shortcuts keep working. The window shows Lichborne's
-  icon and groups with its launcher entry.
-- **Both:** quitting with a character in its own window no longer logs it out
-  if you then cancel. A font picked on another computer falls back to a similar
-  one instead of a plain typewriter font, and typing with an input method
-  (Japanese, Chinese, Korean) no longer clears the command line when you press
-  Esc.
+### New: pick your own colours in the Theme Editor
 
-### Fixed: dialogs opened from the + window no longer hide behind it
+The Theme Editor's colour rows now use the same control as the rest of the app —
+a swatch, a typable box that suggests as you type, and a dropdown offering
+**your named colours** alongside the built-ins. No more hunting for a hex code
+you already named.
 
-**Edit Profile…** on a character opened underneath the + window, so the button
-seemed to do nothing. It — and Team Login and team editing, which now live
-there too — open on top.
+One deliberate difference from highlights and contact templates: **a theme
+copies the colour rather than following it.** Pick "Buff drop" for your app
+background and the theme stores that orange, so the theme still works perfectly
+when you share the file with someone who doesn't have your palette. The trade is
+that changing "Buff drop" later won't re-tint your theme — re-pick it if you
+want the new shade. The field's tooltip says so, and the dropdown is labelled
+"Your colors (copied)".
 
-### Fixed: the + window opens straight to your characters
+### Fixed: line highlight effects now show in the game, and layer with word highlights
 
-Opening **+** showed a plain dark box for a moment before the character list
-appeared. It now opens as the normal panel, and after the first time it shows
-your characters immediately.
+A highlight set to **Line** can have a text effect — Rainbow, Shimmer, Fire,
+Wave and the rest. Until now only its colour and background reached the game
+window; the effect itself (anything other than Glow) and **Bold** only ever
+appeared in the editor's Preview.
 
-### Fixed: the add-character window has a visible close button
+Line effects now paint in the game window, the stream panels, the Overview
+cards and the Room panel. They also layer the way you'd expect: if a word in
+that line has its own highlight with its own effect, the word keeps its effect
+and the rest of the line keeps the line's. A few details:
 
-The window the **+** tab opens now has an **✕** in its top-right corner. There
-was one before, but it sat in the far corner of the whole app window rather than
-on the panel, so it was easy to miss. Clicking outside the panel still closes it
-too.
+- A word highlight that sets only a colour, with no effect of its own, takes on
+  the line's effect in its own colour.
+- Contact names keep their own contact styling.
+- Wave and Bounce lines now wrap between words instead of in the middle of one,
+  and every letter starts moving straight away.
+- The Preview now draws your highlight with the same code the game window uses,
+  so what you see there is what you'll get in play.
 
-### Fixed: the Overview no longer shows two different "selected" characters
+### Fixed: "Manage" buttons that opened a dialog already on screen did nothing
 
-Opening the Overview marked one character as **current**, with a badge and a
-highlighted border, even though the input bar at the bottom was set to
-**All characters**. Clicking a card also changed who you were typing at but not
-which tab was active, while clicking a tab changed both.
-
-Now there's one selection. Clicking a card aims the input bar at that character
-**and** makes its tab the active one, and you stay in the Overview. The
-highlighted card is always the one you're typing at, and the one you'll land on
-when you leave. With **All characters** chosen, every connected card is
-highlighted, because that's who your next command reaches.
-
-### New: an Unconscious marker in the icon bar
-
-DragonRealms never announces "unconscious" the way it does stunned or bleeding —
-the only place it says so is the letter **U** in the status prompt, where `SUP>`
-means stunned, unconscious and prone. Lichborne now reads that letter and shows
-**Unconscious** in the icon bar's combat slot, and `$unconscious` is available in
-triggers, macros and aliases.
-
-This one needs the status prompt turned on in game — type `set statusprompt`
-once. Without it DragonRealms sends no letters at all, so the marker can never
-appear. Thanks to Binu for confirming what the letter means.
-
-### New: give the Lichborne wordmark a text effect
-
-The **Lichborne** text in the top-left corner can now wear an effect — Glow,
-Shimmer, Rainbow, Pulse, Gold, Gradient, Fire, Frost, Neon, Wave or Bounce —
-picked in **Settings → Display → Wordmark effect**. There's a live preview
-beside the dropdown, so you can see each one before you keep it.
-
-It's set **per character**, so if you play several at once you can tell at a
-glance which one is in front. The default is **Static**, which looks exactly
-as it always has and takes its colours from your theme.
-
-Your theme still drives the colours underneath: Glow, Gradient, Shimmer and
-Neon are built from your accent colours, so they change when you change theme.
-Rainbow, Gold, Fire and Frost have their own fixed palettes. If you have
-**Epilepsy safe mode** on, every effect holds still — the motion stops, the
-colour stays.
-
-### Under the hood
-
-Lichborne now runs on Electron 43.7.0, the newest security and bug-fix update in
-the same line.
+If Automations was already open on a different tab, the Mode button's
+**Manage** (and the colour fields' **Manage colors…**) quietly did nothing —
+the dialog stayed where it was. Every button that opens Automations at a
+particular tab now takes you there, whether it's open already or not.

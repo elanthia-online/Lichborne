@@ -36,8 +36,51 @@ import {
   buildTriggerRegex, isValidTriggerRegex,
   interpolate,
   GATE_VARIABLES, NUMERIC_OPERATORS, STRING_OPERATORS,
-  INTERPOLATABLE_VARS, WATCH_STREAM_OPTIONS,
+  INTERPOLATABLE_VARS, WATCH_STREAM_OPTIONS, echoLineStyle,
 } from '../triggers'
+import { colorLabel, colorHex } from '../colors'
+import { renderHighlightedLine } from '../utils/renderSegmentFull'
+import { HIGHLIGHT_EFFECTS, FX_USES_COLOR, DEFAULT_FX_COLOR, effectColorNote, type HighlightEffect } from '../highlights'
+
+/**
+ * What the echoed line will look like.
+ *
+ * It calls `renderHighlightedLine` — the SAME top-level function the game
+ * window's rows call — rather than building its own styled span, because a
+ * preview that merely resembles the renderer is how one stops matching it
+ * (pitfall #127/#148, B281/B428). The style comes from `echoLineStyle`, the one
+ * builder the trigger engine also uses at fire time.
+ *
+ * Highlights are deliberately NOT applied: this previews the ACTION, and the
+ * user's own highlight rules are a separate layer that composites on top in
+ * play. A `$var` is shown VERBATIM rather than filled with a sample — this
+ * previews the styling, and an invented value would be the only thing here
+ * that isn't literally what you typed.
+ */
+function EchoPreview({ action }: { action: TriggerAction }) {
+  const text = action.echoMessage?.trim() || 'Echoed message'
+  const fg = colorHex(action.echoColor ?? '')
+  const { style, nodes } = renderHighlightedLine(
+    [{ text, preset: 'echo', ...(fg ? { fg: fg.replace(/^#/, '') } : {}) }],
+    {
+      matchRules: [], lineRules: [], contacts: [], templates: [], nameRegex: null,
+      echo: echoLineStyle(action),
+    },
+  )
+  return <div className="ui-preview text-line" style={style ?? undefined}>{nodes}</div>
+}
+
+/** `[teal, bg pink, bold, Shimmer]` — every style an echo action applies. */
+function echoStyleSummary(a: TriggerAction): string {
+  const bits: string[] = []
+  if (a.echoColor) bits.push(colorLabel(a.echoColor))
+  if (a.echoBgColor && a.echoBgColor !== 'transparent') bits.push(`bg ${colorLabel(a.echoBgColor)}`)
+  if (a.echoBold) bits.push('bold')
+  if (a.echoEffect && a.echoEffect !== 'none') {
+    bits.push(HIGHLIGHT_EFFECTS.find(o => o.value === a.echoEffect)?.label ?? a.echoEffect)
+  }
+  return bits.length ? ` [${bits.join(', ')}]` : ''
+}
 import { playWavFile } from '../hooks/useTriggerEngine'
 import { useCharacter } from '../CharacterContext'
 import { scopedKey } from '../characterScope'
@@ -45,7 +88,7 @@ import { useRuleAnalytics, AnalyticsReview, RuleBadges, ruleListKeyDown, enterTo
 import { analyzeTriggers } from '../automationHealth'
 import GroupPicker from './GroupPicker'
 import '../styles/triggers.css'
-import { normalizeColorInput, COLOR_INPUT_TITLE } from '../colors'
+import ColorField from './ColorField'
 import { IS_MAC } from '../lichSettings'
 import '../styles/groups.css'
 
@@ -222,22 +265,83 @@ function ActionCard({ action, canRemove, onChange, onRemove }: ActionCardProps) 
                 placeholder="log"
               />
             </div>
+            {/* F118: the same styling vocabulary a highlight and a contact
+                template offer, so an echo can be found on screen the same way.
+                It is painted as the echoed line's LINE LAYER, which is why
+                there is no second painter — see `lineLayerFromHint`. */}
             <div className="trg-action-row">
               <label className="trg-label">Color</label>
-              <input
-                type="color"
-                className="trg-color-swatch"
-                value={action.echoColor && action.echoColor.startsWith('#') ? action.echoColor : '#c8c8c8'}
-                onChange={e => up({ echoColor: e.target.value })}
-              />
-              <input
-                className="trg-input trg-input--hex"
+              {/* F115: ColorField. The text box still takes a $variable (the
+                  engine resolves it when the trigger fires). */}
+              <ColorField
+                label="Echo color"
                 value={action.echoColor ?? ''}
-                title={COLOR_INPUT_TITLE}
-                onChange={e => up({ echoColor: e.target.value })}
-                onBlur={e => { const v = normalizeColorInput(e.target.value); if (v !== e.target.value) up({ echoColor: v }) }}
+                none={{ value: '', label: 'Default color' }}
+                defaultSwatch="#c8c8c8"
                 placeholder="(default color)"
+                onChange={v => up({ echoColor: v })}
               />
+            </div>
+            <div className="trg-action-row">
+              <label className="trg-label">Background</label>
+              <ColorField
+                label="Echo background"
+                value={action.echoBgColor ?? 'transparent'}
+                none={{ value: 'transparent', label: 'No background' }}
+                placeholder="none"
+                onChange={v => up({ echoBgColor: v })}
+              />
+            </div>
+            <div className="trg-action-row">
+              <label className="trg-label">Bold</label>
+              <label className="trg-checkbox-label">
+                <input
+                  type="checkbox"
+                  className="trg-checkbox"
+                  checked={action.echoBold ?? false}
+                  onChange={e => up({ echoBold: e.target.checked })}
+                />
+                <span>Bold echoed text</span>
+              </label>
+            </div>
+            <div className="trg-action-row">
+              <label className="trg-label">Effect</label>
+              <select
+                className="trg-select"
+                value={action.echoEffect ?? 'none'}
+                onChange={e => {
+                  const v = e.target.value as HighlightEffect
+                  up({ echoEffect: v === 'none' ? undefined : v })
+                }}
+              >
+                {HIGHLIGHT_EFFECTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            {/* B445 */}
+            {effectColorNote(action.echoEffect) && (
+              <div className="trg-action-row">
+                {/* A spacer, not a label: it reserves the label column so the
+                    note lines up under the controls. An empty <label> would be
+                    a label associated with nothing. */}
+                <span className="trg-label" aria-hidden="true" />
+                <div className="ui-hint">{effectColorNote(action.echoEffect)}</div>
+              </div>
+            )}
+            {FX_USES_COLOR.has(action.echoEffect ?? 'none') && (
+              <div className="trg-action-row">
+                <label className="trg-label">Effect color</label>
+                <ColorField
+                  label="Echo effect color"
+                  value={action.echoGlowColor ?? ''}
+                  placeholder={DEFAULT_FX_COLOR}
+                  defaultSwatch={DEFAULT_FX_COLOR}
+                  onChange={v => up({ echoGlowColor: v })}
+                />
+              </div>
+            )}
+            <div className="trg-action-row">
+              <label className="trg-label">Preview</label>
+              <EchoPreview action={action} />
             </div>
           </>
         )}
@@ -526,7 +630,12 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
     const summary = draft.actions.map(a => {
       switch (a.type) {
         case 'command':  return `Command: "${interpolate(a.command ?? '', sampleVars)}"`
-        case 'echo':     return `Echo → ${a.echoStream ?? 'log'}${a.echoColor ? ` [${a.echoColor}]` : ''}: "${interpolate(a.echoMessage ?? '', sampleVars)}"`
+        // colorLabel: a linked color is stored as `var(--lb-color-…, #hex)`,
+        // which would print in full here instead of the color's name.
+        // The summary is user-facing documentation (Principle #11), so it names
+        // every style the action applies — a bolded or shimmering echo that
+        // summarises as plain teaches the list wrong.
+        case 'echo':     return `Echo → ${a.echoStream ?? 'log'}${echoStyleSummary(a)}: "${interpolate(a.echoMessage ?? '', sampleVars)}"`
         case 'notify':   return `Notify: "${interpolate(a.notifyTitle ?? 'Lichborne', sampleVars)}"`
         case 'sound':    return a.soundFile ? `Sound: ${a.soundFile.split(/[\\/]/).pop()}` : `Sound: ${a.soundPreset ?? 'chime'}`
         case 'flash':    return 'Flash window'

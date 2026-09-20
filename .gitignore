@@ -16,7 +16,8 @@ corpus/
 
 # Local harnesses (tmp-scene-harness = the SceneParser capturer regression
 # suite, tmp-scroll-repro = the B171/B172 scroll simulation, tmp-cmd-harness =
-# command resolution, tmp-rules-harness = global rules/Transfer/reconnect).
+# command resolution, tmp-rules-harness = global rules/Transfer/reconnect,
+# tmp-hl-harness = highlight/text-effect rendering).
 # Kept OUT of the repo on purpose: the scene harness embeds verbatim corpus
 # lines with real player names (Sekmeht, 2026-06-12 — same privacy stance as
 # corpus/). They live machine-local; each README/recipe documents rebuilds.

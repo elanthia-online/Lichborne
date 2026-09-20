@@ -191,15 +191,32 @@
   --game-font-family: 'Cascadia Code', 'Fira Code', 'Consolas', 'Menlo', 'DejaVu Sans Mono', monospace;
 
   /* B113: text weight scale. `--game-text-weight` is the body font-weight
-     (set by Settings → Text weight; defaults to 400). `--ui-bold-weight`
-     is +200 above it so the bold/roomname/title contrast survives at any
-     user setting — when body is 100 (Thinnest) bolds are 300; when body
-     is 400 (Default) bolds are 600. Bolds clamp at 900 (max CSS weight).
-     Specialty bold rules in panels.css use this var instead of literal
-     600/700 so they cascade. */
+     (set by Settings → Text weight; defaults to 400). Specialty bold rules
+     in panels.css use `--ui-bold-weight` instead of a literal 600/700 so
+     they cascade.
+
+     B437: the bold weight has a FLOOR of 600, and the floor is the whole
+     point. The original rule was a bare `+200`, which assumes the font has
+     a face at both weights — true for a variable font, false for the
+     two-weight fonts most people run. Consolas ships exactly 400 and 700,
+     and CSS font matching resolves a request BELOW 400 to 400, so at
+     Settings → Text weight "Thinnest" body asked for 100 and bold asked for
+     300 and BOTH landed on Consolas Regular: every bold in the client —
+     contact templates, highlights, monsterbold, room names, panel labels —
+     rendered identical to normal text, with nothing on screen to say why.
+     The same collapse happened at -0.4 (200/400) and -0.2 (300/500, since
+     a request of 500 also falls back to 400 rather than up to 700).
+
+     600 is the lowest request that a two-weight font resolves UPWARD to its
+     bold face, so it is the lowest floor that guarantees bold lands on a
+     heavier face than body no matter which font is chosen. The `calc` is
+     kept for headroom: `--game-text-weight` never exceeds 400 today (a
+     POSITIVE text weight adds a stroke and leaves the weight at 400), so
+     the floor wins in every current case. Bolds clamp at 900 (max CSS
+     weight). */
   --game-text-weight: 400;
   --game-text-stroke: 0;
-  --ui-bold-weight: calc(var(--game-text-weight) + 200);
+  --ui-bold-weight: max(600, calc(var(--game-text-weight) + 200));
 
   /* ── Experience panel ─────────────────────────────────────────── */
   --exp-skill-color:     #aaaaaa;

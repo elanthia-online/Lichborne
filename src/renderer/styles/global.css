@@ -78,9 +78,11 @@ body {
      widening; compensates for Chromium DirectWrite's lighter rendering vs
      GDI ClearType on light themes). Negative weights drop font-weight
      below 400 (only visible on fonts with light weights, like Cascadia
-     Code). Bold-styled elements use --ui-bold-weight (defined in theme.css)
-     which is calc()'d above --game-text-weight so the bold contrast
-     survives at any user setting. */
+     Code). Bold-styled elements use --ui-bold-weight (defined in theme.css),
+     which is held at or above 600 so bold lands on a genuinely heavier FACE
+     than body whatever font is picked — see the B437 note there before
+     changing it; a value below 600 silently makes bold vanish on any font
+     that ships only 400 and 700. */
   font-weight: var(--game-text-weight, 400);
   -webkit-text-stroke: var(--game-text-stroke, 0) currentColor;
 }
@@ -242,6 +244,31 @@ button:not(:disabled):active {
 .cp-list-item:hover .list-item-delete { opacity: 1; }
 
 .list-item-delete:hover { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 12%, transparent); }
+
+/* ── Selected row, for every rule-editor list ────────────────────────────────
+   ONE definition for the whole family, because five of them had drifted to
+   `background: var(--bg-sunken)` while Contacts alone had been fixed — the
+   pitfall #113 shape (same affordance, several prefixes, one got the fix).
+
+   --bg-sunken is the wrong cue: it is a NEIGHBOUR of the dialog surface, not a
+   contrast to it. On Classic Light the dialog is #ffffff and sunken is #fafafa,
+   so the selected row was effectively unpainted — and because --bg-hover is
+   #e8e8e8, merely hovering a row was LOUDER than selecting it. The hierarchy
+   was inverted on all 20 themes, worst on Classic, Terminal, Classic Light and
+   Ivory. An accent tint reads on every theme because the accent is by
+   definition a contrast to the surface, and it says "this is the one you are
+   editing" rather than "this is slightly recessed".
+
+   Hover already excludes the active row in each file (pitfall #107), so these
+   never fight. */
+.hp-list-item--active,
+.ma-list-item--active,
+.trg-list-item--active,
+.gm-list-item--active,
+.cp-list-item--active,
+.lp-row--selected {
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+}
 
 /* ── Update banner ──────────────────────────────────────────────────────── */
 

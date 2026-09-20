@@ -39,10 +39,10 @@
 
 import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { backdropHandlers } from "../utils/backdropClose"
-import { useEscapeClose } from '../hooks/useEscapeClose'
+import { useEscapeClose, anyDialogOpen } from '../hooks/useEscapeClose'
 import { pressable } from '../utils/pressable'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
-import type { GameEvent, StreamTextEvent, TextLine, RoomState, TextSegment, InjuryState, FireLogEntry, SessionLogRecord, SimuCoinStatus } from '../../shared/types'
+import type { GameEvent, StreamTextEvent, TextLine, LineStyleHint, RoomState, TextSegment, InjuryState, FireLogEntry, SessionLogRecord, SimuCoinStatus } from '../../shared/types'
 import { normalizeStreamId } from '../../shared/streamAliases'
 import { redactForAI } from '../../shared/redact'
 import { TextLineRow } from './TextLineRow'
@@ -55,7 +55,7 @@ import { loadHighlights, saveHighlights, type HighlightRule } from '../highlight
 import { loadMutes, saveMutes, compileMutes, applyMutesToSegments, type MuteRule, type CompiledMute } from '../mutes'
 import { loadSubstitutes, saveSubstitutes, compileSubstitutes, applySubstitutesToSegments, type SubstituteRule, type CompiledSubstitute } from '../substitutes'
 import { runSlash, slashLineText, simucoinRowText, type SlashContext, type SlashEditorTab } from '../slashCommands'
-import { loadCustomColors, saveCustomColors, contrastBackingFor } from '../colors'
+import { loadCustomColors, saveCustomColors, contrastBackingFor, colorHex, colorLabel } from '../colors'
 import { loadAIConfig, saveAIConfig, AI_STREAM, streamLabel, modelLabel } from '../aiConfig'
 import { aiChatStream } from '../ai/aiClient'
 import AIConsentModal from './AIConsentModal'
@@ -1375,7 +1375,21 @@ export default function GameWindow({
   const [showLichDash,      setShowLichDash]      = useState(false)
   const [lichDashTab,       setLichDashTab]       = useState<DashTab>('scripts')
   const [showMapOverlay,  setShowMapOverlay]    = useState(false)
-  const [automationsTab,    setAutomationsTab]    = useState<'highlights'|'triggers'|'macros'|'aliases'|'mutes'|'substitutes'|'groups'>('highlights')
+  const [automationsTab,    setAutomationsTab]    = useState<'highlights'|'triggers'|'macros'|'aliases'|'mutes'|'substitutes'|'groups'|'colors'>('highlights')
+  // Counts REQUESTS, not changes. Asking for the tab the dialog already opened
+  // on sets the same state, which React drops — so without this the panel's
+  // sync effect never fires and the dialog stays wherever the user last
+  // navigated inside it, while the command cheerfully reports success.
+  const [automationsTabSeq, setAutomationsTabSeq] = useState(0)
+
+  // Open the Automations dialog AT a tab. Always use this rather than the two
+  // setters: bumping the sequence is what makes a repeat request re-aim an
+  // already-open dialog.
+  const aimAutomations = useCallback((tab: typeof automationsTab) => {
+    setAutomationsTab(tab)
+    setAutomationsTabSeq(n => n + 1)
+    setShowAutomations(true)
+  }, [])
 
   // ── Lich Scripts poll gate (Idea A, Binu v0.13.1) ──────────────────────────
   // Only auto-poll `;listall` while a Lich Scripts panel is actually open in
@@ -1880,14 +1894,33 @@ export default function GameWindow({
 
   // ── Trigger engine ────────────────────────────────────────────────────────
 
-  const echoToStream = useCallback((stream: string, text: string, color?: string | null) => {
+  const echoToStream = useCallback((stream: string, text: string, color?: string | null, fx?: LineStyleHint) => {
     // v0.8.10 (B135): normalize legacy / cross-client stream aliases (e.g.
     // 'talk' / 'conversations' / 'whispers' all → 'conversation') so an
     // imported Genie trigger with `#echo >talk` or a legacy Lichborne F29
     // trigger with echoStream='conversations' lands in the right panel.
     const key  = normalizeStreamId(stream)
-    const fg   = color ? color.replace(/^#/, '') : undefined
-    const line = { id: lineId++, segments: [{ text, preset: 'echo' as const, ...(fg ? { fg } : {}) }], timestamp: Date.now() }
+    // F115: a text segment's fg is a bare hex, so a LINKED color (or a color
+    // name a $variable produced) resolves here, when the trigger fires. That
+    // makes an echo a snapshot: a later edit to the color won't recolor it.
+    const hex  = color ? colorHex(color) : null
+    const fg   = hex ? hex.replace(/^#/, '') : undefined
+    // The rest of the style rides the LINE, not the segment: background, bold
+    // and the effect are painted as this line's layer (F118), which is how a
+    // line-scope highlight is already painted.
+    //
+    // `fg` still carries the colour for the common COLOUR-ONLY echo, where
+    // there is no layer and it is what beats the `echo` preset's own colour.
+    // When a layer IS present its colour wins instead (`renderSegment`:
+    // `overrideColor ?? seg.fg`) — which is why `echoLineStyle` resolves that
+    // colour through the same `colorHex` used here, so the two can never
+    // disagree about which colour, or about an echo being a snapshot.
+    const line = {
+      id: lineId++,
+      segments: [{ text, preset: 'echo' as const, ...(fg ? { fg } : {}) }],
+      timestamp: Date.now(),
+      ...(fx ? { fx } : {}),
+    }
     setStreamLines(prev => ({
       ...prev,
       [key]: [...(prev[key] ?? []).slice(-(MAX_STREAM_LINES - 1)), line],
@@ -2017,10 +2050,10 @@ export default function GameWindow({
         const parts = [
           `pattern: "${pattern}"`,
           `${scope}/${mode}`,
-          style.textColor !== 'transparent' ? `fg:${style.textColor}` : '',
-          style.bgColor !== 'transparent' ? `bg:${style.bgColor}` : '',
+          style.textColor !== 'transparent' ? `fg:${colorLabel(style.textColor)}` : '',
+          style.bgColor !== 'transparent' ? `bg:${colorLabel(style.bgColor)}` : '',
           style.bold ? 'bold' : '',
-          style.glow ? `glow:${style.glowColor}` : '',
+          style.glow ? `glow:${colorLabel(style.glowColor)}` : '',
           soundFile ? `🔊 ${soundFile.split(/[\\/]/).pop()}` : '',
         ].filter(Boolean).join(' | ')
         const entry: FireLogEntry = {
@@ -2085,7 +2118,18 @@ export default function GameWindow({
     ]))
   }, [dropped])
 
-  // True whenever any modal is open — prevents macros firing into editor fields
+  // True whenever any modal is open — prevents macros firing into editor fields.
+  //
+  // This list only ever knew GameWindow's OWN overlays, and it is checked
+  // alongside `anyDialogOpen()` (the Esc stack) for the rest: every APP-level
+  // dialog — About, Quick Send, Profile Transfer, Team Login, Attach, the
+  // wizards, the + tab's Connect modal, any confirm — is rendered by AppShell
+  // and is structurally invisible here (pitfall #57's converse). Bare keys DO
+  // match a macro (`comboMods` returns [] with no modifiers), and the F56
+  // numpad seed binds exactly those, so typing a port number into Attach used
+  // to walk your character — and `preventDefault` meant the digit never
+  // reached the field. Prefer the stack for anything new rather than growing
+  // this list; a hand-maintained key list rots (pitfall #130).
   const anyModalOpenRef = useRef(false)
   useEffect(() => {
     anyModalOpenRef.current = showDebug || showPanelManager || showThemePicker ||
@@ -3833,7 +3877,7 @@ export default function GameWindow({
       // v0.18.0: Cmd+F on macOS (THE find chord there) — exactly one of
       // ctrl/meta, so Ctrl+Cmd+F stays inert.
       const findMod = IS_MAC ? (e.metaKey && !e.ctrlKey) : (e.ctrlKey && !e.metaKey)
-      if (findMod && !e.altKey && !e.shiftKey && (e.key === 'f' || e.key === 'F') && !anyModalOpenRef.current) {
+      if (findMod && !e.altKey && !e.shiftKey && (e.key === 'f' || e.key === 'F') && !anyModalOpenRef.current && !anyDialogOpen()) {
         e.preventDefault()
         setSearchOpen(true)
         return
@@ -3868,8 +3912,9 @@ export default function GameWindow({
           if (e.key === 'Home') { e.preventDefault(); pinnedRef.current = false; if (el) el.scrollTop = 0 }
         }
       }
-      // Global macro key bindings — suppressed when any modal is open
-      if (!anyModalOpenRef.current) {
+      // Global macro key bindings — suppressed when any modal is open, this
+      // window's own or an app-level one.
+      if (!anyModalOpenRef.current && !anyDialogOpen()) {
         // Mode hotkeys
         for (const mode of modesRef.current) {
           if (mode.hotkey && matchKeyCombo(mode.hotkey, e, { mac: IS_MAC })) {
@@ -3991,13 +4036,15 @@ export default function GameWindow({
       // never on Ctrl/Alt/Meta combos (app hotkeys), single printable keys
       // only, never while ANY text field / select / contentEditable has focus
       // (editor fields keep their keystrokes), never while a modal is open
-      // (typing must not land in a bar hidden behind Settings — reuses the
-      // macro guard's anyModalOpenRef), never mid-IME composition, and never
-      // when something above already consumed the key (e.defaultPrevented —
-      // covers macro-bound printable keys). Always on, no setting — matches
-      // the siblings' behavior; add a toggle only on a real tester ask.
+      // (typing must not land in a bar hidden behind Settings — the same pair
+      // the macro guard uses: anyModalOpenRef for this GameWindow's own
+      // overlays, anyDialogOpen() for every APP-level dialog it cannot see,
+      // B449/B459), never mid-IME composition, and never when something above
+      // already consumed the key (e.defaultPrevented — covers macro-bound
+      // printable keys). Always on, no setting — matches the siblings'
+      // behavior; add a toggle only on a real tester ask.
       if (
-        !anyModalOpenRef.current &&
+        !anyModalOpenRef.current && !anyDialogOpen() &&
         !e.ctrlKey && !e.altKey && !e.metaKey && !e.isComposing &&
         !e.defaultPrevented && e.key.length === 1
       ) {
@@ -4732,9 +4779,8 @@ export default function GameWindow({
       },
       // Phase 2 `edit` verbs — open the Automations panel with the rule selected.
       openRuleEditor: (tab, ruleId) => {
-        setAutomationsTab(tab)
+        aimAutomations(tab)
         setSlashOpenRule({ tab, id: ruleId })
-        setShowAutomations(true)
       },
       // ── Phase 3: client control (DESIGN §37.5) ──
       getModes: () => modes.map(m => ({ id: m.id, name: m.name })),
@@ -4773,6 +4819,7 @@ export default function GameWindow({
       // Custom named colors are APP-WIDE (like themes) → _shared.yaml.
       getCustomColors: loadCustomColors,
       applyCustomColors: list => { saveCustomColors(list); scheduleSharedProfileSave() },
+      openColors: () => aimAutomations('colors'),
       // ── AI (BYOK — DESIGN §10). Config is app-wide (loadAIConfig); the key
       // presence comes from the main-fetched ref. aiCatchup gates on enable +
       // one-time consent (opening the disclosure modal), then fires runCatchup. ──
@@ -5116,8 +5163,7 @@ export default function GameWindow({
     setHighlightTestText(testText)
     setTriggerOpenId(undefined) // v0.8.2: clear stale Fires-GOTO state from prior open
     setHighlightOpenFireId(undefined)
-    setAutomationsTab('highlights')
-    setShowAutomations(true)
+    aimAutomations('highlights')
   }, [])
 
   const openTriggerEditor = useCallback((pattern: string) => {
@@ -5128,8 +5174,7 @@ export default function GameWindow({
                                 // the prefillPattern effect and overwrites the new
                                 // trigger draft with the old goto target.
     setHighlightOpenFireId(undefined)
-    setAutomationsTab('triggers')
-    setShowAutomations(true)
+    aimAutomations('triggers')
   }, [])
 
   // B381: stable (setters only, [] deps) so they can reach the memoized
@@ -5139,16 +5184,14 @@ export default function GameWindow({
     setHighlightPrefill(undefined)
     setTriggerPrefillPattern(undefined)
     setMutePrefill(rule)
-    setAutomationsTab('mutes')
-    setShowAutomations(true)
+    aimAutomations('mutes')
   }, [])
 
   const openSubstituteEditor = useCallback((rule: SubstituteRule) => {
     setHighlightPrefill(undefined)
     setTriggerPrefillPattern(undefined)
     setSubstitutePrefill(rule)
-    setAutomationsTab('substitutes')
-    setShowAutomations(true)
+    aimAutomations('substitutes')
   }, [])
 
   // "Show in Log": open the Session Log straight into a search for this line
@@ -5603,7 +5646,7 @@ export default function GameWindow({
       case 'icon':   return (
         <IconBar stance={stance} spell={spell}
                  indicators={indicators} rightHand={rightHand} leftHand={leftHand}
-                 trailing={<ModeSwitcher onManage={() => { setAutomationsTab('groups'); setShowAutomations(true) }} />} />
+                 trailing={<ModeSwitcher onManage={() => aimAutomations('groups')} />} />
       )
       case 'main':    return textAreaNode
       case 'command': return commandBarNode
@@ -5654,8 +5697,7 @@ export default function GameWindow({
       setTriggerPrefillPattern(undefined)
       setTriggerOpenId(undefined)
       setHighlightOpenFireId(ruleId)
-      setAutomationsTab('highlights')
-      setShowAutomations(true)
+      aimAutomations('highlights')
     } else {
       const rule = triggers.find(r => r.id === ruleId)
       if (!rule) return
@@ -5663,8 +5705,7 @@ export default function GameWindow({
       setTriggerPrefillPattern(undefined)
       setHighlightOpenFireId(undefined)
       setTriggerOpenId(ruleId)
-      setAutomationsTab('triggers')
-      setShowAutomations(true)
+      aimAutomations('triggers')
     }
   }
 
@@ -5943,7 +5984,7 @@ export default function GameWindow({
       {layoutMode === 'panels' && settings.iconBarPosition === 'top' && (
         <IconBar stance={stance} spell={spell}
                  indicators={indicators} rightHand={rightHand} leftHand={leftHand}
-                 trailing={<ModeSwitcher onManage={() => { setAutomationsTab('groups'); setShowAutomations(true) }} />} />
+                 trailing={<ModeSwitcher onManage={() => aimAutomations('groups')} />} />
       )}
 
       <div className="game-main">
@@ -6058,7 +6099,7 @@ export default function GameWindow({
       {layoutMode === 'panels' && settings.iconBarPosition === 'bottom' && (
         <IconBar stance={stance} spell={spell}
                  indicators={indicators} rightHand={rightHand} leftHand={leftHand}
-                 trailing={<ModeSwitcher onManage={() => { setAutomationsTab('groups'); setShowAutomations(true) }} />} />
+                 trailing={<ModeSwitcher onManage={() => aimAutomations('groups')} />} />
       )}
 
       {/* Free Layout (§33) — Phase 1 pointer-through overlay above the panel
@@ -6299,6 +6340,14 @@ export default function GameWindow({
           openContactId={openContactId}
           closeRequest={closeRequests.contacts}
           onClose={() => { setShowContacts(false); setOpenContactId(null) }}
+          onManageColors={() => {
+            // Contacts and Automations are separate dialogs at the same layer,
+            // so an Automations opened UNDER an already-open Contacts would be
+            // invisible and the button would read as dead (pitfall #118). The
+            // user asked to go and manage colors, so take them there.
+            setShowContacts(false)
+            aimAutomations('colors')
+          }}
           onSaved={() => {
             setContacts(loadContacts(session.character))
             setContactTemplates(loadContactTemplates(session.character))
@@ -6329,6 +6378,7 @@ export default function GameWindow({
       {showAutomations && (
         <AutomationsPanel
           initialTab={automationsTab}
+          initialTabSeq={automationsTabSeq}
           closeRequest={closeRequests.automations}
           highlightPrefill={highlightPrefill}
           highlightTestText={highlightTestText}

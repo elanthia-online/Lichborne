@@ -28,9 +28,10 @@
 // the Windows-vs-POSIX `file://` URL shapes.
 
 import { useCallback, useEffect, useRef } from 'react'
+import type { LineStyleHint } from '../../shared/types'
 import {
   type TriggerRule, type TriggerAction, type StateGate, type GateOperator,
-  buildTriggerRegex, interpolate,
+  buildTriggerRegex, interpolate, echoLineStyle,
 } from '../triggers'
 import { isRuleActive } from '../groups'
 import { literalGate } from '../regexLiteral'
@@ -54,7 +55,7 @@ export interface TriggerGameState {
 
 export interface TriggerCallbacks {
   sendCommand:  (cmd: string) => void
-  echoToStream: (stream: string, text: string, color?: string | null) => void
+  echoToStream: (stream: string, text: string, color?: string | null, fx?: LineStyleHint) => void
   setVariable:  (name: string, value: string) => void
   disableTrigger: (id: string) => void
   flashWindow:  () => void
@@ -269,7 +270,17 @@ function executeAction(
       const msg   = interpolate(action.echoMessage ?? '', vars).trim()
       if (!msg) return
       const color = action.echoColor ? interpolate(action.echoColor, vars).trim() || null : null
-      cbs.echoToStream(action.echoStream || 'log', msg, color)
+      // F118: background / bold / effect ride a LINE STYLE the renderer paints
+      // as this line's layer, exactly as it paints a line-scope highlight.
+      //
+      // The hint is emitted ONLY when one of those newer fields is set, which
+      // keeps every pre-F118 echo byte-identical: a colour-only echo still
+      // travels as the segment's `fg` alone, so a line-scope RULE that also
+      // matches it keeps winning the layer the way it always has. Once the echo
+      // carries its own styling it takes that slot instead — it was authored
+      // for this exact message, where a line rule is generic.
+      const fx = echoLineStyle(action, s => interpolate(s, vars).trim())
+      cbs.echoToStream(action.echoStream || 'log', msg, color, fx)
       break
     }
     case 'notify': {

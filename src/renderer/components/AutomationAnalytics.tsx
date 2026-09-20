@@ -179,10 +179,14 @@ export function AnalyticsReview<T extends { id: string }>({
     if (!onBulkRemove || dupCopies.length === 0) return
     const ids = dupCopies
     const ok = await confirmAction({
-      title: 'Remove duplicate copies?',
-      message: `${ids.length.toLocaleString()} duplicate ${ids.length === 1 ? 'copy' : 'copies'} will be removed. One of each identical set is kept.`,
+      // Delete, not Remove (DESIGN §43.7). This DESTROYS saved rules — its own
+      // detail says so — and Remove is the word for something that can be put
+      // back. The gentler verb must not sit on the action that wipes hundreds
+      // of rules while deleting ONE of them two inches away says Delete.
+      title: 'Delete duplicate copies?',
+      message: `${ids.length.toLocaleString()} duplicate ${ids.length === 1 ? 'copy' : 'copies'} will be deleted. One of each identical set is kept.`,
       detail: "This can't be undone here — your YAML profile backups still have the old version.",
-      confirmLabel: 'Remove copies',
+      confirmLabel: 'Delete copies',
       danger: true,
     })
     if (ok) onBulkRemove(ids)
@@ -192,10 +196,10 @@ export function AnalyticsReview<T extends { id: string }>({
     if (!onBulkRemove || obsoleteIds.length === 0) return
     const ids = obsoleteIds
     const ok = await confirmAction({
-      title: 'Remove obsolete rules?',
-      message: `${ids.length.toLocaleString()} ${ids.length === 1 ? 'rule is' : 'rules are'} already matched by a broader regex and will be removed.`,
-      detail: "Removing can change styling where a rule's color or scope differs from the regex, so review the list first. This can't be undone here — your YAML profile backups still have the old version.",
-      confirmLabel: 'Remove rules',
+      title: 'Delete obsolete rules?',
+      message: `${ids.length.toLocaleString()} ${ids.length === 1 ? 'rule is' : 'rules are'} already matched by a broader regex and will be deleted.`,
+      detail: "Deleting can change styling where a rule's color or scope differs from the regex, so review the list first. This can't be undone here — your YAML profile backups still have the old version.",
+      confirmLabel: 'Delete rules',
       danger: true,
     })
     if (ok) onBulkRemove(ids)
@@ -275,7 +279,7 @@ export function AnalyticsReview<T extends { id: string }>({
             desc="Two or more identical rules — same pattern, scope, and style. Keep one of each set and delete the rest (the button does this for you).">
             {onBulkRemove && dupCopies.length > 0 && (
               <button type="button" className="ui-btn ui-btn--danger ui-btn--sm aa-action" onClick={() => void removeDuplicates()}>
-                {'\u{1F9F9}'} Remove {dupCopies.length.toLocaleString()} duplicate copies (keep one of each)
+                {'\u{1F9F9}'} Delete {dupCopies.length.toLocaleString()} duplicate copies (keep one of each)
               </button>
             )}
             {report.duplicateGroups.slice(0, AA_CAP).map((g, i) => (
@@ -288,7 +292,7 @@ export function AnalyticsReview<T extends { id: string }>({
             desc={'A regex rule already matches everything this text/phrase rule matches — e.g. “joins the .+” covers “joins the adventure”. Removing may change styling if the two differ in color or scope, so review before removing.'}>
             {onBulkRemove && obsoleteIds.length > 0 && (
               <button type="button" className="ui-btn ui-btn--danger ui-btn--sm aa-action" onClick={() => void removeObsolete()}>
-                {'\u{1F9F9}'} Remove {obsoleteIds.length.toLocaleString()} covered rules (review first)
+                {'\u{1F9F9}'} Delete {obsoleteIds.length.toLocaleString()} covered rules (review first)
               </button>
             )}
             {report.obsolete.slice(0, AA_CAP).map(o => (

@@ -79,9 +79,7 @@
   background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
-/* An accent tint, not --bg-sunken: on Classic Light that is #fafafa on a
-   #ffffff dialog, and the selection vanished (pitfall #55). */
-.cp-list-item--active { background: color-mix(in srgb, var(--accent) 13%, transparent); }
+/* Selected background: ONE rule in global.css for the whole rule-editor family. */
 
 /* The pending "+ New contact" row marks where the draft is; it isn't a target. */
 .cp-list-item--pending { cursor: default; }
@@ -154,14 +152,15 @@
   letter-spacing: 1.5px;
 }
 
-.cp-input--hex { width: 88px; }
-
 .cp-select { cursor: pointer; }
 
 /* The preview sits on the GAME background, so it shows the template as it
    will actually read in play. */
 .cp-tpl-preview {
-  display: flex;
+  /* Hugs its content instead of stretching the full row — a preview that is
+     mostly empty chip reads as a text field. */
+  align-self: start;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   margin-top: 4px;
@@ -296,7 +295,11 @@ textarea.cp-textarea {
 
 .cp-tpl-name-label {
   font-size: 0.88rem;
-  font-weight: 600;
+  /* Deliberately NOT bold. This row previews the template, and <strong>
+     resolves to --ui-bold-weight (600 at the default text weight) — exactly
+     what this rule used to force — so a bolded template looked identical to an
+     unbolded one here. A preview must show the template, never the panel's own
+     styling. */
   min-width: 80px;
 }
 
@@ -339,15 +342,37 @@ textarea.cp-textarea {
      through, with a hairline separating it from the summary row above. */
   background: transparent;
   border-top: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  /* A GRID, not a single column. The dialog is 88vw, so eleven short
+     label+field rows stacked vertically used a couple of hundred pixels of a
+     card well over a thousand wide, and ran off the bottom of the list --
+     taking Save and Cancel with them (Sekmeht). auto-fit needs no breakpoints:
+     one column in a narrow window, more as the room appears. The max-width
+     stops it spreading into a spreadsheet on a wide monitor, which is where
+     wrapped label+field pairs stop reading as a form. */
+  /* A column of ZONES. Each zone is its own grid, so a row that appears when
+     you pick an effect reflows only inside that zone rather than shuffling
+     every field below it. */
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 8px;
+  max-width: 900px;
+}
+
+/* One labelled group of fields. The columns are the same auto-fit ones the
+   whole form used to be: three at full width, fewer as the card narrows, one
+   when it is genuinely narrow. */
+.cp-tpl-zone {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 9px 20px;
+  align-items: start;
 }
 
 .cp-tpl-edit-row {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .cp-tpl-edit-row .cp-label {
@@ -355,15 +380,28 @@ textarea.cp-textarea {
   flex-shrink: 0;
 }
 
-.cp-color-picker {
-  width: 32px;
-  height: 28px;
-  padding: 1px 2px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--modal-input-bg);
-  cursor: pointer;
-  flex-shrink: 0;
+/* The control fills its cell, so fields line up down a column instead of each
+   taking its own intrinsic width. Both shared controls already set
+   min-width: 0 (.ui-field, .ui-color), so nothing overflows its cell. */
+.cp-tpl-edit-row > :not(.cp-label) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* …except the preview chip, which must HUG its content. `align-self` can't do
+   it: that is the cross axis in a row flex container, so the rule above still
+   stretched the chip across the whole Preview zone and it read as an empty
+   text field. */
+.cp-tpl-edit-row > .cp-tpl-preview {
+  flex: 0 1 auto;
+}
+
+/* The result, what it applies to, and the buttons each take the full width --
+   they describe the WHOLE template rather than one of its properties, and the
+   rows they make are the visual break between the fields and the actions. */
+.cp-tpl-edit-row--wide,
+.cp-tpl-edit-actions {
+  grid-column: 1 / -1;
 }
 
 .cp-checkbox-label {

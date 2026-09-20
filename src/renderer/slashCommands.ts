@@ -12,7 +12,7 @@
 // GameWindow builds wraps the same save/set/saveProfile calls a panel save
 // makes, so a slash-created rule is byte-compatible with an editor-created one.
 
-import { newHighlight, type HighlightRule, HIGHLIGHT_EFFECTS } from './highlights'
+import { newHighlight, type HighlightRule, HIGHLIGHT_EFFECTS, effectiveEffect } from './highlights'
 import { CMD_HISTORY_MIN_MAX } from './commandHistorySettings'
 import { newMute, type MuteRule } from './mutes'
 import { newSubstitute, type SubstituteRule } from './substitutes'
@@ -86,8 +86,12 @@ export interface SlashContext {
   clearMain: () => void
   // Managed named colors (v0.14.6): customs are APP-WIDE (a color vocabulary
   // is shared, like themes) — apply = saveCustomColors + scheduleSharedProfileSave.
+  // getCustomColors returns EVERY entry, retired included (F115) — executors
+  // filter with activeCustomColors where they only mean the offered ones.
   getCustomColors: () => CustomColor[]
   applyCustomColors: (list: CustomColor[]) => void
+  /** F115: open Automations at the Colors tab. */
+  openColors: () => void
   // ── AI (BYOK — DESIGN §10). getAIState reads the app-wide config sync + the
   // main-fetched key-presence flag; setAIEnabled flips the master toggle;
   // aiCatchup fires the async Catch Me Up (consent gate + stream) in GameWindow
@@ -153,7 +157,10 @@ export function slashLineText(l: SlashLine): string {
 // The palette lives in colors.ts (curated 16 > user customs > the standard web
 // set — Genie's vocabulary). Re-exported so palette/consumers keep one import.
 
-import { CURATED_COLORS, WEB_COLORS, resolveColor, isHexColor, validateCustomColorName, type CustomColor } from './colors'
+import {
+  CURATED_COLORS, WEB_COLORS, resolveColor, resolveColorChoice, isHexColor, validateCustomColorName,
+  activeCustomColors, colorLabel, expandHex, newColorId, tidyColorName, type CustomColor,
+} from './colors'
 import { modelLabel } from './aiConfig'
 export { resolveColor }
 
@@ -242,8 +249,14 @@ const err = (...lines: SlashLine[]): SlashResult => ({ ok: false, lines })
 const ok = (...lines: SlashLine[]): SlashResult => ({ ok: true, lines })
 
 // Shared summary formatters (also used by /list output).
-const hlSummary = (r: HighlightRule) =>
-  `"${r.pattern}" (${r.style.textColor}${r.style.bgColor !== 'transparent' ? ` on ${r.style.bgColor}` : ''}${r.style.bold ? ', bold' : ''}${r.style.glow ? ', glow' : ''}, ${r.scope}, ${r.mode})`
+// Reports what the rule actually DOES. `effect` was missing, so
+// `/highlight add "dragon" gold effect=shimmer` confirmed the rule without ever
+// mentioning the shimmer — and `effectiveEffect` folds the legacy `glow` bool
+// in, so a glow rule still reads "glow".
+const hlSummary = (r: HighlightRule) => {
+  const fx = effectiveEffect(r.style)
+  return `"${r.pattern}" (${colorLabel(r.style.textColor)}${r.style.bgColor !== 'transparent' ? ` on ${colorLabel(r.style.bgColor)}` : ''}${r.style.bold ? ', bold' : ''}${fx !== 'none' ? `, ${fx}` : ''}${r.caseSensitive ? ', case-sensitive' : ''}, ${r.scope}, ${r.mode})`
+}
 const muteSummary = (r: MuteRule) =>
   `"${r.pattern}" (${r.scope === 'line' ? 'hides line' : 'strips match'}, ${r.mode}${r.stream ? `, ${r.stream} only` : ''})`
 const subSummary = (r: SubstituteRule) =>
@@ -325,10 +338,10 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
     noun: 'highlight', nounAliases: ['hl'], verb: 'add',
     args: [
       { name: '"pattern"', required: true, kind: 'string', hint: 'the text to highlight' },
-      { name: 'color', required: false, kind: 'color', hint: 'named color or #hex (default gold) — /colors shows them' },
+      { name: 'color', required: false, kind: 'color', hint: 'named color or #hex (default gold) — one of YOUR colors stays linked; quote a name with spaces; /colors shows them' },
     ],
     options: [
-      { key: 'bg', hint: 'background color (named or #hex)' },
+      { key: 'bg', hint: 'background color (named or #hex; one of yours stays linked)' },
       MODE_OPT,
       { key: 'scope', values: ['match', 'line'], hint: 'color just the match, or the whole line' },
       CASE_OPT,
@@ -341,14 +354,16 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
     run: (ctx, p) => {
       const [pattern, colorTok] = p.args
       const rule = newHighlight(pattern, (p.options.scope as 'match' | 'line') ?? 'match')
+      // F115: one of YOUR colors resolves to a LINK, so the rule follows later
+      // edits to it; a built-in, web name or #hex is stored as that hex.
       if (colorTok) {
-        const c = resolveColor(colorTok)
-        if (!c) return err(`"${colorTok}" isn't a color — use a name (red, blue, gold, …) or #hex.`)
+        const c = resolveColorChoice(colorTok)
+        if (!c) return err(`"${colorTok}" isn't a color — use a name (red, blue, gold, one of yours) or #hex.`)
         rule.style.textColor = c
         rule.style.glowColor = c
       }
       if (p.options.bg) {
-        const c = resolveColor(p.options.bg)
+        const c = resolveColorChoice(p.options.bg)
         if (!c) return err(`bg "${p.options.bg}" isn't a color — use a name or #hex.`)
         rule.style.bgColor = c
       }
@@ -739,15 +754,15 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
     noun: 'template', nounAliases: ['tpl', 'templates'], verb: 'add',
     args: [
       { name: '"name"', required: true, kind: 'string', hint: 'the template name (e.g. Watchlist)' },
-      { name: 'color', required: false, kind: 'color', hint: 'name color — named color or #hex (/colors shows them)' },
+      { name: 'color', required: false, kind: 'color', hint: 'name color — named color or #hex; one of YOUR colors stays linked (/colors shows them)' },
     ],
     options: [
       { key: 'bg', hint: 'background color behind the name' },
       { key: 'tag', hint: 'a prefix shown before the name, e.g. tag="[W]"' },
     ],
-    flags: ['bold'],
+    flags: ['bold', 'tagbold'],
     description: 'Create a contact template (a reusable name style)',
-    example: '/template add "Watchlist" orange tag="[W]"',
+    example: '/template add "Watchlist" orange tag="[W]" bold',
     run: (ctx, p) => {
       const name = p.args[0].trim()
       if (!name) return err('The template needs a name.')
@@ -757,20 +772,23 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
       const tpl = newTemplate()
       tpl.name = name
       if (p.args[1]) {
-        const c = resolveColor(p.args[1])
-        if (!c) return err(`"${p.args[1]}" isn't a color — use a name (red, blue, gold, …) or #hex.`)
+        const c = resolveColorChoice(p.args[1])
+        if (!c) return err(`"${p.args[1]}" isn't a color — use a name (red, blue, gold, one of yours) or #hex.`)
         tpl.textColor = c
         tpl.tagColor = c   // the built-ins pair tag color with text color
       }
       if (p.options.bg) {
-        const c = resolveColor(p.options.bg)
+        const c = resolveColorChoice(p.options.bg)
         if (!c) return err(`bg "${p.options.bg}" isn't a color — use a name or #hex.`)
         tpl.bgColor = c
       }
       if (p.options.tag) tpl.tagText = p.options.tag
       if (p.flags.has('bold')) tpl.bold = true
+      // The tag's bold is its OWN flag, like its color and effect: someone may
+      // want the tag to shout while the name stays plain.
+      if (p.flags.has('tagbold')) tpl.tagBold = true
       ctx.applyContactTemplates([...templates, tpl])
-      return ok(`Template added: ${name} (${tpl.textColor}${tpl.tagText ? `, tag ${tpl.tagText}` : ''}${tpl.bold ? ', bold' : ''}) — /contact add "Name" ${name} assigns it.`)
+      return ok(`Template added: ${name} (${colorLabel(tpl.textColor)}${tpl.tagText ? `, tag ${tpl.tagText}` : ''}${tpl.bold ? ', bold' : ''}${tpl.tagBold ? ', bold tag' : ''}) — /contact add "Name" ${name} assigns it.`)
     },
   },
   {
@@ -806,7 +824,9 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
       return ok(`${templates.length} template${templates.length === 1 ? '' : 's'}:`,
         ...templates.map(t => {
           const n = contacts.filter(c => c.templateId === t.id).length
-          return `  · ${t.name} (${t.textColor}${t.tagText ? `, tag ${t.tagText}` : ''}${t.bold ? ', bold' : ''}) — ${n} contact${n === 1 ? '' : 's'}`
+          // colorLabel, not the raw value: a linked color is stored as
+          // `var(--lb-color-…, #hex)` and must read as its NAME here.
+          return `  · ${t.name} (${colorLabel(t.textColor)}${t.tagText ? `, tag ${t.tagText}` : ''}${t.bold ? ', bold' : ''}${t.tagBold ? ', bold tag' : ''}) — ${n} contact${n === 1 ? '' : 's'}`
         }))
     },
   },
@@ -983,7 +1003,7 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
     run: (ctx) => {
       // grey is an alias spelling of gray — one row, both spellings shown.
       const curated = Object.entries(CURATED_COLORS).filter(([n]) => n !== 'grey')
-      const custom = ctx.getCustomColors()
+      const custom = activeCustomColors(ctx.getCustomColors())
       const row = (name: string, hex: string) => ({ rich: [
         { text: '  ' },
         { text: '██ ', color: hex },
@@ -993,10 +1013,10 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
       return ok(
         'Named colors — use them anywhere a color is accepted (name or #hex like #FF8800):',
         ...curated.map(([name, hex]) => row(name === 'gray' ? 'gray / grey' : name, hex)),
-        ...(custom.length ? ['Yours (/colors add "name" #hex · /colors remove "name"):'] : []),
+        ...(custom.length ? ['Yours: pick one anywhere and it stays linked, so changing it changes everything using it (/colors manage):'] : []),
         ...custom.map(c => row(c.name, c.hex)),
         'All standard web color names work too (Lime, DodgerBlue, Crimson, …) — /colors list shows every one.',
-        `e.g. /highlight add "goblin" orange · /template add "Watchlist" #8800ff${custom.length ? '' : ' · add your own: /colors add "ember" #ff6a30'}`,
+        `e.g. /highlight add "goblin" orange · /template add "Watchlist" #8800ff${custom.length ? '' : ' · make your own: /colors add "Buff drop" #ff9040'}`,
       )
     },
   },
@@ -1019,7 +1039,7 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
         }
         return rows
       }
-      const custom = ctx.getCustomColors()
+      const custom = activeCustomColors(ctx.getCustomColors())
       // Platform categories, EACH always shown (consistent shape — an empty
       // Custom section still teaches that the category exists and how to fill
       // it, UX polish standard #2/#8).
@@ -1028,10 +1048,10 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
         '(Names too close to your theme\'s background sit on a small light/dark contrast bar — that\'s just a reading aid for this list, not part of the color.)',
         `■ Curated (${Object.keys(CURATED_COLORS).length - 1}) — Lichborne's readable core; these win when a web name overlaps:`,
         ...grid(Object.entries(CURATED_COLORS).filter(([n]) => n !== 'grey')),
-        `■ Custom (${custom.length}) — yours, app-wide, managed with /colors add|remove:`,
+        `■ Yours (${custom.length}) — linked wherever you pick them; managed in Automations → Colors or /colors add|rename|remove:`,
         ...(custom.length
           ? grid(custom.map(c => [c.name, c.hex] as [string, string]))
-          : ['  (none yet — /colors add "ember" #ff6a30)']),
+          : ['  (none yet — /colors add "Buff drop" #ff9040)']),
         `■ Web (${Object.keys(WEB_COLORS).length}) — the standard web/CSS names (the Genie set):`,
         ...grid(Object.entries(WEB_COLORS)),
         '/colors shows the short list with hex values · /help colors explains the commands.',
@@ -1041,46 +1061,97 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
   {
     noun: 'colors', nounAliases: ['color', 'colours', 'colour'], verb: 'add',
     args: [
-      { name: '"name"', required: true, kind: 'string', hint: 'the new color\'s name (one word)' },
-      { name: '#hex', required: true, kind: 'word', hint: 'its value, e.g. #ff6a30' },
+      { name: '"name"', required: true, kind: 'string', hint: 'the color\'s name — quote it if it has spaces, e.g. "Buff drop"' },
+      { name: '#hex', required: true, kind: 'word', hint: 'its value, e.g. #ff9040' },
     ],
     options: [], flags: [],
-    description: 'Add your own named color (app-wide, works everywhere)',
-    example: '/colors add "ember" #ff6a30',
+    description: 'Make one of your own colors (all characters) — or change one you have',
+    example: '/colors add "Buff drop" #ff9040',
     run: (ctx, p) => {
-      const name = p.args[0].trim().toLowerCase()
+      const name = tidyColorName(p.args[0])
       const nameErr = validateCustomColorName(name)
       if (nameErr) return err(nameErr)
-      if (!isHexColor(p.args[1])) return err(`"${p.args[1]}" isn't a #hex value — e.g. /colors add "${name}" #ff6a30. (Name a color BY a color: /colors shows the hex to copy.)`)
-      const hex = p.args[1].trim().toLowerCase()
-      const custom = ctx.getCustomColors()
-      const existing = custom.find(c => c.name.toLowerCase() === name)
+      if (!isHexColor(p.args[1])) return err(`"${p.args[1]}" isn't a #hex value — e.g. /colors add "${name}" #ff9040. (Name a color BY a color: /colors shows the hex to copy.)`)
+      const hex = expandHex(p.args[1])
+      const all = ctx.getCustomColors()
+      const existing = all.find(c => c.name.toLowerCase() === name.toLowerCase())
+      const swatch = (c: string) => [{ text: `██ ${name}`, color: c }]
       if (existing) {
-        // Re-adding an existing name UPDATES it. Resolve-at-entry semantics:
-        // already-created rules keep the hex they stored — only future uses
-        // pick up the new value (say so, or the "update" looks broken).
-        ctx.applyCustomColors(custom.map(c => c === existing ? { name, hex } : c))
-        return ok({ rich: [{ text: 'Color updated: ' }, { text: `██ ${name}`, color: hex }, { text: ` ${hex} — new uses get this value; existing rules keep what they stored.` }] })
+        // Same name = the same color: a new value (and, for a removed one, back
+        // in your lists). Links follow it (F115), so say what that does.
+        ctx.applyCustomColors(all.map(c => {
+          if (c !== existing) return c
+          const { retired: _drop, ...rest } = c
+          return { ...rest, hex }
+        }))
+        return ok({ rich: [
+          { text: existing.retired ? 'Color restored: ' : 'Color updated: ' }, ...swatch(hex),
+          { text: ` ${hex} — everything linked to it changes too.` },
+        ] })
       }
-      ctx.applyCustomColors([...custom, { name, hex }])
-      return ok({ rich: [{ text: 'Color added: ' }, { text: `██ ${name}`, color: hex }, { text: ` ${hex} — use it anywhere a color is accepted.` }] })
+      ctx.applyCustomColors([...all, { id: newColorId(all), name, hex }])
+      return ok({ rich: [{ text: 'Color added: ' }, ...swatch(hex), { text: ` ${hex} — pick it anywhere a color is chosen, and it stays linked.` }] })
+    },
+  },
+  {
+    noun: 'colors', nounAliases: ['color', 'colours', 'colour'], verb: 'rename',
+    args: [
+      { name: '"name"', required: true, kind: 'string', hint: 'the color to rename' },
+      { name: '"new name"', required: true, kind: 'string', hint: 'its new name — quote it if it has spaces' },
+    ],
+    options: [], flags: [],
+    description: 'Rename one of your colors (everything using it stays linked)',
+    example: '/colors rename "ember" "Buff drop"',
+    run: (ctx, p) => {
+      const all = ctx.getCustomColors()
+      const from = tidyColorName(p.args[0]).toLowerCase()
+      // Live only, like /colors remove: a removed color isn't one of "yours",
+      // and the error below lists only the live ones — so matching a retired
+      // one here would silently rename something the same command says you
+      // don't have.
+      const color = all.find(c => !c.retired && c.name.toLowerCase() === from)
+      if (!color) return err(`You don't have a color named "${p.args[0]}". Yours: ${activeCustomColors(all).map(c => c.name).join(', ') || '(none yet — /colors add "name" #hex)'}.`)
+      const to = tidyColorName(p.args[1])
+      const nameErr = validateCustomColorName(to)
+      if (nameErr) return err(nameErr)
+      // A RETIRED color still blocks the name: a name is how a color is matched
+      // across machines (mergeCustomColors), so two entries sharing one would
+      // make the second unreachable on every import.
+      const clash = all.find(c => c.id !== color.id && c.name.toLowerCase() === to.toLowerCase())
+      if (clash) return err(clash.retired
+        ? `"${clash.name}" is a color you removed. Delete it for good in Automations → Colors, or /colors add "${clash.name}" ${clash.hex} to bring it back instead.`
+        : `You already have a color named "${clash.name}".`)
+      ctx.applyCustomColors(all.map(c => c === color ? { ...c, name: to } : c))
+      return ok(`Renamed "${color.name}" to "${to}". Everything using it stays linked.`)
     },
   },
   {
     noun: 'colors', nounAliases: ['color', 'colours', 'colour'], verb: 'remove',
-    args: [{ name: '"name"', required: true, kind: 'string', hint: 'the custom color to remove' }],
+    args: [{ name: '"name"', required: true, kind: 'string', hint: 'one of your colors' }],
     options: [], flags: [],
-    description: 'Remove one of your custom named colors',
-    example: '/colors remove "ember"',
+    description: 'Remove one of your colors (anything using it keeps its color)',
+    example: '/colors remove "Buff drop"',
     run: (ctx, p) => {
-      const name = p.args[0].trim().toLowerCase()
+      const name = tidyColorName(p.args[0]).toLowerCase()
       if (Object.prototype.hasOwnProperty.call(CURATED_COLORS, name))
         return err(`"${name}" is a built-in color — built-ins can't be removed.`)
-      const custom = ctx.getCustomColors()
-      const removed = custom.filter(c => c.name.toLowerCase() === name)
-      if (removed.length === 0) return err(`No custom color "${name}". Yours: ${custom.map(c => c.name).join(', ') || '(none yet — /colors add "name" #hex)'}.`)
-      ctx.applyCustomColors(custom.filter(c => !removed.includes(c)))
-      return ok(`Removed color "${name}" — rules that used it keep the hex they stored.`)
+      const all = ctx.getCustomColors()
+      const color = all.find(c => !c.retired && c.name.toLowerCase() === name)
+      if (!color) return err(`You don't have a color named "${p.args[0]}". Yours: ${activeCustomColors(all).map(c => c.name).join(', ') || '(none yet — /colors add "name" #hex)'}.`)
+      // RETIRE, don't delete (F115): its variable stays defined, so everything
+      // linked to it keeps painting. Deleting for good is the Colors tab's.
+      ctx.applyCustomColors(all.map(c => c === color ? { ...c, retired: true } : c))
+      return ok(`Removed "${color.name}" from your colors. Anything using it keeps its color. /colors add "${color.name}" ${color.hex} brings it back.`)
+    },
+  },
+  {
+    noun: 'colors', nounAliases: ['color', 'colours', 'colour'], verb: 'manage',
+    args: [], options: [], flags: [],
+    description: 'Open the Colors tab to make, change and remove your colors',
+    example: '/colors manage',
+    run: (ctx) => {
+      ctx.openColors()
+      return ok('Opened Automations → Colors.')
     },
   },
 
@@ -1438,7 +1509,7 @@ const NOUN_HELP: Record<string, string> = {
   log:        'Search everything that happened in your saved session history',
   timestamps: 'Show the time next to each line in the main window',
   clear:      'Wipe the main window (your Session Log still keeps everything)',
-  colors:     'The named colors — see them, add your own (/colors add "ember" #ff6a30)',
+  colors:     'Named colors — make your own, and everything using one changes when you change it (/colors manage)',
   ai:         'AI features (bring your own key) — /ai catchup 30m summarizes what happened',
   simucoin:   'Your free monthly SimuCoins — see the balance and claim what is waiting',
   help:       'This list — /help <command> explains one in detail',

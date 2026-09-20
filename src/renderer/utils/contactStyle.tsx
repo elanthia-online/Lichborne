@@ -16,6 +16,17 @@ export interface ContactPaint {
   style: CSSProperties
   /** Text, wrapped per-letter when the effect needs it (wave/bounce). */
   content: ReactNode
+  /**
+   * The element to render this run in. `strong` when the template bolds it,
+   * which keeps the emphasis SEMANTIC and routes the weight through B113's
+   * `--ui-bold-weight`, so bold scales with the user's text-weight setting
+   * instead of being pinned at 700.
+   *
+   * Returned rather than applied as a `fontWeight` so the DECISION lives here
+   * once — the game renderer and both previews used to each decide it, which is
+   * how the tag ended up with no bold at all.
+   */
+  Tag: 'strong' | 'span'
 }
 
 /**
@@ -30,6 +41,7 @@ export function paintContactText(
   opts: {
     color?: string | null
     bgColor?: string | null
+    bold?: boolean | null
     effect?: HighlightEffect | null
     glowColor?: string | null
   },
@@ -44,5 +56,26 @@ export function paintContactText(
       ...fx.vars,
     },
     content: effectContent(text, fx.perLetter),
+    Tag: opts.bold ? 'strong' : 'span',
   }
+}
+
+/**
+ * One painted run, as an element.
+ *
+ * `paintContactText` hands back the PIECES; every caller then has to assemble
+ * them the same way, and the ones that assembled them by hand are exactly the
+ * ones that drifted — the popover painted a flat colour with a hardcoded
+ * `fontWeight: 'bold'`, so it ignored the tag's bold, ignored every effect, and
+ * pinned the weight at 700 instead of routing it through `--ui-bold-weight`.
+ * Rendering through this component means there is nothing left to assemble.
+ *
+ * The game renderer still calls `paintContactText` directly, because it wraps
+ * each run in its own keyed `.contact-name` / `.contact-tag` element.
+ */
+export function ContactRun(
+  { text, ...opts }: { text: string } & Parameters<typeof paintContactText>[1],
+) {
+  const p = paintContactText(text, opts)
+  return <p.Tag className={p.className || undefined} style={p.style}>{p.content}</p.Tag>
 }

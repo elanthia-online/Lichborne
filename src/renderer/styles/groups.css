@@ -69,41 +69,18 @@
    z 200). B403: it tied the Add-Account wizard at 600; 450 sits it just above
    the per-session dialog tier (100–400) that hosts it and below the wizard —
    pitfall #118(d). */
-.gp-menu {
-  position: fixed;
-  z-index: 450;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 3px 0;
-  min-width: 140px;
-  box-shadow: var(--popover-shadow);
-  /* B331 (pitfall #109): its length is the user's group count. GroupPicker
-     also sets an inline max-height for the space on the side it opens toward;
-     this is the ceiling when it can't measure. */
-  max-height: calc(100vh - 16px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
+/* Composes `ui-menu` (ui.css) for position, tier, surface and scrolling —
+   including the B331 / pitfall #109 max-height ceiling; GroupPicker also sets a
+   tighter inline max-height for the side it opens toward. Only the width is
+   local. */
+.gp-menu { min-width: 140px; }
 
-.gp-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  padding: 6px 12px;
-  font-family: inherit;
-  font-size: 0.8rem;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.1s;
-}
+/* Composes `ui-menu-item` (ui.css) — the whole row recipe, including the hover
+   with its pitfall #107 guard, now comes from there.
 
-.gp-menu-item:hover { background: var(--bg-hover); color: var(--text-primary); }
-
+   NOTE the group name is a bare text node between two spans (GroupPicker.tsx),
+   so there is nothing to hang an ellipsis on. If a long name ever needs
+   truncating, wrap it in a span first — don't add `overflow` to the primitive. */
 .gp-menu-item--assigned { color: var(--text-primary); }
 
 .gp-menu-dot {
@@ -307,7 +284,7 @@
 }
 
 .gm-list-item:not(.gm-list-item--active):hover { background: var(--bg-hover); }
-.gm-list-item--active { background: var(--bg-sunken); color: var(--text-primary); }
+.gm-list-item--active { color: var(--text-primary); }  /* background: global.css */
 /* B388: an unsaved "+ New" draft, like the rule editors' pending row. */
 .gm-list-item--pending { opacity: 0.7; font-style: italic; cursor: default; }
 
@@ -382,28 +359,6 @@
 }
 
 .gm-input:focus { border-color: var(--accent-dim); }
-
-.gm-color-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.gm-color-picker {
-  width: 32px;
-  height: 28px;
-  padding: 1px 2px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--modal-input-bg);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.gm-color-hex {
-  width: 88px;
-  font-family: var(--code-font-family);
-}
 
 .gm-group-toggles {
   display: flex;

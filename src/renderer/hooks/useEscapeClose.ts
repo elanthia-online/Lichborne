@@ -56,6 +56,22 @@ function isLive(entry: Entry): boolean {
   return true
 }
 
+/**
+ * Is ANY dialog currently open and on screen?
+ *
+ * The stack already knows this — it is the same liveness test Esc uses — so a
+ * global key handler can ask instead of hand-maintaining its own list of
+ * overlays. GameWindow's `anyModalOpenRef` is such a list, and being
+ * GameWindow-owned it cannot see an APP-level dialog (About, Quick Send,
+ * Transfer, Team Login, Attach, the wizards, a confirm), so macros fired
+ * straight through them: typing a port number into Attach walked your
+ * character, and preventDefault meant the digit never reached the field
+ * (pitfall #57's converse, and pitfall #130's hand-listed-keys rot).
+ */
+export function anyDialogOpen(): boolean {
+  return stack.some(isLive)
+}
+
 function onKeyDown(e: KeyboardEvent) {
   if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return
   for (let i = stack.length - 1; i >= 0; i--) {

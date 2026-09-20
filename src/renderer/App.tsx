@@ -841,15 +841,17 @@ function AppShell() {
   // forcing testers to click the bar again before they could type.
   // requestAnimationFrame waits for the session-shell hidden-class flip
   // before the input becomes focusable.
+  //
+  // This was a VERBATIM copy of `refocusActiveCommandBar` minus its Overview
+  // guard, so switching character — by clicking a card, a tab, or Ctrl+Tab /
+  // Ctrl+1-9 — put the caret in the command bar the Overview is covering:
+  // typing showed nothing and Enter still reached the game (pitfall #131, the
+  // B375 failure through a path that fix missed). Call the guarded helper
+  // rather than keeping a second copy of it (pitfall #127).
   useEffect(() => {
     if (!activeId) return
-    requestAnimationFrame(() => {
-      const el = document.querySelector(
-        '.session-shell:not(.session-shell--hidden) .command-input'
-      ) as HTMLInputElement | null
-      el?.focus()
-    })
-  }, [activeId])
+    refocusActiveCommandBar()
+  }, [activeId, refocusActiveCommandBar])
 
   // First-run / cold-start path:
   //   1. Pull _shared.yaml into localStorage so loadAdvanced() returns whatever

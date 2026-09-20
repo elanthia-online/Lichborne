@@ -111,23 +111,24 @@
 .te-color-swatch::-webkit-color-swatch-wrapper { padding: 0; }
 .te-color-swatch::-webkit-color-swatch { border: none; border-radius: 2px; }
 
-/* The two small typed fields sit on --modal-input-bg, never a bare
-   --bg-input (white-on-white on Classic Light, pitfall #55). */
-.te-hex-text {
-  width: 72px;
-  background: var(--modal-input-bg);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: var(--radius-sm);
-  padding: 2px 6px;
-  font-family: var(--code-font-family);
-  font-size: 0.75rem;
-  outline: none;
+/* The colour rows use the SHARED ColorField (ui.css, UX #12). This editor is a
+   dense list of ~150 short rows, so its copies are deliberately smaller than the
+   dialog default: these rules OVERRIDE ui.css's width/min-height/font-size,
+   which is what a component refining the base layer is for (pitfall #144).
+   SIZE only -- not one colour is set here, so the control keeps the palette
+   ui.css was contrast-audited with, and the popover is untouched. */
+.te-row-inputs .ui-color { gap: 4px; }
+
+.te-row-inputs .ui-color-swatch {
+  width: 26px;
+  min-height: 22px;
 }
 
-.te-hex-text:focus { border-color: var(--accent-dim); color: var(--text-secondary); }
-
-.te-hex-text::placeholder { color: var(--text-dim); font-family: inherit; font-size: 0.72rem; }
+.te-row-inputs .ui-color-text {
+  width: 5.6em;
+  font-size: 0.75rem;
+  padding: 2px 6px;
+}
 
 .te-arrow {
   color: var(--text-faint);
@@ -175,8 +176,4 @@
   font-size: 0.75rem;
   padding: 0 2px;
   flex-shrink: 0;
-}
-
-.te-color-swatch--none {
-  opacity: 0.3;
 }

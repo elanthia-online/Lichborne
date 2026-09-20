@@ -4,10 +4,10 @@
 // line LAST, in game order. Pure view over GameWindow's `RoomState`.
 //
 // The one thing that is uniquely ours is the PAINT: every prose line goes
-// through `computeLineMatchRanges` → `renderSegmentFull` with the session's
-// contacts + match-scope highlights, and `getLineHighlightStyle` per line for
-// line-scope rules — so the panel styles the same content the same way the
-// main scroll does (pitfall #44; B111/B115/B117). Line-scope rules are
+// through `renderHighlightedLine` with the session's contacts, match-scope and
+// line-scope highlights — the same entry point the main scroll uses, so the
+// panel styles the same content the same way (pitfall #44; B111/B115/B117/
+// B428). Line-scope rules are
 // applied PER sentence and skipped on `desc`. Exit words the compass confirms
 // are linkified and send the FULL direction word (`dn` is not a valid DR
 // command); the exits sentence follows Genie's normalization (" none." /
@@ -20,7 +20,7 @@ import { memo } from 'react'
 import type { RoomState, TextSegment } from '../../../shared/types'
 import { useContacts } from '../../ContactsContext'
 import { useHighlights } from '../../HighlightsContext'
-import { renderSegmentFull, getLineHighlightStyle, computeLineMatchRanges } from '../../utils/renderSegmentFull'
+import { renderSegmentFull, renderHighlightedLine } from '../../utils/renderSegmentFull'
 
 interface Props {
   room: RoomState
@@ -116,35 +116,18 @@ export default memo(function RoomPanel({ room, onSendCommand }: Props) {
     return <div className="room-panel room-panel--empty">Waiting for room data…</div>
   }
 
-  // B111 + B117: route every prose line through renderSegmentFull so contact
-  // names + match-scope highlights + DR's <pushBold/> creature styling all
-  // paint the same way they do in the main scroll. Segment arrays render
-  // segment-by-segment with the joined line text + running cursor offset so
-  // cross-segment regex highlights work too (B115 carry-over).
+  // B111 + B117: every prose line goes through the same `renderHighlightedLine`
+  // the main scroll uses, so contact names, highlights (match AND line scope,
+  // B428) and DR's <pushBold/> creature styling paint exactly like the
+  // main-scroll copy. It joins the line and scans it once (B115, B172).
   function renderSegments(segments: TextSegment[], keyBase: number) {
-    const lineText = segments.map(s => s.text).join('')
-    // B172: scan the line's joined text ONCE and share the ranges across
-    // its segments (renderSegmentFull used to re-scan per segment).
-    const lineRanges = computeLineMatchRanges(lineText, contacts, templates, nameRegex, matchRules)
-    // Computed BEFORE rendering so a line-scope highlight's text color can be
-    // passed down to override preset/fg segment colors (Cherisse — see
-    // renderSegment), matching the main scroll / stream panels.
-    const lineStyle = getLineHighlightStyle(segments, lineRules)
-    const lineOverrideColor = lineStyle?.color as string | undefined
-    let cursor = 0
-    const nodes = segments.map((seg, i) => {
-      const offset = cursor
-      cursor += seg.text.length
-      return renderSegmentFull(
-        seg,
-        keyBase * 100 + i,
-        contacts, templates, nameRegex, matchRules,
-        onContactClick, onSendCommand,
-        false, false,
-        lineText, offset, lineRanges, lineOverrideColor,
-      )
+    const { style, nodes } = renderHighlightedLine(segments, {
+      matchRules, lineRules, contacts, templates, nameRegex,
+      onContactClick, onSendCommand,
+      autoLinkUrls: false, webLinkSafety: false,
+      keyBase,
     })
-    return { nodes, style: lineStyle ?? undefined }
+    return { nodes, style: style ?? undefined }
   }
 
   // desc is still a string (kept so MapPanel's roomDesc string API stays

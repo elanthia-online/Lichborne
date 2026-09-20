@@ -68,7 +68,7 @@
 }
 
 .ma-list-item:not(.ma-list-item--active):hover { background: var(--bg-hover); }
-.ma-list-item--active  { background: var(--bg-sunken); }
+/* Selected background: ONE rule in global.css for the whole rule-editor family. */
 .ma-list-item--disabled { opacity: 0.45; }
 .ma-list-item--pending { opacity: 0.7; font-style: italic; }
 
@@ -414,47 +414,32 @@
 /* Portaled to <body> over the Automations dialog (z 200). B403: 450 sits it
    just above the per-session dialog tier (100–400) and below the Add-Account
    wizard (600) — pitfall #118(d). */
+/* Composes `ui-menu` (ui.css). Only the width and the tighter height ceiling
+   are local — the surface moved from `--bg-base` to the primitive's
+   `--bg-raised`, which is what ColorField's menu and the context menu already
+   used (B456: that difference had no comment defending it). */
 .ma-var-menu {
-  position: fixed;
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--popover-shadow);
-  z-index: 450;
   min-width: 180px;
   max-height: 240px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 3px 0;
 }
 
-/* B380: a real <button> per item (keyboard-reachable), with the button
-   chrome reset so it reads as a menu row. */
-.ma-var-item {
-  display: flex;
-  /* baseline (not center) so a long token like {ReturnOrRepeatLast} whose
-     description WRAPS to two lines shares a baseline with its first line —
-     the wrapped line then flows naturally below instead of the whole 2-line
-     description floating vertically-centered against the 1-line token. */
-  align-items: baseline;
-  gap: 10px;
-  width: 100%;
-  padding: 5px 10px;
-  background: none;
-  border: none;
-  color: inherit;
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-  font-size: 0.8rem;
-  transition: background var(--ui-transition);
-}
+/* B380: a real <button> per item (keyboard-reachable). The row recipe and the
+   hover/focus now come from `ui-menu-item` (ui.css); the baseline alignment —
+   so a token whose description wraps shares a baseline with its first line —
+   comes from `ui-menu-item--baseline`, which exists for this menu.
 
-.ma-var-item:hover,
-.ma-var-item:focus-visible { background: var(--bg-hover); }
-
+   The two child rules below are element selectors SCOPED TO THIS CLASS, which
+   is why `ma-var-item` stays on the button rather than being replaced: drop it
+   and the token silently loses its colour, its code font and its 56px column,
+   and the description loses its size and flex. */
+/* These three colours were re-read when this menu adopted `.ui-menu` and moved
+   from `--bg-base` to the lighter `--bg-raised` — changing a shared surface
+   means re-reading everything drawn on it (pitfall #55), and popovers sit on a
+   surface that is LIGHTER than the dialog on light themes, so the dimmer text
+   tokens stop carrying (pitfall #150). The token is text, so it takes the 40%
+   text ratio rather than the 60% glyph one. */
 .ma-var-item code {
-  color: var(--accent);
+  color: color-mix(in srgb, var(--accent) 40%, var(--text-primary));
   font-family: var(--code-font-family);
   font-size: 0.82rem;
   min-width: 56px;
@@ -462,7 +447,7 @@
 }
 
 .ma-var-item span {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 0.75rem;
   flex: 1;
   line-height: 1.45;
@@ -473,7 +458,10 @@
   padding: 6px 10px 4px;
   margin-top: 4px;
   border-top: 1px solid var(--border-faint);
-  color: var(--text-dim);
+  /* --text-secondary, not --text-dim: this label sits on the popover's
+     `--bg-raised`, where the dim tokens fall below the surrounding app's own
+     contrast (pitfall #150). */
+  color: var(--text-secondary);
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;

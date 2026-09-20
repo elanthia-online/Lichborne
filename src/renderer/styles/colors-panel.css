@@ -1,0 +1,136 @@
+/* colors-panel.css — the Automations → Colors tab (F115, v0.19.8).
+
+   Layout comes from the shared .hp-* list/detail classes (highlights.css);
+   this file holds only what the tab adds. `clr-` is this tab's prefix alone
+   (checked unique — pitfall #55c). Swatch fills are the user's colors (data);
+   everything around them is theme vars, eyeballed on Classic Light. App chrome,
+   so rem sizing is deliberate. */
+
+/* Section labels inside the one sidebar listbox: small, uppercase, muted —
+   structure, not headers (UX #5). */
+.clr-group-label {
+  padding: 10px 12px 3px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.clr-group-label:first-child { padding-top: 4px; }
+
+/* Usage count beside a color. Rendered only when it's above zero (UX #1).
+   A hairline RING, not a tinted fill: any fill under the number lowers its
+   contrast (a 10% tint took Thief to 3.5:1), while the ring keeps the number
+   on the row's own background at --text-secondary. */
+.clr-count {
+  flex-shrink: 0;
+  min-width: 1.5em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 22%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  line-height: 1.3;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.clr-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.clr-hex {
+  width: 9em;
+  font-family: var(--code-font-family);
+}
+
+.clr-preview {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-app);
+}
+/* The fill is the user's color; its ink (black or white, whichever contrasts
+   more) is set inline by readableTextOn. A fixed white-with-halo read 2.25:1
+   on a mid orange, so the ink has to follow the data, not the theme. */
+.clr-preview-bg {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: var(--radius-sm);
+}
+.clr-preview-empty { color: var(--text-muted); font-style: italic; }
+
+/* A removed color stays readable so you can find it to restore it: italic under
+   its "Removed" heading, NOT the 45%-opacity disabled-rule look (measured ~2:1
+   on most themes). --text-secondary, because --text-muted on a SELECTED row
+   dropped to 2.5:1 on Thief. The swatch fades a little instead. */
+.clr-row--removed .hp-list-label { color: var(--text-secondary); font-style: italic; }
+.clr-row--removed .hp-list-swatch { opacity: 0.7; }
+
+.clr-readonly {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+}
+.clr-readonly-swatch {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 25%, transparent);
+}
+
+.clr-uses {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 14rem; /* the list is user data (pitfall #109) */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.clr-use {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.82rem;
+}
+.clr-use-kind {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+.clr-use-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.clr-use-fields {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+/* The empty-selection pane explains the tab in the first person it's for
+   (UX #8): a first-time user learns what a color is from here. */
+.clr-intro {
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 2.5rem;
+  text-align: center;
+  font-style: normal;
+  line-height: 1.5;
+}
+.clr-intro p { margin: 0; max-width: 34rem; }

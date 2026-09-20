@@ -11,6 +11,8 @@
 // `overrideColor` is how a line-scope highlight's text colour beats the
 // segment's preset colour — inline, colour ONLY, never the preset's background
 // or the segment's bold/links (the parameter comment has the full story).
+// `content` replaces the text inside that element: a line-scope EFFECT rides
+// an inner span there, so the segment keeps its own element.
 import type { TextSegment } from '../../shared/types'
 
 // v0.8.1 (F23): wrap external URLs in Simu's bounce page so the user gets
@@ -43,7 +45,14 @@ export function renderSegment(
   // are kept. Plain segments inherit the line container's color, so wrapping
   // them is just belt-and-suspenders.
   overrideColor?: string,
+  // What to render INSIDE the segment's element in place of its plain text —
+  // a line-scope highlight's effect span (renderSegmentFull). The effect has to
+  // go on an inner element, not this one: a colour-replacing effect clips its
+  // element's backgrounds to the glyphs, so here it would swallow a preset's
+  // background, and this element also carries the links.
+  content?: React.ReactNode,
 ): React.ReactNode {
+  const body = content ?? seg.text
   const preset = seg.preset ?? (seg.bold ? 'bold' : undefined)
   const fgColor = overrideColor ?? (seg.fg ? '#' + seg.fg : undefined)
   const style: React.CSSProperties | undefined =
@@ -62,7 +71,7 @@ export function renderSegment(
         style={style}
         onClick={() => window.api.openUrl(resolved)}
         title={webLinkSafety && resolved !== href ? `${href} (via Play.net bounce)` : href}
-      >{seg.text}</span>
+      >{body}</span>
     )
   }
 
@@ -75,15 +84,15 @@ export function renderSegment(
         data-preset={preset}
         style={style}
         onClick={() => onSendCommand(cmd)}
-      >{seg.text}</span>
+      >{body}</span>
     )
   }
 
   if (seg.bold) {
-    return <strong key={key} data-preset={preset} style={style}>{seg.text}</strong>
+    return <strong key={key} data-preset={preset} style={style}>{body}</strong>
   }
   if (preset || style) {
-    return <span key={key} data-preset={preset} style={style}>{seg.text}</span>
+    return <span key={key} data-preset={preset} style={style}>{body}</span>
   }
-  return seg.text
+  return content === undefined ? seg.text : <span key={key}>{content}</span>
 }

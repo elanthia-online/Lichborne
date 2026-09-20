@@ -49,9 +49,21 @@ export interface TriggerAction {
   command?: string
   delayMs?: number
   // echo
+  //
+  // The style fields mirror what a highlight and a contact template offer, so
+  // one vocabulary covers every place Lichborne paints text (F118). They are
+  // applied as the echoed line's LINE LAYER (B428), which is why there is no
+  // separate painter here: `renderHighlightedLine` already knows how to wear a
+  // background, colour and bold on the container and ride the effect on an
+  // inner span, and a word-scope highlight still composites on top.
   echoMessage?: string
   echoStream?: string
   echoColor?: string
+  echoBgColor?: string
+  echoBold?: boolean
+  echoEffect?: HighlightEffect
+  /** Effect colour, for the effects that take one (`FX_USES_COLOR`). */
+  echoGlowColor?: string
   // notify
   notifyTitle?: string
   notifyBody?: string
@@ -93,6 +105,9 @@ export interface TriggerRule {
 }
 
 import { scopedKey, safeSetItem } from './characterScope'
+import { FX_USES_COLOR, DEFAULT_FX_COLOR, type HighlightEffect } from './highlights'
+import { colorHex } from './colors'
+import type { LineStyleHint } from '../shared/types'
 
 const storageKey = (character: string) => scopedKey(character, 'triggers')
 
@@ -144,6 +159,54 @@ export function saveTriggers(character: string, rules: TriggerRule[]): boolean {
   return safeSetItem(storageKey(character), JSON.stringify(rules))
 }
 
+/**
+ * The echo's style as a line-style hint, or undefined when it has none.
+ *
+ * ONE builder, because the engine (at fire time, resolving `$vars`) and the
+ * editor's preview both need it — and two copies that agree today is exactly
+ * how a preview stops matching what the game paints (pitfall #127, B281).
+ * `resolve` is the caller's `$var` substitution; the preview passes identity.
+ *
+ * Returns undefined unless one of the fields ADDED in F118 is set, which keeps
+ * every older colour-only echo byte-identical: without a hint the colour still
+ * travels as the segment's own `fg`, so a line-scope highlight that matches the
+ * echoed line keeps winning the layer exactly as it did before.
+ */
+export function echoLineStyle(
+  a: TriggerAction,
+  resolve: (s: string) => string = s => s,
+): LineStyleHint | undefined {
+  // Every colour is resolved to a plain HEX, for two reasons.
+  //
+  // (1) It has to be valid CSS. The line layer's colour OVERRIDES the segment's
+  //     own `fg` (`renderSegment`: `overrideColor ?? seg.fg`), so an
+  //     unresolvable value here doesn't fall back — it wins, and paints nothing.
+  //     A `$var` holding a colour NAME is the reachable case.
+  // (2) It keeps an echo a SNAPSHOT, which is what it has always been and what
+  //     DESIGN §49 documents. A raw palette LINK in the layer would keep
+  //     re-colouring an already-printed line, so ticking Bold would silently
+  //     have changed whether your old echoes shift when you edit that colour.
+  const hex = (v: string | undefined) => (v ? colorHex(resolve(v)) ?? '' : '')
+  const bg = a.echoBgColor && a.echoBgColor !== 'transparent' ? hex(a.echoBgColor) : ''
+  const effect = a.echoEffect && a.echoEffect !== 'none' ? a.echoEffect : ''
+  if (!bg && !a.echoBold && !effect) return undefined
+  const color = hex(a.echoColor)
+  // An effect that needs an accent colour takes the one you set, else the
+  // echo's own colour (resolveEffect does that fallback), else the default the
+  // editor's swatch already advertises. Without that last step, picking Glow on
+  // an echo that has no colour of its own rendered NOTHING — the effect was
+  // selected, and silently did nothing (F118 bug check).
+  const glow = a.echoGlowColor ? hex(a.echoGlowColor)
+    : (effect && FX_USES_COLOR.has(effect) && !color ? DEFAULT_FX_COLOR : '')
+  return {
+    ...(color ? { color } : {}),
+    ...(bg ? { bgColor: bg } : {}),
+    ...(a.echoBold ? { bold: true } : {}),
+    ...(effect ? { effect } : {}),
+    ...(glow ? { glowColor: glow } : {}),
+  }
+}
+
 export function newTriggerAction(type: ActionType = 'command'): TriggerAction {
   return {
     id: crypto.randomUUID(),
@@ -153,6 +216,8 @@ export function newTriggerAction(type: ActionType = 'command'): TriggerAction {
     echoMessage: '',
     echoStream: 'log',
     echoColor: '',
+    echoBgColor: 'transparent',
+    echoBold: false,
     notifyTitle: 'Lichborne',
     notifyBody: '$line',
     soundPreset: 'chime',

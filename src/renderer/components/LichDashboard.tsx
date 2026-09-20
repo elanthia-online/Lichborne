@@ -1716,22 +1716,29 @@ export default function LichDashboard({ session, initialTab = 'scripts', onClose
         aria-labelledby={titleId}
       >
 
-        {/* Header — the title, pill and tabs wrap inside .lp-header-main so the
-            ✕ beside it is never pushed off-screen (B373). */}
-        <div className="lp-header">
-          <div className="lp-header-main">
-            <span className="lp-title" id={titleId}>Lich Dashboard</span>
-            {session.useLich && <SessionPill lichPath={lichPath} session={session} />}
-            <div className="ui-tabs ld-tab-nav" role="tablist" aria-label="Lich Dashboard sections">
-              {TABS.map(t => (
-                <button key={t.id} type="button" role="tab" aria-selected={tab === t.id}
-                  className={`ui-tab${tab === t.id ? ' ui-tab--active' : ''}`}
-                  title={t.title}
-                  onClick={() => { if (t.id !== tab) unsaved.guard(() => setTab(t.id)) }}>{t.label}</button>
-              ))}
-            </div>
-          </div>
+        {/* Header — identity and dismiss ONLY. What qualifies the whole dialog
+            (which Lich session this is) stays up here; navigation moved to its
+            own row below, the Theme Editor's shape. That is also what retires
+            B373's `.lp-header-main`: the ✕ was being crowded because the title,
+            pill and five tab chips shared one line, and it now shares that line
+            with just the title and the pill. `ui-modal-head > .ui-close` carries
+            the `margin-left: auto` the wrapper's `flex: 1 1 auto` used to supply
+            — don't drop back to a bare `.lp-header` without it. */}
+        <div className="ui-modal-head">
+          <span className="ui-modal-title" id={titleId}>Lich Dashboard</span>
+          {session.useLich && <SessionPill lichPath={lichPath} session={session} />}
           <button type="button" className="ui-close" onClick={requestClose} title="Close" aria-label="Close">✕</button>
+        </div>
+
+        {/* Navigation — a quiet row on the body surface, never inside the accent
+            band (UX #10: only the top-level header is accent). */}
+        <div className="ui-tabs ld-tab-nav" role="tablist" aria-label="Lich Dashboard sections">
+          {TABS.map(t => (
+            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id}
+              className={`ui-tab${tab === t.id ? ' ui-tab--active' : ''}`}
+              title={t.title}
+              onClick={() => { if (t.id !== tab) unsaved.guard(() => setTab(t.id)) }}>{t.label}</button>
+          ))}
         </div>
 
         {/* Body — each tab manages its own scroll */}

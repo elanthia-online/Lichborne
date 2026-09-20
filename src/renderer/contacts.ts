@@ -41,6 +41,12 @@ export interface ContactTemplate {
   // name"). Undefined === none, so existing templates load unchanged.
   tagEffect?: import('./highlights').HighlightEffect
   tagGlowColor?: string
+  /**
+   * Bold on the TAG, independent of the name's — the tag had colour, background
+   * and an effect but no weight, so "[Enemy]" could not be made to stand out the
+   * way the name could. Optional, so existing templates load unchanged.
+   */
+  tagBold?: boolean
 }
 
 export interface Contact {
@@ -117,6 +123,7 @@ function normalizeTemplate(t: Partial<ContactTemplate> & { id: string; name: str
     glowColor:  t.glowColor,
     tagEffect:    t.tagEffect,
     tagGlowColor: t.tagGlowColor,
+    tagBold:      t.tagBold,
     textColor:  t.textColor  || '#C8C8C8',
     bgColor:    t.bgColor    || 'transparent',
     bold:       t.bold       ?? false,
