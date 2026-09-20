@@ -325,3 +325,374 @@ textarea.ui-field { resize: vertical; line-height: 1.45; }
 /* The row ✕ in the rule / contact lists is hover-revealed; it must ALSO show
    when it has keyboard focus, or Tab lands on an invisible control (B370). */
 .list-item-delete:focus-visible { opacity: 1; }
+
+/* ── Menus (B456, v0.19.8) ───────────────────────────────────────────────────
+   ONE recipe for a popover menu opened from a DIALOG. There were four —
+   GroupPicker's, the Macros "$" picker's, ColorField's and the Automations ⋯ —
+   all at z 450, all rem-sized, differing only by drift.
+
+   THE LINE THIS DRAWS IS rem VS em, and it is not cosmetic. A menu opened from
+   GAME-AREA chrome must scale with Settings → Font Size (Principle #9, pitfall
+   #45), so `.app-bar-more-item`, `.ctx-menu-item`, `.ms-item`,
+   `.panel-add-item`, `.exp-picker-option` and the slash palette are em-sized
+   and MUST NOT take these classes. `.panel-add-item` was converted rem→em as a
+   BUG FIX (B290); giving it these would re-open that bug. The convertible set
+   is exactly the z-450 dialog-popover tier (pitfall #118d).
+
+   COMPOSE, DON'T REPLACE — a host keeps its own class alongside
+   (`class="ui-menu-item gp-menu-item"`). Two of the four use their class as a
+   `querySelectorAll` hook for ↑/↓ roving focus, and one styles its children
+   through `.ma-var-item code` / `span`; swapping the class out would silently
+   kill keyboard navigation and child styling with nothing to catch it. ui.css
+   loads first, so a host's equal-specificity rule REFINES these (pitfall #144)
+   — keep only what genuinely differs there, and never restate a value these
+   already set (pitfall #113). */
+.ui-menu {
+  position: fixed;
+  z-index: 450;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--popover-shadow);
+  padding: 3px 0;
+  /* The pitfall #109 ceiling for when a host cannot measure; hosts that do
+     measure set a tighter inline max-height per open. */
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* `min-width` is deliberately NOT here. Each menu's is its own number, and the
+   Automations ⋯ mirrors its 250px in JS to place itself before it renders — a
+   shared default would widen the others and bury that coupling. */
+
+.ui-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 10px;
+  /* Transparent at rest so `--on`'s border-color costs no layout. Without it
+     every selected row grows 2px and the list jitters as selection moves. */
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.82rem;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--ui-transition);
+}
+
+/* The `:not(--on)` guard belongs in the BASE, never bolted on later: an
+   unqualified `:hover` outranks a state class and replaces it under the cursor
+   — pitfall #107, which has shipped in this codebase three separate times
+   (B340). `--modal-ctl-hover` is the translucent control hover, correct on a
+   dialog surface; `--bg-hover` is an opaque per-theme hex meant for the app
+   background, and three of these menus were using it. */
+.ui-menu-item:not(.ui-menu-item--on):hover,
+.ui-menu-item:not(.ui-menu-item--on):focus-visible {
+  background: var(--modal-ctl-hover);
+  color: var(--text-primary);
+}
+
+/* Selected / checked / active — one expression for what used to be three. */
+.ui-menu-item--on {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--text-primary);
+}
+
+/* Macros "$" rows only: baseline, not centre, so a token whose description
+   wraps to two lines shares a baseline with its FIRST line, instead of the
+   whole two-line block floating centred against a one-line token. */
+.ui-menu-item--baseline { align-items: baseline; }
+
+/* Automations ⋯ only — its width is mirrored by a JS constant, so its rows
+   must not wrap. */
+.ui-menu-item--nowrap { white-space: nowrap; }
+
+/* A fixed LEADING gutter for a ✓, so every row's label starts at the same x
+   whether or not one is ticked. `text-align: center` is not decoration: a ✓ is
+   ~7.7px of ink in an 11.8px box, so left-aligned it sits ~2px off centre and
+   leaves dead space before the gap, making one row read 12px where its
+   neighbour reads 8. */
+/* NOT bare `var(--accent)`: on Barbarian that is 1.83:1 on this surface, and
+   in the ⋯ menu's checkbox row the ✓ is the ONLY visual on/off cue (the row
+   carries no `--on`), so the state simply disappears. 60% toward
+   `--text-primary` is the house glyph ratio — the rule is stated forty lines
+   below for the colour field, and this primitive has to follow it too or every
+   menu that adopts a ✓ gutter inherits the weakness. */
+.ui-menu-mark {
+  flex: none;
+  width: 0.9em;
+  text-align: center;
+  color: color-mix(in srgb, var(--accent) 60%, var(--text-primary));
+}
+
+/* No `--danger`, no `--disabled`: nothing in the convertible set has either.
+   The one menu with a disabled row is `.ctx-menu-item`, which is game-tier and
+   out of scope, and destructive actions go through `ui-btn--danger` or a
+   confirm. If a disabled state is ever needed, match `.ui-btn:disabled`'s 0.55
+   (not game.css's 0.5) and add `:not(:disabled)` to the hover in the SAME edit.
+   Retrofitting that guard later is the pitfall #107 shape above. */
+
+/* ── Color field (F115, v0.19.8) ──────────────────────────────────────────────
+   ColorField.tsx: the one color control for rule editors. A swatch that opens
+   the popover, then either the free-text box or — when the field is LINKED to
+   one of your colors — a chip with the color's name. The swatch and the dots
+   show USER colors, so their fills are data, not theme (Principle #4's data
+   exception); every frame, label and hover around them is theme vars.
+
+   Contrast was MEASURED on all 20 themes plus high contrast (v0.19.8). Three
+   rules came out of it:
+   - The popover and suggestion list sit on --bg-raised, which on light
+     themes is lighter than the dialog, so --text-dim / --text-muted labels
+     fall below the rest of the app there. Labels inside them use
+     --text-secondary.
+   - Anything drawn in the ACCENT (the link glyph, the chosen "none") mixes the
+     accent toward --text-primary: a theme accent can be dark on a dark
+     background (Barbarian's measured 1.9:1) and still work as a border.
+   - Carets are controls, so they use --text-secondary, not --text-muted. */
+.ui-color {
+  display: inline-flex;
+  /* stretch, so the swatch is exactly as tall as the text box beside it */
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+}
+.ui-color-swatch {
+  width: 28px;
+  min-height: 26px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--modal-input-bg);
+  cursor: pointer;
+}
+.ui-color-swatch:hover { border-color: var(--accent-dim); }
+/* "No color" reads as a checkerboard, like an empty layer in a paint program. */
+.ui-color-swatch--none {
+  background-image:
+    linear-gradient(45deg, var(--border) 25%, transparent 25%, transparent 75%, var(--border) 75%),
+    linear-gradient(45deg, var(--border) 25%, transparent 25%, transparent 75%, var(--border) 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 4px 4px;
+}
+.ui-color-text { width: 9.5em; }
+/* The text box and its ▾ read as ONE control: square inner corners, a shared
+   border, and the ▾ taking the focus border too. */
+.ui-color-combo {
+  display: inline-flex;
+  align-items: stretch;
+  min-width: 0;
+}
+.ui-color-combo .ui-color-text {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.ui-color-drop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--modal-input-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.ui-color-drop:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 8%, var(--modal-input-bg)); }
+.ui-color-combo:focus-within .ui-color-drop { border-color: var(--accent-dim); }
+.ui-color-caret { width: 10px; height: 10px; flex-shrink: 0; }
+.ui-color-chip {
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 15em;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--modal-input-bg));
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.82rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.ui-color-chip:hover { border-color: var(--accent); }
+.ui-color-chip svg { width: 12px; height: 12px; flex-shrink: 0; color: color-mix(in srgb, var(--accent) 60%, var(--text-primary)); }
+.ui-color-chip .ui-color-caret { width: 9px; height: 9px; margin-left: 1px; color: var(--text-secondary); }
+.ui-color-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Linked to a color that was removed or deleted: it still shows, so it still
+   works — the dashed edge says it no longer follows anything you can edit. */
+.ui-color-chip--stale {
+  border-style: dashed;
+  border-color: var(--border);
+  background: var(--modal-input-bg);
+  color: var(--text-secondary);
+}
+.ui-color-chip--stale svg { color: var(--text-secondary); }
+
+/* Composes `ui-menu` for position / tier / surface / scrolling. It is the one
+   member of that set that is not really a row list — it is a `role="dialog"`
+   holding a label, a list, a swatch grid, actions and a save form — so it keeps
+   its own width, padding, radius, gap and type. */
+.ui-color-menu {
+  width: 272px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  font-size: var(--modal-text-size);
+  color: var(--text-secondary);
+}
+/* --text-dim reads ~2.6:1 on --bg-raised on the light themes (see the rules above). */
+.ui-color-menu .ui-section-label { color: var(--text-secondary); }
+.ui-color-options { display: flex; flex-direction: column; gap: 1px; }
+/* Composes `ui-menu-item`. The tighter padding and line-height are a real
+   difference, not drift: this is a long scrolling list of colours, where the
+   ⋯ and group menus are short action lists. `--on` comes from the primitive. */
+.ui-color-option {
+  padding: 4px 6px;
+  line-height: 1.2;
+}
+.ui-color-option-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-color-dot {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  /* A hairline from the text color, so a dot the same shade as the surface
+     keeps its edge on any theme. */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 25%, transparent);
+}
+.ui-color-builtins {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+}
+.ui-color-builtin {
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 22%, transparent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+/* Mixed toward --text-primary for the same reason as the ✓ above: bare accent
+   measured 1.83:1 selected and 1.19:1 hovered on Barbarian, so NEITHER state
+   was visible inside the grid — and an outline round a coloured swatch has no
+   other cue to fall back on. */
+.ui-color-builtin:not(.ui-color-builtin--on):hover {
+  outline: 2px solid color-mix(in srgb, var(--accent-dim) 60%, var(--text-primary));
+  outline-offset: 1px;
+}
+.ui-color-builtin--on {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, var(--text-primary));
+  outline-offset: 1px;
+}
+.ui-color-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ui-color-actions { padding-top: 6px; border-top: 1px solid var(--modal-foot-border); }
+.ui-color-custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.ui-color-custom input[type="color"] {
+  width: 32px;
+  height: 24px;
+  padding: 1px 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--modal-input-bg);
+  cursor: pointer;
+}
+/* Text, so a stronger pull toward --text-primary than the 60% glyphs use. */
+.ui-color-none--on { color: color-mix(in srgb, var(--accent) 40%, var(--text-primary)); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.ui-color-save { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; border-top: 1px solid var(--modal-foot-border); }
+.ui-color-save-name { flex: 1; min-width: 0; }
+.ui-color-error {
+  font-size: var(--modal-hint-size);
+  color: color-mix(in srgb, var(--color-danger) 70%, var(--text-primary));
+}
+
+/* Type-ahead under the text box. The highlighted row follows the mouse and the
+   arrow keys through one state (activeIdx), so there is no separate :hover
+   rule to fight the active one (pitfall #107). Portaled at the popover tier. */
+.ui-color-suggest {
+  position: fixed;
+  z-index: 450;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 240px; /* at most 8 rows (pitfall #109) */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--popover-shadow);
+  font-size: var(--modal-text-size);
+}
+.ui-color-suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.25;
+  cursor: pointer;
+}
+.ui-color-suggest-item--on {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text-primary);
+}
+.ui-color-suggest-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  padding-left: 10px;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+.ui-color-suggest-item--on .ui-color-suggest-kind { color: var(--text-primary); }
+.ui-color-suggest-kind svg { width: 10px; height: 10px; color: color-mix(in srgb, var(--accent) 60%, var(--text-primary)); }
+
+/* ── Preview chip ────────────────────────────────────────────────────────────
+   A small "this is what it will look like" sample, on the GAME background so it
+   reads as it will in play. It hugs its content rather than stretching its row:
+   a mostly-empty chip reads as a text field.
+
+   Deliberately sets CHROME only — no font-size or line-height. A preview is
+   usually also a `.text-line`, and game.css loads after this base layer
+   (pitfall #144), so those would lose the tie anyway; letting the game's own
+   type through is what makes the sample faithful.
+
+   The Contacts template preview (`.cp-tpl-preview`) is this same recipe and
+   predates it; fold it in next time that file is touched. The Highlights
+   editor's `.hp-preview-box` is deliberately NOT this — it is a roomy box for a
+   full sample line, not a chip. */
+.ui-preview {
+  align-self: start;
+  display: inline-block;
+  max-width: 100%;
+  padding: 4px 8px;
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}

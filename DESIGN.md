@@ -854,7 +854,7 @@ Font settings work at two levels: **global defaults** and **per-panel overrides*
 - Default font: **Cascadia Code (key: `cascadia`), 12px, Compact (1.2) line height** (v0.7.1, B93). Cascadia Code ships with weights 200/300/350/400/500/600/700 — critically, real `500` and `600` faces — so the codebase's intermediate-weight emphasis (hands HUD, status bars, panel tabs, character tabs, vitals, game `<bold>`) actually renders at its intended weight instead of falling back to full bold 700 on a two-weight font like Consolas. The previous default (`'Consolas'` literal name) collapsed every `font-weight: 600` declaration to 700 and read as "everything is too bold." Players who explicitly chose Consolas (or any other font) keep their choice through profile load — only fresh installs / unset characters get the new default.
 - **Player-facing weight emphasis** (v0.7.1, B93): game `<bold>` and `<roomname>` use `font-weight: 600` (real semibold on Cascadia, falls back to 700 on Consolas — no regression for opt-in Consolas users). Hand-held / spell-active items use color-only emphasis — no weight bump — so picking something up doesn't snap the HUD from 400 straight to 700. Other 600/700 chrome (status bars, vitals labels, toolbar title, panel tabs, character tabs) was inventoried but left as-is; can be dialled back further if testers find it heavy now that the font default changed.
 - Font family propagates globally via `body { font-family: var(--game-font-family) }` — all panels inherit it automatically.
-- Font size and line height propagate to all game content panels via CSS vars `--game-font-size` and `--game-line-height` anchored on each content container: main text window (`.text-line`), stream panels, room panel, exp panel, injuries panel, panel tab labels, the **icon bar** (hands/spell/stance + the Mode button), the **vitals bar** (regular + compact), and the built-in **Lich Scripts panel** (`.sl-panel`). Child elements use `em` units so they scale proportionally with the container font size. **The anchor is per-container, not inherited from a single wrapper** — `.panel-frame-tabs` anchors only the tab labels and `.panel-frame-body` has no font anchor, so each panel-type root must set `var(--panel-font-size, var(--game-font-size))` itself (v0.10.0 brought the icon/vitals bars + Lich Scripts panel into this; the Lich **Dashboard modal** deliberately stays fixed-size like other modals). See CLAUDE.md Principle #9 + pitfall #58, incl. the `em`-is-relative-to-own-font-size trap.
+- Font size and line height propagate to all game content panels via CSS vars `--game-font-size` and `--game-line-height` anchored on each content container: main text window (`.text-line`), stream panels, room panel, exp panel, injuries panel, panel tab labels, the **icon bar** (hands/spell/stance + the Mode button), the **vitals bar** (regular + compact), and the built-in **Lich Scripts panel** (`.sl-panel`). Child elements use `em` units so they scale proportionally with the container font size. **The anchor is per-container, not inherited from a single wrapper** — `.panel-frame-tabs` anchors only the tab labels and `.panel-frame-body` has no font anchor, so each panel-type root must set `var(--panel-font-size, var(--game-font-size))` itself (v0.10.0 brought the icon/vitals bars + Lich Scripts panel into this; the Lich **Dashboard modal** deliberately stays fixed-size like other modals). See CLAUDE.md Principle #9 + pitfall #58, incl. the `em`-is-relative-to-own-font-size trap. **Font size and line height are SEPARATE anchors — setting one does not bring the other (B452, v0.19.8).** The exp panel, the injuries panel, the compact exp view and the Lich Scripts panel each anchored `font-size` and declared no `line-height`, so they inherited `body`'s 1.5: at the shipped default of 1.2 their rows sat about 25% taller than the stream panel beside them, Compact and Double did nothing in them, and **Large Print — which forces 1.8 — never reached them either**, which makes it an accessibility gap rather than a cosmetic one. This paragraph claimed both propagated from v0.10.0; only the font half was true, and the code won (Iron rule). A panel root needs `line-height: var(--game-line-height)` alongside its font anchor.
 
 **Per-panel overrides:**
 Every panel can have its own font family, size, and line height set independently. Right-click a panel header → Panel Settings → Font. Common uses:
@@ -2259,13 +2259,24 @@ Invalid regex patterns are flagged in the editor and skipped at runtime — they
 | Foreground color | Any hex color, or null (inherit from theme) |
 | Background color | Any hex color, or null (transparent) |
 | Bold | Boolean |
+| Text effect | None, Glow, Shimmer, Rainbow, Pulse, Gold, Gradient, Fire, Frost, Neon, Wave, Bounce (v0.17.3; the legacy `glow` boolean folds in as Glow) |
 | Sound | Path to a `.wav` file; null for none |
 
 ### 14.5 Overlap Resolution
 
-When two inline rules match overlapping portions of the same text, the **shortest match wins** (most specific). This avoids manual priority management — a tight pattern like `Sekmeht` always wins over a broad pattern like `.+` covering the same characters.
+When two inline rules match overlapping portions of the same text, the **shortest match wins** (most specific). This avoids manual priority management — a tight pattern like `Sekmeht` always wins over a broad pattern like `.+` covering the same characters. Resolution is **per property**: text colour, background, bold and effect are each taken from the most specific rule that sets that property.
 
-For whole-line rules, the **first matching rule in drag order wins**.
+For whole-line rules, the **first matching rule in list order wins** (there is no reorder UI, v0.11.3).
+
+**A whole-line rule is the widest LAYER of that same compositing, not a separate style (B428, v0.19.8).** Its background, text colour and bold go on the line container. Its effect paints every run that no inline rule gives an effect of its own, so a line can shimmer while one word in it burns with Fire. For each property an inline rule does not set, the line rule supplies it. That includes the effect: an inline word with a colour but no effect wears the line's effect in its own colour, which is the same thing a broad inline phrase already did to a word inside it. Contacts still outrank both. Before v0.19.8 the game window applied only a line rule's colour and background (and the legacy Glow), so every other line effect, and line Bold, never rendered in play. The editor preview had its own copy of the logic and did show them. The preview now renders through the game's own `renderHighlightedLine`, so it can't disagree again.
+
+Three rendering rules make the layering hold:
+
+- **The line effect goes on an element INSIDE each segment's own element, never on the line container.** On the container, an opacity pulse or brightness filter would reach every word inside it, and a clip-text effect would swallow the line's background. The segment element keeps its preset styling, preset background and links.
+- **Per-letter effects (Wave, Bounce) group each word's letters in a `nowrap` span.** The letters are inline-blocks, and Chromium breaks lines between inline-blocks, so an ungrouped waving line wrapped mid-word (measured in Electron 43).
+- **The per-letter stagger counts from the start of the LINE and is taken modulo the cycle** (`calc(mod(var(--i) * step, cycle) - cycle)`). The phase is the same as a plain `--i * step` delay, but the animation starts at once. With a plain delay, the far end of a long line stood still for several seconds.
+
+Known limit: a gradient effect restarts in each segment or run, so a line split by a word highlight shows two sweeps. Keeping one continuous gradient would mean putting the effect on a shared parent, which breaks the first rule above.
 
 ### 14.6 Groups
 
@@ -2382,6 +2393,64 @@ Destination:  [main ▼]   or type a stream name: [____________]
 ```
 
 `main` is the default. If the player types a new name, it becomes a discoverable stream automatically on first fire.
+
+### 14.10b Echo styling (F118, v0.19.8)
+
+The Echo action carries the same styling vocabulary a highlight and a contact
+template do — **colour, background, bold, a text effect and its effect colour**
+— so the line a trigger writes for you can be made to stand out the way
+everything else Lichborne paints can. `TriggerAction` gains `echoBgColor`,
+`echoBold`, `echoEffect` and `echoGlowColor` beside the existing `echoColor`;
+all optional, and `loadTriggers` returns parsed JSON verbatim (no rebuild), so
+older triggers load unchanged and there is no profile-shape change.
+
+**There is no new painter, and that is the design.** The style is applied as the
+echoed line's **line layer** — the widest layer of the §14 compositing model —
+through `lineLayerFromHint`, the sibling of `resolveLineLayer` that B428 built.
+Everything below that point is shared verbatim, so an echo gets the correct
+behaviour for free: background/colour/bold on the line container, the effect on
+an inner span (pitfall #148), and word-scope highlights and contacts
+compositing on top exactly as they do over a line rule.
+
+It travels on `TextLine.fx`, a new optional `LineStyleHint` in
+[types.ts](src/shared/types.ts). Its `effect` is typed as a plain `string`
+there because that module is shared with MAIN, which must not import the
+renderer's `HighlightEffect` union; the renderer narrows it in one place, and an
+unrecognised value resolves to no effect rather than throwing, so a hand-edited
+profile cannot break a render.
+
+**Backward compatibility is the careful part.** The hint is emitted ONLY when
+one of the new fields is set. A pre-F118 echo — colour only — therefore produces
+no hint at all: its colour still travels as the segment's own `fg`, and a
+line-scope highlight that matches the echoed line keeps winning the layer
+exactly as it did before. Once an echo carries its own styling it takes that
+slot instead, on the grounds that it was authored for that one message where a
+line rule is generic. Word highlights composite on top either way.
+
+**A PAINTED effect stays continuous across a split line (B443 → B444).** The
+six `colorReplacing` effects clip a gradient to the glyphs, and a background
+belongs to one element — so a line cut into runs by a word highlight or a
+contact used to give every run its own copy of the gradient, scaled to its own
+width. A short word squeezed the whole ramp into a few characters while a long
+run spread it out: patchy colour, an effect that seemed to apply in random
+places, and bold appearing to disable it (bold only changed the glyph widths).
+The first fix kept a painted echo UNSPLIT; it was superseded in the same release
+by the real one — every run of a split line now shares one line-wide gradient and
+offsets into it by its own position (§14, B444) — so the suppression was dropped
+and echoes get word highlights and contacts back.
+
+`echoLineStyle` ([triggers.ts](src/renderer/triggers.ts)) is the ONE builder:
+the engine calls it at fire time with a `$var` resolver, and the editor's
+preview calls it with identity. The preview itself renders through
+`renderHighlightedLine`, the same top-level function the game window's rows
+call — sharing helpers is not sharing a renderer (pitfall #127, B281, B428).
+
+**No slash command, by decision** (Principle #11). Echo actions are created and
+edited only in the Triggers panel — the `/trigger` quick-form deliberately
+covers just the pattern and a command action, with gates and multi-action
+editor-only, and styling belongs on that same side of the line. The action
+SUMMARY does name every style it applies, because that list is user-facing
+documentation.
 
 ### 14.11 Eval Trigger Variables
 
@@ -2825,14 +2894,20 @@ Toolbar (final):
 Lichborne · status · Debug · Panels · Contacts · Automations · [Hunting ▾] · Theme · Settings · Disconnect
 ```
 
-Inside the Automations panel — Contacts-style header with tabs on the right:
+Inside the Automations panel — an identity band, then a sub-bar carrying the navigation and the
+one control that qualifies it (the two-row rule is §43.8):
 
 ```
-┌─ Automations ─────────────── [ Highlights | Triggers | Macros | Aliases | Groups & Modes ]  ✕ ─┐
-│                                                                                                  │
-│  (selected tab content — same sidebar+detail layout as standalone panels)                        │
-└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Automations ─────────────────────────────────────────────────────────────────────  ⋯   ✕ ─┐
+│ (Highlights) Triggers Macros Aliases Mutes Substitutes Groups Colors                        │
+│                                            APPLIES TO  [ This character | All characters ]  │
+├─────────────────────────────────────────────────────────────────────────────────────────────┤
+│  (selected tab content — same sidebar+detail layout as standalone panels)                   │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+The ⋯ holds the two controls that are not navigation: the Automation Analytics master toggle
+(§36) and "Import from another client…" (§29). It wears an accent dot while Analytics is on.
 
 Each rule tab is the full editor for that system — identical to the standalone Highlights/Triggers/Macros panels today, plus the group filter strip and group picker field added.
 
@@ -5266,14 +5341,15 @@ Release C shipped the Active Scripts Panel and Script Palette as standalone surf
 
 ### 27.2 Lich Dashboard — Shell
 
-A single modal opened by a **"Lich"** toolbar button (between Automations and Theme). Four tabs:
+A single modal opened by a **"Lich"** toolbar button (between Automations and Theme). Five tabs,
+on their own row beneath the identity band (§43.8):
 
 ```
-┌─ Lich Dashboard ─────────────────────────────────────────────── ✕ ─┐
-│  [ Scripts ]  [ Variables ]  [ Profiles ]  [ Settings ]            │
-├────────────────────────────────────────────────────────────────────┤
-│  (active tab content)                                              │
-└────────────────────────────────────────────────────────────────────┘
+┌─ Lich Dashboard    ● Sekmeht · DR ─────────────────────────────── ✕ ─┐
+│ (Scripts) Variables  DR Infomon  Settings  Profile (YAMLs)           │
+├──────────────────────────────────────────────────────────────────────┤
+│  (active tab content)                                                │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 **Session awareness badge** — when `session_summary_state` contains more than one non-exited row, a subtle counter appears in the modal header:
@@ -5281,6 +5357,9 @@ A single modal opened by a **"Lich"** toolbar button (between Automations and Th
 ```
 ┌─ Lich Dashboard ───────────────────── 2 sessions active ────── ✕ ─┐
 ```
+
+(The pill sits in the identity band because it describes the whole dialog rather than the
+current tab — §43.8's placement rule.)
 
 The main toolbar "Lich" button gets a small unread-style dot badge when multiple sessions are detected, consistent with the existing tab unread indicator pattern. Single session or empty table — nothing shown anywhere.
 
@@ -5778,7 +5857,7 @@ A tester logs in, plays for an hour, opens the modal, sees their session, scroll
 
 The Automations Export/Import (F29, in the Automations panel) only carried rules + a layout snapshot and imported into the *current* character. JadedSoul runs a couple dozen characters and wanted to configure one nicely — panel sizes/placements, which streams are added, fonts, theme, accessibility — and propagate that whole setup to the rest. Profile Transfer is the platform-wide superset: capture (selectively) **everything in a character's profile** and fan an import out to **many already-added characters at once**.
 
-**Consolidation (v0.10.0):** because Transfer is a strict superset of the Lichborne→Lichborne Automations export, that export was removed and the ImportWizard's "Lichborne" source card was removed — Transfer is now the single Lichborne↔Lichborne path. The Automations panel keeps only the **"Import from another client…"** button (Wrayth/Genie/Frostbite legacy migration, which Transfer does not cover). The single-theme share (ThemePicker) and Session-Log export are unaffected — different granularity / domain.
+**Consolidation (v0.10.0):** because Transfer is a strict superset of the Lichborne→Lichborne Automations export, that export was removed and the ImportWizard's "Lichborne" source card was removed — Transfer is now the single Lichborne↔Lichborne path. The Automations panel keeps only the **"Import from another client…"** entry (Wrayth/Genie/Frostbite legacy migration, which Transfer does not cover) — a visible header button until v0.19.8, a row in the header's ⋯ menu since (§43.8). The single-theme share (ThemePicker) and Session-Log export are unaffected — different granularity / domain.
 
 ### 29.2 Surface
 
@@ -8057,7 +8136,7 @@ real wrapping; a generous estimate just means generous spacing. Emote captions s
 
 A **self-tuning** layer over the player's OWN native automations (highlights, triggers, macros, aliases, mutes, substitutes). Pure display/configuration tooling — Profanity's "delegate to Lich" line doesn't apply because this analyzes *Lichborne's* native rules, not Lich scripts. The motivation: real rulesets bloat over months (especially from imports — Wrayth+Genie can produce thousands of near-identical highlights), and no DR front-end lets you see *what's firing a ton, what never fires, what's broken/duplicate*. (Sekmeht had duplicate highlights he never knew about; JadedSoul hit 3436 from a double import.)
 
-**Master toggle — app-wide, OFF by default.** One preference (`SharedProfile.automationAnalytics`, the `bulkConnectSeparateWindows` pattern). Off → no runtime tracking (zero added per-line cost, §-perf / pitfall #82) and the analytics UI is hidden. The toggle lives in the **Automations panel header** ("📊 Analytics: On/Off"); toggling dispatches a `lichborne:analytics-changed` DOM event so every GameWindow's `analyticsEnabledRef` re-reads (a cross-window `storage` event never fires in the writing window).
+**Master toggle — app-wide, OFF by default.** One preference (`SharedProfile.automationAnalytics`, the `bulkConnectSeparateWindows` pattern). Off → no runtime tracking (zero added per-line cost, §-perf / pitfall #82) and the analytics UI is hidden. The toggle lives in the **Automations panel header's ⋯ menu** — a visible "📊 Analytics: On/Off" button until v0.19.8, when it moved behind the ⋯ with the other non-navigation control (see §43.8); the ⋯ wears an accent dot while it is on, so the mode is still visible without spending a permanent chip on the word "Off". Toggling dispatches a `lichborne:analytics-changed` DOM event so every GameWindow's `analyticsEnabledRef` re-reads (a cross-window `storage` event never fires in the writing window).
 
 **Two layers.**
 - **Static health (free, on-demand, no persistence)** — [automationHealth.ts](src/renderer/automationHealth.ts) pure analyzers per type, reusing the existing `buildXRegex` compilers so *broken* = "won't compile / can never fire":
@@ -8097,7 +8176,7 @@ Every sibling client owns a client-command prefix — Lich `;`, Genie `#`, Profa
   1. **CURATED** — Lichborne's promoted 16 (red, green, blue, yellow, orange, purple, pink, cyan, teal, gold, white, black, gray/grey, brown, magenta, lime), hand-tuned for READABILITY on game backgrounds (our `red` is `#ff5050`, not CSS's harsh `#ff0000`). These are what `/colors` lists and the palette's color chips offer.
   2. **CUSTOM** — user-defined via **`/colors add "ember" #ff6a30`** / `/colors remove` (value must be `#hex`; names one word, 3–20 chars, can't shadow a curated name; re-adding updates in place). App-wide (a color vocabulary is shared, like themes): `lichborne.customColors` localStorage + `SharedProfile.customColors` → `_shared.yaml` (optional field — non-breaking). Customs MAY shadow web names.
   3. **WEB** — the full standard CSS/web set (~148 names, `WEB_COLORS`) accepted as input everywhere but not listed (a wall). **This is GENIE'S vocabulary** (its `ColorCode.cs` accepts every .NET KnownColor web name — verified 2026-07-04; Frostbite is picker-only, Profanity terminal-ids-only), so DR muscle memory like `Lime`/`DodgerBlue` just works.
-  **Resolution is AT ENTRY (store hex), not live references** — a rule/theme stores the hex the name resolved to when typed; editing or removing a named color later does NOT retro-update existing rules (the `/colors add` update message says so). Live palette references (edit-propagates) were considered and deferred — a much bigger change (every render path + Transfer coupling); revisit only on tester demand.
+  **Resolution is AT ENTRY (store hex), not live references** — a rule/theme stores the hex the name resolved to when typed; editing or removing a named color later does NOT retro-update existing rules (the `/colors add` update message says so). Live palette references (edit-propagates) were considered and deferred — a much bigger change (every render path + Transfer coupling); revisit only on tester demand. **SUPERSEDED for YOUR colors in v0.19.8 (F115, §49):** the tester demand came, and a custom color now LINKS (`var(--lb-color-<id>, #fallback)`), which turned out to need no render-path change at all. Built-in and web names, and themes, still store hex exactly as described here.
   **Where names are accepted (Phase B):** every slash color slot; the **free-text color fields** every editor already pairs with its picker (Highlights ×3, Contact templates ×4, Groups ×1, Trigger echo ×1) via `normalizeColorInput` **on BLUR** (never on change — typing "red…" must not hijack "rebeccapurple"; each field carries the `COLOR_INPUT_TITLE` tooltip); and the **Theme Editor**'s text field (draft + commit-on-blur/Enter; live `#hex` typing still applies immediately; **theme vars always STORE hex** — a theme must never depend on the palette existing). The pickers themselves are unchanged.
   **Theme contrast for swatch text:** anywhere a color name is drawn IN its own color (`/colors` rows, palette chips), `contrastBackingFor(hex, surfaceVar)` adds a neutral backing chip when the color's luminance sits within 0.18 of the live surface's (`--bg-app` for game-window rows, `--bg-raised` for the popover) — so `black` stays readable on dark themes and `white`/`ivory` on light ones, while most colors render bare. Solved with per-segment data (`TextSegment.bg` / inline chip bg), not CSS — the colors are USER data, not theme vars. Any future surface drawing user colors as text should call the same helper.
 - **Quoting** — `"..."` with `\"` escape; single-word args can go bare.
@@ -8225,8 +8304,10 @@ newly-focused input, so there is no preventDefault and no manual insertion, and 
 focused button no longer clicks it (button activation fires on keyup, which now targets the input).
 Guards, all load-bearing: no Ctrl/Alt/Meta chords; `e.key.length === 1` only; never while ANY text
 field / select / contentEditable has focus (editor fields keep their keystrokes); never while a
-modal is open (reuses the macro guard's `anyModalOpenRef` — whose missing `showMapOverlay` /
-`showLichDash` deps were found and fixed in the same pass); never mid-IME (`e.isComposing`); never
+modal is open (the same pair the macro guard uses — `anyModalOpenRef` for this GameWindow's own
+overlays, whose missing `showMapOverlay` / `showLichDash` deps were found and fixed in the same pass,
+plus `anyDialogOpen()` for every APP-level dialog a per-session ref cannot see, added v0.19.8 by
+B459 after B449 found the same hole in the macro guard); never mid-IME (`e.isComposing`); never
 when something above already consumed the key (`e.defaultPrevented` — covers macro-bound printable
 keys). **Always on, no setting** — matches the siblings; add a toggle only on a real tester ask.
 
@@ -8273,9 +8354,14 @@ every character in every window without a remount.
 
 ### 39.4 UI
 
-AutomationsPanel header gains a segmented **"This Character | All Characters"** switch, rendered
-only on the four scope-capable tabs (Mutes/Substitutes/Groups stay per-character — the switch hides
-rather than disabling). Global scope re-points a `CharacterProvider` at `_global` around the panel
+AutomationsPanel gains a segmented **"This Character | All Characters"** switch. Two things about it
+have since changed and this paragraph used to state both wrongly. It shipped rendered only on the
+scope-capable tabs, hiding elsewhere — §39.5 below superseded that (it is ALWAYS rendered, greyed
+with a why-tooltip where it does not apply, so nothing shifts position between tabs). And it shipped
+in the header band — v0.19.8 moved it onto the sub-bar beside the tab chips, under an **"Applies
+to"** label, because a control disabled on some tabs is by definition per-tab and belongs with the
+navigation it qualifies (§43.8). The label deliberately reuses the per-rule move control's words:
+same idea at two scales. Global scope re-points a `CharacterProvider` at `_global` around the panel
 body; panel keys include the scope so switching remounts (each panel loads its list once on mount).
 Prefill/open-rule props carry character rule ids — harmless no-ops in Global scope.
 
@@ -8291,9 +8377,10 @@ Prefill/open-rule props carry character rule ids — harmless no-ops in Global s
   compile merge in GameWindow (`compileMutes`/`compileSubstitutes` over `[...character, ...global]`),
   same "Applies to" move control (muteKey/subKey identity), same Transfer coverage (in the
   globalRules category + global-skip filters on the per-character mute/sub imports). Only
-  **Groups & Modes** remains per-character — and the header scope switch now renders on EVERY tab,
-  greyed with an explanatory tooltip on Groups, so the header buttons never shift position between
-  tabs (Sekmeht's call: disabled-in-place beats disappearing).
+  **Groups & Modes** remains per-character — and the scope switch now renders on EVERY tab,
+  greyed with an explanatory tooltip where it does not apply (Groups, and Colors since F115), so the
+  controls never shift position between tabs (Sekmeht's call: disabled-in-place beats disappearing).
+  Its label ghosts with it, or "Applies to" reads as a heading for something that isn't there.
 - **Slash surface** — `/highlight add` etc. create CHARACTER rules; a `global` flag on the add
   verbs is the recorded follow-up (pre-merge check #5: no command yet, because the SlashContext's
   apply functions are character-bound and the scope switch is the v1 surface). Same recorded
@@ -8615,7 +8702,7 @@ The recipe lives in `:root` in [global.css](src/renderer/styles/global.css) so r
 ### 43.3 The visual grammar
 
 - Title in `--modal-head-color` on the accent band; a rounded ~1.7rem close button that lights on hover.
-- Tab bars are accent **chips**: pill radius, accent tint + accent hairline when active, transparent with a neutral hover when not (`.at-tab`, `.cp-tab`).
+- Tab bars are accent **chips**: pill radius, accent tint + accent hairline when active, transparent with a neutral hover when not — the shared `ui-tab` (ui.css). `.at-tab` and `.cp-tab` were private copies of that recipe and are both retired.
 - **Only the TOP-LEVEL header is an accent band.** Section labels inside the body stay small/uppercase/muted — make them accent too and the hierarchy flattens. Both the launcher's account panels and the Automations sub-panels follow this.
 - The chrome also applies to **inline panels that read as cards** (the launcher's account/Favorites blocks), not only floating dialogs. In `.launcher--compact` the panel chrome is suppressed, because the containing modal already draws the identical surface and hairline — two identical frames 16px apart read as an accidental double border.
 
@@ -8644,7 +8731,7 @@ The controls inside the dialogs moved onto shared primitives at the same time (4
 
 The app-bar character tabs were the last high-traffic surface still on pre-house styling, and they read as flat: `:hover` and `--active` both set `background: var(--bg-base)`, so the active tab and a hovered one were **pixel-identical** and the only real cue was `font-weight: 600`.
 
-They now wear the house accent chip — `accent 13%` fill, `accent 30%` hairline — the same recipe as `.at-tab--active` and the About modal tab bar. Three decisions worth keeping:
+They now wear the house accent chip — `accent 13%` fill, `accent 30%` hairline — the same recipe as `.ui-tab--active` and the About modal tab bar. Three decisions worth keeping:
 
 - **Treatment, not silhouette.** The chip normally comes as a pill; the tabs keep their pre-v0.18.0 rounded-top shape (Sekmeht). A surface can adopt the house treatment while keeping a shape that suits its role — the accent vocabulary is what makes the client feel coherent, not the corner radius.
 - **Hover excludes the active state** via `:not(.character-tab--active):hover`, because `:hover` (0,2,0) outranks `--active` (0,1,0) and would otherwise replace the chip on contact — pitfall #107.
@@ -8669,9 +8756,11 @@ Four pieces of shared machinery replace them.
 
 **1. Control classes: [ui.css](src/renderer/styles/ui.css).**
 - **Controls:** `ui-btn` (plus `--primary`, `--danger` and `--ghost`, each combinable with `--sm`), `ui-close`, `ui-field` (plus `--code`), `ui-tabs` / `ui-tab`, `ui-section-label`, `ui-hint` and `ui-empty`.
-- **Dialog skeleton:** `ui-modal-backdrop` → `ui-modal` → `ui-modal-head` / `ui-modal-title` → `ui-modal-body` → `ui-modal-foot`.
+- **Menus (v0.19.8):** `ui-menu` (the popover box) and `ui-menu-item` (the row) plus `--on` / `--baseline` / `--nowrap` and the `ui-menu-mark` ✓ gutter. **Membership is decided by rem-vs-em, not by looks.** A menu opened from a DIALOG is rem-sized app chrome and takes these — the convertible set turned out to be exactly the z-450 dialog-popover tier (GroupPicker, the Macros "$" picker, ColorField, the Automations ⋯). A menu opened from GAME-AREA chrome must scale with Settings → Font Size (Principle #9, pitfall #45) and must NOT: `.app-bar-more-item`, `.ctx-menu-item`, `.ms-item`, `.panel-add-item`, `.exp-picker-option` and the slash palette are em-sized, and `.panel-add-item` was converted rem→em as a *bug fix* (B290). **Hosts COMPOSE rather than replace** (`class="ui-menu-item gp-menu-item"`): two of the four query their own class for ↑/↓ roving focus and one styles its children through `.ma-var-item code` / `span`, so swapping the class out would silently kill keyboard navigation and child styling. Two differences were normalised rather than preserved, both unexplained drift: the hover moved to `--modal-ctl-hover` (translucent, correct on a dialog surface) from `--bg-hover` (an opaque per-theme hex meant for the app background), and two menus' `--bg-base` surface moved to `--bg-raised`.
+- **Dialog skeleton:** `ui-modal-backdrop` → `ui-modal` → `ui-modal-head` / `ui-modal-title` → *(optional sub-bar — §43.8)* → `ui-modal-body` → `ui-modal-foot`.
 - **Tokens:** a dialog type scale (`--modal-title-size`, `--modal-text-size`, `--modal-label-size`, `--modal-hint-size`) and dialog paddings, plus `--radius-sm` / `--radius-md`, `--popover-shadow`, `--ui-transition` and `--code-font-family`.
 - **Globals:** checkboxes and radios take `accent-color: var(--accent)` everywhere, and `--color-warning` joined `--color-danger` / `--color-success` in darkBase.
+- **One selected-row rule (B446, v0.19.8).** The `--active` row of all six rule lists — Highlights, Triggers, Macros/Aliases, Groups/Modes, Contacts and Lich Scripts — is painted by a single rule in global.css naming every selector. Five of them had used `--bg-sunken`, a shade *adjacent* to the dialog's own `--bg-base` rather than a contrast to it: on Classic Light that is #fafafa on #ffffff, effectively unpainted, while `--bg-hover` made a merely-hovered row louder than the selected one. The hierarchy was inverted on all 20 themes, in the lists that ARE those dialogs' navigation. An accent tint works everywhere because the accent is by definition a contrast to the surface. **A state must contrast the surface, not neighbour it** — and Contacts had already been fixed, with a comment explaining exactly this, while its five siblings had not (pitfall #113).
 
 - **Load order is part of the design.** ui.css is imported FIRST in main.tsx, ahead of App and therefore ahead of every component stylesheet. That lets a component rule of equal specificity refine a primitive instead of losing to it. global.css loads after App, as it always has. Importing ui.css from global.css would make every primitive override every component rule it ties with.
 - The classes are rem-sized app chrome. In-game panels, which scale with the font setting, keep their own em-sized controls (pitfall #45).
@@ -8699,13 +8788,15 @@ Four pieces of shared machinery replace them.
 - **Closing the last dialog** hands focus to the registered home when focus was left nowhere or in the app bar (B376). The home is the Overview's input bar in the Overview, otherwise the active command bar. App registers it through ConfirmHost's `homeFocus` prop.
 - **A confirm** hands focus back to whatever held it when the confirm opened — but only when the confirmed action left focus nowhere. That action often focuses something itself (a "+ New" focusing its name field), and restoring unconditionally stole focus back from it a frame later. A queued second confirm inherits the first one's return target, since the button the first would have returned to is about to be removed.
 
+**The stack is also the authority on "is a dialog open" (B449/B459, v0.19.8).** `anyDialogOpen()` returns whether any registered dialog is live, reusing the same liveness test Esc uses. GameWindow's `anyModalOpenRef` is a hand-written OR of eleven overlays it renders ITSELF, so About, Quick Send, Profile Transfer, Team Login, Attach, both wizards, the + tab's Connect modal and every confirm were structurally invisible to it (§13.3's converse) — macros fired straight through them, and a printable key focused a command bar the dialog was covering. Global key guards now ask both. Prefer the stack for any new one: a future dialog is covered with no list to maintain.
+
 **The control vocabulary (B407).** Every label follows these rules.
 
 | Rule | Detail |
 |---|---|
 | Case | Buttons, menu items, tabs, field labels and titles use sentence case. Feature names keep their capitals: Lich Dashboard, Automation Analytics, Quick Send, Team Login, Layout Manager, Session Log, Spell Monitor, Moons, Overview. Write section labels in sentence case even when CSS uppercases them. |
 | Ellipsis | Use "…" only on a control that opens another dialog or picker where you still have to act before anything happens. Icon toolbar buttons are the exception and take no "…" even when they open a dialog (the launcher's Team Login, Attach, Transfer and Lich Setup), following the usual toolbar convention (Sekmeht, 2026-09-15). |
-| Verbs | **Delete** permanently destroys saved data and is always confirmed. **Remove** takes something out of a place it can be put back (a tab, a window, a team member) and needs no confirm. **Clear** empties text or a field. **Reset** returns settings to their defaults and is confirmed. **Revert** discards edits to an existing item. **Kill** stops a running script. |
+| Verbs | **Delete** permanently destroys saved data and is always confirmed — and a BULK delete is still Delete; a count does not soften the verb (B453, where Analytics' "Remove duplicate copies" deleted hundreds of rules two inches from a single-rule **Delete**). **Remove** takes something out of a place it can be put back (a tab, a window, a team member) and needs no confirm. **Clear** empties text or a field. **Reset** returns settings to their defaults and is confirmed. **Revert** discards edits to an existing item. **Kill** stops a running script. |
 | Dismissing | The ✕ is U+2715 with `title="Close" aria-label="Close"`. A footer dismiss says **Close** when nothing is pending and **Cancel** when it abandons an edit or operation. Never use "Done" for a plain dismiss. |
 | Creating | Write "+ New *thing*", naming the thing: + New highlight, + New trigger, + New contact, + New team. |
 | Footer order | [destructive] …spacer… [Cancel] [Primary]. |
@@ -8713,6 +8804,64 @@ Four pieces of shared machinery replace them.
 | Tooltips | A tooltip adds a fact the control doesn't already show and never repeats the label (UX #8). |
 | Confirms | `confirmDelete` titles read "Delete *kind*?", with a **Delete** button. The inline form asks "Delete this *kind*?". |
 | Context menus | Content actions come first (Copy, Modify Text ▸, Trigger ▸, Show in Log), then a divider and the view toggles (Timestamps), then a divider, **Clear**, and **Close** last. In launcher menus the destructive items go last, after a divider. |
+
+### 43.8 Header row structure — when a dialog earns a sub-bar (v0.19.8)
+
+§43.7 covers what a control is made of and what it is called. This is the third axis: **where it
+sits.** The header band is for identity and dismissal; everything else has to earn its place there.
+
+**A dialog header earns a SECOND row when it fails either test:**
+
+1. **Does the bar carry anything that is not navigation?**
+2. **Does navigation alone overflow?**
+
+Automations failed both — eight tab chips plus a scope switch, a mode toggle and an import action,
+with `flex-wrap: wrap` on the tabs and a shrinking, ellipsising title already conceding the crowding
+in CSS. The Lich Dashboard failed both — five chips plus a live session pill, and it was already
+carrying **B373**'s `.lp-header-main`, a wrapping inner row whose entire job was to stop the ✕ being
+pushed off-screen below ~900px. *A workaround like that is the symptom, not the fix.* Contacts (two
+tabs) and the Theme Picker (three) fail neither, and giving them a second row would be chrome
+bought for nothing — **do not apply this to a dialog that passes both tests.**
+
+**Placement, once split:**
+
+> **What qualifies the DIALOG stays in the band. What qualifies the CURRENT TAB goes on the sub-bar.**
+
+- The Theme Editor's theme-name field names the whole theme → band.
+- The Lich Dashboard's session pill says which Lich session this is → band.
+- The Automations scope switch is *disabled on two of its eight tabs*, which is proof it is per-tab
+  → sub-bar, under an **"Applies to"** label that deliberately reuses the per-rule move control's
+  words (§39.6): the header picks which store you are looking at, the editor moves one rule between
+  them. Its label ghosts with it when disabled, or it reads as a heading for an absent control.
+- Anything that is neither — a rare action, a persistent mode — belongs in a **⋯ overflow menu** in
+  the band, which never moves. The button carries an accent dot while a hidden mode is on (the app
+  bar's own convention), so the mode stays visible without a permanent "Off" chip (UX #1).
+
+**The sub-bar is three declarations composed onto `ui-tabs`:**
+
+```css
+flex-shrink: 0;
+padding: 8px 1.1rem;
+border-bottom: 1px solid var(--modal-foot-border);
+```
+
+Shared verbatim by `.te-tabs` (Theme Editor), `.ld-tab-nav` (Lich Dashboard) and `.at-subbar`
+(Automations, which adds `display: flex` / `align-items: center` / `gap: 12px` because it hosts a
+second control group). Retune one, retune all three. **The Theme Editor has had this shape since it
+shipped and is the reference implementation** — this section names an existing pattern rather than
+inventing one.
+
+**Two traps, both paid for once already:**
+
+- **The ✕'s right-alignment may not be its own.** Lich's came from the deleted wrapper's
+  `flex: 1 1 auto`, not from the button; `ui-modal-head > .ui-close { margin-left: auto }` is what
+  supplies it, and that `>` requires the ✕ to be a DIRECT child of the element carrying
+  `ui-modal-head`. Automations adds `.at-header .ui-modal-title { flex: 1 1 auto }` so the title
+  absorbs the slack and the ⋯ groups with the ✕ instead of an auto-margin splitting the gap.
+- **A `min-width: 0` that was load-bearing in the old row is dead in the new one.** In a COLUMN
+  flex container it is the cross axis, where the automatic minimum is already 0. Lich's survived
+  the move with a comment still claiming it kept the row shrinkable (pitfall #126: the comment was
+  the bug).
 
 ## 44. Connect Feedback & QuickSend Targeting (v0.18.0)
 
@@ -9590,7 +9739,16 @@ deterministically rather than tying at equal specificity and losing on bundle
 order (pitfall #111). And the `min-height` that keeps a blank game line holding a
 row is expressed in the row's own metric,
 `calc(1em * var(--game-line-height, 1.4))`, so it cannot drift from the
-line-height that renders it.
+line-height that renders it. **The game window's own copy of that rule did not have
+this form until v0.19.8 (B451).** It floored at a literal `1.4em` while the
+shipped default line-height is **1.2**, so every non-wrapping row was clamped
+to the next setting up: "Compact" rendered identically to Cozy, the real ladder
+was 1.4 / 1.5 / 1.8 / 2.0, and a 40-row window lost about six lines of game
+text — the same order as the whole v0.10.0 chrome reclaim, on the surface people
+spend all their time looking at. Two surfaces rendering the same component
+disagreed, with the correct form sitting in the newer one. **A min or max
+expressed against a user-settable property must be written in terms of that
+property.**
 
 **The card's dropdown selects WHAT IT SHOWS, not which stream (F103).** Picking
 **Experience** renders the compact experience view instead of a text feed. That
@@ -9909,3 +10067,167 @@ targets mid-session) — that *would* deserve a verb.
   (`{name, host, port}` JSON) per character when detachable, which would remove
   the host/port entry entirely and the risk of mislabelling a tab by typing the
   wrong character name. The natural next step for this feature.
+
+---
+
+## 49. Named Colors — the linked palette (F115, v0.19.8)
+
+Requested by Elore (then "Aubrey"), 2026-09-05: *"If I'm using a template color for a name… if I want to change that color then it'll change everyone who was in that group with one click… Right now I have all of my buffs dropping as a certain shade of orange. When I have a new highlight to add, I have to go back and see what the hexcode was… or else I just pick a random orange and they're a little bit off."* Sekmeht extended it: colors as a setup area of their own, applied into contacts and highlights.
+
+### 49.1 What it is
+
+**Your colors** are named, app-wide palette entries ("Buff drop", "Danger") that you pick in any color field. A field that picks one stores a **link**, not a copy, so editing the color once repaints every highlight, trigger echo, contact template and group that uses it, immediately and in every window. This reverses §37.2's resolve-at-entry decision for **your** colors only. That decision recorded live references as "deferred … revisit only on tester demand", and this was the demand.
+
+What does NOT change:
+
+- **Built-in colors** (the curated 16) and **web names** still copy their hex. A built-in never changes, so there is nothing to follow. "Make an editable copy" turns one into a color of yours.
+- **Themes** still store hex — but you can PICK from your palette to get one (F116, §49.6b). A theme must never depend on the palette existing (§37.2).
+
+### 49.2 The link, and why it is a CSS variable
+
+A linked field stores `var(--lb-color-<id>, #fallback)` in the SAME string field that held a hex. Each window defines `--lb-color-<id>` on its root from the palette (`applyPaletteVars`, [colors.ts](src/renderer/colors.ts)): at module load, after every save, and on a cross-window `storage` event.
+
+Every place that paints a rule color already writes the field's string straight into inline CSS: `color`, `background`, a glow's `text-shadow`, an effect's `--fx-c1`/`--fx-c2`, the Tableau's avatar tints. So the link:
+
+- needed **no render-path change** (the reason §37.2 had deferred live references);
+- costs **nothing per line** (no recompile, no lookup);
+- repaints everything on an edit **without re-rendering React**. Measured in Electron 43: a rendered highlight went from `rgb(255, 144, 64)` to `rgb(64, 192, 255)` when its color was edited.
+- **needed no profile-shape change or migration**: every rule, template and group keeps the same fields.
+
+**The fallback** is the hex at link time. If the entry is gone (deleted for good, or a Transfer to a machine without it) the text keeps that color rather than going blank (Principle #3). An older build, which defines no variables, renders the fallback too.
+
+Two alternatives were rejected:
+
+- **A separate `…ColorRef` field beside each color.** That is 11 new optional fields across four record types, each one a pitfall #121 rebuild trap, plus a lookup and recompile in every render path.
+- **Storing the name.** A rename would have to rewrite every character's rules, including inactive characters' YAML.
+
+### 49.3 Identity, removal, legacy entries
+
+- **`id`** is the identity, so a rename keeps every link. New colors get a random id (`newColorId`).
+- **Legacy entries** (made with `/colors add` before v0.19.8) have no id. `coerceCustomColors` gives them `legacyColorId(name)`, a slug that is **deterministic**: the same id on every load and every machine even before it is saved, so a link minted in one session resolves in the next. Two names that slug the same get `-2`, never a dropped entry. **`coerceCustomColors` reserves every explicit id in a first pass**, then hands slugs to the id-less entries — one pass let a slug take an id a later entry already owned, renaming that entry and breaking every link to it (B430). It also tidies names and repairs hex on the way in, so a stored value can always be found by name and always paints.
+- **Removing a color retires it** (`retired: true`). It leaves the pickers, the slash chips and name resolution, but its variable stays defined, so nothing using it changes color. Retiring is always safe, which matters because the palette is app-wide while rules live per character, and we cannot cheaply know every use. From the Colors tab's Removed section you can **Restore**, or **Delete for good**, after which links render their fallbacks.
+- **Names:** 2–24 characters, start with a letter, letters/numbers/spaces/dashes/apostrophes (`validateCustomColorName`). Spaces are new ("Buff drop"); a slash command quotes them. A name can't shadow a built-in and must be unique across the palette, retired entries included.
+
+### 49.4 Surfaces
+
+- **ColorField** ([ColorField.tsx](src/renderer/components/ColorField.tsx), styles in ui.css): the one color control, replacing eleven hand-rolled picker + hex pairs (Highlights ×3, contact templates ×6, Groups, trigger echo). This is also UX #12's control vocabulary.
+  - **Closed:** a swatch, then either the free-text box or, when linked, a chip with the color's name and a link glyph. The chip is dashed when its color was removed.
+  - **Open (popover, z 450):**
+    - Your colors, which link.
+    - Built-ins, which copy.
+    - A native Custom picker.
+    - An optional "none" choice.
+    - Unlink, which keeps the exact color but stops following.
+    - "Save as a color…", which names the current color and links the field on the spot. This is the point-and-click path for Elore's flow.
+    - "Manage colors…", when the host provides `ColorManageContext`: Automations switches to the Colors tab through the unsaved guard, and Contacts opens Automations → Colors.
+  - **Three ways into the list.** A swatch doesn't read as a button, so the text box is a combobox (Sekmeht's follow-up):
+    - a **▾** joined to the box (and a caret on the linked chip) opens the full menu; so does the swatch, and Alt+↓ (or ↓ in an empty box);
+    - **typing a name** opens a suggestion list (`suggestColors`): your colors first, matched anywhere in the name; built-ins by prefix; web names by prefix from 3 characters; nothing for a #hex, a `$variable` or a link; at most 8.
+    - ↑/↓ move through it and Enter or a click picks. Focus never leaves the box (`role="combobox"` + `aria-activedescendant`; rows cancel mousedown). A pick of yours becomes the linked chip and focus moves onto it. Esc closes only the list.
+  - **Typing** one of your color names and leaving the box links it too. Enter in a form that saves on Enter (Triggers' `enterToSave`) is claimed by an open list or an unresolved name first; the next Enter saves.
+- **Automations → Colors tab** ([ColorsPanel.tsx](src/renderer/components/ColorsPanel.tsx)): list/detail on the shared `.hp-*` layout.
+  - **Sidebar:** Your colors (with a use count), Built-in, and a Removed section that appears only when there are any.
+  - **Detail:** name, color, a preview line plus a background swatch with a low-contrast hint, and "Used by" for the open character plus All-characters rules. Both the tab and its tooltip say another character may use the color too.
+  - The scope switch is disabled here with a tooltip, because the palette is app-wide.
+- **Slash:**
+  - `/colors add "Buff drop" #ff9040`: add, update, or restore a removed color of the same name.
+  - `/colors rename "old" "new"` (new).
+  - `/colors remove`, which now retires.
+  - `/colors manage` (new), which opens the tab.
+  - `/highlight add` and `/template add` link when the color is one of yours.
+  - Rule summaries print the color's NAME. The palette's color chips list yours first and never offer a removed one.
+
+### 49.5 The few consumers that need a real hex
+
+`colorHex(value)` resolves a link through the palette, then its fallback; a name resolves; `transparent`, empty and free text give null. It is used by:
+
+- **The swatch and native picker** in ColorField.
+- **Trigger echo.** A `TextSegment.fg` is a bare hex, and the field can hold a `$variable`, so the color resolves when the trigger FIRES. An echo is therefore a snapshot: a later color edit won't recolor lines already printed. **As of F118 that rule has to be enforced in TWO places, not one.** A styled echo also carries a line-style hint (§14.10b) whose colors go straight into CSS, where a palette LINK would stay live — so `echoLineStyle` resolves every one of them through the same `colorHex`. Without that the two pipelines disagreed and the layer won, because it overrides the segment (`renderSegment`: `overrideColor ?? seg.fg`): a curated NAME painted the CSS color rather than Lichborne's, one of your own color names painted nothing at all, and merely ticking Bold flipped an echo from snapshot to live (B440). **Any future surface that paints a rule color through more than one channel owes the same normalization at every channel** — agreeing today is not the same as being unable to disagree.
+- **Rule summaries and the Debug Fires label**, which use `colorLabel` (the name).
+
+Audit rule for new code: **never parse a rule color as `#hex`**. Go through `colorHex` or put the string into CSS. The places that did (`colorPickerValue`, `'#' + fg`) were the ones rewritten.
+
+**`hexFromTyped(token)` answers a DIFFERENT question and the two must not be confused.** `colorHex` reads a STORED value — it resolves a link through the palette. `hexFromTyped` reads what a user just TYPED: `#rgb`, `#rrggbb`, and the bare `rrggbb` / `rgb` people paste without the hash, all expanded to a lowercase `#rrggbb`, and null for anything else. It exists because there were two answers to that question and they disagreed in opposite directions (v0.19.8 sweep): ColorField's `commitDraft` accepted a bare six-digit hex but rejected `#fff`, while `normalizeColorInput` did the reverse — so the same keystrokes behaved differently depending on which host you typed in, and one of those outcomes was text stored as a colour that painted nothing. `hexLuminance` had always accepted a bare hex, so the module disagreed with itself. Both callers now ask `hexFromTyped`, and a NAME still wins over a bare token (`red` is the curated red, never a hex guess).
+
+### 49.6 Transfer
+
+- **Export:** a bundle carries `linkedColors`, the palette entries its categories link to, retired ones included, **whether or not Named Colors is ticked**. It's an optional top-level field, so there is no format bump.
+- **Import** merges colors **before any rule lands** (`mergeCustomColors`), matching on the **NAME**:
+  - **Same name:** the same color. The bundle's links are **rewritten to your id** (`remapColorLinks`), so no duplicate is minted. Only a ticked Named Colors category overwrites your hex — and then it also **un-retires** the entry, because taking someone's palette means taking it whole (what `/colors add` does).
+  - **New name:** added. Its id is kept so its links resolve untouched, unless that id already belongs to a different color of yours, in which case it gets a fresh one and its links are remapped onto it.
+  - **Why name, not id.** The name is the identity ACROSS machines; an id is only an identity WITHIN one. A pre-F115 bundle's ids are slugs minted from names (`legacyColorId`, disambiguators and all), so matching by id first let an import collide with an unrelated local color and overwrite its value — repainting every rule linked to it (B430).
+- **Idempotent**, so running once per target character is safe.
+
+### 49.6a Theme safety (measured)
+
+Every color in the field, the popover, the suggestion list and the Colors tab is a theme variable, except USER colors (swatches, dots, the preview), which are data. Contrast was measured, not eyeballed: an Electron audit ran all 20 themes plus high contrast (770 WCAG checks) and compared each reading with plain theme text on the same surface. **Nothing in this UI reads worse than the rest of the app on any theme.** The readings below 4.5:1 match the theme's own `--text-muted` or Thief's `--text-secondary` exactly. Rules the audit produced (also in ui.css):
+
+- **Popovers sit on `--bg-raised`**, which on light themes is LIGHTER than the dialog. Labels there use `--text-secondary`, since `--text-dim` measured 2.6:1.
+- **Accent drawn as text or a glyph mixes toward `--text-primary`**: 60% accent for glyphs, 40% for text. A theme's accent can be dark on a dark background and still work as a border.
+- **Text on a USER color** picks black or white from the fill (`readableTextOn`); no theme variable can know what's under it.
+- **A number or label never sits on a tinted fill** (a 10% tint took Thief to 3.5:1). A hairline ring gives the same shape.
+
+### 49.6b The Theme Editor: pick, but copy (F116)
+
+The ~150 colour rows use the same `ColorField` as every rule editor (UX #12) — a
+swatch, a typable box with type-ahead, and a popover offering **your colours**
+and the built-ins. What they do NOT do is link.
+
+**Why copy.** A theme leaves this machine by a route the palette does not
+travel. `exportTheme` ([myThemes.ts](src/renderer/myThemes.ts)) writes a
+`.lichborne-theme.json` containing nothing but `name`, `basedOn` and `vars`, and
+`importTheme` validates only that much. A linked theme handed to someone else
+would still PAINT correctly — `var(--lb-color-x, #hex)` falls back to the baked
+hex — but the file would carry a permanent dead reference to a colour that
+exists on one machine, and the format has no way to explain it. Copying avoids
+that with no loss: the recipient gets the colour, and never needs to know the
+name it came from.
+
+Profile Transfer, by contrast, would have handled a link unaided —
+`collectColorLinkIds` walks the whole categories bag including `customTheme.vars`,
+and `remapColorLinks` runs before the theme category applies. The standalone file
+is the path that decided it.
+
+**The cost, stated plainly.** The same named colour does two different things
+depending on where you pick it: a highlight FOLLOWS it, a theme row SNAPSHOTS
+it. The field carries `THEME_COLOR_INPUT_TITLE` ("Names become a fixed #hex when
+you leave the field"), the popover's section reads "Your colors (copied)", and
+each swatch's tooltip names the colour it will keep. Nothing claims a link it
+will not make.
+
+**Two props carry it**, deliberately independent:
+
+- **`allowLink={false}`** — the DATA. One helper, `storedFor`, decides what a
+  pick stores, so the popover list, the type-ahead list and "Save as a color…"
+  cannot disagree (the pitfall #127 shape). `normalizeColorInput(v, { link:
+  false })` does the same for typed names.
+- **`commitTyped`** — WHEN the host hears about typing. The Theme Editor's
+  `onChange` applies to the live app, so a half-typed `#3f` must not become a
+  theme variable (B387). A local draft holds the text; a complete `#rrggbb`
+  applies as it is typed, a name resolves on blur/Enter, Esc throws the draft
+  away, and an untouched field is never rewritten on tab-through. That logic
+  used to live in the editor's private `ColorText`, which this deletes.
+
+**Not converted:** the six `rgba()` glow rows keep their native picker, because
+they carry an alpha channel `ColorField` does not model.
+
+**The draft splits the control's truth in two, and the split must be deliberate**
+(B435, pitfall #155). Read **`typed` (`draft ?? value`)** for anything that
+follows the BOX — the input, the type-ahead, and the combobox ARIA. Read
+**`value`** for anything that follows what is STORED — the swatch, `link`/`hex`,
+and every "did this actually change?" test, so the swatch keeps showing the
+colour still in effect while you type. Getting one wrong is silent: suggesting
+from `value` fed `suggestColors` a `#rrggbb`, which it rejects, so the list
+simply never appeared in the only host that had just gained it.
+
+Two predicates exist so the comparisons cannot drift apart:
+`isNone(v)` (none is spelled `none.value` by a rule editor and `''` by the
+preset highlight row) and `wouldChange(next)` (case-insensitive, because an
+imported theme can carry `#3FB950` while everything we offer is lowercase).
+
+### 49.7 Known limits (accepted)
+
+- **"Used by" doesn't see other characters' rules.** Retiring rather than deleting is what makes that safe.
+- **An echo already printed keeps its color** (§49.5).
+- **Named highlight STYLES** (color + background + bold + effect as one preset, like contact templates) are deliberately not built. Phase 3 would reuse this link idea.
+- **"Find similar colors in use"** (link the slightly-off oranges in bulk) is Phase 2.

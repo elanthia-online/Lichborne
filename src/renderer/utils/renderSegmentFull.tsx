@@ -1,7 +1,17 @@
 // Highlight + contact compositor — the full-fat segment renderer behind the main
-// window (TextLineRow) and the Room panel's prose sections.
+// window (TextLineRow), the Room panel's prose sections, and the Highlights
+// editor's Preview.
 //
-// Three exports, in pipeline order:
+// Exports, in pipeline order:
+//   • `renderHighlightedLine` — the entry point for a whole line: resolves the
+//     line layer, runs the match scan once, and renders every segment. The
+//     three callers above all go through it, so the Preview cannot drift from
+//     the game window (it used to be a separate copy, and showed line-scope
+//     effects and bold that the game never painted — B428).
+//   • `resolveLineLayer` — the LINE-scope rule for a line (first match wins).
+//     It is the WIDEST layer of the compositing, not a separate style: its
+//     background, colour and bold go on the line container, and its effect
+//     paints every run no match-scope rule gives an effect of its own.
 //   • `computeLineMatchRanges` (B172) — ONE scan of the whole line for contact
 //     names + match-scope highlight rules (each rule pre-gated on its
 //     `fastLower` literal before the regex runs), returning ranges in LINE
@@ -14,29 +24,223 @@
 //     PER-PROPERTY COMPOSITING (v0.11.3, ProfanityFE's model) — text colour,
 //     background, bold and effect are each taken independently from the
 //     SMALLEST covering highlight that sets that property, equal-length ties to
-//     the first-encountered (top-of-list) rule. Contact runs paint through
-//     `paintContactText` (the same builder the Contacts previews use); plain
-//     runs fall back to `renderSegment`.
-//   • `getLineHighlightStyle` — the separate LINE-scope path: first matching
-//     line rule wins and styles the whole line container.
+//     the first-encountered (top-of-list) rule, and the line layer as the last
+//     fallback. Contact runs paint through `paintContactText` (the same builder
+//     the Contacts previews use); plain runs fall back to `renderSegment`.
 //
 // Invariants: keep the run-merge `key` in sync with the composited properties
 // (adjacent runs merge only when the key matches); every `exec` loop guards
-// zero-width matches by bumping `lastIndex`; and any caller rendering a
+// zero-width matches by bumping `lastIndex`; any caller rendering a
 // multi-segment line must pass precomputed ranges or it re-runs the scan per
-// segment (the pre-B172 cost).
-import type { TextSegment } from '../../shared/types'
+// segment (the pre-B172 cost); and a line effect goes on an element INSIDE the
+// segment's own, never on the line container (see `renderPlainRun`).
+import type { TextSegment, LineStyleHint } from '../../shared/types'
 import type { Contact, ContactTemplate } from '../contacts'
 import type { CompiledRule } from '../HighlightsContext'
 import type { HighlightStyle, HighlightEffect } from '../highlights'
-import { effectiveEffect } from '../highlights'
-import { resolveEffect, effectContent } from './highlightEffects'
+import { effectiveEffect, HIGHLIGHT_EFFECTS, FX_HORIZONTAL_GRADIENT } from '../highlights'
+import { resolveEffect, effectContent, type ResolvedEffect } from './highlightEffects'
 import { paintContactText } from './contactStyle'
 import { renderSegment } from './renderSegment'
 
 export type MatchRange =
   | { start: number; end: number; kind: 'contact'; contact: Contact; template: ContactTemplate | null }
   | { start: number; end: number; kind: 'highlight'; compiled: CompiledRule }
+
+// The LINE-scope rule that won a line, resolved once per line.
+export interface LineLayer {
+  style: HighlightStyle
+  /** Text colour that beats preset/fg colours; undefined when the rule sets none. */
+  color: string | undefined
+  /** The rule's effect (legacy `glow` folded in), null for none. */
+  effect: HighlightEffect | null
+  fx: ResolvedEffect
+  /**
+   * The whole line's length in characters, set ONLY when the line is split into
+   * runs (B444). It is what lets each run offset into one line-wide gradient
+   * instead of getting its own copy.
+   */
+  lineLen?: number
+}
+
+/**
+ * The CSS vars that make a run's gradient a window onto the LINE's gradient
+ * rather than its own (B444). Empty for everything else, and an empty object
+ * means the CSS falls back to the original per-element geometry.
+ */
+function lineGradientVars(
+  effect: HighlightEffect | null,
+  lineLen: number | undefined,
+  lineStart: number,
+): React.CSSProperties {
+  if (!lineLen || !effect || !FX_HORIZONTAL_GRADIENT.has(effect)) return {}
+  const w = `${lineLen * 2}ch`
+  return { '--fx-bg-size': `${w} auto`, '--fx-bg-x': `${-lineStart}ch`, '--fx-sweep-to': w } as React.CSSProperties
+}
+
+// First matching line rule wins (unchanged from the old getLineHighlightStyle).
+// Matching runs against the JOINED line text, which is why callers join once.
+export function resolveLineLayer(lineText: string, lineRules: CompiledRule[]): LineLayer | null {
+  if (lineRules.length === 0) return null
+  const lower = lineText.toLowerCase()
+  for (const compiled of lineRules) {
+    if (compiled.fastLower !== null && !lower.includes(compiled.fastLower)) continue
+    compiled.regex.lastIndex = 0
+    if (!compiled.regex.test(lineText)) continue
+    const style = compiled.rule.style
+    const color = style.textColor && style.textColor !== 'transparent' ? style.textColor : undefined
+    const e = effectiveEffect(style)
+    const effect = e === 'none' ? null : e
+    return { style, color, effect, fx: resolveEffect(effect, color ?? null, style.glowColor || null) }
+  }
+  return null
+}
+
+/**
+ * The same layer, built from a CLIENT-authored style instead of a matched rule
+ * (a trigger's echo, F118).
+ *
+ * This exists so an echo and a line-scope highlight are painted by ONE piece of
+ * code rather than two that merely agree today (pitfall #127) — everything
+ * below `resolveLineLayer` is shared verbatim, so an echo composites with a
+ * word highlight exactly as a line rule does.
+ *
+ * `hint.effect` is a plain string on the shared type (main must not import the
+ * renderer's union), so this is the ONE place it is narrowed. An unknown value
+ * resolves to no effect rather than throwing — a hand-edited profile must not
+ * be able to break a render.
+ */
+export function lineLayerFromHint(hint: LineStyleHint | undefined): LineLayer | null {
+  if (!hint) return null
+  const color = hint.color && hint.color !== 'transparent' ? hint.color : undefined
+  const raw = hint.effect
+  const effect = raw && raw !== 'none' && (HIGHLIGHT_EFFECTS as readonly { value: string }[])
+    .some(o => o.value === raw) ? raw as HighlightEffect : null
+  const style: HighlightStyle = {
+    textColor: hint.color ?? 'transparent',
+    bgColor: hint.bgColor ?? 'transparent',
+    bold: !!hint.bold,
+    glow: false,
+    glowColor: hint.glowColor ?? '',
+    ...(effect ? { effect } : {}),
+  }
+  // Nothing to paint — return null so the line takes the plain path and pays
+  // none of the layer's cost (and so a line-scope RULE can still match it).
+  const hasBg = !!hint.bgColor && hint.bgColor !== 'transparent'
+  if (!color && !hasBg && !hint.bold && !effect) return null
+  return { style, color, effect, fx: resolveEffect(effect, color ?? null, hint.glowColor || null) }
+}
+
+// What the line CONTAINER wears: background, colour and bold. The effect is
+// deliberately absent — on the container it would reach inside every word
+// highlight (an opacity pulse or a brightness filter can't be undone by a
+// child) and clip the line's own background to the glyphs.
+export function lineLayerStyle(line: LineLayer | null): React.CSSProperties | null {
+  if (!line) return null
+  const { style } = line
+  return {
+    ...(style.bgColor && style.bgColor !== 'transparent' ? { backgroundColor: style.bgColor } : {}),
+    ...(line.color ? { color: line.color } : {}),
+    ...(style.bold ? { fontWeight: 'var(--ui-bold-weight)' } : {}),
+  }
+}
+
+// A run no match-scope highlight or contact covers. The segment keeps its own
+// element (preset, links, bold, a preset background), the line colour beats
+// its preset colour, and the line EFFECT rides an inner span. `lineStart` is
+// the run's offset into the line, so a per-letter effect staggers along the
+// whole line instead of restarting in every segment.
+function renderPlainRun(
+  seg: TextSegment,
+  key: number,
+  onSendCommand: ((cmd: string) => void) | undefined,
+  autoLinkUrls: boolean,
+  webLinkSafety: boolean,
+  line: LineLayer | null | undefined,
+  lineStart: number,
+): React.ReactNode {
+  if (!line?.effect || !seg.text) {
+    return renderSegment(seg, key, onSendCommand, autoLinkUrls, webLinkSafety, line?.color)
+  }
+  const { fx } = line
+  const inner = (
+    <span
+      className={fx.className || undefined}
+      style={{
+        ...fx.vars,
+        ...(fx.glowShadow ? { textShadow: fx.glowShadow } : {}),
+        ...lineGradientVars(line.effect, line.lineLen, lineStart),
+      }}
+    >{effectContent(seg.text, fx.perLetter, lineStart)}</span>
+  )
+  return renderSegment(seg, key, onSendCommand, autoLinkUrls, webLinkSafety, line.color, inner)
+}
+
+export interface HighlightedLineOptions {
+  matchRules: CompiledRule[]
+  lineRules: CompiledRule[]
+  contacts: Contact[]
+  templates: ContactTemplate[]
+  nameRegex: RegExp | null
+  onContactClick?: (id: string, x: number, y: number) => void
+  onSendCommand?: (cmd: string) => void
+  autoLinkUrls?: boolean
+  webLinkSafety?: boolean
+  /** Segment keys are `keyBase * 100 + index`; 0 keeps plain indices. */
+  keyBase?: number
+  /**
+   * A client-authored line style (a trigger echo). When set it BECOMES the line
+   * layer, in place of any line-scope rule that also matches: the echo was
+   * written for this exact message, a line rule is generic. Word-scope
+   * highlights and contacts still composite on top either way.
+   */
+  echo?: LineStyleHint
+}
+
+// Render one line's segments with every rule applied. Returns the container
+// style (the caller owns the element — `.text-line`, a Room prose line, the
+// Preview box) and the segment nodes.
+//
+// The expensive work happens ONCE per line: the joined text (B115 — DR
+// fragments a line into 3-5 segments around names / links / bold, so a regex
+// could never match a slice) and the contact + match-rule scan (B172). Each
+// segment then only intersects the shared ranges.
+export function renderHighlightedLine(
+  segments: TextSegment[],
+  o: HighlightedLineOptions,
+): { style: React.CSSProperties | null; nodes: React.ReactNode[] } {
+  const autoLinkUrls = o.autoLinkUrls ?? true
+  const webLinkSafety = o.webLinkSafety ?? true
+  const keyBase = o.keyBase ?? 0
+  const hasExtras = !!o.nameRegex || o.matchRules.length > 0
+  const lineText = hasExtras || o.lineRules.length > 0 ? segments.map(s => s.text).join('') : ''
+  const line = lineLayerFromHint(o.echo) ?? resolveLineLayer(lineText, o.lineRules)
+  // B443/B444: an echo used to be kept UNSPLIT so a painted effect wasn't cut
+  // into pieces, each with its own gradient. B444 fixed that properly — every
+  // run of a split line now offsets into ONE line-wide gradient — so the
+  // suppression was dropped and echoes get word highlights and contacts back.
+  const splitRuns = hasExtras
+  // B444: a split line hands every run the same gradient geometry, so the
+  // pieces read as one continuous effect. Only set while splitting — a whole
+  // line needs nothing and must keep its original rendering.
+  const layer = line && splitRuns ? { ...line, lineLen: lineText.length } : line
+  const lineRanges = splitRuns
+    ? computeLineMatchRanges(lineText, o.contacts, o.templates, o.nameRegex, o.matchRules)
+    : []
+  let cursor = 0
+  const nodes = segments.map((seg, i) => {
+    const key = keyBase * 100 + i
+    const offset = cursor
+    cursor += seg.text.length
+    if (!splitRuns) return renderPlainRun(seg, key, o.onSendCommand, autoLinkUrls, webLinkSafety, layer, offset)
+    return renderSegmentFull(
+      seg, key, o.contacts, o.templates, o.nameRegex, o.matchRules,
+      o.onContactClick, o.onSendCommand, autoLinkUrls, webLinkSafety,
+      lineText, offset, lineRanges, layer,
+    )
+  })
+  return { style: lineLayerStyle(layer), nodes }
+}
 
 // B172: the contact + match-rule scan over a full line, extracted so callers
 // that render a MULTI-SEGMENT line (TextLineRow, RoomPanel sections) can run
@@ -110,19 +314,20 @@ export function renderSegmentFull(
   // lineText/segOffset), the per-segment scan is skipped entirely — each
   // segment just intersects the shared ranges with its own window.
   precomputedLineRanges?: MatchRange[],
-  // A LINE-scope highlight's text color that overrides preset/fg color on the
-  // non-match-highlighted parts of the line (see renderSegment). Match-scope
-  // highlighted runs already carry their own overriding color (hl-match below),
-  // so this only flows to the plain/preset runs.
-  overrideColor?: string,
+  // The LINE-scope rule that won this line (resolveLineLayer). Its colour beats
+  // preset/fg colours on runs no match rule covers (see renderSegment), and it
+  // is the last fallback for every property the compositing below picks — so a
+  // word highlight with its own effect keeps it, while the rest of the line
+  // wears the line's effect.
+  line?: LineLayer | null,
 ): React.ReactNode {
   const text = seg.text
-  if (!text) return renderSegment(seg, segKey, onSendCommand, autoLinkUrls, webLinkSafety, overrideColor)
-  if (!nameRegex && matchRules.length === 0) return renderSegment(seg, segKey, onSendCommand, autoLinkUrls, webLinkSafety, overrideColor)
-
   const lineMode = lineText !== undefined && segOffset !== undefined
-  const matchSource = lineMode ? lineText! : text
   const offset = lineMode ? segOffset! : 0
+  if (!text || (!nameRegex && matchRules.length === 0)) {
+    return renderPlainRun(seg, segKey, onSendCommand, autoLinkUrls, webLinkSafety, line, offset)
+  }
+  const matchSource = lineMode ? lineText! : text
 
   // Scan (or reuse) line-coordinate ranges, then keep only those that
   // intersect this segment's window [offset, offset + text.length],
@@ -138,7 +343,7 @@ export function renderSegmentFull(
     if (segEnd > segStart) ranges.push({ ...r, start: segStart, end: segEnd })
   }
 
-  if (ranges.length === 0) return renderSegment(seg, segKey, onSendCommand, autoLinkUrls, webLinkSafety, overrideColor)
+  if (ranges.length === 0) return renderPlainRun(seg, segKey, onSendCommand, autoLinkUrls, webLinkSafety, line, offset)
 
   // B116 (v0.8.5): priority-based overlay. The earlier algorithm sorted
   // ranges by start position with contacts winning ties, then dropped any
@@ -168,7 +373,7 @@ export function renderSegmentFull(
   // list order at scale (see CLAUDE.md Automations — the cross-client research).
   // Within a property, equal-length ties go to the FIRST-encountered (top-of-
   // list) highlight — deterministic, vs Profanity's arbitrary unstable sort.
-  type HlComposite = { kind: 'highlight'; textColor: string | null; bgColor: string | null; bold: boolean; glowColor: string | null; effect: HighlightEffect | null }
+  type HlComposite = { kind: 'highlight'; textColor: string | null; bgColor: string | null; bold: boolean; glowColor: string | null; effect: HighlightEffect | null; fxFromLine: boolean }
   type ContactRun  = { kind: 'contact'; contact: Contact; template: ContactTemplate | null }
   type RunStyle = ContactRun | HlComposite | null
   type Run = { start: number; end: number; style: RunStyle; key: string }
@@ -196,19 +401,26 @@ export function renderSegmentFull(
       key = `c:${contactHit.contact.id}:${contactHit.template?.id ?? ''}`
     } else if (covering.length > 0) {
       // smallest match range first; pick() returns the most-specific covering
-      // highlight whose style satisfies the test (first-encountered on ties).
+      // highlight whose style satisfies the test (first-encountered on ties),
+      // then the line layer — the widest range there is (B428). Background
+      // skips the line layer because the line container already paints it.
       covering.sort((a, b) => (a.end - a.start) - (b.end - b.start))
-      const pick = (test: (s: HighlightStyle) => boolean): HighlightStyle | null => {
+      const pick = (test: (s: HighlightStyle) => boolean, withLine = true): HighlightStyle | null => {
         for (const c of covering) if (test(c.compiled.rule.style)) return c.compiled.rule.style
-        return null
+        return withLine && line && test(line.style) ? line.style : null
       }
       // The effect folds the legacy `glow` bool in (effectiveEffect), so one
       // pick covers glow AND the new effects; its glowColor rides along.
       const fx = pick(s => effectiveEffect(s) !== 'none')
       style = {
         kind: 'highlight',
+        // B444: did this run INHERIT the line's effect, or bring its own? Only
+        // an inherited one should share the line's gradient geometry — a word
+        // highlight with its own effect is a deliberate island and its own
+        // gradient is the correct rendering.
+        fxFromLine: !!fx && !!line && fx === line.style,
         textColor: pick(s => !!s.textColor && s.textColor !== 'transparent')?.textColor ?? null,
-        bgColor:   pick(s => !!s.bgColor && s.bgColor !== 'transparent')?.bgColor ?? null,
+        bgColor:   pick(s => !!s.bgColor && s.bgColor !== 'transparent', false)?.bgColor ?? null,
         bold:      !!pick(s => s.bold),
         glowColor: fx?.glowColor ?? null,
         effect:    fx ? effectiveEffect(fx) : null,
@@ -235,9 +447,9 @@ export function renderSegmentFull(
 
     if (s === null) {
       // No highlight/contact covers this run — render via renderSegment so it
-      // picks up the segment's preset / fg / bg as plain text (with a line-scope
-      // override color winning over them, if one is active).
-      parts.push(renderSegment({ ...seg, text: matchText }, k(), onSendCommand, autoLinkUrls, webLinkSafety, overrideColor))
+      // picks up the segment's preset / fg / bg as plain text, with the line
+      // layer's colour and effect on top when a line rule matched.
+      parts.push(renderPlainRun({ ...seg, text: matchText }, k(), onSendCommand, autoLinkUrls, webLinkSafety, line, offset + run.start))
       continue
     }
 
@@ -251,24 +463,27 @@ export function renderSegmentFull(
         const tp = paintContactText(template.tagText, {
           color: template.tagColor,
           bgColor: template.tagBgColor,
+          bold: template.tagBold,
           effect: template.tagEffect,
-          glowColor: template.tagGlowColor ?? template.tagColor,
+          // No `?? tagColor` here: resolveEffect falls back to the run's own
+          // colour itself, so a second copy of that rule could only drift.
+          glowColor: template.tagGlowColor,
         })
         parts.push(
           <span key={k()} className={`contact-tag${tp.className ? ' ' + tp.className : ''}`} style={tp.style}>
-            {tp.content}{' '}
+            <tp.Tag>{tp.content}</tp.Tag>{' '}
           </span>,
         )
       }
       const np = paintContactText(matchText, {
         color: template?.textColor ?? 'var(--text-secondary)',
         bgColor: template?.bgColor,
+        bold: template?.bold,
         effect: template?.effect,
         glowColor: template?.glowColor,
       })
-      const NameTag = template?.bold ? 'strong' : 'span'
       const nameContent = (
-        <NameTag className={np.className || undefined} style={np.style}>{np.content}</NameTag>
+        <np.Tag className={np.className || undefined} style={np.style}>{np.content}</np.Tag>
       )
       parts.push(
         <span
@@ -286,34 +501,13 @@ export function renderSegmentFull(
         ...(s.bgColor ? { backgroundColor: s.bgColor } : {}),
         ...(rfx.glowShadow ? { textShadow: rfx.glowShadow } : {}),
         ...rfx.vars,
+        ...(s.fxFromLine ? lineGradientVars(s.effect, line?.lineLen, offset + run.start) : {}),
       }
       const cls = `hl-match${rfx.className ? ` ${rfx.className}` : ''}`
       const Tag = s.bold ? 'strong' : 'span'
-      parts.push(<Tag key={k()} className={cls} style={hlStyle}>{effectContent(matchText, rfx.perLetter)}</Tag>)
+      parts.push(<Tag key={k()} className={cls} style={hlStyle}>{effectContent(matchText, rfx.perLetter, offset + run.start)}</Tag>)
     }
   }
 
   return <span key={segKey}>{parts}</span>
-}
-
-export function getLineHighlightStyle(
-  segments: TextSegment[],
-  lineRules: CompiledRule[],
-): React.CSSProperties | null {
-  if (lineRules.length === 0) return null
-  const fullText = segments.map(s => s.text).join('')
-  const fullTextLower = fullText.toLowerCase()
-  for (const compiled of lineRules) {
-    if (compiled.fastLower !== null && !fullTextLower.includes(compiled.fastLower)) continue
-    compiled.regex.lastIndex = 0
-    if (compiled.regex.test(fullText)) {
-      const { style } = compiled.rule
-      return {
-        ...(style.bgColor && style.bgColor !== 'transparent' ? { backgroundColor: style.bgColor } : {}),
-        ...(style.textColor && style.textColor !== 'transparent' ? { color: style.textColor } : {}),
-        ...(style.glow ? { textShadow: `0 0 6px ${style.glowColor}, 0 0 14px ${style.glowColor}` } : {}),
-      }
-    }
-  }
-  return null
 }

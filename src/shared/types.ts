@@ -737,6 +737,27 @@ export interface MapZone {
 
 // --- Renderer-shared data shapes ---
 
+/**
+ * Styling a CLIENT-GENERATED line carries with it — today, a trigger's echo.
+ *
+ * The renderer paints it as that line's LINE LAYER, the same way a line-scope
+ * highlight is painted (B428), so there is one painter rather than two: the
+ * background/colour/bold go on the line container, the effect rides an inner
+ * span, and a word-scope highlight still composites on top.
+ *
+ * `effect` is typed as a plain string HERE because this module is shared with
+ * MAIN, which has no business importing the renderer's `HighlightEffect`
+ * union; the renderer narrows it at the one place it builds the layer. Every
+ * field is optional, so an older saved line loads unchanged.
+ */
+export interface LineStyleHint {
+  color?: string
+  bgColor?: string
+  bold?: boolean
+  effect?: string
+  glowColor?: string
+}
+
 export interface TextLine {
   id: number
   segments: TextSegment[]
@@ -744,6 +765,8 @@ export interface TextLine {
   mono?: boolean     // true when line was emitted inside <output class="mono"/> block
   prompt?: boolean   // true for a server <prompt> line ('>' / 'H>'); used by the
                      // renderer prompt-collapse pass (pitfall #88)
+  /** Client-authored styling (a trigger echo); never set by the parser. */
+  fx?: LineStyleHint
 }
 
 export interface RoomState {

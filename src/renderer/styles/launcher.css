@@ -889,6 +889,14 @@
   align-self: flex-end;
   background: var(--accent-dim);
   color: #fff;
+  /* The same halo `.btn-primary` carries (login.css) and for the same reason:
+     white on --accent-dim reads everywhere, but this button HOVERS to the
+     brighter --accent, where white falls to 1.4 on Terminal and ~2.3 on the
+     gold-accent themes. No single theme var works for on-accent text (a light
+     accent wants dark text, a dark accent wants light), so the halo is the
+     sanctioned literal — see Principle #4's text-halo exception. This is the
+     most-clicked control in the app and was the one that never got it. */
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.75), 0 1px 1px rgba(0, 0, 0, 0.5);
   border: none;
   border-radius: var(--radius-sm);
   padding: 6px 14px;

@@ -63,6 +63,10 @@
 .vital-text {
   position: absolute;
   inset: 0;
+  /* The percentage ticks constantly, and the sans-serif / serif font options
+     have proportional digits, so without this the centred label jitters on
+     every update. `.character-tab-health` already reserves and tabularises. */
+  font-variant-numeric: tabular-nums;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -31,100 +31,144 @@
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
 
-.at-header {
-  display: flex;
+/* The band is the shared `ui-modal-head` + `ui-modal-title` (ui.css). `.at-header`
+   and `.at-title` used to restate them property-for-property and were deleted
+   rather than kept in sync. This is the ONE refinement left: the title GROWS so
+   the ⋯ and the ✕ group together at the right edge — without it the ✕'s own
+   `margin-left: auto` (ui.css) splits the free space and strands the ⋯ in the
+   middle of the row. */
+.at-header .ui-modal-title { flex: 1 1 auto; }
+
+/* The ⋯ sits beside the ✕ and takes `.ui-close`'s box verbatim — same 1.7rem
+   square, same centring, same pinned `line-height: 1`. The ONE difference is
+   deliberate optical compensation: at the ✕'s 0.95rem the three dots carry far
+   less ink than a multiplication sign and read weedy beside it, so the glyph
+   steps up to 1.05rem. Measured, the two sit within 0.2px of each other
+   vertically, so the pair still reads as aligned — don't "correct" the size
+   difference to match the number. */
+.at-more-btn {
+  flex: none;
+  position: relative;
+  width: 1.7rem;
+  height: 1.7rem;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 0.85rem 1.1rem;
-  background: var(--modal-head-bg);
-  border-bottom: 1px solid var(--modal-head-border);
-  flex-shrink: 0;
-}
-
-.at-title {
-  font-weight: 700;
-  color: var(--modal-head-color);
-  font-size: 1rem;
-  letter-spacing: 0.02em;
-  flex: 1;
-  /* Let the title shrink (and clip) before the tabs / Import / ✕ get pushed
-     off-screen on narrow windows — adding the Mutes + Substitutes tabs (v0.12.0)
-     made a 5-tab bar an 8-tab bar, overflowing the header on smaller windows. */
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.at-tab-bar {
-  display: flex;
-  gap: 2px;
-  /* Wrap to a second row rather than clipping when the window is very narrow. */
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-/* B344: every button in the header row shares ONE metrics rule (pitfall #113).
-   The Analytics and scope buttons set no font-family, so they drew in
-   Chromium's default UI font beside the game-font tabs, and Import sat shorter
-   (0.75rem / 3px against 0.78rem / 4px). Each rule below sets only its own
-   horizontal padding and chrome. The scope buttons have no border of their own
-   — their .at-scope wrapper carries it — so all four rows come out equal. */
-.at-tab,
-.at-scope-btn,
-.at-analytics-btn,
-.at-import-btn {
-  font-family: inherit;
-  font-size: 0.78rem;
-  line-height: 1.3;
-  padding-block: 3px;
-}
-
-.at-tab {
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-md);
   background: transparent;
-  border: 1px solid transparent;
   color: var(--text-muted);
-  border-radius: 999px;
-  padding-inline: 12px;
+  font-family: inherit;
+  font-size: 1.05rem;
+  line-height: 1;
   cursor: pointer;
-  transition: background var(--ui-transition), color var(--ui-transition), border-color var(--ui-transition);
 }
-
-.at-tab:not(.at-tab--active):hover {
+:not(.at-more-btn--marked).at-more-btn:hover {
   background: var(--modal-ctl-hover);
   color: var(--text-primary);
 }
 
-.at-tab--active {
-  /* Active tab = the About chip (accent tint + accent hairline). */
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
-  background: color-mix(in srgb, var(--accent) 13%, transparent);
-  color: var(--accent);
+/* Automation Analytics is ON. The mode stays visible without spending a
+   permanent chip on the word "Off" (UX #1) — the app bar uses the same
+   convention for a More menu that is hiding something open.
+
+   TWO things here are load-bearing, both found by the v0.19.8 sweep.
+
+   (a) NOT bare `var(--accent)`. On Barbarian the accent is #8b1a1a, which
+   measures 1.87:1 against this header band — DIMMER than the 3.84:1
+   `--text-muted` it replaces, so switching Analytics ON made its own indicator
+   harder to see, and on Commoner the two colours are near-identical so the
+   change said nothing at all. 60% toward `--text-primary` is the house ratio
+   for an accent GLYPH (`.ui-color-chip svg`, ui.css); pitfall #150 names this
+   exact theme and this exact measurement.
+
+   (b) The state does NOT rest on colour alone — a tint backs it up. The
+   predecessor `.at-analytics-btn--on` carried accent text PLUS a 55% border
+   PLUS a 14% fill, which is why it survived these themes; dropping two of the
+   three is what made this fragile. The app bar's own More button marks an open
+   panel with four cues for the same reason. And the hover above EXCLUDES this
+   state, or `:hover` (0,2,0) would outrank it (0,1,0) and replace the marker
+   under the cursor — pitfall #107. */
+.at-more-btn--marked {
+  color: color-mix(in srgb, var(--accent) 60%, var(--text-primary));
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.at-more-btn--marked:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.at-more-btn--marked::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 60%, var(--text-primary));
 }
 
-/* Aligned with the main game-toolbar button pattern (game.css) so the
-   Automations header buttons match the rest of the UI on every theme.
-   Previously the hover used full --accent (border + text) with no
-   transition, which read as jarring "loses the theming" on themes
-   where the accent is a high-contrast brand color. The toolbar pattern
-   uses --accent-dim border + --accent text with a 0.2s ease, plus a
-   softer --text-muted resting color. */
-.at-import-btn {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: var(--radius-sm);
-  padding-inline: 10px;
-  cursor: pointer;
-  transition: background var(--ui-transition), color var(--ui-transition), border-color var(--ui-transition);
-}
-.at-import-btn:hover {
-  color: var(--accent);
-  border-color: var(--accent-dim);
-  background: var(--bg-hover);
+/* ── Overflow menu ───────────────────────────────────────────────────────── */
+
+/* z 450 is the dialog-popover tier (pitfall #118d): above this dialog's own
+   backdrop at 200, below the wizard at 600 — the same tier `.gp-menu`,
+   `.ma-var-menu` and `.ui-color-menu` use. Bounded and scrollable, on top of
+   the per-open `maxHeight` the component measures (pitfall #109). */
+.at-more-menu {
+  /* KEEP IN STEP with `MIN_W` in AtOverflowMenu (AutomationsPanel.tsx): the
+     component right-aligns the menu under the ⋯ using that constant, because it
+     has to place the box before it renders. The longest row ("Import from
+     another client…") measures ~247px, so 250 both holds the real content and
+     makes the estimate exact — at 240 the menu was ~7px wider than the number
+     it was positioned by, and hung past the button's right edge. If a longer
+     row is ever added, either raise both or switch to ColorField's placeMenu,
+     which measures the rendered menu instead of estimating it. */
+  min-width: 250px;
 }
 
-/* The ✕ is the shared ui-close (ui.css); .at-close was retired in v0.19.7. */
+/* The row recipe comes from `ui-menu-item` (ui.css); `--nowrap` keeps these
+   rows on one line, which the MIN_W coupling above depends on. `at-more-item`
+   stays on the button because AtOverflowMenu queries it for ↑/↓ roving focus
+   and for the focus-on-open. */
+
+/* The ✓ gutter is now `ui-menu-mark` (ui.css), which carries this rule and the
+   reasoning behind its `text-align: center`. */
+
+/* ── Sub-bar — navigation, and the context that qualifies it ─────────────── */
+
+/* A quiet row on the body surface, never the accent band (UX #10). These three
+   declarations are the Theme Editor's `.te-tabs` and the Lich Dashboard's
+   `.ld-tab-nav`; keep all three in step if the sub-bar look is retuned. */
+.at-subbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 1.1rem;
+  border-bottom: 1px solid var(--modal-foot-border);
+}
+
+/* `ui-tabs` supplies display / flex-wrap / gap, and `ui-tab` the chip itself —
+   `.at-tab` was a byte-for-byte copy of `.ui-tab` and is gone (B456). The tabs
+   LEAD the row now: navigation reads left-to-right, and they no longer have to
+   right-align against a crowd of unrelated buttons. */
+.at-tab-bar {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.at-scope-wrap {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* `ui-section-label` supplies the uppercase / tracking / muted treatment. Its
+   `letter-spacing` is applied after EVERY character including the last, so the
+   span's box carries ~1px of trailing air and the declared 6px gap reads as 7.
+   The negative margin gives that one character-space back. */
+.at-scope-label {
+  white-space: nowrap;
+  margin-right: -0.09em;
+}
 
 /* ── Body ────────────────────────────────────────────────────────────────── */
 
@@ -148,26 +192,11 @@
    Colors are theme vars / color-mix toward text so they stay legible on light
    themes (pitfalls #34/#55/#63). */
 
-/* Header master toggle */
-.at-analytics-btn {
-  background: var(--bg-sunken);
-  color: var(--text-muted);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding-inline: 10px;
-  cursor: pointer;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.at-analytics-btn:not(.at-analytics-btn--on):hover { color: var(--text-primary); border-color: var(--border); }
-.at-analytics-btn--on {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  background: color-mix(in srgb, var(--accent) 14%, var(--bg-sunken));
-}
+/* The master toggle used to be a header button (`.at-analytics-btn`); it is now
+   a row in the ⋯ menu, so its chrome lives with `.at-more-item` above. */
 
-/* F37 scope switch (This Character | All Characters) — segmented pair on the
-   at-analytics-btn recipe so it sits naturally in the header on every theme. */
+/* F37 scope switch (This Character | All Characters) — a segmented pair that
+   sits on the SUB-BAR beside the tab chips. */
 .at-scope {
   display: flex;
   flex-shrink: 0;
@@ -175,7 +204,22 @@
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
+/* B344 (pitfall #113) lives on here in a narrower form. These four
+   declarations ARE `.ui-tab`'s (ui.css): the scope buttons share a row with the
+   tab chips, so they must share the chips' metrics or the two sit at different
+   heights — which is exactly what B344 was raised for. They used to come from a
+   four-selector group that also covered `.at-tab` (now `.ui-tab`), Analytics
+   and Import (now menu items). Keep them in step with `.ui-tab`.
+   VERTICAL metrics only: `padding-inline` stays 10px against the chips' 12px,
+   because the segmented pair carries no per-button border and reads wider at
+   equal padding. The heights match exactly (24.224px each) — the buttons have
+   no border of their own, the `.at-scope` wrapper carries the 1px that the
+   chips carry individually. */
 .at-scope-btn {
+  font-family: inherit;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  padding-block: 3px;
   background: var(--bg-sunken);
   color: var(--text-muted);
   border: none;
@@ -189,9 +233,14 @@
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, var(--bg-sunken));
 }
-/* Always rendered, greyed where scope doesn't apply (Groups) — keeps the
-   header buttons from shifting position between tabs (Sekmeht). */
+/* Always rendered, greyed where scope doesn't apply (Groups, Colors) — keeps
+   the sub-bar controls from shifting position between tabs (Sekmeht).
+   The LABEL has to ghost with the switch it names, or "Applies to" sits at full
+   strength beside a 45% control and reads as an orphan heading for something
+   that isn't there. `:has()` keeps this in CSS rather than threading the
+   disabled state through the markup a second time. */
 .at-scope--disabled { opacity: 0.45; }
+.at-scope-wrap:has(.at-scope--disabled) .at-scope-label { opacity: 0.45; }
 .at-scope-btn:disabled { cursor: default; }
 
 /* F63 per-rule "Applies to" control (rendered inside the hp-/trg-/ma- editors —

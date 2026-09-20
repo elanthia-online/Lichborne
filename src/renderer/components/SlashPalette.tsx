@@ -16,7 +16,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { SLASH_COMMANDS, parseSlash, resolveColor, signatureOf, type SlashCommandSpec } from '../slashCommands'
-import { CURATED_COLORS, loadCustomColors, contrastBackingFor } from '../colors'
+import { CURATED_COLORS, loadCustomColors, activeCustomColors, contrastBackingFor } from '../colors'
 import { buildSubstituteRegex, type SubstituteRule } from '../substitutes'
 import '../styles/slash-palette.css'
 
@@ -55,6 +55,10 @@ interface Entry {
   verb: string        // '' for noun-only commands
   descLower: string
 }
+
+// How many value chips a row shows. Shared by the builder and the renderer, so
+// a list built to fit the row can't be cut by a different number (pitfall #124).
+const CHIP_CAP = 24
 
 const ENTRIES: Entry[] = SLASH_COMMANDS.map(c => {
   const label = c.verb ? `/${c.noun} ${c.verb}` : `/${c.noun}`
@@ -214,10 +218,15 @@ const SlashPalette = forwardRef<SlashPaletteHandle, Props>(function SlashPalette
     // A color slot is next → curated + custom names, each drawn in its color.
     const nextArg = cmd.args[p.args.length]
     if (nextArg?.kind === 'color') {
-      const values = [
-        ...Object.entries(CURATED_COLORS).filter(([n]) => n !== 'grey').map(([n, hex]) => ({ v: n, color: hex })),
-        ...loadCustomColors().map(c => ({ v: c.name, color: c.hex })),
-      ]
+      // Yours first: those are the ones that stay LINKED (F115). Removed
+      // (retired) colors aren't offered.
+      const yours = activeCustomColors(loadCustomColors()).map(c => ({ v: c.name, color: c.hex }))
+      const builtIns = Object.entries(CURATED_COLORS).filter(([n]) => n !== 'grey').map(([n, hex]) => ({ v: n, color: hex }))
+      // The chip row is capped when it renders, so a big palette would push the
+      // built-ins off the end entirely and `red` would stop being offered.
+      // Keep yours in front, but never at the cost of all of them.
+      const yoursRoom = Math.max(6, CHIP_CAP - builtIns.length)
+      const values = [...yours.slice(0, yoursRoom), ...builtIns]
       return { label: 'Colors (/colors for more):', values }
     }
     if (cmd.noun === 'contact' && cmd.verb === 'add' && p.args[0] && p.args[1] === undefined && !p.options.template && live.templateNames.length)
@@ -305,14 +314,14 @@ const SlashPalette = forwardRef<SlashPaletteHandle, Props>(function SlashPalette
           {valueChips && (
             <div className="slash-palette-chips">
               <span className="slash-palette-chips-label">{valueChips.label}</span>
-              {valueChips.values.slice(0, 24).map(({ v, color }) => {
+              {valueChips.values.slice(0, CHIP_CAP).map(({ v, color }, i) => {
                 // Theme contrast (pitfall #34 family): a chip drawn in its own
                 // color can vanish against the popover surface — white on a
                 // light theme, black on dark. Back just those chips neutrally.
                 const backing = color ? contrastBackingFor(color, '--bg-raised') : null
                 return (
                   <button
-                    key={v} type="button" className="slash-palette-chip"
+                    key={`${i}:${v}`} type="button" className="slash-palette-chip"
                     style={color ? { color, borderColor: color, ...(backing ? { background: backing } : {}) } : undefined}
                     onClick={() => fillValue(v)}
                   >{v}</button>

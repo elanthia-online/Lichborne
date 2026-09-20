@@ -98,7 +98,7 @@ export default function GroupPicker({ groupIds, onChange }: Props) {
       {open && createPortal(
         <div
           ref={menuRef}
-          className="gp-menu"
+          className="ui-menu gp-menu"
           style={{ top: pos.top, bottom: pos.bottom, left: pos.left, maxHeight: pos.maxHeight }}
         >
           {groups.length === 0 && (
@@ -107,7 +107,7 @@ export default function GroupPicker({ groupIds, onChange }: Props) {
           {assigned.length > 0 && (
             <>
               {assigned.map(g => (
-                <button key={g.id} className="gp-menu-item gp-menu-item--assigned" type="button" onClick={() => { toggle(g.id); setOpen(false) }}>
+                <button key={g.id} className="ui-menu-item gp-menu-item gp-menu-item--assigned" type="button" onClick={() => { toggle(g.id); setOpen(false) }}>
                   <span className="gp-menu-dot" style={{ background: g.color }} />
                   {g.name}
                   <span className="gp-menu-check">✓</span>
@@ -117,7 +117,7 @@ export default function GroupPicker({ groupIds, onChange }: Props) {
             </>
           )}
           {available.map(g => (
-            <button key={g.id} className="gp-menu-item" type="button" onClick={() => { toggle(g.id); setOpen(false) }}>
+            <button key={g.id} className="ui-menu-item gp-menu-item" type="button" onClick={() => { toggle(g.id); setOpen(false) }}>
               <span className="gp-menu-dot" style={{ background: g.color }} />
               {g.name}
             </button>

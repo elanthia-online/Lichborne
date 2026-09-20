@@ -1,5 +1,5 @@
 // Automations panel — the tabbed host for every native rule editor:
-// Highlights · Triggers · Macros · Aliases · Mutes · Substitutes · Groups.
+// Highlights · Triggers · Macros · Aliases · Mutes · Substitutes · Groups · Colors.
 //
 // It renders no rule UI of its own. It owns the things the editors share:
 //   - the F37 SCOPE switch (v0.15.2): "This Character" vs "All Characters".
@@ -9,7 +9,10 @@
 //     `_global` keys, which ride `_shared.yaml` instead of the character YAML.
 //     `handleSaved` adds the shared-YAML flush + the same-window
 //     `lichborne:global-rules-changed` event for that scope. Groups & Modes is
-//     per-character only; its switch renders DISABLED in place, never hidden.
+//     per-character only and Colors is app-wide; on both the switch renders
+//     DISABLED in place, never hidden.
+//   - ColorManageContext (F115, v0.19.8): every ColorField inside gets
+//     "Manage colors…", which switches to the Colors tab through the guard.
 //   - F63 `moveRuleScope`: a deliberate MOVE between the two stores (target
 //     written FIRST, aborted on a failed write; a content-identical target
 //     rule means "remove the source", never a duplicate).
@@ -27,7 +30,7 @@
 // (v0.10.0). Rendered by GameWindow, portaled to document.body.
 
 import { useEffect, useId, useRef, useState } from 'react'
-import { backdropHandlers } from '../utils/backdropClose'
+import { backdropHandlers, cancelBackdropPress } from '../utils/backdropClose'
 import { useEscapeClose } from '../hooks/useEscapeClose'
 import { UnsavedContext, useUnsavedScope } from '../hooks/useUnsaved'
 import { createPortal } from 'react-dom'
@@ -42,6 +45,8 @@ import MacrosPanel from './MacrosPanel'
 import MutePanel from './MutePanel'
 import SubstitutesPanel from './SubstitutesPanel'
 import GroupsModesTab from './GroupsModesTab'
+import ColorsPanel from './ColorsPanel'
+import { ColorManageContext } from './ColorField'
 import ImportWizard from './ImportWizard'
 import { useCharacter } from '../CharacterContext'
 import { CharacterProvider } from '../CharacterContext'
@@ -62,13 +67,20 @@ import '../styles/automations.css'
 // "Import from another client" entry point (Wrayth / Genie / Frostbite) — the
 // legacy-client migration path that Transfer does not cover.
 
-type Tab = 'highlights' | 'triggers' | 'macros' | 'aliases' | 'mutes' | 'substitutes' | 'groups'
+type Tab = 'highlights' | 'triggers' | 'macros' | 'aliases' | 'mutes' | 'substitutes' | 'groups' | 'colors'
 
 interface Props {
   onClose:              () => void
   onSaved?:             () => void
   onThemeSaved?:        (themeId: string) => void
   initialTab?:          Tab
+  /**
+   * Bumped by every "open at this tab" request. A request for the tab the
+   * dialog opened on is a no-op in React, so `initialTab` never changes and
+   * the sync effect never runs — which made "Manage colors…" and
+   * `/colors manage` do nothing once you had switched tabs inside the dialog.
+   */
+  initialTabSeq?:       number
   highlightPrefill?:    HighlightRule
   highlightTestText?:   string
   triggerPrefillPattern?: string
@@ -88,8 +100,187 @@ interface Props {
   closeRequest?:        number
 }
 
+// ── Overflow menu (⋯) ────────────────────────────────────────────────────────
+
+// The two header controls that are NOT navigation: the app-wide Automation
+// Analytics toggle and the legacy-client import. Both used to be permanent
+// furniture in the title bar — "Import from another client…" is 28 characters of
+// chrome for something you do once, ever (UX #11) — so they moved behind a ⋯
+// that never changes position. The button carries an accent dot while Analytics
+// is ON, which is the app bar's own convention for a More menu hiding something
+// that is open: the mode stays visible without spending a permanent chip on the
+// word "Off" (UX #1).
+//
+// Built from the Macros "$" picker (`MaVarPicker`, MacrosPanel.tsx) because it
+// is one of only two popovers already on the RIGHT side of B455 — it moves focus
+// into the menu on open and hands it back on Escape — and because it already
+// opens from inside this very dialog, so its Esc interaction is proven here.
+// Three things it does not do are added:
+//   - GroupPicker's placement math (flip above / clamp left / cap the height).
+//     A ⋯ in a dialog HEADER sits near the top of the screen, which is exactly
+//     where an unclamped down-opening menu misbehaves (pitfall #109).
+//   - focus restore on an OUTSIDE click, not only on Escape.
+//   - `cancelBackdropPress()`, so the press that dismisses the menu is not ALSO
+//     read as a press on the Automations backdrop beneath it (pitfall #146).
+//     Without it, one click outside closes the menu AND the whole dialog.
+// A shared popover component would be the real fix for all three; none exists
+// (B455 records the gap), so this stays local and deliberately small.
+//
+// Module scope, not nested in the panel, so the menu's open state survives the
+// host's re-renders (UX #4).
+function AtOverflowMenu({ analyticsOn, onToggleAnalytics, onImport }: {
+  analyticsOn: boolean
+  onToggleAnalytics: () => void
+  onImport: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; maxHeight: number }>(
+    { left: 0, maxHeight: 0 })
+  const btnRef  = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function dismiss() {
+      setOpen(false)
+      btnRef.current?.focus()
+    }
+    function onOutside(e: MouseEvent) {
+      if (btnRef.current?.contains(e.target as Node) || menuRef.current?.contains(e.target as Node)) return
+      // This press has already done its job (closing the menu) and must not
+      // also count as a click on the dialog's backdrop — pitfall #146.
+      cancelBackdropPress()
+      dismiss()
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        // preventDefault tells the dialog's own Esc handler (useEscapeClose)
+        // that the key was consumed, so Automations stays open — pitfall #141(b).
+        e.preventDefault()
+        dismiss()
+        return
+      }
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+      const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('.at-more-item') ?? [])
+      if (items.length === 0) return
+      e.preventDefault()
+      const i = items.indexOf(document.activeElement as HTMLButtonElement)
+      const next = e.key === 'ArrowDown' ? (i + 1) % items.length : (i <= 0 ? items.length - 1 : i - 1)
+      items[next].focus()
+    }
+    // rAF-throttled: a drag-resize fires continuously, and re-placing is a
+    // layout read plus a setState.
+    let raf = 0
+    const onResize = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(place) }
+    window.addEventListener('resize', onResize)
+    document.addEventListener('mousedown', onOutside)
+    document.addEventListener('keydown', onKey)
+    // Portaled to the end of <body>, so Tab from the ⋯ never reaches the menu —
+    // start keyboard users on the first item (B455's pattern).
+    const rafFocus = requestAnimationFrame(
+      () => menuRef.current?.querySelector<HTMLButtonElement>('.at-more-item')?.focus())
+    return () => {
+      cancelAnimationFrame(raf)
+      cancelAnimationFrame(rafFocus)
+      window.removeEventListener('resize', onResize)
+      document.removeEventListener('mousedown', onOutside)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  // Extracted from handleOpen so the open menu can re-place itself. Position is
+  // `fixed`, so without this a window resize leaves the menu parked at stale
+  // coordinates, visibly detached from the ⋯ it belongs to. ColorField's
+  // placeMenu already re-places on resize AND on a capture-phase scroll; this
+  // menu opens from a header that cannot scroll, so resize alone covers it.
+  function place() {
+    const rect = btnRef.current?.getBoundingClientRect()
+    if (rect) {
+      // MIN_W must equal `.at-more-menu`'s `min-width` (automations.css). The
+      // longest row measures ~247px, so 250 makes the estimate EXACT rather than
+      // merely close: the min-width floors the rendered box at the same number
+      // this positions it by. At 240 the menu was ~7px wider than the value used
+      // to right-align it and overhung the button.
+      const MARGIN = 8, GAP = 4, MIN_W = 250
+      const vh = window.innerHeight
+      const below = vh - rect.bottom - GAP - MARGIN
+      const above = rect.top - GAP - MARGIN
+      // Right-align under the button, then clamp onto the screen. Placing before
+      // the menu renders means estimating its width — the same compromise
+      // GroupPicker documents. ColorField's placeMenu measures the real box
+      // instead, and is the upgrade if this menu ever grows a longer row.
+      const left = Math.max(MARGIN, Math.min(rect.right - MIN_W, window.innerWidth - MIN_W - MARGIN))
+      setPos(below >= above
+        ? { top: rect.bottom + GAP, left, maxHeight: below }
+        : { bottom: vh - rect.top + GAP, left, maxHeight: above })
+    }
+  }
+
+  function handleOpen() {
+    place()
+    setOpen(v => !v)
+  }
+
+  // Close and restore focus BEFORE running the action: Import opens a wizard
+  // that focuses itself a commit later, so this never fights it.
+  function run(action: () => void) {
+    setOpen(false)
+    btnRef.current?.focus()
+    action()
+  }
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        className={`at-more-btn${analyticsOn ? ' at-more-btn--marked' : ''}`}
+        onClick={handleOpen}
+        title="More — Automation Analytics, and importing from another client"
+        aria-label="More"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >⋯</button>
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          className="ui-menu at-more-menu"
+          role="menu"
+          aria-label="More"
+          style={{ top: pos.top, bottom: pos.bottom, left: pos.left, maxHeight: pos.maxHeight }}
+        >
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={analyticsOn}
+            className="ui-menu-item ui-menu-item--nowrap at-more-item"
+            onClick={() => run(onToggleAnalytics)}
+            title={analyticsOn
+              ? 'Tracking which rules fire, and flagging duplicate, broken and unused rules. Turn off to stop tracking (preserves performance).'
+              : 'Track which rules fire, and surface duplicate, broken and unused rules.'}
+          >
+            <span className="ui-menu-mark at-more-mark" aria-hidden="true">{analyticsOn ? '✓' : ''}</span>
+            Automation Analytics
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="ui-menu-item ui-menu-item--nowrap at-more-item"
+            onClick={() => run(onImport)}
+            title="Import highlights, macros, and colors from Wrayth, Genie, or Frostbite. To copy a setup between Lichborne characters, use the Transfer button on the launcher."
+          >
+            <span className="ui-menu-mark at-more-mark" aria-hidden="true" />
+            Import from another client…
+          </button>
+        </div>,
+        document.body,
+      )}
+    </>
+  )
+}
+
 export default function AutomationsPanel({
-  onClose, onSaved, onThemeSaved, initialTab = 'highlights',
+  onClose, onSaved, onThemeSaved, initialTab = 'highlights', initialTabSeq = 0,
   highlightPrefill, highlightTestText, triggerPrefillPattern, triggerOpenId, mutePrefill, substitutePrefill,
   highlightOpenId, muteOpenId, substituteOpenId, aliasOpenId, closeRequest,
 }: Props) {
@@ -212,6 +403,9 @@ export default function AutomationsPanel({
       ? { kind: 'info', title: 'Already exists there', message: `“${label}” already exists in ${toGlobal ? 'All characters' : 'this character’s rules'} — moved by removing the duplicate copy.` }
       : { kind: 'success', message: `“${label}” moved to ${toGlobal ? 'All characters — it now applies to every character' : `this character only — other characters no longer have it`}.` })
   }
+  // F115: "Manage colors…" in any ColorField. Through the guard, because the
+  // editor that holds the field may have an unsaved draft.
+  const manageColors = () => unsaved.guard(() => setTab('colors'))
   const toggleAnalytics = () => {
     const next = !analyticsOn
     setAnalyticsOn(next)
@@ -222,7 +416,7 @@ export default function AutomationsPanel({
   // already-open dialog; switching tabs unmounts the current editor, so ask.
   useEffect(() => {
     if (initialTab !== tab) unsaved.guard(() => setTab(initialTab))
-  }, [initialTab]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [initialTab, initialTabSeq]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // B397: open with focus in the active panel — its search box, else its first
   // row, else the dialog itself. Runs after the panels' own mount effects; a
@@ -275,81 +469,93 @@ export default function AutomationsPanel({
     { id: 'mutes',      label: 'Mutes'      },
     { id: 'substitutes', label: 'Substitutes' },
     { id: 'groups',     label: 'Groups'         },
+    { id: 'colors',     label: 'Colors'         },
   ]
 
   const modal = (
     <div className="at-backdrop" {...backdropHandlers(guardedClose)}>
       <div className="at-modal" ref={modalRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
 
-        <div className="at-header">
-          <span className="at-title" id={titleId}>Automations</span>
-          <div className="at-tab-bar">
+        {/* Header — identity and dismiss, plus the ⋯ holding the two controls
+            that are not navigation. The split follows one rule: what qualifies
+            the whole DIALOG stays in the accent band; what qualifies the CURRENT
+            TAB goes on the sub-bar below. The scope switch is per-tab (it is
+            disabled on Groups and Colors), so it belongs down there — and only
+            the top-level header is an accent band anyway (UX #10). */}
+        <div className="ui-modal-head at-header">
+          <span className="ui-modal-title" id={titleId}>Automations</span>
+          <AtOverflowMenu
+            analyticsOn={analyticsOn}
+            onToggleAnalytics={toggleAnalytics}
+            // An import's save remounts every tab panel, which would drop an
+            // open draft — so opening it goes through the same guard.
+            onImport={() => unsaved.guard(() => setShowImport(true))}
+          />
+          <button type="button" className="ui-close" onClick={guardedClose} title="Close" aria-label="Close">✕</button>
+        </div>
+
+        {/* Sub-bar — the navigation, and the one control that qualifies it. */}
+        <div className="at-subbar">
+          <div className="ui-tabs at-tab-bar" role="tablist" aria-label="Automations sections">
             {TABS.map(t => (
               <button
                 key={t.id}
                 type="button"
-                className={`at-tab${tab === t.id ? ' at-tab--active' : ''}`}
+                role="tab"
+                aria-selected={tab === t.id}
+                className={`ui-tab${tab === t.id ? ' ui-tab--active' : ''}`}
                 onClick={() => { if (t.id !== tab) unsaved.guard(() => setTab(t.id)) }}
               >
                 {t.label}
               </button>
             ))}
           </div>
-          {/* F37: scope switch. ALWAYS rendered so the header buttons never
+          {/* F37: scope switch. ALWAYS rendered so the sub-bar controls never
               shift position between tabs (Sekmeht: a hidden switch closed the
-              gap and moved everything); on non-capable tabs (Groups only) it
-              renders DISABLED with a tooltip saying why. */}
-          <div
-            className={`at-scope${scopeCapable ? '' : ' at-scope--disabled'}`}
-            role="group"
-            aria-label="Rule scope"
-            title={scopeCapable ? undefined : 'Groups & Modes are always per-character — they gate rules per character, so a global scope doesn’t apply here.'}
-          >
-            <button
-              type="button"
-              className={`at-scope-btn${effectiveScope === 'character' ? ' at-scope-btn--on' : ''}`}
-              onClick={() => { if (scope !== 'character') unsaved.guard(() => setScope('character')) }}
-              disabled={!scopeCapable}
-              aria-pressed={effectiveScope === 'character'}
-              title={scopeCapable ? `Rules for ${character} only` : undefined}
+              gap and moved everything); where it doesn't apply (Groups, Colors)
+              it renders DISABLED with a tooltip saying why.
+
+              "Applies to" is deliberately the SAME words every rule editor uses
+              for its F63 scope-MOVE control, because it is one idea at two
+              scales: here it picks which store you are looking at, there it
+              moves a single rule between them. The visible label and the
+              group's accessible name match for the same reason. */}
+          <div className="at-scope-wrap">
+            <span className="at-scope-label ui-section-label">Applies to</span>
+            <div
+              className={`at-scope${scopeCapable ? '' : ' at-scope--disabled'}`}
+              role="group"
+              aria-label="Applies to"
+              title={scopeCapable ? undefined : tab === 'colors'
+                ? 'Your colors are shared by all your characters, so there’s no per-character choice here.'
+                : 'Groups & Modes are always per-character — they gate rules per character, so a global scope doesn’t apply here.'}
             >
-              This character
-            </button>
-            <button
-              type="button"
-              className={`at-scope-btn${effectiveScope === 'global' ? ' at-scope-btn--on' : ''}`}
-              onClick={() => { if (scope !== 'global') unsaved.guard(() => setScope('global')) }}
-              disabled={!scopeCapable}
-              aria-pressed={effectiveScope === 'global'}
-              title={scopeCapable ? 'Global rules — apply to EVERY character, on every account. Always active (no group gating). Stored app-wide in _shared.yaml, not in any character’s profile.' : undefined}
-            >
-              All characters
-            </button>
+              <button
+                type="button"
+                className={`at-scope-btn${effectiveScope === 'character' ? ' at-scope-btn--on' : ''}`}
+                onClick={() => { if (scope !== 'character') unsaved.guard(() => setScope('character')) }}
+                disabled={!scopeCapable}
+                aria-pressed={effectiveScope === 'character'}
+                title={scopeCapable ? `Rules for ${character} only` : undefined}
+              >
+                This character
+              </button>
+              <button
+                type="button"
+                className={`at-scope-btn${effectiveScope === 'global' ? ' at-scope-btn--on' : ''}`}
+                onClick={() => { if (scope !== 'global') unsaved.guard(() => setScope('global')) }}
+                disabled={!scopeCapable}
+                aria-pressed={effectiveScope === 'global'}
+                title={scopeCapable ? 'Global rules — apply to EVERY character, on every account. Always active (no group gating). Stored app-wide in _shared.yaml, not in any character’s profile.' : undefined}
+              >
+                All characters
+              </button>
+            </div>
           </div>
-          <button
-            type="button"
-            className={`at-analytics-btn${analyticsOn ? ' at-analytics-btn--on' : ''}`}
-            onClick={toggleAnalytics}
-            title={analyticsOn
-              ? 'Automation Analytics is ON — usage is being tracked. Turn off to stop tracking (preserves performance).'
-              : 'Automation Analytics is OFF. Turn on to track which rules fire and surface duplicates / broken / unused rules.'}
-          >
-            {'\u{1F4CA}'} Analytics: {analyticsOn ? 'On' : 'Off'}
-          </button>
-          {/* An import's save remounts every tab panel, which would drop an
-              open draft — so opening it goes through the same guard. */}
-          <button
-            type="button"
-            className="at-import-btn"
-            onClick={() => unsaved.guard(() => setShowImport(true))}
-            title="Import highlights, macros, and colors from Wrayth, Genie, or Frostbite. To copy a setup between Lichborne characters, use the Transfer button on the launcher."
-          >
-            Import from another client…
-          </button>
-          <button type="button" className="ui-close" onClick={guardedClose} title="Close" aria-label="Close">✕</button>
         </div>
 
         <UnsavedContext.Provider value={unsaved.registry}>
+        <ColorManageContext.Provider value={manageColors}>
         <div className="at-body">
           {/* Keys are tab-UNIQUE (not bare `importNonce`): Macros + Aliases are
               the SAME component (MacrosPanel, differing only by initialTab, read
@@ -393,8 +599,10 @@ export default function AutomationsPanel({
           {tab === 'mutes'    && <MutePanel key={`mutes-${effectiveScope}-${importNonce}`} onSaved={handleSaved} prefill={mutePrefill} openRuleId={muteOpenId} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={rule => moveRuleScope('mutes', rule)} />}
           {tab === 'substitutes' && <SubstitutesPanel key={`substitutes-${effectiveScope}-${importNonce}`} onSaved={handleSaved} prefill={substitutePrefill} openRuleId={substituteOpenId} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={rule => moveRuleScope('substitutes', rule)} />}
           {tab === 'groups'   && <GroupsModesTab key={`groups-${importNonce}`} />}
+          {tab === 'colors'   && <ColorsPanel key={`colors-${importNonce}`} />}
           </CharacterProvider>
         </div>
+        </ColorManageContext.Provider>
         </UnsavedContext.Provider>
 
       </div>

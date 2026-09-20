@@ -44,7 +44,7 @@ import { loadCommandHistorySettings, saveCommandHistorySettings } from './comman
 import { getOverviewPersisted, applyOverviewState } from './overviewStore'
 import { loadSessionLogSettings, saveSessionLogSettings, DEFAULT_SESSION_LOG_SETTINGS } from './sessionLogSettings'
 import { loadAIConfig, saveAIConfig, DEFAULT_AI_CONFIG } from './aiConfig'
-import { loadCustomColors, saveCustomColors } from './colors'
+import { loadCustomColors, saveCustomColors, coerceCustomColors } from './colors'
 import { DEFAULT_RUBY, DEFAULT_LICH } from './lichSettings'
 import { loadSimuCoinConfig, saveSimuCoinConfig, coerceSimuCoinConfig } from './simucoinConfig'
 
@@ -329,8 +329,11 @@ export async function importSharedProfile(): Promise<void> {
   // an option the app does not expect.
   if (data.overview && typeof data.overview === 'object') applyOverviewState(data.overview)
 
+  // F115: coerce, never a bare filter — an entry saved before v0.19.8 has no
+  // id, and gets the SAME deterministic one every load gives it, so links made
+  // against it keep resolving.
   if (Array.isArray(data.customColors)) {
-    saveCustomColors(data.customColors.filter(c => c && typeof c.name === 'string' && typeof c.hex === 'string'))
+    saveCustomColors(coerceCustomColors(data.customColors))
   }
 
   // SimuCoin per-account settings (F71). saveSimuCoinConfig writes verbatim, so

@@ -4,25 +4,22 @@
 // (GameWindow), every StreamPanel, and the Overview card's feed.
 //
 // The per-line hot path lives here, so two invariants hold:
-// - The expensive work runs ONCE per line, not per segment: `lineText` is
-//   joined once (B115 — DR fragments a line into 3-5 segments around names /
-//   links / bold, so a regex could never match a slice) and the contact +
-//   match-rule scan produces `lineRanges` once (B172); each segment just
-//   intersects. Don't add a render path that re-scans per segment.
+// - The expensive work runs ONCE per line, not per segment — that lives in
+//   `renderHighlightedLine` (B115 joined text, B172 shared ranges), which the
+//   Room panel and the Highlights Preview also use. Don't add a render path
+//   that re-scans per segment.
 // - It is `memo`'d, and the panels above are memo'd on it — every prop must
 //   keep a referentially stable identity (arrays, callbacks, the regex) or the
 //   memo is silently defeated on every game line.
 //
-// Cheap-path shortcut: with no contacts and no match rules (`hasExtras` false)
-// each segment goes through the lighter `renderSegment`. `data-line-id` is
-// the DOM→TextLine handle that lets a large selection be rebuilt from the data.
+// `data-line-id` is the DOM→TextLine handle that lets a large selection be
+// rebuilt from the data.
 
 import { memo } from 'react'
 import type { TextLine } from '../../shared/types'
 import type { Contact, ContactTemplate } from '../contacts'
 import type { CompiledRule } from '../HighlightsContext'
-import { renderSegment } from '../utils/renderSegment'
-import { renderSegmentFull, getLineHighlightStyle, computeLineMatchRanges } from '../utils/renderSegmentFull'
+import { renderHighlightedLine } from '../utils/renderSegmentFull'
 
 export interface TextLineRowProps {
   line: TextLine
@@ -50,28 +47,18 @@ export const TextLineRow = memo(function TextLineRow({
   line, matchRules, lineRules, contacts, templates, nameRegex,
   onContactClick, onSendCommand, autoLinkUrls = true, webLinkSafety = true, showTimestamp,
 }: TextLineRowProps) {
-  const lineStyle = getLineHighlightStyle(line.segments, lineRules)
+  // A line-scope highlight's colour must WIN over preset/fg segment colours
+  // (thoughts/speech/lnet/substituted lines), not just tint the container
+  // behind them — Cherisse; its effect paints every run a match-scope rule
+  // doesn't give an effect of its own (B428). Both happen inside.
+  // `line.fx` is a CLIENT-authored line style (a trigger echo, F118). It takes
+  // the line-layer slot, so the echo is painted by the same code a line-scope
+  // highlight is — never a second painter.
+  const { style: lineStyle, nodes } = renderHighlightedLine(line.segments, {
+    matchRules, lineRules, contacts, templates, nameRegex,
+    onContactClick, onSendCommand, autoLinkUrls, webLinkSafety, echo: line.fx,
+  })
   const monoStyle = line.mono ? { ...lineStyle, whiteSpace: 'pre-wrap' as const } : lineStyle
-  // A line-scope highlight that sets a text color must WIN over preset/fg
-  // segment colors (thoughts/speech/lnet/substituted lines), not just tint the
-  // container behind them — Cherisse. Pass it down so non-match runs recolor;
-  // match-scope runs still punch through with their own color. (bg-only line
-  // highlights leave `color` undefined → segments keep their own text color.)
-  const lineOverrideColor = lineStyle?.color as string | undefined
-  const hasExtras = !!nameRegex || matchRules.length > 0
-  // B115: build the joined line text once per render and pass it down with
-  // each segment's offset, so match-scope regexes and contact-name lookups
-  // run against the full line (not just the segment's own slice). DR wraps
-  // player names in XML attributes that fragment a thought line into 3+
-  // segments — without this, regex highlights like `Your mind hears .*?
-  // thinking,` could never match because the text was split.
-  const lineText = hasExtras ? line.segments.map(s => s.text).join('') : ''
-  // B172: run the contact/match-rule scan ONCE for the whole line and share
-  // the ranges with every segment — renderSegmentFull used to re-scan the
-  // full lineText per segment, multiplying the ruleset cost by the segment
-  // count (DR fragments lines into 3-5 segments around names/links/bold).
-  const lineRanges = hasExtras ? computeLineMatchRanges(lineText, contacts, templates, nameRegex, matchRules) : []
-  let cursor = 0
   return (
     // `data-line-id` maps a DOM row back to its TextLine, which is what lets a
     // large selection be rebuilt from the DATA rather than the DOM. Virtuoso
@@ -83,12 +70,7 @@ export const TextLineRow = memo(function TextLineRow({
       {showTimestamp && line.timestamp && (
         <span className="ts-prefix">{fmtTimestamp(line.timestamp)}</span>
       )}
-      {line.segments.map((seg, i) => {
-        if (!hasExtras) return renderSegment(seg, i, onSendCommand, autoLinkUrls, webLinkSafety, lineOverrideColor)
-        const offset = cursor
-        cursor += seg.text.length
-        return renderSegmentFull(seg, i, contacts, templates, nameRegex, matchRules, onContactClick, onSendCommand, autoLinkUrls, webLinkSafety, lineText, offset, lineRanges, lineOverrideColor)
-      })}
+      {nodes}
     </div>
   )
 })

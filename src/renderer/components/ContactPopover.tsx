@@ -13,6 +13,7 @@
 // or Escape closes it.
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { ContactRun } from '../utils/contactStyle'
 import { createPortal } from 'react-dom'
 import type { Contact, ContactTemplate } from '../contacts'
 import { formatLastSeen, formatDuration } from '../contacts'
@@ -74,19 +75,29 @@ export default function ContactPopover({ contact, template, x, y, onClose, onEdi
     <div ref={ref} className="cpop" style={{ left: pos.left, top: pos.top }}>
       <div className="cpop-header">
         <div className="cpop-name-line">
+          {/* The SHARED painter, like the game text and the Contacts previews.
+              Hand-rolled here, this showed a flat textColor for a rainbow
+              template (which the game deliberately does not apply), ignored the
+              tag's bold entirely, and pinned bold at a hard 700 — the weight
+              B113 routes through --ui-bold-weight so it tracks the user's text
+              setting. */}
           {template?.tagText && (
-            <span className="cpop-tag" style={{ color: template.tagColor,
-              ...(template.tagBgColor && template.tagBgColor !== 'transparent'
-                ? { backgroundColor: template.tagBgColor } : {}) }}>
-              {template.tagText}{' '}
-            </span>
+            <span className="cpop-tag"><ContactRun text={template.tagText} {...{
+              color: template.tagColor,
+              bgColor: template.tagBgColor,
+              bold: template.tagBold,
+              effect: template.tagEffect,
+              glowColor: template.tagGlowColor,
+            }} />{' '}</span>
           )}
-          <span
-            className="cpop-name"
-            style={{ color: template?.textColor ?? 'var(--text-primary)',
-              ...(template?.bold ? { fontWeight: 'bold' } : {}) }}
-          >
-            {contact.name}
+          <span className="cpop-name">
+            <ContactRun text={contact.name} {...{
+              color: template?.textColor ?? 'var(--text-primary)',
+              bgColor: template?.bgColor,
+              bold: template?.bold,
+              effect: template?.effect,
+              glowColor: template?.glowColor,
+            }} />
           </span>
         </div>
         <button className="cpop-close" onClick={onClose} title="Close" aria-label="Close">✕</button>

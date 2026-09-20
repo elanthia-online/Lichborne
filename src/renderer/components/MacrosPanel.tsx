@@ -147,10 +147,10 @@ function MaVarPicker({ inputRef, value, onChange, vars, tokens }: VarPickerProps
         aria-expanded={open}
       >$</button>
       {open && createPortal(
-        <div ref={menuRef} className="ma-var-menu" role="menu" aria-label="Insert variable or token" style={{ top: pos.top, left: pos.left, transform: 'translateX(-100%)' }}>
+        <div ref={menuRef} className="ui-menu ma-var-menu" role="menu" aria-label="Insert variable or token" style={{ top: pos.top, left: pos.left, transform: 'translateX(-100%)' }}>
           {/* B380: real buttons, so each item is keyboard-reachable. */}
           {vars.map(v => (
-            <button type="button" role="menuitem" key={`v-${v.name}`} className="ma-var-item" onClick={() => insertText(`$${v.name}`)}>
+            <button type="button" role="menuitem" key={`v-${v.name}`} className="ui-menu-item ui-menu-item--baseline ma-var-item" onClick={() => insertText(`$${v.name}`)}>
               <code>${v.name}</code>
               <span>{v.desc}</span>
             </button>
@@ -159,7 +159,7 @@ function MaVarPicker({ inputRef, value, onChange, vars, tokens }: VarPickerProps
             <>
               <div className="ma-var-section">Special tokens</div>
               {tokens.map(t => (
-                <button type="button" role="menuitem" key={`t-${t.name}`} className="ma-var-item" onClick={() => insertText(`{${t.name}}`)}>
+                <button type="button" role="menuitem" key={`t-${t.name}`} className="ui-menu-item ui-menu-item--baseline ma-var-item" onClick={() => insertText(`{${t.name}}`)}>
                   <code>{`{${t.name}}`}</code>
                   <span>{t.desc}</span>
                 </button>

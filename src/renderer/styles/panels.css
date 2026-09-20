@@ -77,6 +77,11 @@
 .injuries-panel {
   padding: 8px;
   font-size: var(--panel-font-size, var(--game-font-size));
+  /* Settings -> Line height reaches this panel too. Without it the rows
+     inherited body 1.5 and sat ~25% taller than the stream panel beside
+     them at the default 1.2, and Large Print (which forces 1.8) never
+     reached them at all. */
+  line-height: var(--game-line-height);
   overflow-y: auto;
   height: 100%;
 }
@@ -229,6 +234,11 @@
   box-sizing: border-box;
   overflow: hidden;
   font-size: var(--panel-font-size, var(--game-font-size));
+  /* Settings -> Line height reaches this panel too. Without it the rows
+     inherited body 1.5 and sat ~25% taller than the stream panel beside
+     them at the default 1.2, and Large Print (which forces 1.8) never
+     reached them at all. */
+  line-height: var(--game-line-height);
   /* B177: size container — the @container rules below drop the row's
      lowest-priority columns as the panel narrows, so the SKILL NAME (the
      1fr column, the only flexible one) never collapses to nothing while
@@ -810,6 +820,11 @@
   box-sizing: border-box;
   overflow: hidden;
   font-size: var(--panel-font-size, var(--game-font-size));
+  /* Settings -> Line height reaches this panel too. Without it the rows
+     inherited body 1.5 and sat ~25% taller than the stream panel beside
+     them at the default 1.2, and Large Print (which forces 1.8) never
+     reached them at all. */
+  line-height: var(--game-line-height);
 }
 .exp-compact-top,
 .exp-compact-bottom {

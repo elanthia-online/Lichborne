@@ -31,6 +31,17 @@ import type { MouseEvent } from 'react'
 // in flight (the user has one mouse).
 let downTarget: EventTarget | null = null
 
+// Forget the press in flight, so the `click` that follows can't close a
+// backdrop. A popover that dismisses itself on an outside mousedown calls this:
+// the press already did its job (closing the popover) and must not ALSO be read
+// as a press on the dialog underneath, or one click outside a color menu would
+// close the menu AND the dialog hosting it. The React root's handler above runs
+// first (it is attached below `document`), so by the time a document-level
+// listener calls this, `downTarget` has already been recorded.
+export function cancelBackdropPress(): void {
+  downTarget = null
+}
+
 export function backdropHandlers(onClose: () => void, enabled = true) {
   return {
     onMouseDown: (e: MouseEvent) => { downTarget = e.target },

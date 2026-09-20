@@ -97,7 +97,10 @@ export interface SharedProfile {
   overview?: { options: unknown }
   // User-defined named colors (v0.14.6, `/colors add`). App-wide — a color
   // vocabulary is shared like themes. Optional → older files default to [].
-  customColors?: { name: string; hex: string }[]
+  // F115 (v0.19.8): `id` is what rules LINK to, `retired` a removed color
+  // that still paints what uses it. Both optional: an entry from an older file
+  // gets a deterministic id from its name on load (colors.ts).
+  customColors?: { id?: string; name: string; hex: string; retired?: boolean }[]
   // "Reconnect last session" snapshot (F62, v0.15.2) — the character set that
   // was live (across all windows) the last time any session was open. Written
   // by the primary window on every non-empty roster change. Optional → older

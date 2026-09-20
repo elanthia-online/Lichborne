@@ -68,7 +68,7 @@
 }
 
 .trg-list-item:not(.trg-list-item--active):hover { background: var(--bg-hover); }
-.trg-list-item--active       { background: var(--bg-sunken); }
+/* Selected background: ONE rule in global.css for the whole rule-editor family. */
 .trg-list-item--disabled     { opacity: 0.45; }
 .trg-list-item--pending      { opacity: 0.7; font-style: italic; }
 
@@ -205,33 +205,6 @@
 
 /* B406: the pattern is code, in the code font. */
 .trg-input--pattern { flex: 1; font-family: var(--code-font-family); }
-
-.trg-input--hex {
-  width: 100px;
-  flex-shrink: 0;
-}
-
-.trg-color-swatch {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0;
-  cursor: pointer;
-  flex-shrink: 0;
-  background: none;
-}
-
-.trg-color-swatch::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-
-.trg-color-swatch::-webkit-color-swatch {
-  border: none;
-  border-radius: 3px;
-}
 
 .trg-action-note {
   font-size: 0.75rem;

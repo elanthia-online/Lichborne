@@ -21,7 +21,8 @@ import { useRef, useState } from 'react'
 import { type RuleGroup, type GameMode, newGroup, newMode } from '../groups'
 import { useGroups } from './GroupsContext'
 import { KeyBindingField } from './MacrosPanel'
-import { normalizeColorInput, COLOR_INPUT_TITLE } from '../colors'
+import { normalizeColorInput } from '../colors'
+import ColorField from './ColorField'
 import { pressable } from '../utils/pressable'
 import InlineConfirm from './InlineConfirm'
 import { confirmDiscard } from '../confirm'
@@ -81,7 +82,9 @@ export default function GroupsModesTab() {
 
   function saveGroup() {
     if (!groupDraft || groupSaveBlock) return
-    const saved = { ...groupDraft, name: groupDraft.name.trim() }
+    // Enter saves without the color box ever blurring, so a typed color name
+    // resolves here too (one of yours becomes a link — F115).
+    const saved = { ...groupDraft, name: groupDraft.name.trim(), color: normalizeColorInput(groupDraft.color) }
     setGroups(groupPending ? [...groups, saved] : groups.map(g => g.id === saved.id ? saved : g))
     setGroupDraft(saved)
     setGroupBase(saved)
@@ -236,22 +239,12 @@ export default function GroupsModesTab() {
             </div>
             <div className="gm-field">
               <label className="gm-label">Color</label>
-              <div className="gm-color-row">
-                <input
-                  type="color"
-                  className="gm-color-picker"
-                  value={groupDraft.color}
-                  onChange={e => setGroupDraft({ ...groupDraft, color: e.target.value })}
-                />
-                <input
-                  className="gm-input gm-color-hex"
-                  value={groupDraft.color}
-                  title={COLOR_INPUT_TITLE}
-                  onChange={e => setGroupDraft({ ...groupDraft, color: e.target.value })}
-                  onBlur={e => { const v = normalizeColorInput(e.target.value); if (v !== e.target.value) setGroupDraft({ ...groupDraft, color: v }) }}
-                  onKeyDown={e => { if (e.key === 'Enter') saveGroup() }}
-                />
-              </div>
+              <ColorField
+                label="Group color"
+                value={groupDraft.color}
+                onChange={v => setGroupDraft(d => d ? { ...d, color: v } : d)}
+                onEnter={saveGroup}
+              />
             </div>
             <div className="gm-actions">
               {!groupPending && (

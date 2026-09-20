@@ -373,7 +373,7 @@ export default function PanelFrame({
       tabLeftsRef.current.set(id, newLeft)
     })
   })
-  const [menuPos, setMenuPos] = useState<{ bottom: number; right: number; maxHeight?: number }>({ bottom: 0, right: 0 })
+  const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right: number; maxHeight?: number }>({ bottom: 0, right: 0 })
   const [tabCtxMenu, setTabCtxMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
   const [showNameInput, setShowNameInput] = useState(false)
   const [newPanelName, setNewPanelName] = useState('')
@@ -748,10 +748,24 @@ export default function PanelFrame({
             className="panel-tab-add"
             onClick={() => {
               const rect = addBtnRef.current?.getBoundingClientRect()
-              // B332-family: the menu opens UP from the strip, so cap its
-              // height to the room above the button (a strip near the top of
-              // the window used to push the menu's first rows off-screen).
-              if (rect) setMenuPos({ bottom: window.innerHeight - rect.top + 4, right: window.innerWidth - rect.right, maxHeight: Math.max(120, Math.min(240, rect.top - 12)) })
+              // The menu prefers to open UP from the strip, but it must FLIP
+              // when there isn't room. It used to always open up with
+              // `Math.max(120, Math.min(240, rect.top - 12))` — and that floor
+              // defeats the clamp it is wrapped around: a tab strip near the
+              // top of the game area (the Main-Top zone, or a floating window
+              // snapped to the top) has `rect.top` ~34, so the box was forced
+              // to 120px with its top edge at roughly -82px and the user got a
+              // sliver showing one row. Cap to the room actually available on
+              // whichever side is used.
+              if (rect) {
+                const GAP = 4, MARGIN = 12
+                const above = rect.top - MARGIN
+                const below = window.innerHeight - rect.bottom - MARGIN
+                const right = window.innerWidth - rect.right
+                setMenuPos(above >= below
+                  ? { bottom: window.innerHeight - rect.top + GAP, right, maxHeight: Math.min(240, above) }
+                  : { top: rect.bottom + GAP, right, maxHeight: Math.min(240, below) })
+              }
               setShowAddMenu(v => !v)
             }}
             title="Add panel"
@@ -761,7 +775,7 @@ export default function PanelFrame({
           >+</button>
           {showAddMenu && createPortal(
             <div ref={menuRef} className="panel-add-menu" role="menu" aria-label="Add panel"
-              style={{ bottom: menuPos.bottom, right: menuPos.right, maxHeight: menuPos.maxHeight }}>
+              style={{ top: menuPos.top, bottom: menuPos.bottom, right: menuPos.right, maxHeight: menuPos.maxHeight }}>
               <div className="panel-add-scroll">
                 {/* Built-in types and discovered custom streams sorted together
                     A-Z by visible label so the dropdown reads as one alphabetical

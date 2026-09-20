@@ -17,7 +17,7 @@
 // Reuses the existing per-type regex builders so "broken" means exactly what the
 // runtime means by "won't compile."
 
-import { buildHighlightRegex, type HighlightRule } from './highlights'
+import { buildHighlightRegex, effectiveEffect, type HighlightRule } from './highlights'
 import { buildTriggerRegex, type TriggerRule } from './triggers'
 import { buildMuteRegex, type MuteRule } from './mutes'
 import { buildSubstituteRegex, type SubstituteRule } from './substitutes'
@@ -109,12 +109,21 @@ export function analyzeHighlights(rules: HighlightRule[]): HealthReport {
   for (const r of rules) {
     if (buildHighlightRegex(r) === null) { add(report, r.id, 'broken'); report.brokenIds.push(r.id) }
     const s = r.style
-    const noVisual = s.textColor === 'transparent' && s.bgColor === 'transparent' && !s.bold && !s.glow
+    // `effectiveEffect`, not the legacy `glow` bool: an effect-only rule (no
+    // colour, no background, no bold, effect = Rainbow) paints plenty, and was
+    // being reported as "the rule does nothing".
+    const noVisual = s.textColor === 'transparent' && s.bgColor === 'transparent'
+      && !s.bold && effectiveEffect(s) === 'none'
     if (noVisual) { add(report, r.id, 'noop'); report.noopIds.push(r.id) }
   }
+  // `effect` MUST be in this key. Without it two rules that differ only by
+  // Shimmer vs Fire hashed the same, so "Remove duplicate copies (keep one of
+  // each)" deleted one of them — silent data loss driven by a property the key
+  // forgot (pitfall #121's shape, one layer up).
   report.duplicateGroups = groupBy(rules, r =>
     [r.mode, r.scope, r.caseSensitive, r.pattern,
-     r.style.textColor, r.style.bgColor, r.style.bold, r.style.glow, r.style.glowColor].join(' '))
+     r.style.textColor, r.style.bgColor, r.style.bold,
+     effectiveEffect(r.style), r.style.glowColor].join(' '))
   for (const g of report.duplicateGroups) for (const id of g) add(report, id, 'duplicate')
   // OBSOLETE for highlights is COVERAGE-based, per the user's model: "if a regex
   // rule can capture a text/phrase item, that item is obsolete" — regardless of
@@ -138,8 +147,29 @@ export function analyzeHighlights(rules: HighlightRule[]): HealthReport {
 
 // ===== Triggers =====
 function actionSig(r: TriggerRule): string {
-  // Identity that ignores per-action ids/order-noise but captures what it DOES.
-  return r.actions.map(a => `${a.type}:${a.command ?? ''}:${a.echoMessage ?? ''}:${a.varName ?? ''}=${a.varValue ?? ''}:${a.soundPreset ?? ''}${a.soundFile ?? ''}`).join('|')
+  // Identity that ignores per-action ids/order-noise but captures what it DOES —
+  // DERIVED from the action's own fields, never a hand-written list.
+  //
+  // It used to name six: type, command, echoMessage, varName/varValue and the
+  // two sound fields. Every other field was invisible to it, so two triggers
+  // differing ONLY in an echo's stream or colour, a notify title, a webhook URL,
+  // a log file or a delay hashed identically — the duplicate report grouped
+  // them, and "Remove duplicate copies" deletes all but the first of each group.
+  // Two genuinely different triggers could therefore be silently reduced to one.
+  // (F118's four echo style fields would have been four more of these; deriving
+  // the signature means the next field added is covered for free — pitfall #130,
+  // never hand-maintain a key list.)
+  //
+  // Falsy values are dropped so "unset" and "explicitly off/empty/zero" agree,
+  // and keys are sorted so property order can't change the result. Erring toward
+  // MORE distinct signatures is the safe direction: a missed duplicate costs a
+  // stale report row, a false one costs the user a rule.
+  return r.actions.map(a => {
+    const fields = Object.entries(a as unknown as Record<string, unknown>)
+      .filter(([k, v]) => k !== 'id' && v !== undefined && v !== null && v !== '' && v !== false && v !== 0)
+      .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))
+    return JSON.stringify(fields)
+  }).join('|')
 }
 export function analyzeTriggers(rules: TriggerRule[]): HealthReport {
   const report = emptyReport()

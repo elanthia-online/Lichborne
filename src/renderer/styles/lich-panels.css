@@ -32,40 +32,18 @@
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
 
-/* B373: the ✕ must never be pushed off-screen. The title, session pill and
-   tabs live in `.lp-header-main`, which WRAPS (and the tab chips wrap inside
-   it), while the ✕ is a sibling that never shrinks. The old single non-wrapping
-   row clipped the ✕ under `.lp-modal`'s overflow in windows below ~900px. */
-.lp-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: var(--modal-head-pad);
-  background: var(--modal-head-bg);
-  border-bottom: 1px solid var(--modal-head-border);
-  flex-shrink: 0;
-  min-width: 0;
-}
-.lp-header-main {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-}
-.lp-header > .ui-close { flex: none; }
+/* The header band is the SHARED `ui-modal-head` + `ui-modal-title` (ui.css).
+   `.lp-header` and `.lp-title` used to restate them here and were equivalent
+   property-for-property, so they were deleted rather than kept in sync.
 
-.lp-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 700;
-  color: var(--modal-head-color);
-  font-size: var(--modal-title-size);
-  letter-spacing: 0.02em;
-}
+   `.lp-header-main` went with them. It was B373's fix — a wrapping inner row
+   that stopped the ✕ being pushed under `.lp-modal`'s `overflow: hidden` when
+   the title, session pill and five tab chips all shared one line below ~900px.
+   The tabs now have a row of their own (see Tab nav), so that crowding cannot
+   happen and the wrapper has nothing left to protect. NOTE the ✕'s
+   right-alignment came from the wrapper's `flex: 1 1 auto`, not from the ✕
+   itself; `ui-modal-head > .ui-close { margin-left: auto }` (ui.css) is what
+   replaces it. */
 
 /* ── Script browser ──────────────────────────────────────────────────────── */
 
@@ -184,6 +162,11 @@
      --game-font-size, to preserve the default look). Pitfall #45 / Principle
      #9. The .ld-* Dashboard MODAL deliberately stays rem (modal exception). */
   font-size: var(--panel-font-size, var(--game-font-size));
+  /* Settings -> Line height reaches this panel too. Without it the rows
+     inherited body 1.5 and sat ~25% taller than the stream panel beside
+     them at the default 1.2, and Large Print (which forces 1.8) never
+     reached them at all. */
+  line-height: var(--game-line-height);
 }
 
 .sl-header {
@@ -408,9 +391,23 @@
 
 /* The tabs are `ui-tabs` / `ui-tab` accent chips (ui.css, UX standard #10) —
    they replaced a rounded-top folder look that relied on matching the body
-   colour. `min-width: 0` lets the chip row shrink and wrap inside the header
-   instead of pushing the ✕ out (B373). */
-.ld-tab-nav { min-width: 0; }
+   colour. They sit on their OWN row beneath the header band, composing the
+   SAME three sub-bar declarations onto `.ui-tabs` as the Theme Editor's
+   `.te-tabs` — keep the two in step if either is retuned. A row of their own
+   is what lets the header carry identity alone (UX #10) and is the durable
+   answer to B373.
+
+   No `min-width: 0` here. It was load-bearing in the old markup, where the nav
+   was a child of the wrapping ROW `.lp-header-main` and `min-width: auto` would
+   have resolved to min-content and blocked shrinking. As a child of the COLUMN
+   `.lp-modal` it is the CROSS axis, where the automatic minimum size is already
+   0 — so it was a dead declaration, and the comment that said it kept the row
+   shrinkable was describing markup that no longer existed. */
+.ld-tab-nav {
+  flex-shrink: 0;
+  padding: 8px 1.1rem;
+  border-bottom: 1px solid var(--modal-foot-border);
+}
 
 /* ── Body ────────────────────────────────────────────────────────────────── */
 
@@ -452,11 +449,19 @@
 
 /* ── Session pill ────────────────────────────────────────────────────────── */
 
+/* `line-height: 1` is load-bearing TWICE over (UX #7 / pitfall #77). Without it
+   the pill inherits body's 1.5 and stands 23.3px tall against 11.5px of text —
+   33% taller than its own content. And because `border-radius` clamps to HALF
+   the box height, 10px stops clamping past ~20px tall: the capsule silently
+   becomes a rounded rectangle, which is the visible tell. (Note the text was
+   always centred — the pill is auto-height, so the extra leading grew the box
+   rather than overflowing it. This is not #75b's "text sits high" case.) */
 .ld-session-pill {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   font-size: 0.72rem;
+  line-height: 1;
   color: var(--text-muted);
   background: var(--bg-sunken);
   border: 1px solid var(--border-subtle);
@@ -496,7 +501,7 @@
 }
 
 /* ── Selected list row ───────────────────────────────────────────────────── */
-.lp-row--selected { background: var(--bg-sunken); }
+/* Selected background: ONE rule in global.css for the whole rule-editor family. */
 .lp-row--selected .lp-script-name { color: var(--accent); }
 
 /* ── Variables tab ───────────────────────────────────────────────────────── */
