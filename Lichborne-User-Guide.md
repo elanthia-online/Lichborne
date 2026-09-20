@@ -70,6 +70,22 @@ A few ideas shape everything:
 
 ## What's New in the Latest Version
 
+**v0.19.9**
+
+- **Lichborne uses a lot less memory**, especially if you run several characters
+  or keep a map open. The map database is now loaded once and shared by every
+  character instead of separately by each one, and map tiles no longer pile up
+  in memory for the whole session. If you use **Windowed Panels** with a map
+  window always visible, this is the release where that stops costing you.
+- **And a lot less CPU while nothing is happening.** Three things were animating
+  continuously that were only ever meant to animate briefly — the Moons sky, the
+  Spell Monitor's bars, and a background poll for the Lich Scripts panel that ran
+  even when the panel wasn't on screen. Nothing looks different; the client just
+  stops working hard at nothing.
+- **Fixed:** a stream panel could grow past its 500-line limit without bound if a
+  burst landed exactly on the limit; the map's ↺ reload button always re-reads
+  the database; an unchanged Lich script list no longer redraws every 5 seconds.
+
 **v0.19.8**
 
 - **Name your own colours.** Make a colour once in **Automations → Colors**

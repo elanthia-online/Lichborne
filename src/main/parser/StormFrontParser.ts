@@ -4,8 +4,18 @@
 // parse(line) here → main.ts's session line handler consumes the events
 // (scene derivation, state snapshots and the renderer IPC batch all happen
 // there, not here). One instance per Session, alive for the session's
-// lifetime; call reset() on every new login (pitfall #4) — stream, style,
-// capture and timer state otherwise bleed into the next connection.
+// lifetime.
+//
+// State hygiene (pitfall #4) — how this is ACTUALLY achieved, which is not
+// what this header claimed until v0.19.9: `reset()` exists but has ZERO call
+// sites in src/main. Every ordinary login mints a fresh Session and therefore
+// a fresh parser, so stream/style/capture/timer state cannot bleed — freshness
+// comes from construction, not from resetting. The one path that reuses a
+// Session, and so reuses this parser, is attach auto-reattach
+// (`scheduleReattach` in main.ts), which is exactly the open bug B310: a
+// mid-block drop can carry stale activeStream/streamStack/monoMode across the
+// reconnect. Read B310 before changing that path — and if you add any other
+// path that reuses a Session, it must call reset() itself.
 //
 // What it does: a two-token regex splits each line into tags and text. Tags
 // drive a switch in tagStart()/tagEnd() that either mutates parser STATE

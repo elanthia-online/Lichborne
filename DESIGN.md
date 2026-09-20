@@ -9053,7 +9053,17 @@ animated *inside `@keyframes` only* (a whole-file sweep is misleading — it cou
 static declarations): experiences.css is 35 `opacity` + 18 `transform` + 4
 `box-shadow` + 2 `fill-opacity`, map-panel.css is 64 `opacity` + 34 `transform`,
 and there are **zero layout-triggering animations anywhere** — no animated
-`width`/`height`/`top`/`left`. That is §45.4's rule being followed. Particle
+`width`/`height`/`top`/`left`. That is §45.4's rule being followed.
+**Two corrections from the v0.19.9 pass (§45.12), both of which this audit's
+method could not have caught.** First, the sweep checked the HTML layout
+properties and missed the SVG one: `moons-ring-rise`/`-set` animate **`r`**, a
+geometry property that triggers SVG layout — low element count (≤8, transient),
+so it is a correctness note about the claim rather than a hot path. Second and
+far more important, **counting properties inside `@keyframes` cannot see a
+CSS `transition`** — and two timer-driven transitions were running permanently
+(B464/B465). "Which properties do the keyframes animate" is the wrong question
+on its own; the complete one is "what is animating, for how long, on how many
+elements, and does it ever stop". Particle
 counts are modest (~130 worst case: 70 stars with reveal culling, 34 rain, 26
 snow, 11 leaves, 9 fireflies). The single genuine outlier was `.moons-pill`'s
 `backdrop-filter: blur(9px) saturate(1.25)` — an element up to 96% of the scene
@@ -9165,6 +9175,57 @@ stack is ever reported as heavy, **that** is the axis to measure, not this one.
 per open Spell Monitor it is far below the threshold that justified §45.8's
 animation pause, and pausing it would need a `data-window-hidden` subscription
 plus a stale-readout-on-restore story for no measurable gain.
+
+### 45.11 The FIRST memory audit — retention had never been measured (v0.19.9)
+
+Triggered by *"it seems to use more memory than I remember"*, with no recollection of when it started. **Every prior pass in this section measured CPU or latency; none had ever asked what the client retains.** That gap is the finding — an unbounded cache dating to v0.3.0 had survived six years of audits because nobody was looking on that axis.
+
+**Measured on the reporter's running client (2 characters connected, 41 floating windows in Windowed Panels mode):**
+
+| Process | Working set | Peak |
+|---|---|---|
+| renderer | 532 MB (private 530) | **1,408 MB** |
+| gpu | 184 | 219 |
+| main | 118 | 251 |
+
+Renderer private ≈ working set, so it is committed heap, not shared pages. Sampling against the session log showed **~1.8 MB/min of renderer growth against ~135 KB/min of game text**, with the GPU climbing 0.84 MB/min alongside — consistent with base64 tiles being retained as strings AND as decoded bitmaps.
+
+**Three findings, all long-standing, none a v0.19.x regression:**
+
+- **B462 — the Lich map tile cache never evicted** ([MapImageView.tsx](src/renderer/components/panels/MapImageView.tsx)). `.has`/`.get`/`.set` only; 273 tiles ≈ 26.9 MB on disk, ~35.7 MB base64. Now an LRU at 30. Dates to v0.3.0.
+- **B463 — the map datasets were parsed per CHARACTER, not per app.** 14.7 MB of Lich map JSON (~52k rooms) plus a 12.3 MB Genie cache, held in per-component state, with MapPanel mounted per character across two mount sites. Now module-level caches keyed by source path with in-flight dedup. **What is shared and what is not is the load-bearing distinction** — see pitfall #159.
+- **B461 — the per-stream line cap inverted at exactly the cap.** `slice(-(MAX - lines.length))` is `slice(-0)` when a batch carries exactly 500, and `-0 === 0`, so it kept the whole buffer and compounded (verified 500 → 1000 → 1500). Pitfall #158.
+
+**Main was exonerated with measurement**, not assumption: 220–310 KB of retained state per session, `HISTORY_BUFFER_MAX` unchanged since v0.11.0. A strong code-derived hypothesis — that `buildCatchupDigest` (`CATCHUP_MAX_MINUTES` is one YEAR, at ~80k lines/day) had raised the high-water mark — was **refuted by main's 251 MB peak**. It remains a real hazard worth a ceiling; it is not what anyone has hit.
+
+**What was NOT the cause, and is worth not re-investigating:** no timer, listener or observer leaks (all 8 renderer intervals, 10 observers and 24 IPC subscriptions clean up); every text buffer capped; v0.18.5 *reduced* memory (removed a forever-interval, cut overscan 3000 → 1200). The one platform step that plausibly moved the baseline is **Electron 31.7.7 → 43.0.0 at v0.15.0** (Chromium ~126 → 150), which shipped with +682 bytes of our own source — close to a controlled experiment.
+
+### 45.12 CPU: the load did not vary with the game (v0.19.9)
+
+Same session, second axis. **Measured live: renderer 49–75% of one core, GPU 28–38%, main ~1.2%** — roughly 90% of a core between them for a text client sitting still.
+
+**The decisive measurement was a correlation, taken before any code was read.** Sampling CPU against session-log growth over four minutes, across a 2.7× range of text volume:
+
+```
+renderer CPU vs text volume : r = -0.061      (none)
+gpu CPU      vs text volume : r =  0.532      (partial)
+renderer floor, every sample: 55.7% of a core
+```
+
+**The floor is the argument** — at the quietest sample the renderer still burned 56% of a core, so the work happens whether or not the game sends anything. A harness against the reporter's real rulesets and today's real log then confirmed it from the other direction: the full `TextLineRow` path costs **90.8 µs/line**, which at their real rate (4.74 lines/s average, 53.2 peak) is **0.08% of a core average, 0.92% at peak** — ~1% against 49% measured, off by 50×.
+
+**So the per-line rule path is not where the CPU goes, and all four of pitfall #82's structures are intact** (+2.6% against §45.5's baseline — no regression). `resolveLineLayer` was the prime suspect and is innocent: 100% of line rules carry a literal gate, it short-circuits, it runs once per line (measured flat: 88.3 µs at 1 segment vs 89.4 at 4), and **it is not new** — v0.19.7's `getLineHighlightStyle` ran the identical scan; B428's marginal cost is **+0.43 µs/line**.
+
+**The cost was three never-stopping things**, all fixed:
+
+- **B464** — the Moons sky: `transition: opacity 2.5s` re-armed by a **2s** tick, four full-panel layers, permanently, unconditionally.
+- **B465** — Spell Monitor bars: `transition: transform 1s` re-armed by a **1 Hz** clock writing an unrounded float.
+- **B466** — `;listall` polled every 5s for a panel that was not mounted (tab existence vs visibility, the B307 mistake again), costing ~4 full GameWindow re-renders per 5s per character.
+
+The first two are one class, now pitfall #160, and the reason they were never caught is recorded there: **counting properties inside `@keyframes` cannot see a transition.**
+
+**Filed, not acted on:** **278 of 656 match rules (42.4%) carry no literal gate** and account for **98.9% of all regex executions** — 47.2 µs/line, about half the render cost. They are imported alternation-shaped rulesets that `extractRegexLiteral` correctly refuses to gate (pitfall #104 — err toward null). A multi-literal "any-of" gate would recover most of it and must carry the `check-literals.mjs` agreement check. **At ~1% of a core, this buys nothing noticeable**; recorded so it is not re-derived.
+
 
 ## 46. Prioritised Backlog — features & UX polish (snapshot 2026-07-30)
 

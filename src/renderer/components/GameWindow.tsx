@@ -1391,21 +1391,42 @@ export default function GameWindow({
     setShowAutomations(true)
   }, [])
 
+  // ── Which tab ids are actually SHOWING ─────────────────────────────────────
+  // ONE definition of "on screen", shared by the Lich Scripts poll gate below
+  // and by `activeIdsRef` (the unread-dot / lbAI-routing set). They answer the
+  // same question and previously answered it differently, which is how the poll
+  // gate below ended up wrong — pitfall #127.
+  //
+  // Only the ACTIVE tab of a surface is rendered (`PanelFrame` renders
+  // `{activeTab && renderPanel(...)}`), so a tab that merely EXISTS is not
+  // mounted. Panels mode additionally gates each zone on its `*Added` flag,
+  // because a removed zone keeps its stale activeId in state (pitfall #39).
+  const visibleTabIds = useMemo(() => (
+    layoutMode === 'free'
+      ? new Set(freeWindows.flatMap(w => (w.activeId ? [w.activeId] : [])))
+      : new Set([
+          ...(mainTopAdded ? [mainTopActiveId] : []),
+          ...(topAdded     ? [topActiveId]     : []),
+          ...(midAdded     ? [midActiveId]     : []),
+          ...(bottomAdded  ? [bottomActiveId]  : []),
+        ])
+  ), [layoutMode, freeWindows, mainTopAdded, mainTopActiveId, topAdded, topActiveId,
+      midAdded, midActiveId, bottomAdded, bottomActiveId])
+
   // ── Lich Scripts poll gate (Idea A, Binu v0.13.1) ──────────────────────────
-  // Only auto-poll `;listall` while a Lich Scripts panel is actually open in
-  // this character's layout — otherwise the poll is silent (see useLichBridge /
-  // lichPollRef). useLichBridge feeds ONLY the `lichScripts` PanelFrame tab (the
-  // Lich Dashboard sources its scripts separately), so the panel tab is the
-  // whole signal: zones in panels mode (gated on each zone's Added flag), or a
-  // floating window's tabs in free mode.
-  const lichScriptsOpen = useMemo(() => {
-    if (layoutMode === 'free') {
-      return freeWindows.some(w => (w.tabs ?? []).some(t => t.id === 'lichScripts'))
-    }
-    const zoneHas = (added: boolean, t: TabDef[]) => added && t.some(x => x.id === 'lichScripts')
-    return zoneHas(mainTopAdded, mainTopTabs) || zoneHas(topAdded, topTabs)
-        || zoneHas(midAdded, midTabs) || zoneHas(bottomAdded, bottomTabs)
-  }, [layoutMode, freeWindows, mainTopAdded, mainTopTabs, topAdded, topTabs, midAdded, midTabs, bottomAdded, bottomTabs])
+  // Only auto-poll `;listall` while the Lich Scripts panel is actually SHOWING
+  // — otherwise the poll is silent (see useLichBridge / lichPollRef).
+  //
+  // This tested tab EXISTENCE until v0.19.9, which is the same mistake B307
+  // fixed for the AI stream (pitfall #133b: existence is not visibility). A
+  // `lichScripts` tab sitting inactive in some window meant the character kept
+  // injecting `;listall` every 5s, forever, to feed a panel that was never
+  // mounted — and because `useLichBridge` lives at GameWindow scope, each poll
+  // plus its reply re-rendered the WHOLE GameWindow. That also matters beyond
+  // CPU: anything we inject is byte-identical to the player typing it, and a
+  // script with an upstream hook sees it (pitfall #76, which is why this gate
+  // exists at all). Polling for an invisible panel is pure cost on both axes.
+  const lichScriptsOpen = useMemo(() => visibleTabIds.has('lichScripts'), [visibleTabIds])
 
   useEffect(() => {
     const wasOpen = lichPollRef.current
@@ -2281,20 +2302,12 @@ export default function GameWindow({
   // windows are on screen at once, so each window's active tab is visible.
   const activeIdsRef = useRef(new Set([topActiveId, midActiveId, bottomActiveId]))
   useEffect(() => {
-    // B307: panels mode gates each zone's active id on its `*Added` flag — a
-    // REMOVED zone keeps its stale activeId in state (pitfall #39), and an
-    // ungated set called that tab "visible" for unread suppression AND for the
-    // lbAI routing below, when nothing of the sort was on screen.
-    activeIdsRef.current = layoutMode === 'free'
-      ? new Set(freeWindows.flatMap(w => (w.activeId ? [w.activeId] : [])))
-      : new Set([
-          ...(mainTopAdded ? [mainTopActiveId] : []),
-          ...(topAdded     ? [topActiveId]     : []),
-          ...(midAdded     ? [midActiveId]     : []),
-          ...(bottomAdded  ? [bottomActiveId]  : []),
-        ])
-  }, [layoutMode, freeWindows, mainTopActiveId, topActiveId, midActiveId, bottomActiveId,
-      mainTopAdded, topAdded, midAdded, bottomAdded])
+    // Mirrors the shared `visibleTabIds` memo (declared with the Lich Scripts
+    // poll gate) rather than restating it — B307's rule, that panels mode must
+    // gate each zone's active id on its `*Added` flag because a REMOVED zone
+    // keeps its stale activeId (pitfall #39), now lives in exactly one place.
+    activeIdsRef.current = visibleTabIds
+  }, [visibleTabIds])
 
   // Drag refs
   const virtuosoRef           = useRef<VirtuosoHandle>(null)
@@ -3494,7 +3507,15 @@ export default function GameWindow({
           for (const key of clearedStreams) next[key] = []
           for (const [key, lines] of Object.entries(newStream)) {
             const base = clearedStreams.has(key) ? [] : (prev[key] ?? [])
-            next[key] = [...base.slice(-(MAX_STREAM_LINES - lines.length)), ...lines]
+            // Trim the JOINED result, never the base by a computed keep-count.
+            // The old form was `base.slice(-(MAX_STREAM_LINES - lines.length))`,
+            // which inverts into UNBOUNDED growth at exactly the cap: a batch of
+            // 500 makes that `slice(-0)`, and `-0 === 0`, so `slice(0)` returns
+            // the WHOLE array instead of none of it — then appends 500 more.
+            // It compounds on repeats (measured 500 → 1000 → 1500 → 2000), and
+            // a batch >500 overshot the other way. Slicing the result is correct
+            // for every batch size and can't be got wrong again (B461).
+            next[key] = [...base, ...lines].slice(-MAX_STREAM_LINES)
           }
           return next
         })

@@ -44,6 +44,10 @@ export function useLichBridge(sessionId: SessionId, connected: boolean, shouldPo
   const firstSeenRef     = useRef<Map<string, number>>(new Map())
   const lastSeenRef      = useRef<Map<string, number>>(new Map())
   const lastKnownRef     = useRef<Map<string, { paused: boolean }>>(new Map())
+  // Signature of the last COMMITTED script list, so an unchanged `;listall`
+  // reply doesn't mint a new array and re-render GameWindow (see the commit
+  // site below).
+  const lastSigRef       = useRef<string>('')
   const killingRef       = useRef<Set<string>>(new Set())
   const customNamesRef   = useRef<Set<string>>(new Set())
   const pendingTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -114,13 +118,33 @@ export function useLichBridge(sessionId: SessionId, connected: boolean, shouldPo
         }
       }
 
-      setScripts(Array.from(merged.entries()).map(([name, state]) => ({
+      const next = Array.from(merged.entries()).map(([name, state]) => ({
         name,
         paused:    state.paused,
         custom:    customNamesRef.current.has(name),
         firstSeen: firstSeenRef.current.get(name) ?? now,
         killing:   killingRef.current.has(name),
-      })).sort((a, b) => b.firstSeen - a.firstSeen))
+      })).sort((a, b) => b.firstSeen - a.firstSeen)
+
+      // Commit only on a REAL change (v0.19.9). This hook lives at GameWindow
+      // scope, so each setState here re-renders the entire GameWindow — and
+      // `;listall` answers every 5s with a byte-identical list the whole time
+      // nothing is starting or stopping, which is the overwhelmingly common
+      // case. Minting a fresh array unconditionally made every reply a full
+      // re-render for no visible change. `firstSeen` is excluded from the
+      // signature deliberately: it is assigned once per script and preserved
+      // across polls, so it cannot differ without the name set differing.
+      const sig = next.map(s => `${s.name}|${s.paused}|${s.custom}|${s.killing}`).join('\n')
+      if (sig !== lastSigRef.current) {
+        lastSigRef.current = sig
+        setScripts(next)
+      }
+      // `lastUpdated` deliberately advances on EVERY reply, changed or not. It
+      // drives the panel's "updated Ns ago" footer, which reports when the feed
+      // last ANSWERED — not when it last differed. Gating it on the signature
+      // would make a perfectly live poll read "updated 5m ago" whenever the
+      // script list happened to be stable, which is the same mistake the Spell
+      // Monitor's feed readout documents (report ARRIVAL, never last-change).
       setLastUpdated(now)
     })
 

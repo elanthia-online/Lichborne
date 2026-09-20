@@ -50,6 +50,127 @@ function getLichPath(): string {
   } catch { return '' }
 }
 
+// ── Shared parse caches — module scope, DELIBERATELY (v0.19.9) ───────────────
+//
+// Both datasets below describe the WORLD, not a character: Lich's map database
+// and the parsed Genie zones are identical for everyone. They were nonetheless
+// parsed into per-COMPONENT state, so every mounted MapPanel held its own full
+// copy — and MapPanel is per-character AND has two mount sites (the panel tab,
+// `PanelFrame`, and the Maps overlay in GameWindow). Measured on a real
+// install: 14.7 MB of Lich map JSON (~52k rooms) plus a 12.3 MB Genie cache,
+// so a four-character session with maps showing could hold eight copies of
+// ~27 MB of source before counting the 2–4× JSON→heap expansion.
+//
+// Caching here is safe precisely because the parsed values are IMMUTABLE and
+// global. Everything per-character stays component state — `currentRoom`, the
+// Genie breadcrumb (`geniePersistRef`, whose own comment rightly forbids
+// hoisting it), zoom, view mode. That split is what keeps pitfall #6's
+// per-session isolation intact: we share the world, never the session.
+//
+// Each cache keys on its SOURCE PATH, so a new map file (repository.lic
+// downloads timestamped `map-<n>.json`) misses naturally. The in-flight
+// promise is the other half: two panels mounting in the same frame — which is
+// exactly what happens when you connect a second character, or open the Maps
+// overlay over an existing panel — would otherwise both parse. Rejections are
+// never cached; only a completed parse is stored.
+
+type LichDbBundle = {
+  db:    Map<number, LichRoom>
+  byUid: Map<number, LichRoom>
+  ti:    Map<string, LichRoom[]>
+  tn:    Map<string, LichRoom[]>
+  ii:    Map<string, LichRoom[]>
+}
+
+let lichDbCache:    { key: string; data: LichDbBundle } | null = null
+let lichDbInflight: { key: string; p: Promise<LichDbBundle> } | null = null
+
+/** Parse Lich's map JSON into the five lookup structures, once per file path. */
+function loadLichBundle(jsonPath: string, force: boolean): Promise<LichDbBundle> {
+  if (force) {
+    if (lichDbCache?.key === jsonPath)    lichDbCache = null
+    if (lichDbInflight?.key === jsonPath) lichDbInflight = null
+  }
+  if (lichDbCache?.key === jsonPath)    return Promise.resolve(lichDbCache.data)
+  if (lichDbInflight?.key === jsonPath) return lichDbInflight.p
+
+  const p = (async (): Promise<LichDbBundle> => {
+    const raw = await window.api.readFile(jsonPath)
+    if (!raw) throw new Error('Could not read map file')
+    const rooms: LichRoom[] = JSON.parse(raw)
+    const db    = new Map<number, LichRoom>()
+    // SECOND index, keyed by the GAME uid (Lich 5.20 review).
+    //
+    // `r.id` is LICH's own room id; `r.uid` is the game's. They are different
+    // number spaces — in a real DR map, ids run 1–52274 while uids run up to
+    // 9.8 million, and only 471 of 15,521 uids collide with any id. The
+    // `roomId` we look up with comes from `<nav rm>` and the subtitle marker,
+    // which Lich's own code calls "the authoritative room UID" — i.e. the GAME
+    // id. So an id-only index missed ~97% of lookups and fell through to the
+    // fragile title+desc match every time, which is the "map lost me" symptom.
+    //
+    // This is not a 5.20 regression; 5.20 is what makes it FIXABLE. DR now
+    // emits `<nav rm>` on EVERY arrival, so the uid is reliably present rather
+    // than only when the player had the game's ShowRoomID flag on.
+    const byUid = new Map<number, LichRoom>()
+    const ti    = new Map<string, LichRoom[]>()
+    const tn    = new Map<string, LichRoom[]>()
+    const ii    = new Map<string, LichRoom[]>()
+    for (const r of rooms) {
+      if (typeof r?.id !== 'number') continue
+      db.set(r.id, r)
+      // A room can carry several uids (merged/aliased rooms), so index each.
+      if (Array.isArray(r.uid)) {
+        for (const u of r.uid) if (typeof u === 'number' && u > 0) byUid.set(u, r)
+      }
+      const t = lichTitle(r)
+      if (t) {
+        if (!ti.has(t)) ti.set(t, []); ti.get(t)!.push(r)
+        const k = normalizeMatchKey(t)
+        if (k) { if (!tn.has(k)) tn.set(k, []); tn.get(k)!.push(r) }
+      }
+      if (r.image) { if (!ii.has(r.image)) ii.set(r.image, []); ii.get(r.image)!.push(r) }
+    }
+    const data = { db, byUid, ti, tn, ii }
+    lichDbCache = { key: jsonPath, data }
+    return data
+  })()
+
+  lichDbInflight = { key: jsonPath, p }
+  // Drop the in-flight entry either way; a rejection must not be memoized, or
+  // one transient read failure would poison every later mount.
+  p.finally(() => { if (lichDbInflight?.p === p) lichDbInflight = null }).catch(() => {})
+  return p
+}
+
+let genieCache:    { key: string; data: Map<string, GenieZone> } | null = null
+let genieInflight: { key: string; p: Promise<Map<string, GenieZone> | null> } | null = null
+
+/** The Genie disk-cache fast path, shared across panels. Null = cold, caller parses XML. */
+function loadGenieCached(dir: string): Promise<Map<string, GenieZone> | null> {
+  if (genieCache?.key === dir)    return Promise.resolve(genieCache.data)
+  if (genieInflight?.key === dir) return genieInflight.p
+
+  const p = (async (): Promise<Map<string, GenieZone> | null> => {
+    const cached = await window.api.genieCacheLoad(dir)
+    if (!cached || !Array.isArray(cached) || cached.length === 0) return null
+    const zones = new Map<string, GenieZone>()
+    for (const z of cached as GenieZone[]) if (z?.id) zones.set(z.id, z)
+    if (zones.size === 0) return null
+    genieCache = { key: dir, data: zones }
+    return zones
+  })()
+
+  genieInflight = { key: dir, p }
+  p.finally(() => { if (genieInflight?.p === p) genieInflight = null }).catch(() => {})
+  return p
+}
+
+/** Publish a freshly XML-parsed zone set so sibling panels skip the cold path. */
+function primeGenieCache(dir: string, zones: Map<string, GenieZone>): void {
+  if (zones.size > 0) genieCache = { key: dir, data: zones }
+}
+
 // B172: memoized — the map re-renders when the room actually changes (its
 // props are room primitives + stable callbacks), not on every GameWindow
 // render (vitals ticks, main-text batches).
@@ -125,7 +246,10 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
 
   // ── Load Lich JSON ───────────────────────────────────────────────────────────
 
-  const loadLichDb = useCallback(async () => {
+  // `force` busts the shared cache — used only by the repository.lic reload
+  // below, where the file may have been rewritten at the SAME path and so
+  // would otherwise be served stale from the module cache.
+  const loadLichDb = useCallback(async (force = false) => {
     const lichPath = getLichPath()
     if (!lichPath) { setDbStatus('error'); setDbError('no-lich-path'); return }
     setDbStatus('loading')
@@ -133,42 +257,10 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
     if (!result) { setDbStatus('error'); setDbError('no-map-file'); return }
     mapsDirRef.current = result.mapsDir
     try {
-      const raw = await window.api.readFile(result.jsonPath)
-      if (!raw) throw new Error('Could not read map file')
-      const rooms: LichRoom[] = JSON.parse(raw)
-      const db = new Map<number, LichRoom>()
-      // SECOND index, keyed by the GAME uid (Lich 5.20 review).
-      //
-      // `r.id` is LICH's own room id; `r.uid` is the game's. They are different
-      // number spaces — in a real DR map, ids run 1–52274 while uids run up to
-      // 9.8 million, and only 471 of 15,521 uids collide with any id. The
-      // `roomId` we look up with comes from `<nav rm>` and the subtitle marker,
-      // which Lich's own code calls "the authoritative room UID" — i.e. the GAME
-      // id. So an id-only index missed ~97% of lookups and fell through to the
-      // fragile title+desc match every time, which is the "map lost me" symptom.
-      //
-      // This is not a 5.20 regression; 5.20 is what makes it FIXABLE. DR now
-      // emits `<nav rm>` on EVERY arrival, so the uid is reliably present rather
-      // than only when the player had the game's ShowRoomID flag on.
-      const byUid = new Map<number, LichRoom>()
-      const ti = new Map<string, LichRoom[]>()
-      const tn = new Map<string, LichRoom[]>()
-      const ii = new Map<string, LichRoom[]>()
-      for (const r of rooms) {
-        if (typeof r?.id !== 'number') continue
-        db.set(r.id, r)
-        // A room can carry several uids (merged/aliased rooms), so index each.
-        if (Array.isArray(r.uid)) {
-          for (const u of r.uid) if (typeof u === 'number' && u > 0) byUid.set(u, r)
-        }
-        const t = lichTitle(r)
-        if (t) {
-          if (!ti.has(t)) ti.set(t, []); ti.get(t)!.push(r)
-          const k = normalizeMatchKey(t)
-          if (k) { if (!tn.has(k)) tn.set(k, []); tn.get(k)!.push(r) }
-        }
-        if (r.image) { if (!ii.has(r.image)) ii.set(r.image, []); ii.get(r.image)!.push(r) }
-      }
+      // Parsed once per file path across every mounted MapPanel — see the
+      // shared-cache note at module scope. The maps handed back are read-only
+      // as far as this component is concerned; nothing below mutates them.
+      const { db, byUid, ti, tn, ii } = await loadLichBundle(result.jsonPath, force)
       titleIndex.current     = ti
       normTitleIndex.current = tn
       uidIndex.current       = byUid
@@ -201,7 +293,9 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
   useEffect(() => {
     if (lichMapVersion === lastMapVersionRef.current) return
     lastMapVersionRef.current = lichMapVersion
-    loadLichDb()
+    // force — Lich just rewrote the database, so the shared module cache for
+    // this path is stale by definition.
+    loadLichDb(true)
   }, [lichMapVersion]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Match current room when title/desc changes ───────────────────────────────
@@ -253,23 +347,19 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
     setGenieZones(new Map())
 
     try {
-      // Cache fast path. Main process checks fingerprint (XML filenames +
-      // mtimes + sizes) against the on-disk cache; returns the parsed
-      // zones if they match, null otherwise. On a typical re-launch this
-      // skips the multi-second DOMParser pass and gets the user to a
-      // ready map in ~50ms (the cost of JSON.parse on a few MB).
-      const cached = await window.api.genieCacheLoad(dir)
+      // Cache fast path, now shared across panels (see the module-scope note).
+      // Main process checks a fingerprint (XML filenames + mtimes + sizes)
+      // against the on-disk cache; returns the parsed zones if they match,
+      // null otherwise. On a typical re-launch this skips the multi-second
+      // DOMParser pass and gets the user to a ready map in ~50ms — and on a
+      // SECOND panel it now costs nothing at all, where it used to re-parse
+      // the whole 12 MB cache into a second Map.
+      const cachedMap = await loadGenieCached(dir)
       if (gen !== genieGenRef.current) return
-      if (cached && Array.isArray(cached) && cached.length > 0) {
-        const cachedMap = new Map<string, GenieZone>()
-        for (const z of cached as GenieZone[]) {
-          if (z?.id) cachedMap.set(z.id, z)
-        }
-        if (cachedMap.size > 0) {
-          setGenieZones(cachedMap)
-          setGenieStatus('ready')
-          return
-        }
+      if (cachedMap) {
+        setGenieZones(cachedMap)
+        setGenieStatus('ready')
+        return
       }
 
       const files = await window.api.listMapDir(dir)
@@ -314,6 +404,10 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
       }
 
       if (gen !== genieGenRef.current) return
+      // Publish to the shared cache BEFORE the disk write, so a sibling panel
+      // mounting right now takes the in-memory copy rather than repeating the
+      // whole DOMParser pass.
+      primeGenieCache(dir, newZones)
       setGenieZones(newZones)
       setGenieStatus('ready')
 
@@ -384,7 +478,12 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
             >Genie Maps</button>
             <button
               className="map-btn map-btn--sm"
-              onClick={loadLichDb}
+              // force — this is the user explicitly asking for a re-read, so it
+              // must bypass the shared module cache. Passing `loadLichDb` bare
+              // would hand React's MouseEvent in as `force` (truthy by
+              // accident, and a type error); serving the cache here would make
+              // the button silently do nothing.
+              onClick={() => loadLichDb(true)}
               title="Reload Lich map database"
             >↺</button>
 

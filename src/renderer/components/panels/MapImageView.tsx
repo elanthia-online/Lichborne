@@ -60,6 +60,47 @@ function mimeFor(name: string): string {
   return 'image/gif'
 }
 
+// ── Tile cache (LRU, bounded) ────────────────────────────────────────────────
+//
+// Before v0.19.9 the tile cache had NO eviction of any kind — one base64
+// data URL per map image ever viewed, retained for as long as the component
+// stayed mounted. Measured on a real install: 273 tiles, 26.9 MB on disk,
+// ~35.7 MB once base64'd (base64 is 4/3 of binary).
+//
+// Two things made that worse than it looks. In Windowed Panels mode a map
+// window never unmounts, so "as long as mounted" means the whole session —
+// the Static-Panels mitigation (PanelFrame renders only the active tab, so
+// switching away drops the cache) simply doesn't apply. And each entry costs
+// a DECODED bitmap in compositor memory on top of the JS string, which is
+// why both the renderer AND the GPU process were observed climbing together
+// while travelling.
+//
+// 30 is far more than any travel path revisits, so the hit rate is unchanged
+// in practice; a miss costs one IPC read that already has a loading state.
+const MAX_CACHED_TILES = 30
+
+/** Read a tile, refreshing its recency. Returns undefined on a miss. */
+function tileGet(cache: Map<string, string>, key: string): string | undefined {
+  const hit = cache.get(key)
+  if (hit === undefined) return undefined
+  // Re-insert so iteration order tracks recency — this is the whole reason
+  // the eviction below is an LRU and not a FIFO.
+  cache.delete(key)
+  cache.set(key, hit)
+  return hit
+}
+
+/** Store a tile, evicting least-recently-used entries past the cap. */
+function tilePut(cache: Map<string, string>, key: string, value: string): void {
+  cache.delete(key)
+  cache.set(key, value)
+  while (cache.size > MAX_CACHED_TILES) {
+    const oldest = cache.keys().next().value
+    if (oldest === undefined) break
+    cache.delete(oldest)
+  }
+}
+
 export default function MapImageView({
   lichDb, imageIndex, mapsDir, currentRoom, roomTitle, roomId, onSendCommand,
 }: Props) {
@@ -109,8 +150,9 @@ export default function MapImageView({
 
   useEffect(() => {
     if (!currentImageName || !mapsDir) return
-    if (imageCache.current.has(currentImageName)) {
-      setImageDataUrl(imageCache.current.get(currentImageName)!)
+    const cached = tileGet(imageCache.current, currentImageName)
+    if (cached !== undefined) {
+      setImageDataUrl(cached)
       return
     }
     if (loadingImage.current === currentImageName) return
@@ -120,7 +162,7 @@ export default function MapImageView({
       loadingImage.current = ''
       if (!base64) { setImageLoading(false); return }
       const dataUrl = `data:${mimeFor(currentImageName)};base64,${base64}`
-      imageCache.current.set(currentImageName, dataUrl)
+      tilePut(imageCache.current, currentImageName, dataUrl)
       setImageDataUrl(dataUrl)
       setImageLoading(false)
     })

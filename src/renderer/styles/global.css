@@ -373,7 +373,18 @@ button:not(:disabled):active {
 
    Only `animation-play-state` is touched, so nothing moves, reflows, or
    changes appearance — animations resume mid-cycle exactly where they paused.
-   Transitions are deliberately left alone: they are one-shot and already over. */
+
+   TRANSITIONS ARE NOT COVERED, and "they are one-shot and already over" — what
+   this comment claimed until v0.19.9 — is not something this rule can assume.
+   A transition driven by a repeating timer is re-armed forever: B464 (a 2.5s
+   sky crossfade re-armed by a 2s tick) and B465 (a 1s bar transition re-armed
+   by a 1 Hz clock) both ran permanently, and both escaped this pause. Both are
+   fixed at the SOURCE — the driving value is quantised so an unchanged value
+   fires nothing — which is the right layer, because a transition that only
+   runs when something actually changed is correct whether the window is
+   visible or not. If a future timer-driven transition appears, fix it the same
+   way rather than trying to pause it here; `transition-property: none` under
+   this selector would visibly snap state on minimize/restore. */
 :root[data-window-hidden='true'] * {
   animation-play-state: paused !important;
 }

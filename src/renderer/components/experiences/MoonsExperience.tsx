@@ -765,8 +765,11 @@ function MoonsExperience({ moons, hidden, settings, weather, calendar, serverClo
   // back to char1 = blank). A per-instance prefix keeps each SVG's gradients its own.
   const uid = 'm' + useId().replace(/[^a-zA-Z0-9]/g, '')
   const gref = (name: string) => `url(#${uid}-${name})`
-  // Tick every 30s while data is present so the countdowns + positions drift
-  // in real time between moonwatch reports.
+  // Tick every 2s while data is present so the countdowns + positions drift in
+  // real time between moonwatch reports. (Said "30s" until v0.19.9 — stale
+  // since v0.17.0 dropped it to 2s. Anything whose cost was justified against
+  // the old period needs re-reading: the sky layers' CSS transition was exactly
+  // that, and had become a permanent animation.)
   const [, setTick] = useState(0)
   useEffect(() => {
     if (!moons) return
@@ -896,9 +899,20 @@ function MoonsExperience({ moons, hidden, settings, weather, calendar, serverClo
   const sunElev = sunPhase ? (sunPhase.day ? 1 : -1) * Math.sin(Math.PI * sunPhase.progress) : null
   // `elev` is the sky-GRADIENT weight source — it follows the Living sky toggle.
   const elev = showSky ? sunElev : null
-  const wDay   = elev == null ? 0 : clamp01(elev / 0.5)             // full blue by ~30° up
-  const wZen   = elev == null ? 0 : clamp01((elev - 0.6) / 0.4)     // extra brightness at high noon
-  const wTwi   = elev == null ? 0 : clamp01(1 - Math.abs(elev) / 0.35) // warm band hugging the horizon
+  // QUANTISED to 2dp, and that is load-bearing rather than tidiness (v0.19.9).
+  // These three drive the `opacity` of four FULL-PANEL `.moons-layer` divs that
+  // carry a CSS `transition`. The scene ticks every 2s, and an unrounded weight
+  // differs on every single tick — so each tick re-armed the transition before
+  // the previous one could finish, leaving four panel-sized layers in a
+  // permanent, never-completing opacity transition, day and night, regardless
+  // of weather or any ⚙ layer. Rounding means the value only changes when it
+  // changes VISIBLY (1% of opacity), which for a sun that crosses the sky over
+  // real hours is rarely — so the transition fires, completes, and stops.
+  // 1% steps are imperceptible against a gradient backdrop.
+  const q = (v: number) => Math.round(v * 100) / 100
+  const wDay   = elev == null ? 0 : q(clamp01(elev / 0.5))             // full blue by ~30° up
+  const wZen   = elev == null ? 0 : q(clamp01((elev - 0.6) / 0.4))     // extra brightness at high noon
+  const wTwi   = elev == null ? 0 : q(clamp01(1 - Math.abs(elev) / 0.35)) // warm band hugging the horizon
   const wNight = elev == null ? 0 : clamp01(-elev / 0.35)           // stars + depth past twilight
   // Night DEPTH — 0 at sunset/sunrise, peaking at 1 at true midnight (sunElev −1).
   // Unlike wNight (which saturates just past dusk), this keeps deepening, so fainter
