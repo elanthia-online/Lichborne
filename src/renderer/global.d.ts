@@ -22,7 +22,7 @@ import type {
   SessionLogExportSpec, SessionLogExportResult, SessionLogDiskUsage, SessionLogWindowRow,
   CatchupDigest, CatchupProgress,
   AICapability, AIKeyStatus, AITestResult, AIChatRequest, AIChatChunk, AIChatDone, AIChatError,
-  SimuCoinStatus,
+  SimuCoinStatus, CharacterNotice, RoutedToast,
 } from '../shared/types'
 
 declare global {
@@ -44,7 +44,9 @@ declare global {
       onSessionRoster: (cb: (payload: SessionRosterPayload) => void) => () => void
       getWindowInfo: () => Promise<{ windowId: number; isPrimary: boolean }>
       setSessionName: (sessionId: SessionId, character: string) => void
-      moveSessionToWindow: (sessionId: SessionId, target: 'new' | 'main' | number) => Promise<void>
+      // `quiet`: a NEW window opens without taking focus (team login, while
+      // the player may already be typing into another character).
+      moveSessionToWindow: (sessionId: SessionId, target: 'new' | 'main' | number, opts?: { quiet?: boolean }) => Promise<boolean>
       getOwnedSessions: () => Promise<RosterEntry[]>
       getRoster: () => Promise<RosterEntry[]>
       onSessionAcquire: (cb: (entry: RosterEntry) => void) => () => void
@@ -78,6 +80,14 @@ declare global {
       onLichScriptsUpdate: (cb: (payload: LichScriptsUpdatePayload) => void) => () => void
 
       onConnectProgress: (cb: (p: { character: string; message: string }) => void) => () => void
+      // v0.20.0 — toasts shown in the window the player is looking at, and
+      // "go to this character" across windows (main focuses the owner window
+      // and asks it to select the character).
+      onCharacterNotice: (cb: (n: CharacterNotice) => void) => () => void
+      routeToast: (toast: RoutedToast) => void
+      onRoutedToast: (cb: (t: RoutedToast) => void) => () => void
+      focusCharacter: (characterId: string) => void
+      onSelectCharacter: (cb: (characterId: string) => void) => () => void
       browseFile: (filters: { name: string; extensions: string[] }[]) => Promise<string | null>
       discoverLichPaths: (currentRuby: string, currentLich: string, opts?: { probeDesktop?: boolean; interactive?: boolean }) => Promise<{
         platform: string

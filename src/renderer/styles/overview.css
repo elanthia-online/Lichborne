@@ -169,7 +169,9 @@
  * border colours, and the pulse animation (which animates the background)
  * leaves it untouched. */
 .ov-card--selected {
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent);
+  /* v0.20.0: the character's own colour when one was picked in Edit Profile
+     (--char-color, set inline on the card), else the theme accent. */
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--char-color, var(--accent)) 60%, transparent);
 }
 
 .ov-card--compact { gap: 0.32em; padding: 0.5em 0.6em; }

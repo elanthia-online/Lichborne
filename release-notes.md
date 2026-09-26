@@ -1,204 +1,69 @@
-## v0.19.8
+## v0.20.0
 
-### New: your own named colors, and a Colors tab to manage them
+### Triggers wait for roundtime
 
-Thanks to **Elore** for this one. If you use the same shade for a whole set of
-highlights (every buff that drops in one orange, say), you no longer need to
-remember its hex code, and you'll never end up with orange that's slightly off.
+A trigger that sends a command now **waits for your roundtime to clear** before sending it. If you're not in roundtime, it sends straight away, exactly as before. If you have five seconds left, it waits five seconds and then sends.
 
-- Open **Automations → Colors** and make a color, like "Buff drop" or "Danger".
-- Anywhere you choose a color (highlights, trigger echoes, contact templates,
-  groups), click the **▾** beside the color box to pick one of your colors, or
-  just start typing its name and choose it from the suggestions. Or pick any
-  color you like and choose **Save as a color…** to name it on the spot.
-- **Change a color once and everything using it changes with it**, right away.
-  The Colors tab shows what uses each color.
-- Your colors are shared by all your characters.
-- Removing a color takes it out of your lists, but anything already using it
-  keeps its color, and you can restore it.
-- Built-in colors (red, gold, and the rest) never change, so picking one still
-  just uses that color. **Make an editable copy** gives you one you can tune.
-- Slash commands: `/colors add "Buff drop" #ff9040`, `/colors rename`,
-  `/colors remove` and `/colors manage`. `/highlight add "fades" "Buff drop"`
-  uses your color.
-- Profile Transfer brings along the colors your highlights and templates use.
+Before this, a trigger fired the moment its line appeared, which in combat usually meant the command arrived during roundtime and the game threw it away. A trigger that sends several commands waits before each one, so a chain like `stand;attack` now works in the middle of a fight.
 
-### New: bold your contact tags, and a clearer template card
+- It's **on by default, for every trigger you already have.** Each command has a **Wait for roundtime** checkbox if you want one to send immediately instead.
+- **Lich commands (anything starting with `;`) never wait.** Lich handles its own timing.
+- If you disconnect, anything still waiting is dropped, so nothing old gets sent when you log back in.
+- **`$rt` and `$ct` now count down in real seconds** in trigger messages and conditions, and a trigger can act **when roundtime ends**: watch the `rt` variable and add the condition *Roundtime = 0*. There's also a new **Cast time** condition.
+- From the command bar: `/trigger add "pattern" do "command" rt=now` makes a trigger that doesn't wait (`rt=wait` is the default).
 
-The **tag** on a contact template can now be **bold**, independently of the
-name — it had colour, a background and text effects, but not the one thing the
-name had. `/template add … tagbold` sets it too.
+**Importing from Genie** now keeps Genie's timing too. `#send` and `#do` wait for roundtime, `#put` sends immediately, and `#send 2 look` becomes *look, after a 2-second pause*. It used to import as the command "2 look".
 
-Ticking **Bold name text** also now visibly bolds the template in the list
-behind the editor. It always applied in game; the list row was forcing its own
-bold weight, so a bolded template looked identical to an unbolded one in the
-one place you go to check.
+### A new Toast action for triggers
 
-The template card is now grouped under labelled dividers — **Contact name**,
-**Tag**, **Preview**, **Applies to** — instead of one long ladder of fields
-where a tag option could end up sitting beside a name option. Picking an effect
-adds its colour box inside the relevant group rather than shuffling everything
-below it, and the tag's styling only appears once you've given it a tag.
+Triggers can now pop up a **Toast**, the small notification that slides up in the corner of the window you're looking at. Give it a title, a message and a colour. Unlike **Notify** (your system's desktop notification), a toast stays inside Lichborne and appears in whichever of its windows you're using.
 
-### New: style a trigger's echo the way you style everything else
+### Know what your other characters are doing
 
-A trigger's **Echo** action could pick a colour. It can now also set a
-**background**, go **bold**, and wear any of the **text effects** highlights and
-contact templates offer — with a live preview in the editor so you can see it
-before the trigger ever fires.
+When you run more than one character, Lichborne now tells you when another one **comes into the game**, **disconnects**, or **reconnects**, with a toast in whatever window you're looking at. Click it to go straight to that character, even if it's in a different window.
 
-The point is that the one line a trigger writes for you should be as easy to
-spot as anything else on screen. A "your buff dropped" echo can shimmer; a
-danger warning can sit on a red background.
+Each character gets a small coloured badge — the same colour as their avatar in the Living Tableau — so you can tell who a toast is about at a glance. If several characters drop at once, you get **one** toast naming them all instead of a pile, with a badge for each that takes you there. A toast also stays put while your mouse is over it (or while you've tabbed to it). When a character reconnects, it comes off the "disconnected" toast, and clicking one character's badge takes you there while leaving the others listed.
 
-### Changed: tidier Automations and Lich Dashboard headers
+It's on by default. Turn it off under **Settings → Character status notifications**, or type `/notices off`.
 
-Thanks to **Sekmeht** for calling this one out. The Automations title bar was
-carrying five different kinds of control in a single row — the tabs, the
-character/global switch, the Analytics toggle, the import button and the close
-button — all at the same size and spacing, with nothing to separate them.
+### Give each character a colour
 
-- **The tabs now have a row of their own**, so they read left to right instead
-  of competing for space with everything else.
-- **The character/global switch sits with them, under an "Applies to" label** —
-  the same words the rule editors use when you move a single rule between your
-  character and all characters.
-- **Analytics and "Import from another client…" moved into a "⋯" menu** beside
-  the close button. The ⋯ shows a small dot while Analytics is switched on, so
-  you can still tell at a glance.
-- **The Lich Dashboard got the same treatment** — its five tabs moved to their
-  own row, which also means its close button can no longer get squeezed off the
-  edge on a narrow window.
-- **Dropdown menus inside dialogs now match each other.** The group picker, the
-  macro variable list, the colour picker and the new ⋯ menu were four separate
-  implementations of the same thing that had drifted apart; they now share one.
-  You may notice two small differences: the highlight that follows your cursor
-  is slightly softer, and two of those menus sit on the same background shade as
-  the other two now. Menus in the game area — the app bar's ⋯, the right-click
-  menu, the mode switcher, a panel's **+** — are deliberately untouched, because
-  those still scale with your font size setting.
+**Edit profile** on the launcher now has a **Color** for each character. Pick one and Lichborne uses it to mark that character everywhere: their toast badge, their tab (the selected tab takes the colour, the others a faint outline), their Team Login tile, the selection ring on their Overview card, their launcher card, and their figure in the Living Tableau. Choose one of your **named colours** and it stays linked — change the named colour later and the character follows. Leave it on **Automatic** and nothing changes from how it looks today.
 
-Nothing moved out of reach: everything is one click from where it was, and the
-tabs, switch and buttons all keep working exactly as before.
+One related change: in the Living Tableau, **your own characters** always wear their own colour, even if you've added them as a contact on a coloured template, so a character can't be one colour in the Tableau and another everywhere else. Other people still take their contact template's colour there, as before.
 
-### Fixed: a polish pass over the whole interface
+### A clearer trigger editor
 
-- **"Compact" line height now actually is compact.** Every line of game text was
-  being floored at the next setting up, so the default spacing was wider than it
-  claimed and you were losing roughly six lines of visible text on a normal
-  window. This is the most noticeable change in the release.
-- **You can see which rule you have selected.** In Highlights, Triggers, Macros,
-  Aliases, Groups and Lich Scripts the selected row was nearly invisible on
-  several themes -- and merely hovering a row looked *more* selected than the one
-  you were editing.
-- **The Connect button on your character cards is readable on hover** on every
-  theme. On Terminal it was very nearly invisible.
-- **Line height and Large Print now reach the Experience, Injuries and Lich
-  Scripts panels.** They were stuck at a fixed spacing, so they sat taller than
-  the panel beside them and ignored Large Print entirely.
-- **Macros no longer fire while a dialog is open, and typing no longer lands in
-  a command bar you can't see.** Typing a port number into Attach could walk
-  your character, and the digit never reached the field.
-- **Switching character while the Overview is open** no longer puts your cursor
-  in a command bar you cannot see (where Enter still went to the game).
-- **The panel + menu opens the right way up** when a panel sits near the top of
-  the window, instead of showing a sliver.
-- Smaller things: the Team Login summary says **Close** rather than Done; the
-  Debug panel's close button no longer flashes red; the map's search results show
-  which one is selected; and the vitals percentages stop jittering on the
-  proportional fonts.
-- **Clearer wording on a destructive action:** Automation Analytics' bulk
-  clean-up now says **Delete** rather than Remove, because it permanently deletes
-  rules -- the same word the single-rule delete beside it already used.
+- Every field now explains itself when you hover over it, and each section says what it's for.
+- The **`$`** button next to a message is now a proper menu for inserting a variable, grouped by what the variable is about (your vitals, your hands, the room, the text that matched…). It used to be a dropdown that looked like a setting. Macros and aliases use the same menu.
+- **The `$` menu shows what each variable holds right now** — `$health 87`, `$right` your weapon, `$rt` counting down while you watch — so you can see what a trigger would say before you write it.
+- Choosing what to watch in a Variable trigger now suggests the variable names, and the conditions show what a sensible value looks like.
 
-### Fixed: Shimmer, Gold and Rainbow no longer go patchy
+### Team Login, redesigned
 
-The painted effects — Shimmer, Rainbow, Gold, Gradient and Frost — work by
-clipping a moving gradient to the letters. Whenever one of your word highlights
-matched something inside the line, the line was cut into pieces and **each piece
-started the gradient again**, so a short word squeezed the whole colour ramp into
-a few characters while a long stretch spread it out. That's what made effects
-look patchy, made Shimmer seem to appear in random places, and made ticking
-**Bold** look like it switched the effect off — bold only changed the letter
-widths, so a short piece landed on a flat part of its own gradient.
+Logging in a team now opens a panel with a **tile for every character**, showing where each one is: waiting, connecting (with what it's doing right now), ready, or failed and why.
 
-Now every piece of a line shares one gradient and takes its own slice of it, so
-the effect reads as continuous however many highlights overlap it. This fixes it
-for **line highlights on game text too**, not just trigger echoes.
+- **Start playing while the rest connect.** As soon as a character is ready, pick it and press **Play**, or just double-click its tile. The panel tucks into a small pill in the top bar and the rest of the team keeps logging in behind you without stealing focus. Click the pill to bring the panel back.
+- **Characters still connecting show up as tabs right away**, with a small loading indicator, so you can see who's coming.
+- **The first character in your team's order is the default**, not the last one to finish.
+- **"Open each in its own window"** now opens those windows quietly behind the one you're using.
+- The **Play** button keeps one width whichever character you choose, so the panel doesn't jump as you click between tiles.
+- The **Connect** button on a saved team now looks like the one on a character card.
+- **Logging in one character looks the same too:** a single tile showing each step as it happens, how long it's been waiting, and a Cancel.
+- A character that fails gets a **Retry** button once the rest have finished, and the tile tells you what went wrong.
 
-**Gold, Rainbow, Fire and Frost use their own fixed colours**, so the Color you
-pick won't tint them — Shimmer, Gradient and Glow do use it. The editors now say
-so under the effect, instead of leaving you to wonder why the colour did
-nothing.
+### Moving rules between "This Character" and "All Characters"
 
-Two details worth knowing:
+- **After a move, the editor follows the rule.** Flip a trigger to *All Characters* and you're taken to it there, still selected. Before, the list you were looking at went blank and the rule appeared to be gone.
+- **A move never throws away a rule.** If the other side already has a *different* rule with the same pattern, the move is refused and Lichborne tells you why. Before, your rule could be deleted in favour of the one already there.
+- The move takes what's in the editor, including edits you haven't saved, and it's greyed out while the rule has a problem that would stop it saving.
 
-- Your existing echoes are untouched. An echo that only sets a colour behaves
-  exactly as it did, including how it interacts with your highlight rules.
-- Once an echo carries its own styling, that styling wins over a **Line**
-  highlight that also matches it — the echo was written for that exact message.
-  Word highlights still paint on top either way.
+### Fixed
 
-### Fixed: bold works again if you've lowered your text weight
-
-If you set **Settings → Text weight** below Default, **bold stopped doing
-anything at all** — not just on contact templates, but everywhere: highlights,
-creature names, room titles, panel headings. It looked like bold was broken;
-really it was being asked for in a weight your font doesn't have.
-
-Most monospaced fonts (Consolas among them) ship exactly two weights, normal
-and bold. Lowering the text weight also lowered the *bold* weight, and once
-both requests fell below what the font has, the browser rounded them to the
-same one — so bold text and normal text came out as the same letters. Only the
-Default text weight escaped it, which is why it went unnoticed for so long.
-
-Bold now has a floor, so it always lands on a genuinely heavier weight than
-your body text whichever font and text weight you pick. If you run a thinner
-text weight, bold will look noticeably stronger than it did.
-
-One related fix: the **contact popover** (clicking a contact's name in game)
-painted names its own way — it ignored the tag's bold, showed no text effects,
-and used a fixed bold weight. It now renders exactly like the game text and the
-template preview.
-
-### New: pick your own colours in the Theme Editor
-
-The Theme Editor's colour rows now use the same control as the rest of the app —
-a swatch, a typable box that suggests as you type, and a dropdown offering
-**your named colours** alongside the built-ins. No more hunting for a hex code
-you already named.
-
-One deliberate difference from highlights and contact templates: **a theme
-copies the colour rather than following it.** Pick "Buff drop" for your app
-background and the theme stores that orange, so the theme still works perfectly
-when you share the file with someone who doesn't have your palette. The trade is
-that changing "Buff drop" later won't re-tint your theme — re-pick it if you
-want the new shade. The field's tooltip says so, and the dropdown is labelled
-"Your colors (copied)".
-
-### Fixed: line highlight effects now show in the game, and layer with word highlights
-
-A highlight set to **Line** can have a text effect — Rainbow, Shimmer, Fire,
-Wave and the rest. Until now only its colour and background reached the game
-window; the effect itself (anything other than Glow) and **Bold** only ever
-appeared in the editor's Preview.
-
-Line effects now paint in the game window, the stream panels, the Overview
-cards and the Room panel. They also layer the way you'd expect: if a word in
-that line has its own highlight with its own effect, the word keeps its effect
-and the rest of the line keeps the line's. A few details:
-
-- A word highlight that sets only a colour, with no effect of its own, takes on
-  the line's effect in its own colour.
-- Contact names keep their own contact styling.
-- Wave and Bounce lines now wrap between words instead of in the middle of one,
-  and every letter starts moving straight away.
-- The Preview now draws your highlight with the same code the game window uses,
-  so what you see there is what you'll get in play.
-
-### Fixed: "Manage" buttons that opened a dialog already on screen did nothing
-
-If Automations was already open on a different tab, the Mode button's
-**Manage** (and the colour fields' **Manage colors…**) quietly did nothing —
-the dialog stayed where it was. Every button that opens Automations at a
-particular tab now takes you there, whether it's open already or not.
+- **A team login could hang forever on one character**: no tab, no error, and the launcher showing that character as already logged in. If the login server went quiet partway through, Lichborne kept waiting for an answer that never came. It now gives up after its time limit and reports the problem like any other failed login.
+- **Moving a trigger to *All Characters* (or back) could delete a different trigger.** Every trigger that watches a variable was being treated as the same rule as every other one, so moving one could remove another. Transfer had the same problem and could skip them on import.
+- **Profile Transfer now tells you about rules it didn't bring over.** If the character you're importing into already has a *different* rule with the same pattern, Transfer keeps yours and lists the ones it skipped, instead of skipping them silently.
+- **A trigger's Echo to the Game window never appeared**, and neither did an echo to a panel you didn't have open. Both now show in the Game window, after the line that fired them.
+- **Genie queue commands no longer import as game commands.** `#send clear` used to import as a trigger that sent the word "clear" to DragonRealms.
+- A trigger saved with an action type this version doesn't recognise (from a hand-edited profile, say) no longer breaks the whole Triggers list.
+- **Contacts → Templates works with a long list.** With many templates, every template was squashed flat and the one you were editing was cut off, Save button included. The Templates tab now works exactly like the Contacts tab: a list on the left that scrolls, a **search** box, and the editor on the right.

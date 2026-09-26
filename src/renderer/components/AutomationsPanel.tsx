@@ -52,7 +52,8 @@ import { useCharacter } from '../CharacterContext'
 import { CharacterProvider } from '../CharacterContext'
 import { GLOBAL_RULES_SCOPE, asGlobalRules } from '../characterScope'
 import { scheduleSharedProfileSave } from '../profile'
-import { GLOBAL_RULE_KEYS, type GlobalRuleType } from '../ruleIdentity'
+import { GLOBAL_RULE_KEYS, sameRuleContent, type GlobalRuleType } from '../ruleIdentity'
+import { triggerCompareForm } from '../triggers'
 import { saveHighlights } from '../highlights'
 import { saveTriggers } from '../triggers'
 import { saveMacros, saveAliases } from '../macros'
@@ -111,7 +112,7 @@ interface Props {
 // that is open: the mode stays visible without spending a permanent chip on the
 // word "Off" (UX #1).
 //
-// Built from the Macros "$" picker (`MaVarPicker`, MacrosPanel.tsx) because it
+// Built from the shared "$" insert menu (`VarMenu.tsx`, then the Macros-only `MaVarPicker`) because it
 // is one of only two popovers already on the RIGHT side of B455 — it moves focus
 // into the menu on open and hands it back on Escape — and because it already
 // opens from inside this very dialog, so its Esc interaction is proven here.
@@ -325,6 +326,16 @@ export default function AutomationsPanel({
   const [scope, setScope] = useState<'character' | 'global'>('character')
   const scopeCapable = GLOBAL_TABS.includes(tab)
   const effectiveScope = scopeCapable ? scope : 'character'
+  // The rule an "Applies to" move just relocated. The editor FOLLOWS it: the
+  // list switches to the scope it moved to and reopens it there. Leaving the
+  // view where it was made the rule vanish from under the user, which read as
+  // "it was deleted" (Sekmeht). It outranks the host's open-ids (Fires → Edit,
+  // slash `edit`), which stay set while the dialog is open — until something
+  // newer happens: a manual scope switch, a tab change, or a new open request.
+  const [movedOpen, setMovedOpen] = useState<{ type: GlobalRuleType; id: string } | null>(null)
+  useEffect(() => { setMovedOpen(null) }, [tab, highlightOpenId, triggerOpenId, muteOpenId, substituteOpenId, aliasOpenId])
+  const openIdFor = (type: GlobalRuleType, hostId: string | undefined) =>
+    movedOpen?.type === type ? movedOpen.id : hostId
   // Fires → Edit and slash `edit` name a rule by id, and those are CHARACTER
   // rules. In "All characters" scope the panel can't find one — and the old
   // prefill path copied it into the global store under the same id. So when an
@@ -356,7 +367,11 @@ export default function AutomationsPanel({
   // (Sekmeht, 2026-07-09). Semantics: remove from the source store; if a
   // CONTENT-IDENTICAL rule (ruleIdentity keys — the same definition Transfer
   // uses) already exists in the target store, add nothing and say so — a move
-  // can never mint a duplicate. Promotion normalizes group gating away
+  // can never mint a duplicate. BUT only an EXACT copy (sameRuleContent) may be
+  // dropped that way: a rule that merely shares the key — same pattern, other
+  // actions — is a different rule, so the move is REFUSED and neither store
+  // changes. It used to count as a duplicate and delete the moved rule, taking
+  // its actions with it (Sekmeht, 2026-09-25). Promotion normalizes group gating away
   // (asGlobalRules); the rule's id travels with it, so its per-character
   // analytics history stays attached. The panel remounts via importNonce
   // (a move is a cross-store edit, exactly like an import).
@@ -373,6 +388,10 @@ export default function AutomationsPanel({
     substitutes: { load: loadSubstitutes, save: saveSubstitutes as (c: string, rules: any[]) => boolean },
   }
   /* eslint-enable @typescript-eslint/no-explicit-any */
+  const RULE_NOUN: Record<GlobalRuleType, string> = {
+    highlights: 'highlight', triggers: 'trigger', macros: 'macro',
+    aliases: 'alias', mutes: 'mute', substitutes: 'substitute',
+  }
   function moveRuleScope(type: GlobalRuleType, rule: { id: string; name?: string; groupIds?: string[]; allGroups?: boolean }) {
     const io = RULE_IO[type]
     const keyOf = GLOBAL_RULE_KEYS[type]
@@ -381,7 +400,30 @@ export default function AutomationsPanel({
     const toGlobal  = toScope === GLOBAL_RULES_SCOPE
     const source = io.load(fromScope).filter(r => r.id !== rule.id)
     const target = io.load(toScope)
-    const exists = target.some(r => keyOf(r) === keyOf(rule))
+    // Several rules can share a key; an EXACT copy anywhere among them means
+    // there's nothing to move. Only a key match with no exact copy refuses.
+    const same = (r: unknown) => sameRuleContent(r, rule, {
+      normalize: type === 'triggers' ? triggerCompareForm : undefined,
+      // Moving INTO a character: group gating is part of what the rule does.
+      includeGating: !toGlobal,
+    })
+    const keyed = target.filter(r => keyOf(r) === keyOf(rule))
+    const twin = keyed.find(same) ?? keyed[0]
+    const toWhere = toGlobal ? 'All characters' : 'This character'
+    if (twin && !same(twin)) {
+      const noun = RULE_NOUN[type]
+      const sharing = type === 'macros' ? 'on the same key'
+        : type === 'aliases' ? 'for the same word'
+        : (rule as { triggerType?: string }).triggerType === 'variable' ? 'watching the same variable'
+        : 'with the same pattern'
+      showToast({
+        kind: 'error',
+        title: 'Not moved',
+        message: `${toWhere} already has a ${noun} ${sharing} that's set up differently, so nothing was changed. Edit or delete one of them, then move it.`,
+      })
+      return
+    }
+    const exists = !!twin
     // TARGET first, and abort if the write failed (quota — safeSetItem already
     // toasted): removing the source after a failed target write would lose the
     // rule entirely. The saves return safeSetItem's success flag for exactly
@@ -391,6 +433,11 @@ export default function AutomationsPanel({
       if (io.save(toScope, [...target, moved]) === false) return
     }
     io.save(fromScope, source)
+    // Follow it: show the list it went to and open it there — the copy that was
+    // already in the target, when it existed (same content, maybe another id).
+    const openId = twin?.id ?? rule.id
+    setMovedOpen({ type, id: openId })
+    setScope(toGlobal ? 'global' : 'character')
     // Both stores changed (or may have) — sync the F37 way: shared-YAML flush,
     // the same-window re-merge event, the character-side reload + profile save.
     scheduleSharedProfileSave()
@@ -400,7 +447,7 @@ export default function AutomationsPanel({
     const r = rule as { name?: string; pattern?: string; key?: string; input?: string }
     const label = r.name || r.pattern || r.key || r.input || 'Rule'
     showToast(exists
-      ? { kind: 'info', title: 'Already exists there', message: `“${label}” already exists in ${toGlobal ? 'All characters' : 'this character’s rules'} — moved by removing the duplicate copy.` }
+      ? { kind: 'info', title: 'Already there', message: `An identical “${label}” was already in ${toWhere}, so this copy was removed instead of doubled.` }
       : { kind: 'success', message: `“${label}” moved to ${toGlobal ? 'All characters — it now applies to every character' : `this character only — other characters no longer have it`}.` })
   }
   // F115: "Manage colors…" in any ColorField. Through the guard, because the
@@ -533,7 +580,7 @@ export default function AutomationsPanel({
               <button
                 type="button"
                 className={`at-scope-btn${effectiveScope === 'character' ? ' at-scope-btn--on' : ''}`}
-                onClick={() => { if (scope !== 'character') unsaved.guard(() => setScope('character')) }}
+                onClick={() => { if (scope !== 'character') unsaved.guard(() => { setMovedOpen(null); setScope('character') }) }}
                 disabled={!scopeCapable}
                 aria-pressed={effectiveScope === 'character'}
                 title={scopeCapable ? `Rules for ${character} only` : undefined}
@@ -543,7 +590,7 @@ export default function AutomationsPanel({
               <button
                 type="button"
                 className={`at-scope-btn${effectiveScope === 'global' ? ' at-scope-btn--on' : ''}`}
-                onClick={() => { if (scope !== 'global') unsaved.guard(() => setScope('global')) }}
+                onClick={() => { if (scope !== 'global') unsaved.guard(() => { setMovedOpen(null); setScope('global') }) }}
                 disabled={!scopeCapable}
                 aria-pressed={effectiveScope === 'global'}
                 title={scopeCapable ? 'Global rules — apply to EVERY character, on every account. Always active (no group gating). Stored app-wide in _shared.yaml, not in any character’s profile.' : undefined}
@@ -576,7 +623,7 @@ export default function AutomationsPanel({
               key={`highlights-${effectiveScope}-${importNonce}`}
               prefill={highlightPrefill}
               initialTestText={highlightTestText}
-              openRuleId={highlightOpenId}
+              openRuleId={openIdFor('highlights', highlightOpenId)}
               onSaved={handleSaved}
               analyticsOn={analyticsOn}
               scope={effectiveScope}
@@ -587,17 +634,17 @@ export default function AutomationsPanel({
             <TriggersPanel
               key={`triggers-${effectiveScope}-${importNonce}`}
               prefillPattern={triggerPrefillPattern}
-              openRuleId={triggerOpenId}
+              openRuleId={openIdFor('triggers', triggerOpenId)}
               onSaved={handleSaved}
               analyticsOn={analyticsOn}
               scope={effectiveScope}
               onMoveScope={rule => moveRuleScope('triggers', rule)}
             />
           )}
-          {tab === 'macros'   && <MacrosPanel key={`macros-${effectiveScope}-${importNonce}`} initialTab="macros"   onSaved={handleSaved} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={(type, rule) => moveRuleScope(type, rule)} />}
-          {tab === 'aliases'  && <MacrosPanel key={`aliases-${effectiveScope}-${importNonce}`} initialTab="aliases"  openAliasId={aliasOpenId} onSaved={handleSaved} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={(type, rule) => moveRuleScope(type, rule)} />}
-          {tab === 'mutes'    && <MutePanel key={`mutes-${effectiveScope}-${importNonce}`} onSaved={handleSaved} prefill={mutePrefill} openRuleId={muteOpenId} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={rule => moveRuleScope('mutes', rule)} />}
-          {tab === 'substitutes' && <SubstitutesPanel key={`substitutes-${effectiveScope}-${importNonce}`} onSaved={handleSaved} prefill={substitutePrefill} openRuleId={substituteOpenId} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={rule => moveRuleScope('substitutes', rule)} />}
+          {tab === 'macros'   && <MacrosPanel key={`macros-${effectiveScope}-${importNonce}`} initialTab="macros"   openMacroId={openIdFor('macros', undefined)} onSaved={handleSaved} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={(type, rule) => moveRuleScope(type, rule)} />}
+          {tab === 'aliases'  && <MacrosPanel key={`aliases-${effectiveScope}-${importNonce}`} initialTab="aliases"  openAliasId={openIdFor('aliases', aliasOpenId)} onSaved={handleSaved} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={(type, rule) => moveRuleScope(type, rule)} />}
+          {tab === 'mutes'    && <MutePanel key={`mutes-${effectiveScope}-${importNonce}`} onSaved={handleSaved} prefill={mutePrefill} openRuleId={openIdFor('mutes', muteOpenId)} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={rule => moveRuleScope('mutes', rule)} />}
+          {tab === 'substitutes' && <SubstitutesPanel key={`substitutes-${effectiveScope}-${importNonce}`} onSaved={handleSaved} prefill={substitutePrefill} openRuleId={openIdFor('substitutes', substituteOpenId)} analyticsOn={analyticsOn} scope={effectiveScope} onMoveScope={rule => moveRuleScope('substitutes', rule)} />}
           {tab === 'groups'   && <GroupsModesTab key={`groups-${importNonce}`} />}
           {tab === 'colors'   && <ColorsPanel key={`colors-${importNonce}`} />}
           </CharacterProvider>

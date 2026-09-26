@@ -124,80 +124,75 @@ export class SGEConnection extends EventEmitter {
     this.socket?.write(data, 'binary')
   }
 
+  // Wait until `take()` can produce a value from the buffer — with a REAL
+  // deadline, and failing fast if the server closes or errors the socket.
+  //
+  // The reads used to check their deadline only when the next 'data' event
+  // arrived. So if eaccess went silent, or closed the connection, nothing ever
+  // ran the check again: the promise never settled and the login hung forever
+  // at "Signing in to your account…" with no error, while main kept the session
+  // in the roster (Sekmeht, 2026-09-25: a team login's second character did
+  // exactly this). Every wait now owns a timer and listens for close/error.
+  private waitFor<T>(take: () => T | undefined, what: string): Promise<T> {
+    return new Promise((resolve, reject) => {
+      // What is ALREADY buffered counts even if the server has since closed:
+      // a final response followed by a close must still be read.
+      const ready = take()
+      if (ready !== undefined) { resolve(ready); return }
+      const sock = this.socket
+      if (!sock || sock.destroyed) {
+        reject(new Error(`The Simutronics login connection closed before ${what} arrived`))
+        return
+      }
+      const cleanup = () => {
+        clearTimeout(timer)
+        sock.off('data', onData)
+        sock.off('close', onClose)
+        sock.off('error', onError)
+      }
+      const onData = () => {
+        const v = take()
+        if (v !== undefined) { cleanup(); resolve(v) }
+      }
+      const onClose = () => {
+        cleanup()
+        reject(new Error(`Simutronics closed the login connection while waiting for ${what}`))
+      }
+      const onError = (err: Error) => {
+        cleanup()
+        reject(new Error(`SGE connection error: ${err.message}`))
+      }
+      const timer = setTimeout(() => {
+        cleanup()
+        reject(new Error(`Timed out waiting for ${what} from Simutronics (eaccess.play.net)`))
+      }, READ_TIMEOUT_MS)
+      // Registered AFTER connect()'s buffering listener, so the buffer already
+      // holds the new bytes when onData runs.
+      sock.on('data', onData)
+      sock.on('close', onClose)
+      sock.on('error', onError)
+      onData()   // it may already be buffered
+    })
+  }
+
   // Read exactly `count` bytes
   private readBytes(count: number): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const deadline = Date.now() + READ_TIMEOUT_MS
-      const check = () => {
-        if (Date.now() > deadline) { reject(new Error(`Timed out waiting for ${count} bytes`)); return }
-        if (this.buffer.length >= count) {
-          const result = this.buffer.slice(0, count)
-          this.buffer = this.buffer.slice(count)
-          resolve(result)
-        } else {
-          this.socket?.once('data', check)
-        }
-      }
-      check()
-    })
+    return this.waitFor(() => {
+      if (this.buffer.length < count) return undefined
+      const result = this.buffer.slice(0, count)
+      this.buffer = this.buffer.slice(count)
+      return result
+    }, `${count} bytes`)
   }
 
   // Read whatever arrives within `settleMs` after first byte — for responses with no newline guarantee
-  private readRaw(settleMs = 150): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const deadline = Date.now() + READ_TIMEOUT_MS
-
-      const flush = () => {
-        const data = this.buffer.replace(/\0/g, '').trim()
-        this.buffer = ''
-        resolve(data)
-      }
-
-      const check = () => {
-        if (Date.now() > deadline) { reject(new Error('Timed out waiting for SGE response')); return }
-        if (this.buffer.length > 0) {
-          // Wait settleMs to collect any follow-up bytes in the same response
-          setTimeout(flush, settleMs)
-        } else {
-          this.socket?.once('data', check)
-        }
-      }
-      check()
-    })
-  }
-
-  // Read until \r or \n — for C and L responses which are newline-terminated
-  private readUntilNewline(): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const deadline = Date.now() + READ_TIMEOUT_MS
-      const sb: string[] = []
-
-      const check = () => {
-        if (Date.now() > deadline) { reject(new Error('Timed out waiting for newline from SGE')); return }
-
-        const crIdx = this.buffer.indexOf('\r')
-        const lfIdx = this.buffer.indexOf('\n')
-        const idx = crIdx === -1 ? lfIdx : lfIdx === -1 ? crIdx : Math.min(crIdx, lfIdx)
-
-        if (idx !== -1) {
-          sb.push(this.buffer.slice(0, idx))
-          this.buffer = this.buffer.slice(idx + 1)
-          // Skip paired \r\n
-          if (this.buffer[0] === '\n' || this.buffer[0] === '\r') {
-            this.buffer = this.buffer.slice(1)
-          }
-          resolve(sb.join('').replace(/\0/g, '').trim())
-        } else {
-          // No newline yet — take what's here and wait for more
-          if (this.buffer.length > 0) {
-            sb.push(this.buffer)
-            this.buffer = ''
-          }
-          this.socket?.once('data', check)
-        }
-      }
-      check()
-    })
+  private async readRaw(settleMs = 150): Promise<string> {
+    await this.waitFor(() => (this.buffer.length > 0 ? true : undefined), 'a response')
+    // Collect any follow-up bytes that belong to the same response.
+    await new Promise(r => setTimeout(r, settleMs))
+    const data = this.buffer.replace(/\0/g, '').trim()
+    this.buffer = ''
+    return data
   }
 
   // XOR cipher matching Simutronics spec

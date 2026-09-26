@@ -70,46 +70,52 @@ A few ideas shape everything:
 
 ## What's New in the Latest Version
 
-**v0.19.8**
+**v0.20.0**
 
-- **Name your own colours.** Make a colour once in **Automations → Colors**
-  ("Buff drop", "Danger") and pick it anywhere a colour is chosen — highlights,
-  trigger echoes, contact templates, groups. Change it later and everything
-  using it changes with it, immediately. The Colors tab shows what uses each one.
-- **The Theme Editor picks from your colours too** — but a theme *copies* the
-  colour rather than following it, so a theme file still works perfectly for
-  someone who doesn't have your palette.
-- **Style a trigger's echo.** The **Echo** action can now set a background, go
-  bold and wear any of the text effects, with a live preview in the editor — so
-  the line a trigger writes for you is as easy to spot as anything else.
-- **Bold works again if you lowered your Text weight.** Below the default
-  setting, bold had been rendering identically to normal text everywhere —
-  highlights, creature names, room titles, contact templates. If you run a
-  thinner text weight, bold will now look noticeably stronger.
-- **Contact templates got clearer.** The template card is grouped under labelled
-  dividers — Contact name, Tag, Preview, Applies to — instead of one long ladder
-  of fields, and the **tag** can be bold independently of the name.
-- **Line highlights show their effects in the game**, and layer properly: a word
-  with its own highlight keeps its own effect while the rest of the line keeps
-  the line's.
-- **A polish pass over the whole interface.** The headline one: **"Compact" line
-  height now actually is compact** — every line of game text had been floored at
-  the next setting up, so you were losing roughly six lines of visible text on a
-  normal window. Also: you can see which rule you have selected in Highlights,
-  Triggers, Macros, Aliases, Groups and Lich Scripts (on several themes a
-  *hovered* row looked more selected than the one you were editing); the
-  **Connect** button on your character cards is readable on hover on every theme;
-  line height and **Large Print** now reach the Experience, Injuries and Lich
-  Scripts panels; macros no longer fire — and typing no longer lands in a hidden
-  command bar — while a dialog is open; and the panel **+** menu opens the right
-  way up near the top of the window.
-- **Tidier Automations and Lich Dashboard headers.** The Automations title bar
-  was holding five different kinds of control in one row; the tabs now have a
-  row of their own, the character/global switch sits with them under an
-  **"Applies to"** label, and Analytics and **Import from another client…** moved
-  into a **⋯** menu beside the ✕ (it shows a dot while Analytics is on). The Lich
-  Dashboard's five tabs moved to their own row too. Nothing is more than one
-  click from where it used to be.
+- **Triggers wait for your roundtime.** A trigger's command now waits until
+  you're out of roundtime before it sends, instead of firing into a roundtime
+  the game throws it away in. Out of roundtime, it sends at once, like before.
+  It's on for every trigger; untick **Wait for roundtime** on a command to
+  send it immediately. `$rt` and `$ct` now count down live, and a trigger can
+  act when roundtime ends.
+- **A redesigned Team Login.** Every character on the team gets a tile showing
+  how its login is going. Pick one that's ready and press **Play** (or
+  double-click it) to start playing while the rest keep connecting behind you.
+- **Toasts about your other characters.** When another character comes into
+  the game, drops, or reconnects, a small notice appears in the window you're
+  using — click it to go there. Each character has its own coloured badge,
+  and if several drop at once you get one toast naming them all. Triggers can
+  pop one up too, with the new **Toast** action.
+- **Give each character a colour.** On the launcher, **Edit profile** now has
+  a **Color**. It marks that character everywhere — their tab, toasts, Team
+  Login tile, Overview card and Living Tableau figure. Pick one of your named
+  colours and it stays linked.
+- **A clearer trigger editor**, with an explanation on every field and a
+  proper **$** menu for inserting variables — which shows what each one holds
+  right now, like your health or what's in your hands.
+- **Moving a rule between This Character and All Characters is safer.** The
+  editor follows the rule to where it went, and a move that would clash with a
+  different rule is refused rather than losing one of them. Transfer lists any
+  rules it skipped for the same reason.
+- **Fixed:** a team login that could hang forever on one character; trigger
+  echoes to the Game window that never appeared; and Genie triggers that
+  imported `#send 2 look` as the command "2 look".
+
+**v0.19.9**
+
+- **Lichborne uses a lot less memory**, especially if you run several characters
+  or keep a map open. The map database is now loaded once and shared by every
+  character instead of separately by each one, and map tiles no longer pile up
+  in memory for the whole session. If you use **Windowed Panels** with a map
+  window always visible, this is the release where that stops costing you.
+- **And a lot less CPU while nothing is happening.** Three things were animating
+  continuously that were only ever meant to animate briefly — the Moons sky, the
+  Spell Monitor's bars, and a background poll for the Lich Scripts panel that ran
+  even when the panel wasn't on screen. Nothing looks different; the client just
+  stops working hard at nothing.
+- **Fixed:** a stream panel could grow past its 500-line limit without bound if a
+  burst landed exactly on the limit; the map's ↺ reload button always re-reads
+  the database; an unchanged Lich script list no longer redraws every 5 seconds.
 
 ## On the Horizon (Roadmap)
 
@@ -231,7 +237,9 @@ This tells DragonRealms to include your full status (hidden, stunned, roundtime,
 - **Right-click any tab** for quick actions — Reconnect a dropped character, Disconnect, or move it between windows (only the choices that apply are shown).
 - **Windows remember where you left them** — size, position, and whether they were maximized, for the main window and for any character you've moved into its own window. If a window's monitor isn't connected any more, it opens on your main screen instead.
 - **⟲ Reconnect Last** on the launcher brings your whole crew back in one click. If an account already has a different character on, Lichborne asks which you want rather than bouncing anyone.
-- **Team Login** logs several characters in at once (DR allows one character per account, so it's one from each). Tick only the accounts you want, and tick **Save this line-up as a team** to remember it. Saved teams appear in a **Teams** section on the logon screen and in the **+** window — each one shows who is on it, and a single Connect logs the whole team in, skipping anyone already playing. Pin a team with the heart and it joins **Favorites** at the top; the ⋯ menu edits its name and notes, or deletes it. A long team run can be **stopped** part-way: whoever is connecting finishes, and the rest are skipped and listed so you can start them whenever you like.
+- **Team Login** logs several characters in at once (DR allows one character per account, so it's one from each). Tick only the accounts you want, and tick **Save this line-up as a team** to remember it. Saved teams appear in a **Teams** section on the logon screen and in the **+** window — each one shows who is on it, and a single Connect logs the whole team in, skipping anyone already playing. Pin a team with the heart and it joins **Favorites** at the top; the ⋯ menu edits its name and notes, or deletes it. While the team logs in, a panel shows a tile for every character — waiting, connecting, ready, or what went wrong. **You don't have to wait for all of them:** click a ready character to choose it and press **Play** (or just double-click it), and the rest keep logging in behind you, appearing as tabs without pulling you away. The panel shrinks to a small pill in the top bar; click it to bring the panel back. A character that fails can be **retried** once the others finish. A long team run can be **stopped** part-way: whoever is connecting finishes, and the rest are skipped and listed so you can start them whenever you like.
+- **Give each character a colour.** On the launcher, a character's ⋯ → **Edit profile…** has a **Color**. It marks that character everywhere: their tab, their toasts, their Team Login tile, their Overview card and their figure in the Living Tableau. Pick one of your named colours to keep it linked, or leave it on **Automatic**.
+- **Know what your other characters are up to.** When another character comes into the game, disconnects, or reconnects, a toast appears in the window you're using — click it to jump to that character, even in another window. Turn these off under **Settings → Character status notifications** or with `/notices off`.
 
 ---
 
@@ -345,7 +353,7 @@ Open the **Theme** picker for a gallery of built-in light and dark themes, or cr
 The **Automations** window (the **Automations** button on the app bar) is home base for the client's native automation — **all of it works with or without Lich.** It's tabbed by rule type:
 
 - **Highlights** — color words, names, or patterns wherever they appear in game text. Match a plain word, a phrase, or a full regex; choose whether it paints just the match or the whole line; give it a text color, background, bold, or a **text effect** — Glow, Shimmer, Rainbow, Pulse, Gold, Gradient, Fire, Frost, and more (animated effects hold still when epilepsy-safe mode is on). Overlapping highlights are resolved automatically (the most specific one wins per color property), so you never manage a priority list. Contact templates support the same effects — on the name, on the **tag**, or each with its own — and the template editor previews them live as you pick.
-- **Triggers** — "when I see X, do Y." The action can send a command, play a sound, echo a note to a stream (which you can colour, bold, give a background or a text effect, just like a highlight), and more. Add **gates** (only while a Group/Mode is active) and a **cooldown** so a trigger can't spam. There's a quick form (`"pattern" do "command"`) for the common case and the full editor for multi-step triggers.
+- **Triggers** — "when I see X, do Y." The action can send a command, play a sound, echo a note to a stream (which you can colour, bold, give a background or a text effect, just like a highlight), pop up a **Toast** in Lichborne, and more. **Commands wait for your roundtime to clear** before they send, so a trigger's `stand` or `attack` doesn't get thrown away mid-fight — untick **Wait for roundtime** on a command that should go immediately (Lich `;` commands never wait). Hover over any field in the editor to see what it does, and use the **$** button to insert a variable like `$health` or `$rt`. Add **gates** (only while a Group/Mode is active) and a **cooldown** so a trigger can't spam. There's a quick form (`"pattern" do "command"`) for the common case and the full editor for multi-step triggers.
 - **Macros** — bind a key (F1–F12, Ctrl/Alt/Shift combos, the numpad) to a command or a whole sequence (with optional delays between steps). Put an **`@`** anywhere in the command to drop your cursor there — perfect for fill-in-the-blank macros like `get @ from my pack`.
 - **Aliases** — typed shortcuts that expand as you send them: `hh` → `health;heal`. Use `$1`, `$2`, `$rest` to pass along whatever you typed after the alias.
 - **Mutes & Substitutes** — two more tabs, covered [just above](#mutes--substitutes).
@@ -355,7 +363,7 @@ The **Automations** window (the **Automations** button on the app bar) is home b
 1. **The editors** — open the tab, click **New**, fill in the fields, save.
 2. **[Slash commands](#slash-commands)** — `/highlight add "goblin" red`, `/trigger add "fully rested" do "stand"`, `/alias add "hh" "health;heal"`. A rule made this way is byte-for-byte the same as an editor-made one, and `/highlight edit "goblin"` jumps straight to it.
 
-**"Applies to" — this character or all of them.** Every rule editor has an **Applies to** switch: keep a rule on *This Character*, or flip it to **All Characters** so it applies to your whole roster (more on that just below). If an identical rule already exists on the other side, Lichborne tells you instead of making a duplicate.
+**"Applies to" — this character or all of them.** Every rule editor has an **Applies to** switch: keep a rule on *This Character*, or flip it to **All Characters** so it applies to your whole roster (more on that just below). After a move, the editor takes you to the rule in its new home. If an identical rule already exists on the other side, Lichborne tells you instead of making a duplicate; if a *different* rule there uses the same pattern, the move is refused so neither one is lost.
 
 Rules are saved per character (or globally), respect your [Groups & Modes](#groups--modes), and travel with [Transfer](#transfer-a-setup-between-your-characters). Drowning in rules after an import? See [Automation Analytics](#automation-analytics).
 
@@ -572,7 +580,7 @@ Got one character configured just right and want your others to match? The **Tra
 - **Experiences** (your scene options)
 - **Global Rules (All Characters)** — your whole-roster rules travel as their own category
 
-**How the merge works:** choose **Append** (add alongside what the target already has, skipping duplicates) or **Replace** (overwrite that rule type on the target). Either way it's **non-destructive to identity** — a character's name, account, game, guild, favorites, and notes are *never* touched.
+**How the merge works:** choose **Append** (add alongside what the target already has, skipping duplicates — and listing any rule it skipped because the target already has a *different* rule with the same pattern) or **Replace** (overwrite that rule type on the target). Either way it's **non-destructive to identity** — a character's name, account, game, guild, favorites, and notes are *never* touched.
 
 **When it takes effect:** connected characters update **live**; the rest pick it up the next time you open them.
 
@@ -684,7 +692,7 @@ Type `/` for the live palette; type `/help` in-game for the always-current list,
 
 **Automation**
 - `/highlight add "pattern" <color>` · `/highlight edit "pattern"` · `/highlight list`
-- `/trigger add "pattern" do "command"` · `/trigger edit …` · `/trigger list`
+- `/trigger add "pattern" do "command"` (add `rt=now` to send without waiting for roundtime) · `/trigger edit …` · `/trigger list`
 - `/macro …` · `/alias add "hh" "health;heal"` · `/alias list`
 - `/mute add "pattern"` · `/sub add "find" "replace"` (with a live before→after preview)
 - `/contact add "Name" <Template>` · `/template add "Name" <color> tag="[T]"`
@@ -693,6 +701,7 @@ Type `/` for the live palette; type `/help` in-game for the always-current list,
 - `/mode <Name>` (bare `/mode` lists modes) · `/group on|off <Name>`
 - `/panel open|close <stream>` · `/theme <name>` · `/clear`
 - `/timestamps on|off` · `/log search "text"`
+- `/notices on|off` (toasts when your other characters come in, drop, or reconnect)
 - `/colors` (shows every named color) · `/colors add "Buff drop" #ff9040` · `/colors rename "Buff drop" "Buffs"` · `/colors remove "Buffs"` · `/colors manage` (opens the Colors tab)
 
 **AI**
@@ -759,7 +768,7 @@ One file, for the things that make sense **app-wide** rather than per character:
 - **Custom themes** you've made and your **named colors**.
 - **All-Characters (global) rules** — the highlights/triggers/macros/aliases/mutes/substitutes you set to apply to your whole roster.
 - **AI settings** (your model choice and consent flags — *not* your API key; see below).
-- **App preferences** — "open each character in its own window," whether Analytics is on, and the "Reconnect Last" roster.
+- **App preferences** — "open each character in its own window," whether Analytics is on, whether you get character status toasts, each character's **colour** (from Edit profile), and the "Reconnect Last" roster.
 
 > Your **API key** (if you use AI) is stored **separately and encrypted** by your operating system (DPAPI on Windows, the Keychain on macOS, libsecret or KWallet on Linux) — it's never part of these YAML files and never leaves your machine except to talk to Anthropic. See [AINOTICE.md](AINOTICE.md).
 

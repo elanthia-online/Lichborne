@@ -140,13 +140,20 @@ export interface ColorFieldProps {
    * (B387).
    */
   commitTyped?: boolean
+  /**
+   * The field sits in a dialog ABOVE the dialog-popover tier (450) — Edit
+   * Profile's `.cne-backdrop` is 1600 — so its portaled menus must open above
+   * that too, or they paint underneath the dialog and the ▾ looks dead
+   * (pitfall #118). Adds `ui-menu--top-tier`.
+   */
+  aboveDialogs?: boolean
 }
 
 const HEX6 = /^#[0-9a-fA-F]{6}$/
 
 export default function ColorField({
   value, onChange, label, none, defaultSwatch, placeholder, onEnter,
-  allowLink = true, commitTyped = false, title = COLOR_INPUT_TITLE,
+  allowLink = true, commitTyped = false, title = COLOR_INPUT_TITLE, aboveDialogs = false,
 }: ColorFieldProps) {
   const palette = usePalette()
   const manage = useContext(ColorManageContext)
@@ -609,7 +616,7 @@ export default function ColorField({
       {showSuggest && createPortal(
         <ul
           id={listId}
-          className="ui-color-suggest"
+          className={`ui-color-suggest${aboveDialogs ? ' ui-menu--top-tier' : ''}`}
           role="listbox"
           aria-label={`${label}: matching colors`}
           ref={suggestRef}
@@ -645,7 +652,7 @@ export default function ColorField({
       {open && createPortal(
         <div
           ref={menuRef}
-          className="ui-menu ui-color-menu"
+          className={`ui-menu ui-color-menu${aboveDialogs ? ' ui-menu--top-tier' : ''}`}
           role="dialog"
           aria-label={`${label}: colors`}
           onKeyDown={trapTab}

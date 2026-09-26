@@ -276,6 +276,11 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose 
 
   function renderImport() {
     if (importResults) {
+      // One line per clash, de-duplicated across targets: an All-characters
+      // clash is the same for every character the import went to (the global
+      // merge runs once per target), and would otherwise repeat per row.
+      const clashRows = [...new Set(importResults.flatMap(r => r.clashes.map(c =>
+        `${c.kind} “${c.label}” (${c.where === 'global' ? 'All characters' : r.character} already has one)`)))]
       return (
         <div className="pt-done">
           <div className="pt-done-icon">✓</div>
@@ -295,6 +300,21 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose 
               </div>
             ))}
           </div>
+          {clashRows.length > 0 && (
+            <div className="pt-clashes">
+              <div className="pt-clashes-title">
+                {clashRows.length} {clashRows.length === 1 ? 'rule was' : 'rules were'} not imported
+              </div>
+              <div className="pt-clashes-desc">
+                Each one clashes with a rule you already have: same pattern (or key, or
+                word) but set up differently. Yours were kept. To bring one over, change
+                or delete yours, then import again.
+              </div>
+              <ul className="pt-clashes-list">
+                {clashRows.map(c => <li key={c}>{c}</li>)}
+              </ul>
+            </div>
+          )}
           <div className="pt-done-actions">
             <button type="button" className="ui-btn ui-btn--primary" onClick={onClose}>Close</button>
           </div>

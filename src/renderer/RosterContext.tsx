@@ -71,6 +71,12 @@ export function RosterProvider({ children }: { children: ReactNode }) {
   return <RosterContext.Provider value={value}>{children}</RosterContext.Provider>
 }
 
+/** The roster, or null outside a RosterProvider — for components that can also
+ *  render where there is none (a harness, a standalone host). */
+export function useRosterOptional(): RosterContextValue | null {
+  return useContext(RosterContext)
+}
+
 export function useRoster(): RosterContextValue {
   const ctx = useContext(RosterContext)
   if (!ctx) throw new Error('useRoster must be used within RosterProvider')

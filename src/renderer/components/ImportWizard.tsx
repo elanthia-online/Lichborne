@@ -31,7 +31,20 @@ import { backdropHandlers } from '../utils/backdropClose'
 import { useEscapeClose } from '../hooks/useEscapeClose'
 import { pressable } from '../utils/pressable'
 import { createPortal } from 'react-dom'
-import { ImportResult, ImportSource } from '../import/types'
+import { ImportResult, ImportSource, type ImportTrigger } from '../import/types'
+
+// A trigger's commands as the preview shows them. Waiting for roundtime is the
+// default, so only the exceptions are tagged: a pause, and a command that sends
+// even during roundtime (Genie's #put / #queue).
+function triggerCommandsText(t: ImportTrigger): string {
+  return t.commands.map((c, i) => {
+    const o = t.commandOpts?.[i]
+    const tags: string[] = []
+    if (o && o.delayMs > 0) tags.push(`after ${o.delayMs / 1000}s`)
+    if (o && !o.waitForRt) tags.push('ignores RT')
+    return tags.length ? `${c} (${tags.join(', ')})` : c
+  }).join('; ')
+}
 import { parseGenieFiles } from '../import/parsers/genie'
 import { parseWraythXml } from '../import/parsers/wrayth'
 import { parseFrostbiteFiles } from '../import/parsers/frostbite'
@@ -1068,7 +1081,7 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved, nested = 
                           />
                         </td>
                         <td><span className="iw-pattern" title={t.pattern}>{t.pattern}</span></td>
-                        <td><span className="iw-pattern" title={t.commands.join('; ')}>{t.commands.join('; ')}</span></td>
+                        <td><span className="iw-pattern" title={triggerCommandsText(t)}>{triggerCommandsText(t)}</span></td>
                         <td>{isDup ? <span className="iw-exists-badge" title="Already in your profile">EXISTS</span> : renderStatusBadge(t.status, t.statusNote)}</td>
                       </tr>
                     )

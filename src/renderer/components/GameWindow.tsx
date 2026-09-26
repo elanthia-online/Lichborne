@@ -63,7 +63,7 @@ import AIConsentModal from './AIConsentModal'
 import SlashPalette, { type SlashPaletteHandle } from './SlashPalette'
 import { loadAnalyticsEnabled, recordFire } from '../automationStats'
 import { loadTriggers, saveTriggers, type TriggerRule } from '../triggers'
-import { useTriggerEngine, playWavFile, vitalPercent, type TriggerGameState } from '../hooks/useTriggerEngine'
+import { useTriggerEngine, playWavFile, vitalPercent, secondsLeft, type TriggerGameState } from '../hooks/useTriggerEngine'
 import { loadAliases, loadMacros, saveAliases, saveMacros, resolveAlias, resolveMacro, matchKeyCombo, getMacroToken, newMacro, parseCursorMarker, splitTypedCommands, type AliasRule, type MacroRule } from '../macros'
 import { IS_MAC } from '../lichSettings'
 import { loadSimuCoinConfig, accountConfig } from '../simucoinConfig'
@@ -94,6 +94,7 @@ import ContextMenu from './ContextMenu'
 import { buildTextMenu } from './panels/StreamPanel'
 import ContactsPanel from './ContactsPanel'
 import AutomationsPanel from './AutomationsPanel'
+import { LiveVarsContext } from './VarMenu'
 import LichDashboard, { type DashTab } from './LichDashboard'
 import ModeSwitcher from './ModeSwitcher'
 import { useGroups } from './GroupsContext'
@@ -106,6 +107,7 @@ import { exportCharacterProfile, scheduleProfileSave, scheduleSharedProfileSave 
 import { scopedKey, GLOBAL_RULES_SCOPE, asGlobalRules } from '../characterScope'
 import { loadCommandHistory, saveCommandHistory, COMMAND_HISTORY_MAX } from '../commandHistory'
 import { loadCommandHistorySettings, saveCommandHistorySettings, shouldRememberCommand } from '../commandHistorySettings'
+import { loadCharacterNoticesEnabled, saveCharacterNoticesEnabled } from '../characterNotices'
 import { useSessions, makeCharacterId } from '../SessionsContext'
 import { useRoster } from '../RosterContext'
 import { buildCharacterMenu } from '../characterMenu'
@@ -1410,21 +1412,42 @@ export default function GameWindow({
     setShowAutomations(true)
   }, [])
 
+  // ── Which tab ids are actually SHOWING ─────────────────────────────────────
+  // ONE definition of "on screen", shared by the Lich Scripts poll gate below
+  // and by `activeIdsRef` (the unread-dot / lbAI-routing set). They answer the
+  // same question and previously answered it differently, which is how the poll
+  // gate below ended up wrong — pitfall #127.
+  //
+  // Only the ACTIVE tab of a surface is rendered (`PanelFrame` renders
+  // `{activeTab && renderPanel(...)}`), so a tab that merely EXISTS is not
+  // mounted. Panels mode additionally gates each zone on its `*Added` flag,
+  // because a removed zone keeps its stale activeId in state (pitfall #39).
+  const visibleTabIds = useMemo(() => (
+    layoutMode === 'free'
+      ? new Set(freeWindows.flatMap(w => (w.activeId ? [w.activeId] : [])))
+      : new Set([
+          ...(mainTopAdded ? [mainTopActiveId] : []),
+          ...(topAdded     ? [topActiveId]     : []),
+          ...(midAdded     ? [midActiveId]     : []),
+          ...(bottomAdded  ? [bottomActiveId]  : []),
+        ])
+  ), [layoutMode, freeWindows, mainTopAdded, mainTopActiveId, topAdded, topActiveId,
+      midAdded, midActiveId, bottomAdded, bottomActiveId])
+
   // ── Lich Scripts poll gate (Idea A, Binu v0.13.1) ──────────────────────────
-  // Only auto-poll `;listall` while a Lich Scripts panel is actually open in
-  // this character's layout — otherwise the poll is silent (see useLichBridge /
-  // lichPollRef). useLichBridge feeds ONLY the `lichScripts` PanelFrame tab (the
-  // Lich Dashboard sources its scripts separately), so the panel tab is the
-  // whole signal: zones in panels mode (gated on each zone's Added flag), or a
-  // floating window's tabs in free mode.
-  const lichScriptsOpen = useMemo(() => {
-    if (layoutMode === 'free') {
-      return freeWindows.some(w => (w.tabs ?? []).some(t => t.id === 'lichScripts'))
-    }
-    const zoneHas = (added: boolean, t: TabDef[]) => added && t.some(x => x.id === 'lichScripts')
-    return zoneHas(mainTopAdded, mainTopTabs) || zoneHas(topAdded, topTabs)
-        || zoneHas(midAdded, midTabs) || zoneHas(bottomAdded, bottomTabs)
-  }, [layoutMode, freeWindows, mainTopAdded, mainTopTabs, topAdded, topTabs, midAdded, midTabs, bottomAdded, bottomTabs])
+  // Only auto-poll `;listall` while the Lich Scripts panel is actually SHOWING
+  // — otherwise the poll is silent (see useLichBridge / lichPollRef).
+  //
+  // This tested tab EXISTENCE until v0.19.9, which is the same mistake B307
+  // fixed for the AI stream (pitfall #133b: existence is not visibility). A
+  // `lichScripts` tab sitting inactive in some window meant the character kept
+  // injecting `;listall` every 5s, forever, to feed a panel that was never
+  // mounted — and because `useLichBridge` lives at GameWindow scope, each poll
+  // plus its reply re-rendered the WHOLE GameWindow. That also matters beyond
+  // CPU: anything we inject is byte-identical to the player typing it, and a
+  // script with an upstream hook sees it (pitfall #76, which is why this gate
+  // exists at all). Polling for an invisible panel is pure cost on both axes.
+  const lichScriptsOpen = useMemo(() => visibleTabIds.has('lichScripts'), [visibleTabIds])
 
   useEffect(() => {
     const wasOpen = lichPollRef.current
@@ -1740,8 +1763,8 @@ export default function GameWindow({
       stamina: { current: 0, max: 0 }, spirit: { current: 0, max: 0 },
       concentration: { current: 0, max: 0 },
     },
-    rtSeconds: 0,
-    ctSeconds: 0,
+    rtExpires: 0,
+    ctExpires: 0,
     stance: '',
     spell: 'None',
     leftHand: 'Empty',
@@ -1944,10 +1967,40 @@ export default function GameWindow({
       timestamp: Date.now(),
       ...(fx ? { fx } : {}),
     }
-    setStreamLines(prev => ({
-      ...prev,
-      [key]: [...(prev[key] ?? []).slice(-(MAX_STREAM_LINES - 1)), line],
-    }))
+    // An echo must land somewhere the player can SEE it. Two holes here used
+    // to lose it silently: 'main' went into streamLines.main, which nothing
+    // renders (the main window renders `lines`); and a stream with no panel
+    // open buffered it where no one would ever look (pitfall #133's shape). So
+    // 'main', and any stream no open panel is watching, go to the main window.
+    // The refs below are declared further down; they are read only when a
+    // trigger fires, long after render has initialised them.
+    //
+    // DEFERRED one tick: a trigger fires INSIDE the event loop, before the
+    // batch appends its own lines, so an immediate append put the echo ABOVE
+    // the line that caused it.
+    setTimeout(() => {
+      if (key === 'main' || !watchedStreamsRef.current.has(key)) {
+        // Same rule as a batch append: trim only while pinned. Scrolled up,
+        // a trim would cut away the text being read (pitfall #81), so it
+        // appends and counts toward the "N new lines" badge instead.
+        if (pinnedRef.current) {
+          suppressUntilRef.current = Date.now() + 200
+          setLines(prev => appendTrimmed(prev, [line]))
+        } else {
+          newLineCountRef.current += 1
+          setNewLineCount(newLineCountRef.current)
+          setLines(prev => [...prev, line])
+        }
+        // A client line is a break, as a typed command is: the prompt that
+        // follows must show rather than collapse into the one before (#88).
+        lastMainLineRef.current = null
+        return
+      }
+      setStreamLines(prev => ({
+        ...prev,
+        [key]: [...(prev[key] ?? []).slice(-(MAX_STREAM_LINES - 1)), line],
+      }))
+    }, 0)
   }, [])
 
   // Trigger command actions must ECHO ">cmd" like a typed command — Sekmeht: a
@@ -1958,6 +2011,18 @@ export default function GameWindow({
   // #31) so triggers match map-walk / exit-button / in-text-link commands — which
   // is exactly the "trigger via triggerCallbacks → sendCommand" the command-send
   // pipeline note already claims. sessionIdRef stays the live id (pitfall #86).
+  // The Automations dialog's "$" menus show each variable's value right now
+  // (VarMenu LiveVarsContext). Stable for the component's life: it reads
+  // triggerCtxRef, so the first render's closure stays current. The clock
+  // values are added here because only triggers compute them, per fire.
+  const getLiveVars = useCallback((): Record<string, string> => {
+    const now = new Date()
+    return {
+      date: now.toLocaleDateString(), time: now.toLocaleTimeString(), timestamp: String(now.getTime()),
+      ...buildMacroVars(),
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const sendCommandRef = useRef<(cmd: string) => void>(() => {})
 
   const triggerCallbacks = useMemo(() => ({
@@ -1984,6 +2049,10 @@ export default function GameWindow({
     },
     flashWindow:  () => window.api.flashWindow(),
     writeLog:     (file: string, content: string) => window.api.writeLog(file, content),
+    // Through MAIN, not showToast: the player may be looking at another window.
+    // Main shows it in the focused one; clicking it comes back to this character.
+    toast: (title: string, message: string, kind: 'info' | 'success' | 'warning' | 'error') =>
+      window.api.routeToast({ title: title || undefined, message, kind, characterId, character: session.character }),
     onFire: (name: string, matched: string, detail: string, stream: string, ruleId: string) => {
       // Analytics: count the fire even when the Debug panel is closed (the
       // engine only calls onFire after gates/cooldown pass, and not on replay).
@@ -2003,9 +2072,9 @@ export default function GameWindow({
       if (fireLogBufRef.current.length > MAX_DEBUG_EVENTS) fireLogBufRef.current.splice(0, fireLogBufRef.current.length - MAX_DEBUG_EVENTS)
       setFireLog(prev => [...prev.slice(-(MAX_DEBUG_EVENTS - 1)), entry])
     },
-  }), [echoToStream])
+  }), [echoToStream, characterId])
 
-  const { processLine, processVariableChange, cancelPending } = useTriggerEngine(allTriggers, triggerCtxRef, triggerCallbacks, activeGroupStatesRef)
+  const { processLine, processVariableChange, cancelPending, notePrompt, noteTimer } = useTriggerEngine(allTriggers, triggerCtxRef, triggerCallbacks, activeGroupStatesRef)
   // Gate trigger firing on replayingRef so a replayed history batch rebuilds
   // game state WITHOUT re-firing triggers (which would re-send commands). The
   // wrapper is the single choke point — every loop call goes through these refs.
@@ -2015,6 +2084,15 @@ export default function GameWindow({
   useEffect(() => { processVariableChangeRef.current = (name, value) => { if (!replayingRef.current) processVariableChange(name, value) } }, [processVariableChange])
   const cancelPendingRef = useRef(cancelPending)
   useEffect(() => { cancelPendingRef.current = cancelPending }, [cancelPending])
+  // Releases trigger commands waiting on roundtime (the engine's RT queue). Same
+  // replay gate: a replayed prompt is history, not the turn a command waits on.
+  const notePromptRef = useRef(notePrompt)
+  useEffect(() => { notePromptRef.current = () => { if (!replayingRef.current) notePrompt() } }, [notePrompt])
+  // Arms the "RT/CT reached 0" variable change. NOT replay-gated: a replay hands
+  // this window a live character, and its RT still ends; an already-expired
+  // replayed RT arms nothing.
+  const noteTimerRef = useRef(noteTimer)
+  useEffect(() => { noteTimerRef.current = noteTimer }, [noteTimer])
 
   // Highlight sound rules — compiled rules that have a soundFile set
   const highlightSoundRulesRef = useRef([...matchRules, ...lineRules].filter(cr => cr.rule.soundFile))
@@ -2304,20 +2382,12 @@ export default function GameWindow({
   // windows are on screen at once, so each window's active tab is visible.
   const activeIdsRef = useRef(new Set([topActiveId, midActiveId, bottomActiveId]))
   useEffect(() => {
-    // B307: panels mode gates each zone's active id on its `*Added` flag — a
-    // REMOVED zone keeps its stale activeId in state (pitfall #39), and an
-    // ungated set called that tab "visible" for unread suppression AND for the
-    // lbAI routing below, when nothing of the sort was on screen.
-    activeIdsRef.current = layoutMode === 'free'
-      ? new Set(freeWindows.flatMap(w => (w.activeId ? [w.activeId] : [])))
-      : new Set([
-          ...(mainTopAdded ? [mainTopActiveId] : []),
-          ...(topAdded     ? [topActiveId]     : []),
-          ...(midAdded     ? [midActiveId]     : []),
-          ...(bottomAdded  ? [bottomActiveId]  : []),
-        ])
-  }, [layoutMode, freeWindows, mainTopActiveId, topActiveId, midActiveId, bottomActiveId,
-      mainTopAdded, topAdded, midAdded, bottomAdded])
+    // Mirrors the shared `visibleTabIds` memo (declared with the Lich Scripts
+    // poll gate) rather than restating it — B307's rule, that panels mode must
+    // gate each zone's active id on its `*Added` flag because a REMOVED zone
+    // keeps its stale activeId (pitfall #39), now lives in exactly one place.
+    activeIdsRef.current = visibleTabIds
+  }, [visibleTabIds])
 
   // Drag refs
   const virtuosoRef           = useRef<VirtuosoHandle>(null)
@@ -2416,6 +2486,11 @@ export default function GameWindow({
   // see the live value instead of a captured one (pitfall #31).
   const focusCommandInput = useCallback(() => {
     if (overviewOpenRef.current) return
+    // A tab mounting UNDER an open dialog (the first character of a team login
+    // lands behind the Team Login panel) must not take the keyboard: typing
+    // would go into a bar nobody can see, and Enter would send it (#131). The
+    // dialog stack hands focus back when the last dialog closes.
+    if (anyDialogOpen()) return
     inputRef.current?.focus()
   }, [])
   const panelColumnRef   = useRef<HTMLDivElement>(null)
@@ -2915,6 +2990,10 @@ export default function GameWindow({
             const stream = rawStream
             const lineText = segments.map(s => s.text).join('')
             const mkLine = () => ({ id: lineId++, segments, timestamp: Date.now(), ...(mono ? { mono } : {}), ...(prompt ? { prompt: true } : {}) })
+            // A prompt closes a server turn; the parser has already emitted that
+            // turn's roundtime (it anchors RT on the <prompt> tag), so this is
+            // when RT-waiting trigger commands can judge the RT correctly.
+            if (prompt) notePromptRef.current()
             // Sky info (Moons Tier 2): the ⟳ sends TIME + WEATHER RAW (no echo), so
             // ONLY that click's reply block must be CONSUMED — never shown, logged,
             // or fed to triggers. Capture happens either way; `suppressSync` fires
@@ -3090,13 +3169,15 @@ export default function GameWindow({
             break
           case 'roundtime':
             newRt = evt.expires
-            triggerCtxRef.current.rtSeconds = Math.max(0, (evt.expires - Date.now()) / 1000)
-            processVariableChangeRef.current('rt', String(Math.ceil(triggerCtxRef.current.rtSeconds)))
+            triggerCtxRef.current.rtExpires = evt.expires
+            processVariableChangeRef.current('rt', String(secondsLeft(evt.expires)))
+            noteTimerRef.current('rt', evt.expires)
             break
           case 'casttime':
             newCt = evt.expires
-            triggerCtxRef.current.ctSeconds = Math.max(0, (evt.expires - Date.now()) / 1000)
-            processVariableChangeRef.current('ct', String(Math.ceil(triggerCtxRef.current.ctSeconds)))
+            triggerCtxRef.current.ctExpires = evt.expires
+            processVariableChangeRef.current('ct', String(secondsLeft(evt.expires)))
+            noteTimerRef.current('ct', evt.expires)
             break
           case 'aimtime':
             newAim = evt.expires
@@ -3517,7 +3598,15 @@ export default function GameWindow({
           for (const key of clearedStreams) next[key] = []
           for (const [key, lines] of Object.entries(newStream)) {
             const base = clearedStreams.has(key) ? [] : (prev[key] ?? [])
-            next[key] = [...base.slice(-(MAX_STREAM_LINES - lines.length)), ...lines]
+            // Trim the JOINED result, never the base by a computed keep-count.
+            // The old form was `base.slice(-(MAX_STREAM_LINES - lines.length))`,
+            // which inverts into UNBOUNDED growth at exactly the cap: a batch of
+            // 500 makes that `slice(-0)`, and `-0 === 0`, so `slice(0)` returns
+            // the WHOLE array instead of none of it — then appends 500 more.
+            // It compounds on repeats (measured 500 → 1000 → 1500 → 2000), and
+            // a batch >500 overshot the other way. Slicing the result is correct
+            // for every batch size and can't be got wrong again (B461).
+            next[key] = [...base, ...lines].slice(-MAX_STREAM_LINES)
           }
           return next
         })
@@ -3687,6 +3776,11 @@ export default function GameWindow({
       }
       if (!s.connected && s.message === 'Disconnected') {
         setDropped(true)
+        // Commands a trigger queued for this connection (waiting on roundtime
+        // or a delay) and the roundtime-end timer die with it. Otherwise they
+        // fire into the dead tab — or, after a quick reconnect-in-place, into
+        // the NEW connection via sessionIdRef.
+        cancelPendingRef.current()
         logToSession([{ ts: Date.now(), stream: 'sys', text: s.clean ? 'Disconnected' : 'Connection lost' }])
         // We deliberately do NOT auto-open the debug panel on dirty
         // disconnect. The previous behaviour opened it on any non-clean
@@ -4286,9 +4380,9 @@ export default function GameWindow({
       stamina:       String(vitalPercent(s.vitals.stamina)),
       spirit:        String(vitalPercent(s.vitals.spirit)),
       concentration: String(vitalPercent(s.vitals.concentration)),
-      rt:            String(Math.ceil(s.rtSeconds)),
-      ct:            String(Math.ceil(s.ctSeconds)),
-      casttime:      String(Math.ceil(s.ctSeconds)),
+      rt:            String(secondsLeft(s.rtExpires)),
+      ct:            String(secondsLeft(s.ctExpires)),
+      casttime:      String(secondsLeft(s.ctExpires)),
       stance:        s.stance,
       spell:         s.spell,
       preparedspell: s.spell,
@@ -4756,6 +4850,12 @@ export default function GameWindow({
       getTriggers: () => triggers,
       applyTriggers: rules => { saveTriggers(session.character, rules); setTriggers(rules); saveProfile() },
       getMainTimestamps: () => !!streamTimestamps['main'],
+      // v0.20.0 — app-wide, the same shape as the history setting below.
+      getCharacterNotices: () => loadCharacterNoticesEnabled(),
+      setCharacterNotices: (on: boolean) => {
+        saveCharacterNoticesEnabled(on)
+        scheduleSharedProfileSave()
+      },
       // F82 (Qij). App-wide, so it goes straight to the shared store and then
       // flushes _shared.yaml — there is no per-character state to touch.
       getCommandHistoryMinLength: () => loadCommandHistorySettings().minLength,
@@ -5601,6 +5701,7 @@ export default function GameWindow({
     return (
       <C
         character={session.character}
+        characterId={characterId}
         roomState={roomState}
         sceneCast={sceneCast}
         speech={sceneSpeech}
@@ -5943,7 +6044,7 @@ export default function GameWindow({
         <TimerDisplay rtExpires={rtExpires} ctExpires={ctExpires} aimExpires={aimExpires} timerStyle={settings.timerStyle} />
         {/* autoFocus is a MOUNT-time DOM attribute, so it cannot go through
             focusCommandInput — gate it on the same condition instead. */}
-        <input ref={inputRef} type="text" autoFocus={!overviewOpen} value={command}
+        <input ref={inputRef} type="text" autoFocus={!overviewOpen && !anyDialogOpen()} value={command}
           onChange={e => { historyIdxRef.current = -1; setSlashDismissed(false); setCommand(e.target.value) }}
           onKeyDown={handleCommandKey} className="command-input" autoComplete="off" spellCheck={false}
           // B336: an accessible name that survives past the first session —
@@ -6405,60 +6506,62 @@ export default function GameWindow({
       })()}
 
       {showAutomations && (
-        <AutomationsPanel
-          initialTab={automationsTab}
-          initialTabSeq={automationsTabSeq}
-          closeRequest={closeRequests.automations}
-          highlightPrefill={highlightPrefill}
-          highlightTestText={highlightTestText}
-          triggerPrefillPattern={triggerPrefillPattern}
-          triggerOpenId={triggerOpenId ?? (slashOpenRule?.tab === 'triggers' ? slashOpenRule.id : undefined)}
-          mutePrefill={mutePrefill}
-          substitutePrefill={substitutePrefill}
-          highlightOpenId={highlightOpenFireId ?? (slashOpenRule?.tab === 'highlights' ? slashOpenRule.id : undefined)}
-          muteOpenId={slashOpenRule?.tab === 'mutes' ? slashOpenRule.id : undefined}
-          substituteOpenId={slashOpenRule?.tab === 'substitutes' ? slashOpenRule.id : undefined}
-          aliasOpenId={slashOpenRule?.tab === 'aliases' ? slashOpenRule.id : undefined}
-          onThemeSaved={(themeId) => {
-            const updated = loadMyThemes()
-            setMyThemes(updated)
-            setCurrentThemeId(themeId)
-            localStorage.setItem('lichborne.theme', themeId)
-            scheduleSharedProfileSave()
-            scheduleProfileSave(session.account, session.character, session.game, session.useLich)
-          }}
-          onSaved={() => {
-            setHighlights(loadHighlights(session.character))
-            setTriggers(loadTriggers(session.character))
-            setAliases(loadAliases(session.character))
-            setMacros(loadMacros(session.character))
-            setMutes(loadMutes(session.character))
-            setSubstitutes(loadSubstitutes(session.character))
-            setContacts(loadContacts(session.character))
-            setContactTemplates(loadContactTemplates(session.character))
-            scheduleProfileSave(session.account, session.character, session.game, session.useLich)
-          }}
-          onClose={() => {
-            setShowAutomations(false)
-            setHighlightPrefill(undefined)
-            setHighlightTestText(undefined)
-            // A Fires → Edit target left set would re-open that rule the next
-            // time Automations (or that tab) mounts.
-            setTriggerOpenId(undefined)
-            setHighlightOpenFireId(undefined)
-            setTriggerPrefillPattern(undefined)
-            setMutePrefill(undefined)
-            setSubstitutePrefill(undefined)
-            setSlashOpenRule(null)
-            setHighlights(loadHighlights(session.character))
-            setTriggers(loadTriggers(session.character))
-            setAliases(loadAliases(session.character))
-            setMacros(loadMacros(session.character))
-            setMutes(loadMutes(session.character))
-            setSubstitutes(loadSubstitutes(session.character))
-            scheduleProfileSave(session.account, session.character, session.game, session.useLich)
-          }}
-        />
+        <LiveVarsContext.Provider value={getLiveVars}>
+          <AutomationsPanel
+            initialTab={automationsTab}
+            initialTabSeq={automationsTabSeq}
+            closeRequest={closeRequests.automations}
+            highlightPrefill={highlightPrefill}
+            highlightTestText={highlightTestText}
+            triggerPrefillPattern={triggerPrefillPattern}
+            triggerOpenId={triggerOpenId ?? (slashOpenRule?.tab === 'triggers' ? slashOpenRule.id : undefined)}
+            mutePrefill={mutePrefill}
+            substitutePrefill={substitutePrefill}
+            highlightOpenId={highlightOpenFireId ?? (slashOpenRule?.tab === 'highlights' ? slashOpenRule.id : undefined)}
+            muteOpenId={slashOpenRule?.tab === 'mutes' ? slashOpenRule.id : undefined}
+            substituteOpenId={slashOpenRule?.tab === 'substitutes' ? slashOpenRule.id : undefined}
+            aliasOpenId={slashOpenRule?.tab === 'aliases' ? slashOpenRule.id : undefined}
+            onThemeSaved={(themeId) => {
+              const updated = loadMyThemes()
+              setMyThemes(updated)
+              setCurrentThemeId(themeId)
+              localStorage.setItem('lichborne.theme', themeId)
+              scheduleSharedProfileSave()
+              scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+            }}
+            onSaved={() => {
+              setHighlights(loadHighlights(session.character))
+              setTriggers(loadTriggers(session.character))
+              setAliases(loadAliases(session.character))
+              setMacros(loadMacros(session.character))
+              setMutes(loadMutes(session.character))
+              setSubstitutes(loadSubstitutes(session.character))
+              setContacts(loadContacts(session.character))
+              setContactTemplates(loadContactTemplates(session.character))
+              scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+            }}
+            onClose={() => {
+              setShowAutomations(false)
+              setHighlightPrefill(undefined)
+              setHighlightTestText(undefined)
+              // A Fires → Edit target left set would re-open that rule the next
+              // time Automations (or that tab) mounts.
+              setTriggerOpenId(undefined)
+              setHighlightOpenFireId(undefined)
+              setTriggerPrefillPattern(undefined)
+              setMutePrefill(undefined)
+              setSubstitutePrefill(undefined)
+              setSlashOpenRule(null)
+              setHighlights(loadHighlights(session.character))
+              setTriggers(loadTriggers(session.character))
+              setAliases(loadAliases(session.character))
+              setMacros(loadMacros(session.character))
+              setMutes(loadMutes(session.character))
+              setSubstitutes(loadSubstitutes(session.character))
+              scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+            }}
+          />
+        </LiveVarsContext.Provider>
       )}
 
       {showLichDash && (

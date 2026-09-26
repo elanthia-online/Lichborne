@@ -102,6 +102,11 @@ export interface ImportLogAction {
   message: string
 }
 
+export interface ImportCommandOpts {
+  delayMs:   number
+  waitForRt: boolean
+}
+
 export interface ImportTrigger {
   kind: 'trigger'
   source: ImportSource
@@ -111,6 +116,10 @@ export interface ImportTrigger {
   matchType: 'text' | 'phrase' | 'regex'
   caseSensitive: boolean
   commands:    string[]           // #send / #put actions
+  /** Per-command timing, INDEX-ALIGNED with `commands` (Genie sets it; other
+   *  sources omit it and the commands take Lichborne's defaults). Written only
+   *  through genie.ts's `pushCommand`, so the two arrays cannot drift. */
+  commandOpts?: ImportCommandOpts[]
   echoActions: ImportEchoAction[]
   varActions:  ImportVarAction[]
   logActions:  ImportLogAction[]

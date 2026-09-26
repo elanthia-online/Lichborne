@@ -378,8 +378,10 @@
   justify-content: center;
   font-weight: 700;
   font-size: 0.95em;
-  /* White over a SATURATED data-color fill — the sanctioned halo pattern
-     (works on every theme because the fill is always saturated). */
+  /* White over a SATURATED data-color fill — the sanctioned halo pattern.
+     v0.20.0: a player can now PICK a character's colour, and it may be pale,
+     so each avatar gets its ink inline from monogramStyle (black, no halo, on a
+     light fill); these are the defaults it overrides. */
   color: #fff;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
   border: 1px solid var(--experience-chip-border);
@@ -797,13 +799,22 @@
 
 /* Continuous-sky gradient stack — opacity-crossfaded by the sun-elevation
    weights computed in MoonsExperience (night base always on; day/zenith/
-   twilight fade over it). The 2.5s transition smooths the 30s tick steps.
-   Fixed hues by design (game sky state, the Principle #4 exception). */
+   twilight fade over it).
+   Fixed hues by design (game sky state, the Principle #4 exception).
+
+   THE DURATION MUST STAY BELOW THE SCENE TICK (2s — MoonsExperience's
+   setInterval). It used to read 2.5s, with a comment claiming it "smooths the
+   30s tick steps" — true when written, and silently invalidated when v0.17.0
+   dropped the tick 30s → 2s for smoother body motion. A 2.5s transition
+   re-armed every 2s NEVER COMPLETES, so these four panel-sized layers sat in a
+   permanent opacity transition for the whole session. Paired with the 2dp
+   quantisation of the weights themselves, which is what stops an identical
+   value retriggering at all; this bound is the belt to that's braces. */
 .moons-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  transition: opacity 2.5s linear;
+  transition: opacity 1.5s linear;
 }
 .moons-layer--night {
   background: linear-gradient(180deg, #070a18, #141c34 65%, #1c2340);

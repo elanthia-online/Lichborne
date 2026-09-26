@@ -27,6 +27,7 @@
 
 import { useState, useEffect, useRef, useId } from 'react'
 import { loadCommandHistorySettings, saveCommandHistorySettings, CMD_HISTORY_MIN_MAX } from '../commandHistorySettings'
+import { loadCharacterNoticesEnabled, saveCharacterNoticesEnabled } from '../characterNotices'
 import { useOverviewOptions, setOverviewOptions, MAX_FEED_LINES, type OverviewOptions } from '../overviewStore'
 import { backdropHandlers } from '../utils/backdropClose'
 import { useEscapeClose } from '../hooks/useEscapeClose'
@@ -227,6 +228,13 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
   // per-character `settings`. Held in local state and flushed on change, the
   // same shape the Session Log block uses.
   const [cmdHist, setCmdHist] = useState(() => loadCommandHistorySettings())
+  // v0.20.0 — also app-wide, same shape.
+  const [notices, setNoticesState] = useState(() => loadCharacterNoticesEnabled())
+  function setNotices(on: boolean) {
+    setNoticesState(on)
+    saveCharacterNoticesEnabled(on)
+    scheduleSharedProfileSave()
+  }
   function setCmdHistMin(n: number) {
     const next = { minLength: Math.max(0, Math.min(CMD_HISTORY_MIN_MAX, n)) }
     setCmdHist(next)
@@ -542,7 +550,8 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
   // The command-history row used to render whenever Behavior did, so a search
   // for "history" found nothing — and a search for "links" showed it anyway.
   const vCmdHist       = vis('Behavior', 'Remember commands of at least', 'command history', 'up-arrow', 'recall')
-  const secBehavior    = vAutoLink || vWebSafety || vMapAnim || vCmdHist
+  const vNotices       = vis('Behavior', 'Character status notifications', 'toast', 'notification', 'disconnected', 'reconnected', 'ready')
+  const secBehavior    = vAutoLink || vWebSafety || vMapAnim || vCmdHist || vNotices
 
   const vAiEnable      = vis('AI', 'Enable AI features', 'artificial intelligence', 'byok')
   const vAiKey         = vis('AI', 'Anthropic API key', 'claude', 'byok')
@@ -1068,6 +1077,14 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
             description="Genie Maps motion — per-room effects (shop glints, water ripples, sparkles) and the camera glide as it follows you. Turn off if the map feels sluggish; the map then snaps instantly with no effects."
             checked={settings.mapAnimations}
             onChange={v => set('mapAnimations', v)}
+          />}
+
+          {/* v0.20.0 — app-wide, like the command-history row below. */}
+          {vNotices && <Toggle
+            label="Character status notifications"
+            description="A small notification in the corner when one of your other characters is in the game, disconnects on its own, or reconnects — including characters in other windows. Click one to go to that character. Never for a disconnect you asked for. Applies to all characters."
+            checked={notices}
+            onChange={setNotices}
           />}
 
           {/* F82 — app-wide (all characters), unlike everything above it in

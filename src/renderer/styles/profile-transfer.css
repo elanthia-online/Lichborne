@@ -333,6 +333,44 @@
 .pt-result-row--err { border-color: color-mix(in srgb, var(--color-danger) 40%, transparent); }
 .pt-result-row--err .pt-result-detail { color: color-mix(in srgb, var(--color-danger) 80%, var(--text-primary)); }
 
+/* Rules that were skipped because they clash with one already there. Bounded:
+   a big imported ruleset can clash many times (pitfall #109). The theme's own
+   --color-warning (already mixed toward the text colour, so it reads on light
+   and dark themes), and rem sizes like the result rows beside it. */
+.pt-clashes {
+  align-self: stretch;
+  text-align: left;
+  margin: 2px 0 6px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, var(--border-subtle));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-warning) 7%, transparent);
+}
+
+.pt-clashes-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--color-warning) 70%, var(--text-primary));
+}
+
+.pt-clashes-desc {
+  margin: 3px 0 6px;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.pt-clashes-list {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 160px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--text-primary);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
 .pt-result-name {
   font-weight: 700;
   color: var(--text-primary);

@@ -14,6 +14,7 @@
 
 import { memo, useMemo } from 'react'
 import { useTimers } from '../../hooks/useTimers'
+import { characterColor, useCharacterColors } from '../../characterColors'
 import type { TextLine, RoomState, InjuryState, TextSegment } from '../../../shared/types'
 import type { CompiledRule } from '../../HighlightsContext'
 import type { Contact, ContactTemplate } from '../../contacts'
@@ -113,6 +114,7 @@ interface Props {
 }
 
 function OverviewCardImpl(p: Props) {
+  const charColors = useCharacterColors()
   const now = useOverviewNow()
   const { options: o, stats } = p
 
@@ -200,6 +202,11 @@ function OverviewCardImpl(p: Props) {
   // (B385). Falls back to the id only for a stream the list doesn't carry.
   const streamLabel = p.streamChoices.find(c => c.id === p.streamId)?.label ?? p.streamId
 
+  // The colour picked for this character in Edit Profile (v0.20.0) tints the
+  // selection RING only — never the card, whose background change once read as
+  // the character itself changing (see .ov-card--selected).
+  const chosenColor = characterColor(charColors, { characterId: p.characterId })
+
   return (
     <div
       className={[
@@ -217,6 +224,7 @@ function OverviewCardImpl(p: Props) {
         // would render at the active character's size. Same mechanism PanelFrame
         // uses for its per-panel A−/A+ override.
         ['--game-font-size' as string]: `${p.settings.largePrint ? 18 : p.settings.fontSize}px`,
+        ...(chosenColor ? { ['--char-color' as string]: chosenColor } : {}),
         // (B297: a `--ov-feed-lines` custom property used to be written here,
         // with a comment crediting it for preventing the grid "quiver". It had
         // ZERO consumers — the quiver is actually prevented by the grid row

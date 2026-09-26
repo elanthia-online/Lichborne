@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSessions, type CharacterId } from '../SessionsContext'
-import CharacterTabBar from './CharacterTabBar'
+import CharacterTabBar, { type PendingTab } from './CharacterTabBar'
 import SimuCoinButton from './SimuCoinButton'
 import ViewToggle from './overview/ViewToggle'
 import type { SimuCoinStatus } from '../../shared/types'
@@ -54,13 +54,19 @@ interface Props {
     // the batch in one toast rather than stacking one per account.
     run: (account: string, claim: boolean, quiet?: boolean) => Promise<SimuCoinStatus | null>
   }
+  // The Team Login pill (v0.20.0): shown while a team login runs in the
+  // background, or finished with a failure. Owned by App, which owns the run.
+  teamPill?: React.ReactNode
+  // …and the team's not-yet-connected characters as placeholder tabs.
+  pendingTabs?: PendingTab[]
+  onPendingClick?: () => void
 }
 
 function dispatchSessionAction(action: string) {
   document.dispatchEvent(new CustomEvent('lichborne:session-action', { detail: { action } }))
 }
 
-export default function AppBar({ onAdd, onClose, onReconnect, reconnectingIds, simucoin }: Props) {
+export default function AppBar({ onAdd, onClose, onReconnect, reconnectingIds, simucoin, teamPill, pendingTabs, onPendingClick }: Props) {
   const { sessions, activeId } = useSessions()
   const active = sessions.find(s => s.characterId === activeId)
   const st = active?.status
@@ -139,9 +145,13 @@ export default function AppBar({ onAdd, onClose, onReconnect, reconnectingIds, s
           digest re-renders this control alone, never the tab strip beside it. */}
       <ViewToggle />
 
-      <CharacterTabBar onAdd={onAdd} onClose={onClose} onReconnect={onReconnect} reconnectingIds={reconnectingIds} />
+      <CharacterTabBar onAdd={onAdd} onClose={onClose} onReconnect={onReconnect} reconnectingIds={reconnectingIds}
+        pendingTabs={pendingTabs} onPendingClick={onPendingClick} />
 
       <div className="app-bar-actions">
+        {/* Team Login pill — beside the tabs it is filling in, and before the
+            panel buttons so it never moves as they collapse (B178 tiers). */}
+        {teamPill}
         {/* SimuCoin (F71) — quiet by default: renders nothing unless an account
             is opted in or offerable. Placed before the panel buttons so it sits
             next to the tabs and never moves as buttons collapse (B178 tiers). */}

@@ -1879,7 +1879,116 @@ Two IPC channels for disconnect, differing only in wait semantics:
 
 App shutdown (`mainWindow.on('close')`) uses a third variant: `gracefulDisconnect({ quickClose: true })` — sends QUIT, calls `socket.end()` so the OS sends FIN after the send buffer drains (bytes guaranteed to leave), then force-closes. No server-ack wait. Shutdown drops from up-to-5s/session to ~300ms total. A "Closing — disconnecting N characters…" overlay (or "Closing — backing up profiles…" when no sessions are active) paints during the brief work via the new `shutdown-starting` IPC.
 
+### 13.6.5 Character colours (F124, v0.20.0)
+
+Sekmeht: pick a colour per character in Edit Profile and let it mark that
+character everywhere — *"anything with a focus border"*. Purely additive: with
+no colour chosen every surface renders exactly as before.
+
+- **Storage.** `SharedProfile.characterColors`, `account::character` → colour
+  ([characterColors.ts](src/renderer/characterColors.ts)). Shared, not a profile
+  field, because every window must read it synchronously (a toast about a
+  character in ANOTHER window) and a change must repaint every window at once;
+  localStorage is the working copy, invalidated by a same-window event and a
+  module-level `storage` listener. The key is the characterId WITHOUT its shard
+  (`colorKey`): the launcher's DR ↔ Test toggle changes the characterId of the
+  same profile, and a shard-keyed colour vanished on the toggle (bug check).
+  Not the bare name — same-named characters on different accounts already
+  collide in profile files and this doesn't copy that. `coerceCharacterColors`
+  reduces older 3-part keys, first one winning.
+- **Only paintable values.** A value `colorHex` can't resolve (a half-typed
+  name, a hand-edited YAML) would make every `color-mix()` reading
+  `--char-color` invalid: the tab loses its tint and borders fall back to the
+  text colour. Edit Profile refuses one (Save disabled, an inline error), the
+  store won't write one, and every lookup ignores one. Save stores the value
+  RESOLVED as the field resolves it (`normalizeColorInput`), because ColorField
+  calls `onEnter` before its own onChange renders, and writes it only AFTER the
+  profile save succeeds. Name lookup exists for the Tableau, which only knows names
+  (first saved wins). Not a Transfer category: identity, like guild and notes.
+- **The value** is anything a rule colour can be (§49): a hex or a LINK to a named
+  colour, so recolouring the named colour recolours the character. The picker is
+  the shared ColorField with `none = Automatic`, `defaultSwatch` showing the
+  automatic colour, and `aboveDialogs` (below).
+- **One recipe for the badge.** [nameColor.ts](src/renderer/utils/nameColor.ts)
+  holds the Tableau's hash colour and initials (lifted out of the Tableau),
+  `nameColorHex` (the same colour as a hex, for a native colour input's
+  swatch), and `monogramStyle(name, fill)`, which picks black or white initials
+  by the fill so a pale colour stays readable — the Tableau's avatars use it
+  too. The Tableau's OWN figure looks its colour up by characterId
+  (`ExperienceProps.characterId`), since two of your characters can share a
+  name.
+- **Surfaces** set `--char-color` inline and read `var(--char-color, var(--accent))`:
+  the character tab (active tint + hairline; inactive gets a faint hairline only,
+  so two coloured tabs never both look selected), the Overview's selection ring
+  (ring only — a card tint once read as the character itself changing), the Team
+  Login chosen-tile ring and badge, the launcher card's hairline and badge, and
+  toast badges.
+- **The Living Tableau's order** (`avatarColor`): a picked colour; else, for
+  one of YOUR characters, the automatic colour; else a contact's template
+  colour; else the automatic colour. "Yours" = the Tableau's own character,
+  every connected character in the roster, and any character with a picked
+  colour. The trigger: Sekmeht had filed himself as a contact on a purple
+  template, so his figure was purple while his toasts and tab were teal. Other
+  people keep their contact colour — Sekmeht wants that (*"I thought that was a
+  great idea"*); only your own characters are exempt.
+- **`ui-menu--top-tier`.** ColorField's menus are portaled at the 450
+  dialog-popover tier; Edit Profile's backdrop is 1600, so they would open under
+  it and the ▾ would look dead (pitfall #118). `aboveDialogs` adds the modifier
+  (z 1700, below Quick Send and toasts).
+- **No slash command, by decision** (Principle #11): a one-time setup choice made
+  where the character is edited, like guild and notes.
+
 ### 13.6.4 Team Login (was "Bulk Connect")
+
+**The Team Login panel (F122, v0.20.0).** The run used to show a progress card
+naming only the character currently connecting, then a text summary with an OK
+that left you on the LAST character to finish (Sekmeht: *"a bit of a choppy
+experience"*). One panel now covers the whole run
+([TeamLoginPanel.tsx](src/renderer/components/TeamLoginPanel.tsx), prefix
+`.tlr-`; the run itself stays in App's `runBulkConnect`).
+
+- **A tile per member from the start:** waiting → connecting (the live connect
+  step, plus a stall hint after 15s) → READY (health and room fill in from the
+  Overview digest store) → failed (with the real error) or skipped. Tiles share
+  the width: `--tlr-cols` = min(n, 4), two when narrow.
+- **Play while the rest connect.** A single click CHOOSES a ready tile and the
+  footer button names it ("Play *name*"); a double-click, Enter on the tile, or
+  that button PLAYS it. Arrow keys move the choice with the focus. Until you
+  choose, the choice is the first ready character in TEAM order — not the last
+  to finish. Playing folds the panel into an app-bar pill (`TeamLoginPill`,
+  running / failed / ✓) and the rest connect behind you with
+  `addSession(info, { activate: false })`, so no tab switch and no focus steal.
+  The pill reopens the panel.
+  - **Why click chooses rather than plays:** a first version played on a single
+    click, which left the footer's "Play *name*" button with nothing to do and
+    made a mis-click jump you into a character (Sekmeht). Choose-then-confirm,
+    with double-click as the shortcut, is the file-picker convention.
+  - **The Play button's width is fixed** to the longest member's label
+    (`ui-btn--stable`: every label stacked in one grid cell, all but the chosen
+    one hidden). When it followed the chosen name, the hint beside it re-wrapped
+    and the whole panel changed height as you clicked between tiles.
+  - A tile does NOT read "Playing" merely because its character became active
+    on its own (the first to connect in an empty window does): `run.played`
+    records a real choice.
+- **Pending tabs:** members not yet connected show as dashed tabs with a spinner
+  and an indeterminate bar, filtered against real session names so a tab never
+  appears twice.
+- **Quiet separate windows:** with "Open each in its own window", later members
+  open via `createWindow({ inactive })` — `show: false`, then `showInactive()`
+  on `ready-to-show` (3s backstop) — and `session:move-window({ quiet })`
+  returns whether the move happened, which is what `inOwnWindow` records.
+  Unverified edge: a window last saved MAXIMIZED may still activate on restore.
+- **Guards:** one run at a time (`teamRunBusy` also gates Reconnect Last and the
+  keep/switch chooser); Retry is enabled once the run is done; a ready member
+  whose tab you closed reads "Tab closed" and can't be chosen; the panel
+  auto-expands if its window has no sessions (there is no pill to reopen it
+  from). A clean finish while you're playing toasts and the pill hides after 4s;
+  a failure keeps the pill red.
+- **Performance:** the per-second connect step and the live stats subscribe
+  INSIDE each tile (module-level `trackConnectSteps` / `lastStep`, and
+  `useDigests`), so App re-renders only when a member changes state.
+- **No slash command, by decision** (Principle #11): a team run is started from
+  the launcher or Reconnect Last, and the panel is its surface.
 
 **Teams on the logon screen (v0.18.4).** The `Sets...` dropdown was removed: it
 named a noun, explained nothing, and hid its contents behind a click
@@ -1909,6 +2018,14 @@ is a team?" with no help text.
   only until someone restyled one (the `.tp-` lesson).
 - Hidden in the COMPACT launcher (inside Add Character) — including the pinned
   copies, zeroed at source so the Favorites count cannot disagree with the block.
+
+**One character's login uses the same look (v0.20.0).** A single Connect (a
+launcher card, the + window) shows `SoloConnectPanel`: the Team Login chrome
+with one tile — the live step, the stall counter and the bar — titled "Logging
+in", with Cancel (Esc too). It replaced the old spinner card and only DRAWS:
+App's `pendingConnect` flow still owns the grace window, Cancel's semantics, the
+account-conflict prompt and errors. Keyed on the character so each attempt
+mounts fresh and its tile ignores the previous attempt's last step.
 
 **Stopping a run (F98, v0.18.4).** The progress overlay carries a **Stop**
 button, reversing the earlier "no cancel mid-sequence" decision. The word is
@@ -2363,6 +2480,9 @@ Left sidebar shows all groups with toggle switches. Selecting a group filters th
 | `flash-panel` | `main` | Briefly highlights the panel tab to draw attention |
 | `log` | `my-log` | Routes matched line to a named stream (see §14.10a) |
 | `eval` | `health < 30` | Fires only when the game-state expression is true |
+| `toast` | title, message, kind | Shows an in-app toast in the window you're using (v0.20.0, §37.6) |
+
+**Command actions wait for roundtime by default (v0.20.0)** — see §14.10c.
 
 **Cooldown** — minimum seconds between firings of the same trigger. Prevents a bleed message that repeats every second from spamming `pray` 50 times. Set to `null` for one-shot triggers (e.g. "open panel when combat starts").
 
@@ -2452,6 +2572,72 @@ editor-only, and styling belongs on that same side of the line. The action
 SUMMARY does name every style it applies, because that list is user-facing
 documentation.
 
+### 14.10c Roundtime-aware sends (F120, v0.20.0)
+
+Sekmeht: triggers sent their commands the instant the line appeared, so in
+combat the game discarded them. Each `command` action now has `waitForRt`
+(**absent = ON**, so every existing trigger changed behaviour); the editor shows
+it as a "Wait for roundtime" checkbox. `actionWaitsForRt(action, cmd)` is the
+one decider: an explicit `false`, or a command starting with `;` (a Lich
+command — Lich owns its own timing), sends at once.
+
+**The protocol fact that shapes it:** the parser emits `roundtime` at the
+`<prompt>`, AFTER the turn's text lines (the B192 anchoring, pitfall #87). When
+a trigger fires, the RT belonging to the line that fired it has NOT arrived yet,
+so "is RT clear right now?" is a question about the previous turn. The queue in
+`useTriggerEngine` therefore:
+
+1. takes the command with the prompt sequence number current at fire time;
+2. waits for the NEXT prompt (`notePrompt`), which settles the turn — capped at
+   `RT_SETTLE_CAP_MS` (1s) so a turn without a prompt can't stall it;
+3. waits until `rtExpires` passes, then sends. The NEXT queued command then
+   restarts at step 2 from now, because the command just sent will usually
+   earn its own roundtime, reported at its own prompt.
+
+A trigger with several commands queues each in order, so `stand;attack` works
+mid-fight. The queue is dropped by `cancelPending` on a 'Disconnected' status,
+so a reconnect never sends a stale command. `notePrompt` is replay-gated
+(pitfall #60).
+
+**`rt` and `ct` as variables.** `TriggerGameState` holds `rtExpires`/`ctExpires`
+as epoch ms; `$rt`/`$ct` and the conditions read `secondsLeft(expires)`, live.
+The game reports a roundtime only when it STARTS, so `noteTimer(name, expires)`
+arms a timer that reports `0` at expiry. **That end event reaches only rules
+with a condition on that variable** (`processVariableChange(…, onlyGated)`):
+delivered to every watcher, an unconditioned `rt` trigger fired twice a round.
+To act when roundtime ends, watch `rt` and add *Roundtime = 0*. A `ct`
+condition ("Cast time (sec)") joined the list.
+
+**Known edges (accepted):** a non-waiting command can send before an earlier
+waiting one in the same trigger; the queue lives in the GameWindow, so a
+decouple remount loses it; and a turn with no roundtime can release the next
+chained command one prompt early, because the settle is inferred from prompts.
+
+**Slash:** `/trigger add "pattern" do "command" rt=wait|now` (`rt=wait` is the
+default). Harness: `tmp-trigger-harness/run.ts` mounts the real hook on a
+virtual clock (34 cases).
+
+**Genie import keeps Genie's timing** (verified against Genie4 `Command.cs`):
+`#put` and a bare command send at once, `#send` waits for roundtime, `#do` waits
+for roundtime (its stun/web wait isn't modelled — imported with a note), and the
+queue forms `#queue`/`#que`/`#q` wait for a delay without roundtime. Every
+queueing form takes a leading pause in SECONDS, which becomes `delayMs` — it
+used to stay in the text (`#send 2 look` → the command `2 look`, B469). Queue
+CONTROL is dropped as unsupported: `#send|#do|#queue clear` empties Genie's
+queue, and `#queue` with no delay LISTS it. `commandOpts` travels index-aligned
+with `commands` through one `pushCommand` writer, and the preview shows
+`(after Ns, ignores RT)` where it applies.
+
+### 14.10d Toast action (F123, v0.20.0)
+
+`toast` shows an in-app toast with `toastTitle`, `toastMessage` (both
+interpolated) and `toastKind` (info / success / warning / error). It routes
+through main (`ROUTE_TOAST` → the focused Lichborne window → `ROUTED_TOAST`), so
+a trigger firing for a character in a background or decoupled window still
+reaches the window you're using. When no Lichborne window is focused the toast
+is skipped — that's what **Notify** (the OS notification) is for, and the two
+action descriptions say so.
+
 ### 14.11 Eval Trigger Variables
 
 Eval triggers evaluate a simple expression against live game state before firing:
@@ -2501,7 +2687,9 @@ Supported operators: `<`, `>`, `<=`, `>=`, `==`, `!=`. Expressions are intention
 The THEN section of a trigger uses a card-per-action layout. Two notable UI decisions:
 
 - **Action type selector**: a single `<select>` replaces the original 9-pill row. Pills worked fine at 3–4 options but clipped badly as the action type count grew. The select scales to any number of types and matches the visual weight of the other dropdowns in the panel.
-- **Variable picker**: `VarPicker` is an uncontrolled `<select defaultValue="">` that inserts `$varName` at the cursor position when a variable is chosen, then resets via `e.target.value = ''` (direct DOM mutation). The previous implementation used a floating portal menu with open/close state, refs, and a `useEffect` click-outside handler — all of which were removed.
+- **Variable insert menu (v0.20.0, F121)**: a `$` button next to each interpolating field opens [VarMenu](src/renderer/components/VarMenu.tsx), a grouped insert menu (`VAR_GROUPS` in triggers.ts: the text that matched, vitals, timers, hands, room, status, time…). It replaced a `<select defaultValue="">` that read like a setting rather than a list you insert from (Sekmeht: *"the dropdown with $var listed is a selector"*). VarMenu is shared with Macros/Aliases (it replaced their private `MaVarPicker`), portaled at the dialog-popover tier (`.ui-menu`), keyboard-navigable (↑/↓, Esc closes the menu only via `preventDefault`, pitfall #141), flips above the button and clamps horizontally, and closes when a scroll container holding its button scrolls — never on any scroll, because the game text behind the dialog scrolls on every line.
+- **Live values (v0.20.0)**: when the host provides `LiveVarsContext` (GameWindow wraps the Automations dialog), each `$variable` row shows its current value for this character, re-read once a second while the menu is open so `$rt` counts down. The value is in the row, never a `title` (pitfall #145), in the code font because it is literally what would be inserted; match-only variables (`$match`, `$1`, `$line`) have no value to show. The getter is `buildMacroVars()` plus the clock values, stable for the component's life because it reads `triggerCtxRef`.
+- **Explanations (v0.20.0)**: every field carries a tooltip that adds a fact the label doesn't (UX #8), each section a one-line hint, each action type a description (`ACTION_DESCS`), each condition an example value (`GATE_PLACEHOLDERS`) and each operator an explanation. The Variable trigger's watch field suggests watchable names from a datalist.
 
 ### 14.z Command Echo
 
@@ -2610,23 +2798,37 @@ Toolbar button "Contacts" opens a modal with two views: **Contacts** (default) a
 
 ### 15.5 Templates View
 
+**As of v0.20.0 (B475) the Templates tab is the Contacts tab's layout, class
+for class** — `.cp-body` / `.cp-sidebar` / `.cp-list` / `.cp-detail` / `.cp-form`:
+
 ```
-┌─ Contacts ──────────────────────────────────────────────────┐
-│                                       [Contacts] [Templates]│
-├─────────────────────────────────────────────────────────────┤
-│  [+ New Template]                                           │
-│                                                             │
-│  ● Friends      ■ #a0d080   □ transparent   tag: (none)    │
-│  ● Enemies      ■ #e05050   □ transparent   tag: [Enemy]   │
-│  ● Guild        ■ #60b8e0   □ transparent   tag: (none)    │
-│  ● Self         ■ #e8d070   □ transparent   tag: (none)    │
-│  ● Merchant     ■ #c080e0   □ transparent   tag: (none)    │
-│                                                             │
-│  Click a template row to edit inline.                       │
-└─────────────────────────────────────────────────────────────┘
+┌─ Contacts ─────────────────────────────────── [Contacts] [Templates] ✕ ┐
+│ + New template   │  TEMPLATE NAME  [ Friends               ]           │
+│ [Search…      ]  │  ── CONTACT NAME ─────────────────────────           │
+│ [Friend] Friends │  Color ■ ▾   Background ▢ ▾   Bold ☐                │
+│ [Enemy]  Enemies │  ── TAG ──────────────────────────────────           │
+│ Pack             │  ── PREVIEW ── / ── APPLIES TO ──                    │
+│ …(scrolls)       │  [Delete…]              [Close] [Save]               │
+└──────────────────┴───────────────────────────────────────────────────────┘
 ```
 
-Each row expands inline to edit: template name, text color picker, bg color picker, bold toggle, tag text field, tag color picker, tag BG picker, and a **Groups** row (All Groups button + GroupPicker — same pattern as highlight/trigger/macro editors).
+- **Sidebar:** + New template, a search box (name and tag; "N of M"; Esc clears
+  it rather than closing the dialog; ↓ enters the list), and a block list that
+  scrolls — each row previews the template's tag and name through the shared
+  painter (B281), with a ✕ that deletes after a confirm naming how many contacts
+  use it. No ✕ on the built-in Friends / Enemies (the loader re-adds them).
+- **Detail pane:** the zoned editor (template name; contact name colour,
+  background, bold, effect; tag; preview; Applies to), scrolled by `.cp-form`.
+- **Keyboard and guards** mirror Contacts: ↑/↓ through the list via the guarded
+  select (a dirty draft asks first), ↑ from the top row back to search, + New
+  focuses the name field (opening an existing template does not, so arrowing
+  keeps focus in the list), and a pending new template shows as a "New template"
+  row until saved (B388).
+- **Why it changed:** it was an accordion — a flex column of `overflow: hidden`
+  cards. Such flex items may shrink below their content (pitfall #163), so a
+  long list squashed every card flat, the open editor included, and its Save
+  was unreachable. Reusing the Contacts structure fixed it and means one layout
+  to maintain.
 
 ### 15.6 In-Game Name Rendering (Phase 6B)
 
@@ -8223,6 +8425,23 @@ Feedback for executed commands is a client-styled line in the main window (`pres
 
 A small themed toast stack ([toasts.ts](src/renderer/toasts.ts) + [ToastHost.tsx](src/renderer/components/ToastHost.tsx), mounted once per window at the App root): `showToast({kind, title, message})` dispatches a `lichborne:toast` CustomEvent; the host renders bottom-right, auto-dismissing (info/success ~4s, error ~10s), click to dismiss, capped stack. Theme-safe by construction (surface vars + `color-mix` semantic hue stripes, pitfall #55 pattern). First consumer: `safeSetItem`'s quota warning — previously a blocking `window.alert`, now a non-blocking error toast (same one-shot semantics). Future consumers: Transfer/import completions, slash-command errors that deserve more than an in-flow line.
 
+**Character status notices (F123, v0.20.0).** Toasts about your OTHER characters, delivered to the window you're looking at (Sekmeht: *"the active window just kind of knows whats going on with other tabs too"*).
+
+- **Main decides and routes.** `sendCharacterNotice` sends `CHARACTER_NOTICE` to `focusedAppWindow()` — the focused Lichborne window, else the primary. `ready` follows a successful Connected / Attached / Re-attached; `dropped` only when the session had connected and did not close cleanly; a connect within `RECONNECT_WINDOW_MS` of a drop reads `reconnected` (`recentDrops`).
+- **The renderer decides whether to show it.** `characterNoticeToast` ([characterNotices.ts](src/renderer/characterNotices.ts)) builds the toast; App skips it when notices are off, and skips a ready notice for a connect YOU started in that window (`foregroundConnectsRef`) — you're already watching it happen.
+- **Click goes there, across windows:** `FOCUS_CHARACTER` → main focuses the owner window → `SELECT_CHARACTER` → that App activates the tab and leaves the Overview.
+- **Setting:** app-wide `SharedProfile.characterNotices` (default on, optional field, no profile-version change), Settings → "Character status notifications", `/notices [on|off]` (the `/timestamps` shape).
+- **Toast primitive changes:** a `warning` kind; `onClick` + `clickHint` (the tooltip); a clickable toast is `role="button"`, tabbable, and answers Enter/Space (pitfall #142).
+- The trigger **Toast** action (§14.10d) rides the same routing, and carries its character's badge (`RoutedToast.character`).
+
+**Merging and people (v0.20.0, from the UX review).**
+
+- **`key` + `merge`.** A toast with a `key` arriving while a toast with that key is on screen updates it IN PLACE — same id, so no re-entry animation and no reordering — with `merge(prev)` deciding the combined content (default: replace), and the timer restarted. `data` is carried untouched for the merge to read. Character notices key per kind (`character-notice:ready|dropped|reconnected`), so a network blip that drops four characters is one toast rather than four; kinds never mix. The pure builder is `noticeToastFor(kind, entries, goTo)`: one character reads exactly as before, two are named in the title, three or more are counted.
+- **`people`.** Each person renders as a monogram coloured by [nameColor.ts](src/renderer/utils/nameColor.ts) — the Living Tableau's avatar recipe, lifted out so a character's badge and avatar are always the same colour. One person is a badge before the title (the toast itself is the click target); several are a row of chips, each its own button, and the toast body only dismisses. The fill is a data colour (Principle #4 exception) with a theme-derived ring for light themes.
+- **Hover and focus hold a toast** — tracked SEPARATELY, and released only when both have let go (one shared flag let the mouse leaving re-arm a toast whose chip still had keyboard focus). `release` re-arms with the remainder, never less than `LEAVE_GRACE_MS` (2.5s), so holding can never SHORTEN a toast; a full stack drops the oldest toast NOT being held.
+- **Newer news supersedes older (`withdrawNotice`).** When a character reconnects, it comes off a visible "disconnected" toast (and a drop takes it off "is in the game"): an `onlyIfShown` update whose `merge` returns null to dismiss an emptied toast, and returns `prev` unchanged — no timer restart — when the character wasn't on it.
+- **Clicking one badge takes that character off** (`withoutPerson`) and leaves the rest, down to a normal single toast; it no longer throws the others away. A character already on a merged toast keeps its place when its news repeats (moving it re-ordered the chips and dropped focus). The same name on two shards is labelled apart ("Sekmeht (DRT)") via `ToastPerson.label`, with the initials and colour still from the name; chips are keyed by characterId.
+
 ### 37.7 Maintenance contract — slash commands track the features they drive (Sekmeht, 2026-07-04)
 
 The registry is a FIRST-CLASS control surface with a standing obligation, codified as **CLAUDE.md Principle #11 + pre-merge check #5**: every new user-facing feature gets its `/command` (or an explicit, recorded "no command because X" in that feature's DESIGN section), and every feature CHANGE updates its registry entries — executors, options, hints, examples, summary formatters, error messages, and the `SlashLiveData` completion values — in the same change. A drifted command (a hint describing an option that no longer exists, a summary missing a new field) is a shipped bug of the same class as a stale tooltip: it teaches users wrong things with confidence. Concretely: new rule type → the full `add`/`remove`/`list`/`edit` verb set + the panel `openRuleId` plumbing; new toggle/setting → the `/timestamps` shape; new selectable values → completion chips; retired feature → entry removed (fail-closed covers muscle memory with the `/help` hint); renamed concept → old noun kept as a `nounAliases` alias (the `/gag`→mute precedent). Retroactive sweeps at version boundaries include a drift pass over the registry (does every entry still match the feature it drives?).
@@ -8409,6 +8628,27 @@ segmented row (rendered only when hosted by the Automations panel — standalone
   stores the F37 way (shared-YAML flush + `lichborne:global-rules-changed` + character reload/
   profile save), and remounts the panel via `importNonce` (a cross-store edit, like an import).
 
+**v0.20.0 — a move can no longer lose a rule (B470).** Sekmeht moved a new trigger to All
+Characters, saw a blank list, deleted the "blank" rule to start over — and lost a different
+trigger. Three changes:
+
+- **A matching KEY is a collision, not a duplicate.** The move used to remove the source whenever
+  the target had a rule with the same `keyOf`. Two triggers sharing a pattern can do entirely
+  different things. It now asks `sameRuleContent(a, b, { normalize, includeGating })`
+  ([ruleIdentity.ts](src/renderer/ruleIdentity.ts)): a canonical whole-record comparison ignoring
+  every `id` and the top-level name/group fields (pitfall #130's derive-don't-list rule).
+  Triggers are compared in `triggerCompareForm` (defaults filled via `newTrigger` /
+  `newTriggerAction`) so a rule saved before a field existed equals one saved after. Gating counts
+  when moving INTO a character. An identical twin merges (the exact twin is preferred when several
+  share the key); a different one **refuses** the move with a toast naming the clash.
+- **Variable-change triggers have an identity.** `trKey` was pattern-only and their pattern is
+  `''`, so every variable trigger was "the same rule" — the actual cause of the lost trigger. They
+  now key on `var:<watched variable>`.
+- **The editor follows the rule.** After a move the panel switches scope and reopens the rule
+  (`movedOpen` → the panels' open-rule props; Macros gained `openMacroId`). Every editor moves the
+  FINALIZED draft (what Save would write) and disables "Applies to" while the draft can't be
+  saved, with a tooltip saying why.
+
 ### 39.7 Transfer global-awareness (F63, same release)
 
 Two additions to Profile Transfer (§29), so globals and Transfer can't fight each other:
@@ -8425,6 +8665,11 @@ Two additions to Profile Transfer (§29), so globals and Transfer can't fight ea
    (a rule promoted to global must not come back as a per-character copy that double-fires).
    `globalRules` runs BEFORE the per-character categories in the apply order so the filter sees
    the freshly-merged global store. Mutes/substitutes have no global store — no filter.
+3. **Clashes are reported, not silent (v0.20.0, B471).** An incoming rule whose key matches an
+   existing one but whose content differs is still not imported — Transfer never overwrites — but
+   `dropCollisions` now records it as a `RuleClash` in `TargetResult.clashes`, and the modal lists
+   them (de-duplicated across targets, `--color-warning`, bounded + scrolling). Content-identical
+   incoming rules still skip quietly; that's a true duplicate.
 
 ---
 
@@ -9053,7 +9298,17 @@ animated *inside `@keyframes` only* (a whole-file sweep is misleading — it cou
 static declarations): experiences.css is 35 `opacity` + 18 `transform` + 4
 `box-shadow` + 2 `fill-opacity`, map-panel.css is 64 `opacity` + 34 `transform`,
 and there are **zero layout-triggering animations anywhere** — no animated
-`width`/`height`/`top`/`left`. That is §45.4's rule being followed. Particle
+`width`/`height`/`top`/`left`. That is §45.4's rule being followed.
+**Two corrections from the v0.19.9 pass (§45.12), both of which this audit's
+method could not have caught.** First, the sweep checked the HTML layout
+properties and missed the SVG one: `moons-ring-rise`/`-set` animate **`r`**, a
+geometry property that triggers SVG layout — low element count (≤8, transient),
+so it is a correctness note about the claim rather than a hot path. Second and
+far more important, **counting properties inside `@keyframes` cannot see a
+CSS `transition`** — and two timer-driven transitions were running permanently
+(B464/B465). "Which properties do the keyframes animate" is the wrong question
+on its own; the complete one is "what is animating, for how long, on how many
+elements, and does it ever stop". Particle
 counts are modest (~130 worst case: 70 stars with reveal culling, 34 rain, 26
 snow, 11 leaves, 9 fireflies). The single genuine outlier was `.moons-pill`'s
 `backdrop-filter: blur(9px) saturate(1.25)` — an element up to 96% of the scene
@@ -9165,6 +9420,57 @@ stack is ever reported as heavy, **that** is the axis to measure, not this one.
 per open Spell Monitor it is far below the threshold that justified §45.8's
 animation pause, and pausing it would need a `data-window-hidden` subscription
 plus a stale-readout-on-restore story for no measurable gain.
+
+### 45.11 The FIRST memory audit — retention had never been measured (v0.19.9)
+
+Triggered by *"it seems to use more memory than I remember"*, with no recollection of when it started. **Every prior pass in this section measured CPU or latency; none had ever asked what the client retains.** That gap is the finding — an unbounded cache dating to v0.3.0 had survived six years of audits because nobody was looking on that axis.
+
+**Measured on the reporter's running client (2 characters connected, 41 floating windows in Windowed Panels mode):**
+
+| Process | Working set | Peak |
+|---|---|---|
+| renderer | 532 MB (private 530) | **1,408 MB** |
+| gpu | 184 | 219 |
+| main | 118 | 251 |
+
+Renderer private ≈ working set, so it is committed heap, not shared pages. Sampling against the session log showed **~1.8 MB/min of renderer growth against ~135 KB/min of game text**, with the GPU climbing 0.84 MB/min alongside — consistent with base64 tiles being retained as strings AND as decoded bitmaps.
+
+**Three findings, all long-standing, none a v0.19.x regression:**
+
+- **B462 — the Lich map tile cache never evicted** ([MapImageView.tsx](src/renderer/components/panels/MapImageView.tsx)). `.has`/`.get`/`.set` only; 273 tiles ≈ 26.9 MB on disk, ~35.7 MB base64. Now an LRU at 30. Dates to v0.3.0.
+- **B463 — the map datasets were parsed per CHARACTER, not per app.** 14.7 MB of Lich map JSON (~52k rooms) plus a 12.3 MB Genie cache, held in per-component state, with MapPanel mounted per character across two mount sites. Now module-level caches keyed by source path with in-flight dedup. **What is shared and what is not is the load-bearing distinction** — see pitfall #159.
+- **B461 — the per-stream line cap inverted at exactly the cap.** `slice(-(MAX - lines.length))` is `slice(-0)` when a batch carries exactly 500, and `-0 === 0`, so it kept the whole buffer and compounded (verified 500 → 1000 → 1500). Pitfall #158.
+
+**Main was exonerated with measurement**, not assumption: 220–310 KB of retained state per session, `HISTORY_BUFFER_MAX` unchanged since v0.11.0. A strong code-derived hypothesis — that `buildCatchupDigest` (`CATCHUP_MAX_MINUTES` is one YEAR, at ~80k lines/day) had raised the high-water mark — was **refuted by main's 251 MB peak**. It remains a real hazard worth a ceiling; it is not what anyone has hit.
+
+**What was NOT the cause, and is worth not re-investigating:** no timer, listener or observer leaks (all 8 renderer intervals, 10 observers and 24 IPC subscriptions clean up); every text buffer capped; v0.18.5 *reduced* memory (removed a forever-interval, cut overscan 3000 → 1200). The one platform step that plausibly moved the baseline is **Electron 31.7.7 → 43.0.0 at v0.15.0** (Chromium ~126 → 150), which shipped with +682 bytes of our own source — close to a controlled experiment.
+
+### 45.12 CPU: the load did not vary with the game (v0.19.9)
+
+Same session, second axis. **Measured live: renderer 49–75% of one core, GPU 28–38%, main ~1.2%** — roughly 90% of a core between them for a text client sitting still.
+
+**The decisive measurement was a correlation, taken before any code was read.** Sampling CPU against session-log growth over four minutes, across a 2.7× range of text volume:
+
+```
+renderer CPU vs text volume : r = -0.061      (none)
+gpu CPU      vs text volume : r =  0.532      (partial)
+renderer floor, every sample: 55.7% of a core
+```
+
+**The floor is the argument** — at the quietest sample the renderer still burned 56% of a core, so the work happens whether or not the game sends anything. A harness against the reporter's real rulesets and today's real log then confirmed it from the other direction: the full `TextLineRow` path costs **90.8 µs/line**, which at their real rate (4.74 lines/s average, 53.2 peak) is **0.08% of a core average, 0.92% at peak** — ~1% against 49% measured, off by 50×.
+
+**So the per-line rule path is not where the CPU goes, and all four of pitfall #82's structures are intact** (+2.6% against §45.5's baseline — no regression). `resolveLineLayer` was the prime suspect and is innocent: 100% of line rules carry a literal gate, it short-circuits, it runs once per line (measured flat: 88.3 µs at 1 segment vs 89.4 at 4), and **it is not new** — v0.19.7's `getLineHighlightStyle` ran the identical scan; B428's marginal cost is **+0.43 µs/line**.
+
+**The cost was three never-stopping things**, all fixed:
+
+- **B464** — the Moons sky: `transition: opacity 2.5s` re-armed by a **2s** tick, four full-panel layers, permanently, unconditionally.
+- **B465** — Spell Monitor bars: `transition: transform 1s` re-armed by a **1 Hz** clock writing an unrounded float.
+- **B466** — `;listall` polled every 5s for a panel that was not mounted (tab existence vs visibility, the B307 mistake again), costing ~4 full GameWindow re-renders per 5s per character.
+
+The first two are one class, now pitfall #160, and the reason they were never caught is recorded there: **counting properties inside `@keyframes` cannot see a transition.**
+
+**Filed, not acted on:** **278 of 656 match rules (42.4%) carry no literal gate** and account for **98.9% of all regex executions** — 47.2 µs/line, about half the render cost. They are imported alternation-shaped rulesets that `extractRegexLiteral` correctly refuses to gate (pitfall #104 — err toward null). A multi-literal "any-of" gate would recover most of it and must carry the `check-literals.mjs` agreement check. **At ~1% of a core, this buys nothing noticeable**; recorded so it is not re-derived.
+
 
 ## 46. Prioritised Backlog — features & UX polish (snapshot 2026-07-30)
 

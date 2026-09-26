@@ -205,13 +205,13 @@ export default function AttachModal({ onCancel, onAttach, initial = null, known 
               never resizes mid-attach. */}
           <button
             type="button"
-            className="ui-btn ui-btn--primary cne-btn--stable"
+            className="ui-btn ui-btn--primary ui-btn--stable"
             onClick={handleAttach}
             disabled={busy || !valid}
             title={busy ? undefined : invalidReason || undefined}
           >
-            <span className={`cne-btn-label${busy ? ' cne-btn-label--off' : ''}`}>Attach</span>
-            <span className={`cne-btn-label${busy ? '' : ' cne-btn-label--off'}`} aria-hidden={!busy}>Attaching…</span>
+            <span className={`ui-btn-label${busy ? ' ui-btn-label--off' : ''}`}>Attach</span>
+            <span className={`ui-btn-label${busy ? '' : ' ui-btn-label--off'}`} aria-hidden={!busy}>Attaching…</span>
           </button>
         </div>
       </div>

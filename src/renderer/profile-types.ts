@@ -84,6 +84,17 @@ export interface SharedProfile {
   // set-once preference, like the Session Log settings. Optional → older files
   // default to minLength 0, which is exactly the pre-F82 behaviour.
   commandHistory?: { minLength: number }
+  // Character status notifications (v0.20.0): toasts when a character is in
+  // the game, drops, or reconnects. App-wide. Optional → an older file loads as
+  // absent, which reads as ON (the default).
+  characterNotices?: boolean
+  // Character colours (v0.20.0): account::character (the characterId minus its
+  // shard, so the DR/Test toggle keeps it) → the
+  // colour picked in Edit Profile — a hex, or a link to a named colour. App-wide
+  // so every window paints that character's badge, tab and focus rings.
+  // Optional → absent means no character has one (every surface falls back to
+  // its automatic colour). Not a Transfer category: it's identity.
+  characterColors?: Record<string, string>
   // Overview view display options (v0.19.0 Views, DESIGN §47). App-wide because
   // the Overview is BY DEFINITION cross-character — a per-character copy has no
   // answer to "whose wins when three are open", and it would break the moment a

@@ -22,6 +22,7 @@ import ContextMenu from './ContextMenu'
 import { buildCharacterMenu } from '../characterMenu'
 import { useViewMode, useOverviewTarget } from '../overviewStore'
 import { activateOnKey } from '../utils/pressable'
+import { characterColor, useCharacterColors } from '../characterColors'
 import '../styles/character-tabs.css'
 
 interface Props {
@@ -34,6 +35,19 @@ interface Props {
   // Characters mid-reconnect — drives the per-tab "connecting" indicator (the
   // launcher's connecting overlay isn't visible for a tab reconnect).
   reconnectingIds: Set<CharacterId>
+  // Team Login (v0.20.0): characters of a running team that have no tab yet —
+  // waiting their turn, connecting, or failed. Shown as placeholder tabs so the
+  // whole team is visible where the tabs are, and a stalled or failed login is
+  // in plain sight instead of silently missing. Clicking one opens the panel.
+  pendingTabs?: PendingTab[]
+  onPendingClick?: () => void
+}
+
+export interface PendingTab {
+  key: string
+  name: string
+  game: string
+  status: 'waiting' | 'connecting' | 'failed'
 }
 
 function healthClassName(pct: number | null): string {
@@ -44,7 +58,7 @@ function healthClassName(pct: number | null): string {
   return 'health-crit'
 }
 
-export default function CharacterTabBar({ onAdd, onClose, onReconnect, reconnectingIds }: Props) {
+export default function CharacterTabBar({ onAdd, onClose, onReconnect, reconnectingIds, pendingTabs, onPendingClick }: Props) {
   const { sessions, activeId, setActive } = useSessions()
   // WHICH tabs read as selected (Sekmeht, v0.19.7). In Session view: the active
   // tab, as always. In the OVERVIEW: whoever the input bar is aimed at, because
@@ -126,6 +140,7 @@ export default function CharacterTabBar({ onAdd, onClose, onReconnect, reconnect
           onContextMenu={(x, y) => setCtx({ x, y, characterId: s.characterId, sessionId: s.sessionId, character: s.character, connected: s.status.connected })}
         />
       ))}
+      {pendingTabs?.map(p => <PendingCharacterTab key={p.key} tab={p} onClick={onPendingClick} />)}
       <button type="button" className="character-tab-add" onClick={onAdd} title="Add character">
         +
       </button>
@@ -133,6 +148,33 @@ export default function CharacterTabBar({ onAdd, onClose, onReconnect, reconnect
         <ContextMenu x={ctx.x} y={ctx.y} onClose={() => setCtx(null)} items={menuItems} />
       )}
     </div>
+  )
+}
+
+// A team member still on its way in. Same silhouette as a real tab (it
+// becomes one), but greyed, with a status glyph and — while connecting — a
+// thin moving bar along the bottom. Not a real tab: it can't be selected or
+// closed; clicking it opens the Team Login panel, where the detail is.
+function PendingCharacterTab({ tab, onClick }: { tab: PendingTab; onClick?: () => void }) {
+  const title = tab.status === 'connecting' ? `${tab.name} is connecting. Click for details.`
+    : tab.status === 'waiting' ? `${tab.name} connects after the characters before it. Click for details.`
+    : `${tab.name} didn't connect. Click to see why, or to retry.`
+  const glyph = tab.status === 'connecting' ? '⟳' : tab.status === 'failed' ? '⚠︎' : '…'
+  return (
+    <button
+      type="button"
+      className={`character-tab character-tab--pending character-tab--pending-${tab.status}`}
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+    >
+      <span className="character-tab-id">
+        <span className="character-tab-name">{tab.name}</span>
+        <span className="character-tab-game">{tab.game}</span>
+      </span>
+      <span className="character-tab-glyph" aria-hidden="true">{glyph}</span>
+      {tab.status === 'connecting' && <span className="character-tab-pending-bar" aria-hidden="true" />}
+    </button>
   )
 }
 
@@ -169,6 +211,10 @@ function CharacterTab({
   // feedback the launcher overlay can't give for a tab reconnect.
   const icon = reconnecting ? { glyph: '⟳', title: 'Reconnecting…' } : resolveIcon(session, now)
   const useLich = session.useLich
+  // The colour picked for this character in Edit Profile (v0.20.0): the active
+  // chip's tint and hairline, and a faint hairline when inactive. A separate
+  // store from the Overview digests, so a vital tick still never reaches here.
+  const chosenColor = characterColor(useCharacterColors(), { characterId: session.characterId })
 
   // Disconnect is conveyed purely by tab styling (dim + italic) — the
   // last-known icon is preserved so a player can still see "Katasha was dead
@@ -178,11 +224,13 @@ function CharacterTab({
     isActive ? 'character-tab--active' : '',
     !connected ? 'character-tab--disconnected' : '',
     reconnecting ? 'character-tab--reconnecting' : '',
+    chosenColor ? 'character-tab--colored' : '',
   ].filter(Boolean).join(' ')
 
   return (
     <div
       className={classes}
+      style={chosenColor ? { ['--char-color' as string]: chosenColor } as React.CSSProperties : undefined}
       role="tab"
       aria-selected={isActive}
       // B335: a tab stop + Enter/Space, so a tab is reachable without the mouse

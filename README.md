@@ -40,7 +40,7 @@ It isn't a replacement for Lich — Lich still owns your scripts, maps, and auto
 
 If you've spent years tuning Genie highlights or rebuilding a StormFront layout after a reinstall, the thing you get here is **not losing that work again**. Your configuration is a folder of readable files that you own.
 
-If you run several characters, they live in one app that knows about all of them — one place to look, one set of settings, one click to bring the whole team back online.
+If you run several characters, they live in one app that knows about all of them — one place to look, one set of settings, one click to bring the whole team back online, and a heads-up in whatever window you're looking at when one of them drops.
 
 And if you already run Lich, Lichborne sits alongside it. Same install, same paths, nothing to reconfigure.
 

@@ -539,24 +539,26 @@
 
 /* ── Variable insertion dropdown ─────────────────────────────────────────── */
 
-.trg-var-select {
-  background: var(--modal-input-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--accent-dim);
-  font-family: inherit;
-  font-size: 0.78rem;
-  padding: 5px 6px;
-  cursor: pointer;
-  flex-shrink: 0;
-  outline: none;
-  transition: border-color var(--ui-transition);
+/* One line under a section header saying what the section does. */
+.trg-section-hint {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin-top: -2px;
 }
 
-.trg-var-select:hover,
-.trg-var-select:focus {
-  border-color: var(--accent-dim);
-  color: var(--accent);
+/* The action card's first line: what this action type does (UX #8). */
+.trg-action-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  padding: 0 2px 2px;
+}
+
+/* Inline names (rt, ct) inside a hint. */
+.trg-pattern-hint code {
+  font-family: var(--code-font-family);
+  color: var(--text-secondary);
 }
 
 /* ── Add action button ───────────────────────────────────────────────────── */

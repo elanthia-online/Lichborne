@@ -182,8 +182,21 @@ function SpellCell({ effect, now, showBars, showUrgency, pulse, showBadges, useA
         <div className={bar === null ? 'sm-bar sm-bar--none' : 'sm-bar'} aria-hidden="true">
           {/* scaleX, not width — the bar drains continuously, and a width
               transition would invalidate layout every frame for every bar.
-              See the .sm-bar-fill rule. */}
-          {bar !== null && <span className="sm-bar-fill" style={{ transform: 'scaleX(' + bar + ')' }} />}
+              See the .sm-bar-fill rule.
+
+              ROUNDED to 3dp, and that is what stops the transition running
+              forever (v0.19.9). `.sm-bar-fill` carries `transition: transform
+              1s linear` and this component re-renders on a 1 Hz clock — so an
+              unrounded float produced a DIFFERENT style string every tick and
+              re-armed the transition at the exact moment the previous one
+              would have finished. Every bar was therefore permanently
+              animating, which is the compositing cost DESIGN §45.10 flagged as
+              unmeasured ("N permanently-transitioning bars"). At 3dp a bar only
+              re-animates when it moves by 0.1% of its width — sub-pixel on any
+              real panel — so a long buff now sits still between real changes. */}
+          {bar !== null && (
+            <span className="sm-bar-fill" style={{ transform: 'scaleX(' + Math.round(bar * 1000) / 1000 + ')' }} />
+          )}
         </div>
       )}
     </div>
