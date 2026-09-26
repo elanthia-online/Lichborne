@@ -126,7 +126,7 @@ declare global {
       genieCacheLoad: (dir: string) => Promise<unknown[] | null>
       genieCacheSave: (dir: string, zones: unknown[]) => Promise<boolean>
       // Lich file-system
-      findLichMapFile: (lichPath: string) => Promise<{ jsonPath: string; mapsDir: string } | null>
+      findLichMapFile: (lichPath: string, family?: 'DR' | 'GS4') => Promise<{ jsonPath: string; mapsDir: string } | null>
       readMapImage: (mapsDir: string, imageName: string) => Promise<string | null>
       listLichScripts: (lichPath: string) => Promise<{ name: string; source: 'core' | 'custom'; lastModified: number }[]>
       listLichProfiles:  (lichPath: string) => Promise<string[]>

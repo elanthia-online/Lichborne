@@ -129,6 +129,20 @@ function playBeep() {
   } catch {}
 }
 
+// GS4 support: $health/$mana/etc (both as trigger GATES here and as $-vars
+// in buildVars below) have always meant a 0-100 PERCENTAGE for DR — because
+// DR's vital `current` WAS the percentage (max hardcoded 100 in the parser).
+// GS4's vitals carry real numbers (e.g. current=160, max=160 — verified live,
+// Ilten @ GST, 2026-08-27), so raw `.current` for GS4 is a hundreds-range HP
+// number, not a percent — a trigger gate like "$health < 30" would never
+// fire as a GS4 player intends. Computing the percentage here keeps the
+// established DR meaning for both games; a no-op for DR (max is always 100
+// there, so this equals raw current already).
+export function vitalPercent(v: { current: number; max: number } | undefined): number {
+  if (!v) return 0
+  return v.max > 0 ? Math.round((v.current / v.max) * 100) : v.current
+}
+
 /** Whole seconds left until `expires` (epoch ms), rounded UP so an RT with
  *  0.2s left still reads 1 — never 0 while the game would still refuse. */
 export function secondsLeft(expires: number, now = Date.now()): number {
@@ -137,11 +151,11 @@ export function secondsLeft(expires: number, now = Date.now()): number {
 
 function getGateActual(gate: StateGate, state: TriggerGameState): string {
   switch (gate.variable) {
-    case 'health':        return String(state.vitals.health?.current        ?? 0)
-    case 'mana':          return String(state.vitals.mana?.current          ?? 0)
-    case 'stamina':       return String(state.vitals.stamina?.current       ?? 0)
-    case 'spirit':        return String(state.vitals.spirit?.current        ?? 0)
-    case 'concentration': return String(state.vitals.concentration?.current ?? 0)
+    case 'health':        return String(vitalPercent(state.vitals.health))
+    case 'mana':          return String(vitalPercent(state.vitals.mana))
+    case 'stamina':       return String(vitalPercent(state.vitals.stamina))
+    case 'spirit':        return String(vitalPercent(state.vitals.spirit))
+    case 'concentration': return String(vitalPercent(state.vitals.concentration))
     case 'rt':            return String(secondsLeft(state.rtExpires))
     case 'ct':            return String(secondsLeft(state.ctExpires))
     case 'stance':        return state.stance.toLowerCase()
@@ -204,11 +218,11 @@ function buildVars(
     date:          now.toLocaleDateString(),
     time:          now.toLocaleTimeString(),
     timestamp:     String(now.getTime()),
-    health:        String(state.vitals.health?.current        ?? 0),
-    mana:          String(state.vitals.mana?.current          ?? 0),
-    stamina:       String(state.vitals.stamina?.current       ?? 0),
-    spirit:        String(state.vitals.spirit?.current        ?? 0),
-    concentration: String(state.vitals.concentration?.current ?? 0),
+    health:        String(vitalPercent(state.vitals.health)),
+    mana:          String(vitalPercent(state.vitals.mana)),
+    stamina:       String(vitalPercent(state.vitals.stamina)),
+    spirit:        String(vitalPercent(state.vitals.spirit)),
+    concentration: String(vitalPercent(state.vitals.concentration)),
     rt:            String(secondsLeft(state.rtExpires)),
     ct:            String(secondsLeft(state.ctExpires)),
     casttime:      String(secondsLeft(state.ctExpires)),

@@ -43,6 +43,7 @@ import { useEscapeClose, anyDialogOpen } from '../hooks/useEscapeClose'
 import { pressable } from '../utils/pressable'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { GameEvent, StreamTextEvent, TextLine, LineStyleHint, RoomState, TextSegment, InjuryState, FireLogEntry, SessionLogRecord, SimuCoinStatus } from '../../shared/types'
+import { gameFamilyFromCode, type GameFamily } from '../../shared/types'
 import { normalizeStreamId } from '../../shared/streamAliases'
 import { redactForAI } from '../../shared/redact'
 import { TextLineRow } from './TextLineRow'
@@ -62,7 +63,7 @@ import AIConsentModal from './AIConsentModal'
 import SlashPalette, { type SlashPaletteHandle } from './SlashPalette'
 import { loadAnalyticsEnabled, recordFire } from '../automationStats'
 import { loadTriggers, saveTriggers, type TriggerRule } from '../triggers'
-import { useTriggerEngine, playWavFile, secondsLeft, type TriggerGameState } from '../hooks/useTriggerEngine'
+import { useTriggerEngine, playWavFile, vitalPercent, secondsLeft, type TriggerGameState } from '../hooks/useTriggerEngine'
 import { loadAliases, loadMacros, saveAliases, saveMacros, resolveAlias, resolveMacro, matchKeyCombo, getMacroToken, newMacro, parseCursorMarker, splitTypedCommands, type AliasRule, type MacroRule } from '../macros'
 import { IS_MAC } from '../lichSettings'
 import { loadSimuCoinConfig, accountConfig } from '../simucoinConfig'
@@ -72,7 +73,7 @@ import DebugPanel from './DebugPanel'
 import VitalsBar from './VitalsBar'
 import IconBar from './IconBar'
 import FloatingCompass from './FloatingCompass'
-import PanelFrame, { type TabDef, type PanelType, PANEL_LABELS, ALL_PANEL_TYPES, makeTab, expIdFromTab } from './PanelFrame'
+import PanelFrame, { type TabDef, type PanelType, PANEL_LABELS, ALL_PANEL_TYPES, makeTab, expIdFromTab, panelTypeAvailable } from './PanelFrame'
 import PanelManager from './PanelManager'
 import WindowLayer from './WindowLayer'
 import ExperienceLayer from './ExperienceLayer'
@@ -635,12 +636,30 @@ const TimerDisplay = memo(function TimerDisplay({ rtExpires, ctExpires, aimExpir
   </>)
 })
 
+// GS4 support: 'exp' (<ExpPanel/>) is DR-only (PANEL_GAMES in PanelFrame.tsx)
+// — defaulting a fresh GS4 character's bottom zone to it would render the DR
+// mindstate-ladder panel with meaningless data, not just an empty one. No
+// GS4-native experience panel exists yet, so default to just Log until one
+// does. Module-level (not per-component) so both the initial useState default
+// and resetLayout()'s "Reset Panels" default read the SAME function and can't
+// drift (pitfall #113's class of bug).
+function defaultBottomTabs(family: GameFamily): TabDef[] {
+  return family === 'GS4' ? [makeTab('log')] : [makeTab('exp'), makeTab('log')]
+}
+function defaultBottomActiveId(family: GameFamily): string {
+  return family === 'GS4' ? 'log' : 'exp'
+}
+
 export default function GameWindow({
   session, onDisconnect, isActive = true, simucoin,
   viewMode = 'session', overviewHost, overviewIndex = 0, onOpenInSession,
   ownsTheme,
   onCloseCharacter, onReconnectCharacter,
 }: Props) {
+  // GS4 support: derived once per session.game change, threaded down to
+  // PanelFrame/PanelManager (panelTypeAvailable) and MapPanel (Genie-view
+  // gating) rather than re-derived at each use site.
+  const gameFamily = useMemo(() => gameFamilyFromCode(session.game), [session.game])
   const isActiveRef = useRef(isActive)
   useEffect(() => { isActiveRef.current = isActive }, [isActive])
   // v0.19.0 Views. `isActive` is deliberately NOT touched by the view flip — the
@@ -1060,8 +1079,8 @@ export default function GameWindow({
   const [topActiveId, setTopActiveId]   = useState(() => loadStr(scopedKey(session.character, 'topActiveId'),    'conversation'))
   const [midTabs, setMidTabs]       = useState<TabDef[]>(() => loadTabs(scopedKey(session.character, 'midTabs'),    [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths'), makeTab('spells')]))
   const [midActiveId, setMidActiveId]   = useState(() => loadStr(scopedKey(session.character, 'midActiveId'),    'thoughts'))
-  const [bottomTabs, setBottomTabs] = useState<TabDef[]>(() => loadTabs(scopedKey(session.character, 'bottomTabs'), [makeTab('exp'), makeTab('log')]))
-  const [bottomActiveId, setBottomActiveId] = useState(() => loadStr(scopedKey(session.character, 'bottomActiveId'), 'exp'))
+  const [bottomTabs, setBottomTabs] = useState<TabDef[]>(() => loadTabs(scopedKey(session.character, 'bottomTabs'), defaultBottomTabs(gameFamily)))
+  const [bottomActiveId, setBottomActiveId] = useState(() => loadStr(scopedKey(session.character, 'bottomActiveId'), defaultBottomActiveId(gameFamily)))
   // New main-top zone — empty by default. v0.8.1 (F24). Adding the panel
   // gets an empty placeholder; the user picks what goes in it from
   // Available Streams. Streams not assigned to any zone fall back via
@@ -1861,7 +1880,11 @@ export default function GameWindow({
     // stream ids preserve case end-to-end (Principle #5). `ALL_PANEL_TYPES`
     // carries camelCase entries (`lichScripts`), so comparing them raw against a
     // lowercase set silently matches nothing.
-    for (const t of ALL_PANEL_TYPES) if (!skip.has(t.toLowerCase()) && !t.startsWith('room')) ids.push(t)
+    // panelTypeAvailable: same gate the panel `+` menu uses (Sekmeht's rule
+    // above — this list should match what that character's panel menu
+    // offers). Catches 'exp' for GS4: DR's compact mindstate view would
+    // otherwise be offered on a GS4 character's card with meaningless data.
+    for (const t of ALL_PANEL_TYPES) if (!skip.has(t.toLowerCase()) && !t.startsWith('room') && panelTypeAvailable(t, gameFamily)) ids.push(t)
     // Normalize discovered ids through the alias table before listing them, or
     // an alias arrives as its own entry beside the canonical one — two rows
     // pointing at the same feed (`whispers` next to `conversation`).
@@ -1889,7 +1912,7 @@ export default function GameWindow({
       ...ids.map(id => ({ id, label: label(id) }))
         .sort((a, b) => a.label.localeCompare(b.label)),
     ]
-  }, [discoveredStreams, streamTitles, overviewStream])
+  }, [discoveredStreams, streamTitles, overviewStream, gameFamily])
   // `spoken-to` rides sceneSpeech, which the §35.6 gate leaves EMPTY unless an
   // Experience is open — so it is an explicit opt-in that extends that gate
   // (see the sceneActiveToggle effect), and reads 0 while it is off.
@@ -4261,11 +4284,11 @@ export default function GameWindow({
     const defaultMainTop = [makeTab('room'), makeTab('combat')]
     const defaultTop = [makeTab('conversation')]
     const defaultMid = [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths'), makeTab('spells')]
-    const defaultBot = [makeTab('exp'), makeTab('log')]
+    const defaultBot = defaultBottomTabs(gameFamily)
     setMainTopTabs(defaultMainTop); setMainTopActiveId('room')
     setTopTabs(defaultTop);         setTopActiveId('conversation')
     setMidTabs(defaultMid);         setMidActiveId('thoughts')
-    setBottomTabs(defaultBot);      setBottomActiveId('exp')
+    setBottomTabs(defaultBot);      setBottomActiveId(defaultBottomActiveId(gameFamily))
     setMainTopAdded(true); setTopAdded(true); setMidAdded(true); setBottomAdded(true)
   }
 
@@ -4347,11 +4370,16 @@ export default function GameWindow({
   function buildMacroVars(): Record<string, string> {
     const s = triggerCtxRef.current
     return {
-      health:        String(s.vitals.health?.current        ?? 0),
-      mana:          String(s.vitals.mana?.current          ?? 0),
-      stamina:       String(s.vitals.stamina?.current       ?? 0),
-      spirit:        String(s.vitals.spirit?.current        ?? 0),
-      concentration: String(s.vitals.concentration?.current ?? 0),
+      // GS4 support: same fix as useTriggerEngine's buildVars — GS4 vitals
+      // carry raw current/max HP, not a pre-computed percentage, so $health
+      // etc. must go through vitalPercent() here too or a GS4 macro/alias
+      // reads a hundreds-range HP number instead of the 0-100 percent DR
+      // players have always gotten. No-op for DR (max is always 100 there).
+      health:        String(vitalPercent(s.vitals.health)),
+      mana:          String(vitalPercent(s.vitals.mana)),
+      stamina:       String(vitalPercent(s.vitals.stamina)),
+      spirit:        String(vitalPercent(s.vitals.spirit)),
+      concentration: String(vitalPercent(s.vitals.concentration)),
       rt:            String(secondsLeft(s.rtExpires)),
       ct:            String(secondsLeft(s.ctExpires)),
       casttime:      String(secondsLeft(s.ctExpires)),
@@ -5358,6 +5386,7 @@ export default function GameWindow({
     // not memoized — F46 note — so identity churn is free here).
     getExperienceHidden: (expId: string) => experiences.find(i => i.id === expId)?.hidden,
     onSetExperienceOption: setExperienceOption,
+    gameFamily,
   }
 
   // ── Free Layout handlers (DESIGN.md §33) ───────────────────────────────────
@@ -6337,7 +6366,7 @@ export default function GameWindow({
 
       {showMapOverlay && (
         <MapOverlay onClose={() => setShowMapOverlay(false)}>
-          <MapPanel roomTitle={roomState.title} roomDesc={roomState.desc} roomExits={roomState.exits} roomId={roomState.roomId} lichMapVersion={lichMapVersion} onSendCommand={sendCommand} mapAnimations={settings.mapAnimations} large />
+          <MapPanel roomTitle={roomState.title} roomDesc={roomState.desc} roomExits={roomState.exits} roomId={roomState.roomId} lichMapVersion={lichMapVersion} onSendCommand={sendCommand} mapAnimations={settings.mapAnimations} gameFamily={gameFamily} large />
         </MapOverlay>
       )}
 
@@ -6345,7 +6374,7 @@ export default function GameWindow({
         <PanelManager
           mainTopTabs={mainTopTabs} topTabs={topTabs} midTabs={midTabs} bottomTabs={bottomTabs}
           mainTopAdded={mainTopAdded} topAdded={topAdded} midAdded={midAdded} bottomAdded={bottomAdded}
-          allTypes={ALL_PANEL_TYPES} labels={PANEL_LABELS}
+          allTypes={ALL_PANEL_TYPES} gameFamily={gameFamily} labels={PANEL_LABELS}
           discoveredStreams={discoveredStreams}
           streamTitles={streamTitles}
           onMoveTab={moveTabToZone}

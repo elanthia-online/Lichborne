@@ -343,8 +343,8 @@ contextBridge.exposeInMainWorld('api', {
   genieCacheSave: (dir: string, zones: unknown[]): Promise<boolean> =>
     ipcRenderer.invoke('genie-cache:save', dir, zones),
 
-  findLichMapFile: (lichPath: string): Promise<{ jsonPath: string; mapsDir: string } | null> =>
-    ipcRenderer.invoke('find-lich-map-file', lichPath),
+  findLichMapFile: (lichPath: string, family?: 'DR' | 'GS4'): Promise<{ jsonPath: string; mapsDir: string } | null> =>
+    ipcRenderer.invoke('find-lich-map-file', lichPath, family),
 
   readMapImage: (mapsDir: string, imageName: string): Promise<string | null> =>
     ipcRenderer.invoke('read-map-image', mapsDir, imageName),

@@ -26,7 +26,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import ContextMenu from './ContextMenu'
-import type { GameEvent, TextLine, RoomState, InjuryState, FireLogEntry } from '../../shared/types'
+import type { GameEvent, TextLine, RoomState, InjuryState, FireLogEntry, GameFamily } from '../../shared/types'
 import { optionShown } from '../experiences'
 import type { HighlightRule } from '../highlights'
 import type { MuteRule } from '../mutes'
@@ -59,6 +59,34 @@ import '../styles/panel-frame.css'
 // Deliberately NOT in ALL_PANEL_TYPES (it's parameterized — added via the
 // + menu's [e] section, never as a generic builtin row).
 export type PanelType = 'room' | 'thoughts' | 'arrivals' | 'conversation' | 'deaths' | 'spells' | 'exp' | 'familiar' | 'inv' | 'injuries' | 'debug' | 'log' | 'map' | 'lichScripts' | 'combat' | 'custom' | 'experience'
+
+// GS4 support: which built-in panel TYPES are meaningful for which game
+// family. A type absent from this map is available to BOTH families (the
+// Saga TAB_REGISTRY pattern — opt-OUT, not opt-in, so adding a new generic
+// builtin never needs an entry here). Checked against `renderPanel` below:
+// every entry EXCEPT `exp` renders via the generic `sp(streamId, lines)`
+// StreamPanel helper (or is otherwise game-agnostic — debug/log/lichScripts/
+// map) and just shows whatever real text the server routes to that stream,
+// so it's already safe for both families with zero UI changes. `exp` alone
+// renders <ExpPanel/>, which is built entirely around DR's 34-rung mindstate
+// ladder / guild list / skillset skills (focusTemplates.ts) — meaningless (not
+// just empty, actively wrong) for a GS4 character until a GS4-native
+// experience panel exists. `map`'s Genie sub-view is gated separately inside
+// MapPanel (Lich Map itself works for both families) rather than here, since
+// the whole Map panel stays available to both.
+export const PANEL_GAMES: Partial<Record<PanelType, GameFamily[]>> = {
+  exp: ['DR'],
+}
+
+export function panelTypeAvailable(type: PanelType, family: GameFamily | undefined): boolean {
+  if (!family) return true
+  const allowed = PANEL_GAMES[type]
+  return !allowed || allowed.includes(family)
+}
+
+export function filterPanelTypesForFamily(types: PanelType[], family: GameFamily | undefined): PanelType[] {
+  return types.filter(t => panelTypeAvailable(t, family))
+}
 
 export interface TabDef {
   id: string
@@ -225,6 +253,11 @@ interface Props {
   // host doesn't support it; the gear then doesn't render.
   getExperienceHidden?: (expId: string) => Record<string, boolean> | undefined
   onSetExperienceOption?: (expId: string, optId: string, hidden: boolean) => void
+  // GS4 support: gates the + menu's builtin-panel section via PANEL_GAMES
+  // above. Undefined (every pre-GS4 call site, incl. the tmp-* harnesses)
+  // means "don't filter" — panelTypeAvailable treats a missing family as
+  // always-available, so this is purely additive.
+  gameFamily?: GameFamily
 }
 
 export default function PanelFrame({
@@ -246,6 +279,7 @@ export default function PanelFrame({
   onAdoptTab,
   experienceDefs = [], renderExperienceTab,
   getExperienceHidden, onSetExperienceOption,
+  gameFamily,
 }: Props) {
   const [showAddMenu, setShowAddMenu] = useState(false)
   // F55 follow-up: tab-hosted ⚙ popover open state — closed on tab switch so
@@ -502,7 +536,7 @@ export default function PanelFrame({
     onTabsChange(next)
   }
 
-  const availableToAdd = ALL_PANEL_TYPES.filter(type => !tabs.some(t => t.type === type))
+  const availableToAdd = filterPanelTypesForFamily(ALL_PANEL_TYPES, gameFamily).filter(type => !tabs.some(t => t.type === type))
   const availableDiscovered = discoveredStreams.filter(id => !tabs.some(t => t.id === id))
   // Experiences not already tabbed in THIS frame (duplicate tab ids within
   // one frame would break keys/activeId; other frames/windows may host their
@@ -534,6 +568,7 @@ export default function PanelFrame({
           onLichKill ?? NOOP, onLichRefresh ?? NOOP,
           mapAnimations, compactExp,
           renderExperienceTab, activeFontSize, closeStreamRef.current,
+          gameFamily,
         )}
         {activeTab && (() => {
           // F55 follow-up: an active EXPERIENCE tab with registry options gets
@@ -869,6 +904,7 @@ function renderPanel(
   renderExperienceTab?: (expId: string) => React.ReactNode,
   panelFontSize?: number,
   onCloseStream?: (streamId: string) => void,
+  gameFamily?: GameFamily,
 ) {
   // B172: StreamPanel is memoized, so every prop must be referentially
   // stable — onClear/onToggleTimestamp now take the streamId as an argument
@@ -893,7 +929,18 @@ function renderPanel(
     case 'conversation':  return sp('conversation',  streamLines.conversation  ?? EMPTY_ARRAY)
     case 'deaths':        return sp('deaths',        streamLines.deaths        ?? EMPTY_ARRAY)
     case 'spells':        return sp('spells',        streamLines.spells        ?? EMPTY_ARRAY)
-    case 'exp':           return <ExpPanel skills={expSkills} rankUpSkills={rankUpSkills} focus={expFocus} pinnedSkills={pinnedSkills} onFocusChange={onFocusChange} onTogglePin={onTogglePin} compactExp={compactExp} />
+    case 'exp':
+      // GS4 defense-in-depth: this tab TYPE is hidden from every add-menu for
+      // a GS4 session (PANEL_GAMES above), but an already-open tab isn't
+      // touched by that gate — e.g. a Panel Layout transferred from a DR
+      // character onto a GS4 one (Profile Transfer's Panel Layout category
+      // copies the raw tab array). <ExpPanel/> is built entirely around DR's
+      // mindstate ladder/guild list, so render an honest placeholder instead
+      // of a misleadingly-DR-shaped panel with meaningless data.
+      if (gameFamily === 'GS4') {
+        return <div className="stream-panel-empty">Experience tracking for GemStone IV isn't built yet.</div>
+      }
+      return <ExpPanel skills={expSkills} rankUpSkills={rankUpSkills} focus={expFocus} pinnedSkills={pinnedSkills} onFocusChange={onFocusChange} onTogglePin={onTogglePin} compactExp={compactExp} />
     case 'injuries':      return <InjuriesPanel parts={injuryState} />
     case 'familiar':      return sp('familiar',      streamLines.familiar      ?? EMPTY_ARRAY)
     case 'inv':           return sp('inv',           streamLines.inv           ?? EMPTY_ARRAY)
@@ -905,7 +952,7 @@ function renderPanel(
     case 'log':           return sp('log',           streamLines.log           ?? EMPTY_ARRAY)
     case 'lichScripts':   return <ScriptListPanel scripts={lichScripts} lastUpdated={lichLastUpdated} pending={lichPending} onPause={onLichPause} onResume={onLichResume} onKill={onLichKill} onRefresh={onLichRefresh} />
     case 'combat':        return sp('combat',        streamLines.combat        ?? EMPTY_ARRAY)
-    case 'map':           return <MapPanel roomTitle={roomState.title} roomDesc={roomState.desc} roomExits={roomState.exits} roomId={roomState.roomId} lichMapVersion={lichMapVersion} onSendCommand={onSendCommand} mapAnimations={mapAnimations} />
+    case 'map':           return <MapPanel roomTitle={roomState.title} roomDesc={roomState.desc} roomExits={roomState.exits} roomId={roomState.roomId} lichMapVersion={lichMapVersion} onSendCommand={onSendCommand} mapAnimations={mapAnimations} gameFamily={gameFamily} />
     case 'custom':        return (
       // B381: no Show in Log on the lbAI stream — AI output is never written
       // to the Session Log, so the search could only ever come back empty.

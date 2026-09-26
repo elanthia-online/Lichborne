@@ -112,10 +112,24 @@ interface Props {
 // first because it's the canonical / most-common game; DRX and DRF follow.
 // DRT tiles render under the DR section — DRT is a per-character override on
 // DR, not a fourth tier (same SGE auth, same character list, different shard).
-const GAME_SECTIONS: { key: 'DR' | 'DRX' | 'DRF'; label: string; matches: (game: string) => boolean }[] = [
+//
+// GS4 shards (GS3/GSX/GST/GSF) each get their OWN section rather than being
+// folded into an existing one — unlike DRT, there's no verified evidence GS4's
+// Test shard shares an account's character list with GS4 Prime the way DR's
+// does, so this doesn't assume it (the conservative default: a section per
+// distinct shard code, same as DRX/DRF already get). If a character's `game`
+// matches none of these, it is silently dropped from every account's rendered
+// sections (groupCharacters below) — every code the wizard/GAMES table can
+// produce MUST have a matching section here, or its characters become
+// invisible in the launcher despite existing on disk.
+const GAME_SECTIONS: { key: 'DR' | 'DRX' | 'DRF' | 'GS3' | 'GSX' | 'GST' | 'GSF'; label: string; matches: (game: string) => boolean }[] = [
   { key: 'DR',  label: 'DragonRealms',          matches: g => g === 'DR' || g === 'DRT' },
   { key: 'DRX', label: 'DragonRealms Platinum', matches: g => g === 'DRX' },
   { key: 'DRF', label: 'DragonRealms Fallen',   matches: g => g === 'DRF' },
+  { key: 'GS3', label: 'GemStone IV',           matches: g => g === 'GS3' },
+  { key: 'GSX', label: 'GemStone IV Platinum',  matches: g => g === 'GSX' },
+  { key: 'GST', label: 'GemStone IV Test',      matches: g => g === 'GST' },
+  { key: 'GSF', label: 'GemStone IV Shattered', matches: g => g === 'GSF' },
 ]
 
 // Launcher hero logo. Lives in src/renderer/public/ (the about-theme.mid

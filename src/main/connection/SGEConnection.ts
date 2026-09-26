@@ -3,7 +3,8 @@
 // The account-auth step that BOTH connect paths share: it talks the SGE
 // line protocol over a short-lived TLS socket — `K` (fetch the 32-byte XOR
 // key) → `A` (account + password encrypted with that key) → `G` (select the
-// game/shard by code: DR / DRX / DRT / DRF) → `C` (list the characters) →
+// game/shard by code: DR / DRX / DRT / DRF / GS3 / GSX / GST / GSF) →
+// `C` (list the characters) →
 // `L` (trade a character key for GAMEHOST / GAMEPORT / a one-shot login KEY).
 // It never carries game text; once getLoginKey() resolves the caller
 // disconnect()s and hands the key to Lich (the Genie handshake in
@@ -65,8 +66,11 @@ export class SGEConnection extends EventEmitter {
 
   // gameCode selects which Simutronics game the character list is filtered for.
   // 'DR' = DragonRealms Prime (default for back-compat), 'DRX' = Platinum,
-  // 'DRT' = Test, 'DRF' = The Fallen. Passing the wrong code returns an empty
-  // list or characters from a different shard.
+  // 'DRT' = Test, 'DRF' = The Fallen, 'GS3' = GemStone IV Prime, 'GSX' =
+  // Platinum, 'GST' = Test, 'GSF' = Shattered. Passing the wrong code returns
+  // an empty list or characters from a different shard. The eaccess protocol
+  // itself is game-agnostic here — these codes are just data (GAMES table in
+  // lichSettings.ts), not special-cased in this handshake.
   async authenticate(account: string, password: string, gameCode: string = 'DR'): Promise<CharacterEntry[]> {
     // Step 1: Send K, read exactly 32 bytes
     this.send('K\r\n')

@@ -2,6 +2,8 @@
 // and SettingsPanel (in-session edits). Persisted to localStorage; replicated
 // to _shared.yaml by callers so concurrent Electron processes stay in sync.
 
+import type { GameFamily } from '../shared/types'
+
 // Cross-platform (v0.18.0): which OS we're on, from the preload bridge.
 // Guarded so non-renderer contexts (the tmp-* harnesses stub window.api
 // without a platform field) fall back to Windows behavior.
@@ -87,7 +89,10 @@ export function gameCodeFromPort(port: number): string {
 
 // Catalog of supported games — the single source of truth for per-shard
 // connection parameters. Each entry maps a game code to:
-//   • port:          the Lich front-end port (one per shard by convention)
+//   • port:          the Lich front-end port (one per shard by convention —
+//                    Lich's force-mode listener binds to the SAME port
+//                    number it uses to connect to that shard's real game
+//                    server, per lib/main/main.rb / argv_options.rb)
 //   • lichArguments: the CLI flags Lich expects so it routes to that shard
 //                    (v0.8.0 — until then runConnect dropped this and Lich
 //                    always launched with '--dragonrealms', sending every
@@ -98,13 +103,25 @@ export interface GameOption {
   name: string
   port: number
   lichArguments: string
+  family: GameFamily
 }
 
+// GS4 ports/flags verified against lich-5's own
+// lib/common/authentication/login_helpers.rb (GEMSTONE_FLAGS/resolved
+// instance codes: GS3/GSX/GST/GSF) and lib/main/argv_options.rb's
+// handle_gemstone_connection/handle_shattered_connection (game_port values) —
+// NOT guessed. GS4 has no bare-default flag like DR's fallback: Lich only
+// resolves a GemStone instance when `--gemstone`/`--gs` (or the standalone
+// `--shattered`) is present, so every GS4 entry below carries an explicit flag.
 export const GAMES: GameOption[] = [
-  { code: 'DR',  name: 'DragonRealms Prime',      port: 11024, lichArguments: '--dragonrealms' },
-  { code: 'DRX', name: 'DragonRealms Platinum',   port: 11124, lichArguments: '--platinum --dragonrealms' },
-  { code: 'DRT', name: 'DragonRealms Prime Test', port: 11624, lichArguments: '--test --dragonrealms' },
-  { code: 'DRF', name: 'DragonRealms The Fallen', port: 11324, lichArguments: '--fallen' },
+  { code: 'DR',  name: 'DragonRealms Prime',      port: 11024, lichArguments: '--dragonrealms',            family: 'DR' },
+  { code: 'DRX', name: 'DragonRealms Platinum',   port: 11124, lichArguments: '--platinum --dragonrealms', family: 'DR' },
+  { code: 'DRT', name: 'DragonRealms Prime Test', port: 11624, lichArguments: '--test --dragonrealms',     family: 'DR' },
+  { code: 'DRF', name: 'DragonRealms The Fallen', port: 11324, lichArguments: '--fallen',                  family: 'DR' },
+  { code: 'GS3', name: 'GemStone IV Prime',       port: 10024, lichArguments: '--gemstone',                family: 'GS4' },
+  { code: 'GSX', name: 'GemStone IV Platinum',    port: 10124, lichArguments: '--gemstone --platinum',     family: 'GS4' },
+  { code: 'GST', name: 'GemStone IV Test',        port: 10624, lichArguments: '--gemstone --test',         family: 'GS4' },
+  { code: 'GSF', name: 'GemStone IV Shattered',   port: 10324, lichArguments: '--shattered',                family: 'GS4' },
 ]
 
 export function gameOptionFromPort(port: number): GameOption {

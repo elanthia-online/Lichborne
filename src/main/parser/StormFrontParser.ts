@@ -65,9 +65,26 @@
 //    until an Experience is open). Keep that shape for any new per-line scan.
 //  • In mono mode (`<output class="mono">`) leading/trailing whitespace IS the
 //    layout — don't trim it.
-import type { GameEvent, StreamTarget, TextSegment } from '../../shared/types'
+//  • GS4 support (added on top of the original DR-only build): this tokenizer
+//    is ONE shared instance for both game families, with no family parameter
+//    or per-family config threaded in. DR and GS4 speak the same StormFront/
+//    Wrayth wire grammar and their known-vocabulary tag ids DON'T COLLIDE
+//    (verified against VellumFE's GemStoneIV-XML-Elements.md and cross-checked
+//    against Saga's own DR/GS handling — e.g. `pbarStance`/`mindState`/
+//    `encumlevel` are GS4-only, `concentration`/`conclevel` DR-only), so a
+//    session's wire never sends the other family's ids and both can be
+//    recognized unconditionally. Only content that's genuinely ambiguous
+//    between families (none found yet) would need a real `family` gate here —
+//    don't add one speculatively; extend the recognized-id lists instead, the
+//    same way the progressbar/vitals case does.
+
+import type { GameEvent, StreamTarget, TextSegment, EffectsDialog, EffectsUpdateEvent } from '../../shared/types'
 import { STREAM_ID_ALIASES, normalizeStreamId } from '../../shared/streamAliases'
 import { runSceneCapturers } from './sceneCapturers'
+
+// GS4's timed-effect dialogs, exact case (verified against real captured GS4
+// session fixtures — VellumFE's tests/fixtures/active_*.xml, buffs_progress.xml).
+const EFFECTS_DIALOG_IDS = new Set<string>(['Active Spells', 'Buffs', 'Debuffs', 'Cooldowns'])
 
 function decodeEntities(text: string): string {
   return text
@@ -198,6 +215,15 @@ export class StormFrontParser {
   private inInjuriesDialog = false
   private injuryBuf: Array<{ id: string; name: string; height: number; width: number }> = []
 
+  // GS4's timed-effect dialogs (Active Spells/Buffs/Debuffs/Cooldowns) — same
+  // shape as the injuries capture above: set on <dialogData id='X'> open
+  // (X being one of EFFECTS_DIALOG_IDS), populated from nested <progressBar>
+  // children, emitted on the matching </dialogData> close. Unlike injuries,
+  // this ALWAYS emits on close (including empty — a `clear='t'` dialog with
+  // no children is a real state change: the list just cleared).
+  private inEffectsDialog: EffectsDialog | null = null
+  private effectsBuf: EffectsUpdateEvent['entries'] = []
+
   private pendingSegments: TextSegment[] = []
   /** Stream the pending buffer belongs to — see `claimPending`. */
   private pendingStream = 'main'
@@ -287,6 +313,8 @@ export class StormFrontParser {
     this.monoMode          = false
     this.inInjuriesDialog  = false
     this.injuryBuf         = []
+    this.inEffectsDialog   = null
+    this.effectsBuf        = []
     this.lastPromptText    = ''
     this.lastEmitWasPrompt = false
     this.lastRoomTitle     = ''
@@ -319,6 +347,112 @@ export class StormFrontParser {
   private emit(e: GameEvent) {
     this.lastEmitWasPrompt = e.type === 'stream-text' && e.prompt === true
     this.events.push(e)
+  }
+
+  // Extracts a room title + optional roomId from a fragment containing a
+  // bracketed title (optionally followed by parens uid) and emits the
+  // room-title event, gated clear-streams included. Silently no-ops if the
+  // fragment has no `[...]` — a caller passing something bracket-less (GS4's
+  // streamwindow subtitle) is a deliberate, safe no-op, not an error; see
+  // the parse()-level roomName fallback for GS4's real title source.
+  //
+  // Extracted from the streamwindow subtitle handler (unchanged logic — this
+  // is a pure refactor) so the SAME extraction+emit logic can also run
+  // against GS4's inline `<style id="roomName"/>[Title...] (uid)` text,
+  // which — verified live (Ilten @ GST, 2026-08-27) — carries the exact same
+  // bracket format DR's subtitle does, just delivered a different way.
+  private extractAndEmitRoomTitle(fragment: string) {
+    const titleMatch = fragment.match(/\[([^\]]+)\]/)
+    if (!titleMatch) return
+    const inner = titleMatch[1]
+    // DR carries the room id in TWO subtitle formats — handle both:
+    //   "[Whistling Wood, Barrows - 9479]"   id INSIDE the brackets after " - "
+    //   "[Arthelun Ruins, Courtyard] (56107)" id in PARENS after the brackets
+    // The parens form is the StormFront standard `[Title] (uid)`, with
+    // "(**)" meaning unmapped (e.g. "[The Heavens] (**)" during a
+    // telescope flip). Before v0.11.2 only the dash form was parsed, so
+    // parens-form rooms got NO roomId — the Lich Map's instant
+    // lichDb.get(roomId) lookup never fired and it fell back to the
+    // fragile title+desc match (the "stuck until something forces a
+    // re-emit" symptom), and $roomid was empty. The parens form also
+    // accepts a `u` prefix (`(u12345)`): with Lich's display_uid
+    // setting on, Lich REWRITES the native `(12345)` to `(u12345)`
+    // (the same game uid, u-prefixed) — `u?` parses both to the bare
+    // id so the lichDb lookup is identical (Lich 5.18 review, pitfall
+    // #65). Non-numeric parens (`(**)`, `(unknown)`) still miss →
+    // roomId stays undefined, preserving the id-absence no-op.
+    // Lich 5.20 (#1491/#1500) added an OPT-IN placement that puts the
+    // uid INSIDE the brackets: "[Town Square - 1234 - (u230008)]",
+    // where 1234 is Lich's own id and 230008 the game's. Neither of
+    // the two older patterns matches it — the dash form needs digits
+    // at the very end (this ends with ')') and the parens form needs
+    // them AFTER the ']' — so the id was lost AND the decorations
+    // stayed in the title, which would also break the Genie map's
+    // title matching. Strip it first, then fall through as before.
+    //
+    // Default users see none of this: Lich embeds nothing in the title
+    // unless the player opts in, and `<nav rm>` (now sent on every DR
+    // arrival) is the primary id source regardless.
+    //
+    // GS4 support adds a FOURTH shape, verified live (Ilten @ GST,
+    // 2026-08-27): a dash-number INSIDE the brackets AND a uid OUTSIDE in
+    // parens, BOTH present — "[Town Square, Southwest - 284] (u7046)". 284
+    // is the same kind of ambiguous number as case A (Lich's own id, not
+    // necessarily the game's); 7046 is the real game uid. And sometimes the
+    // dash slot is present but EMPTY — "[Town Square, Southwest - ]
+    // (u7046)" — Lich's display_lichid apparently not populated. The digit
+    // group below is therefore OPTIONAL (`\d*`, not `\d+`): a bare trailing
+    // "- " with nothing after it still needs stripping from the title (it
+    // used to survive as a dangling "-" — `.trim()` only removes
+    // whitespace, not the dash character itself), even though there's no
+    // number to extract as an id in that case.
+    const innerUid = inner.match(/\s*-\s*\(u(\d+)\)\s*$/)
+    const afterUid = innerUid ? inner.slice(0, innerUid.index) : inner
+    const trailMatch = afterUid.match(/\s*-\s*(\d*)\s*$/)
+    const cleanTitle = trailMatch
+      ? afterUid.slice(0, trailMatch.index).trim()
+      : afterUid.trim()
+    const trailNum = trailMatch && trailMatch[1] ? parseInt(trailMatch[1], 10) : undefined
+    // Checked whenever innerUid didn't already resolve it — regardless of
+    // whether trailMatch/trailNum also matched (case D needs BOTH checked,
+    // unlike the old either/or). The in-bracket/outside-parens uid is
+    // UNAMBIGUOUSLY the game uid, so it wins over the ambiguous dash-number
+    // slot whenever both are present — the map indexes both number spaces
+    // regardless (MapPanel), so using the dash-number in the rarer case
+    // where NEITHER uid form is present still resolves either way.
+    const parenMatch = innerUid ? null : fragment.match(/\]\s*\(u?(\d+)\)/)
+    const roomId = innerUid
+      ? parseInt(innerUid[1], 10)
+      : parenMatch
+        ? parseInt(parenMatch[1], 10)
+        : trailNum
+    // B121 (Rakkor, v0.8.7): emit clear-streams for room
+    // sub-components BEFORE the room-title event whenever the
+    // subtitle CHANGES (new room). DR sends streamWindow
+    // before any `<component id='room ...'/>` for the new
+    // room, so the clears fire first; components with data
+    // then re-populate via their own clear+stream-text
+    // emission, while empty sections stay cleared. Without
+    // this, if DR omits <nav> AND the new room has no players
+    // / creatures / objects component, the previous room's
+    // section data carries over until LOOK (which forces
+    // every component to re-emit). Using lastRoomTitle as
+    // the gate so the clear only fires on actual changes,
+    // not every streamWindow repaint.
+    if (cleanTitle !== this.lastRoomTitle) {
+      this.lastRoomTitle = cleanTitle
+      this.emit({ type: 'clear-stream', stream: 'room' })
+      this.emit({ type: 'clear-stream', stream: 'room-objects' })
+      this.emit({ type: 'clear-stream', stream: 'room-players' })
+      this.emit({ type: 'clear-stream', stream: 'room-creatures' })
+      this.emit({ type: 'clear-stream', stream: 'room-extra' })
+      this.emit({ type: 'clear-stream', stream: 'room-exits' })
+    }
+    this.emit({
+      type: 'room-title',
+      title: cleanTitle,
+      roomId,
+    })
   }
 
   parse(line: string): GameEvent[] {
@@ -355,6 +489,23 @@ export class StormFrontParser {
       // what lets the greedy guild capture land on the full name.
       const m = line.match(/^Name:\s+\b(.+)\b\s+Race:\s+\b(.+)\b\s+Guild:\s+\b(.+)\b\s+/)
       if (m) this.emit({ type: 'character-guild', name: m[1].trim(), guild: m[3].trim() })
+    }
+
+    // GS4 room title fallback — verified live (Ilten @ GST, 2026-08-27): at
+    // least some GS4 accounts send a BRACKET-LESS `<streamWindow id='main'
+    // subtitle=" - Town Square, Southeast">` (no title/id extractable —
+    // extractAndEmitRoomTitle above silently no-ops on it), while the REAL
+    // bracketed title+id flows separately as inline text styled
+    // `<style id="roomName"/>[Town Square, Southwest - 284] (u7046)` — same
+    // bracket format DR's subtitle uses, just delivered a different way.
+    // Same main-stream-only safety gate as the guild capture above (a script
+    // echoing this shape into a panel can't spoof a room change). Purely
+    // additive: if DR ALSO ever sends this inline marker with a title that's
+    // already current, extractAndEmitRoomTitle's lastRoomTitle gate makes the
+    // second call a harmless no-op repaint, not a duplicate room change.
+    if (line.includes('roomName') && this.activeStream === 'main' && this.streamStack.length === 0) {
+      const rm = line.match(/<style id=["']roomName["']\s*\/>([^<]*)/)
+      if (rm) this.extractAndEmitRoomTitle(rm[1])
     }
 
     // SceneParser line capturers (DESIGN §35.1) — registry-driven; only
@@ -568,29 +719,76 @@ export class StormFrontParser {
         break
 
       case 'progressbar': {
+        // GS4 effects dialog child — captured into effectsBuf, NOT treated as
+        // a vital/stance bar. Must run BEFORE the lowercased vital-id checks
+        // below: a numeric wire id ('905', 'c123') never collides with them,
+        // but without this branch these tags were silently dropped (no known
+        // id matched, so the if/else chain fell through with no emit).
+        if (this.inEffectsDialog) {
+          this.effectsBuf.push({
+            id:      attrs.id ?? '',
+            name:    attrs.text ?? '',
+            percent: parseInt(attrs.value ?? '0', 10),
+            ...(attrs.time ? { time: attrs.time } : {}),
+          })
+          break
+        }
+
         const id         = (attrs.id ?? '').toLowerCase()
         const text       = attrs.text ?? ''
         const value      = parseInt(attrs.value ?? '0', 10)
         const customText = attrs.customText === 't' || attrs.customtext === 't'
 
         if (id === 'pbarstance') {
+          // GS4's defense-% bar (id confirmed against VellumFE's
+          // GemStoneIV-XML-Elements.md, empirically derived from real GS4
+          // session logs). Already game-agnostic — DR simply never sends
+          // this id, so no family gate is needed here.
           const label = text.split(/\s+/)[0] ?? ''
           this.emit({ type: 'stance', text: label, value })
         } else if (id === 'health' || id === 'mana' || id === 'spirit' ||
-                   id === 'stamina' || id === 'concentration' || id === 'conclevel') {
-          const normalizedId = id === 'conclevel' ? 'concentration' : id
-          // When the server sends customText='t', extract the label before the trailing number
-          // e.g. "inner fire 59%" → "Inner Fire"
-          const rawLabel = customText ? text.replace(/\s*\d+%?\s*$/, '').trim() : ''
-          const label = rawLabel
-            ? rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1)
-            : undefined
-          // ATTACH RESYNC. Lich's detachable-client init
-          // hardcodes value='0' on every bar and carries the real numbers ONLY
-          // in `text` (lich-5 global_defs.rb, detachable_client_send_init), so
-          // reading `value` painted every vital at ZERO the instant you
-          // attached — worse than blank, since a zeroed bar looks like live
-          // data and reads as "one hit from dead".
+                   id === 'stamina' || id === 'concentration' || id === 'conclevel' ||
+                   id === 'mindstate' || id === 'encumlevel') {
+          // 'concentration'/'conclevel' are DR-only; 'mindstate'/'encumlevel'
+          // are GS4-only (same GemStoneIV-XML-Elements.md source). Both sets
+          // are handled unconditionally rather than gated on family: a DR
+          // session's wire never sends the GS4 ids and vice versa, so there's
+          // no runtime collision, and adding a case here needs no parser
+          // constructor/config threading — see the file-header note on why
+          // this parser stays a single shared instance across families.
+          const normalizedId =
+            id === 'conclevel'  ? 'concentration' :
+            id === 'encumlevel' ? 'encumbrance'   :
+            id === 'mindstate'  ? 'mindstate'      : id
+          // Two DIFFERENT, CONFLICTING uses of customText='t' text, verified
+          // against a real live GS4 capture (Ilten @ GST, 2026-08-27) after
+          // the DR-only assumption below produced a visibly wrong vitals bar
+          // ("Health 160/ 100%"). DR's customText vitals (a Barbarian's
+          // "inner fire 59%") carry a NAME + trailing percent — value IS the
+          // percentage, text is a label to show INSTEAD of the plain name.
+          // GS4's health/mana/stamina/spirit ALWAYS carry customText='t' with
+          // text="<name> <current>/<max>" (e.g. 'health 160/160') — value is
+          // STILL the percentage (100 = full), but current/max as raw numbers
+          // live only in text. Try the GS4 cur/max shape FIRST (a trailing
+          // "N/M" — DR's label text never contains a slash), falling back to
+          // DR's name-extraction shape so that path is untouched.
+          const curMaxMatch = customText ? text.match(/(\d+)\s*\/\s*(\d+)\s*$/) : null
+          let current = value
+          let max = 100
+          let label: string | undefined
+          if (curMaxMatch) {
+            current = parseInt(curMaxMatch[1], 10)
+            max = parseInt(curMaxMatch[2], 10)
+          } else if (customText) {
+            const rawLabel = text.replace(/\s*\d+%?\s*$/, '').trim()
+            label = rawLabel ? rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1) : undefined
+          }
+          // ATTACH RESYNC. Lich's detachable-client init hardcodes value='0'
+          // on every bar and carries the real numbers ONLY in `text` (lich-5
+          // global_defs.rb, detachable_client_send_init), so reading `value`
+          // painted every vital at ZERO the instant you attached — worse than
+          // blank, since a zeroed bar looks like live data and reads as "one
+          // hit from dead".
           //
           // THE TEXT IS "health 100/" IN DR — NOT "health 100/100".
           // Lich builds it as "#{XMLData.health}/#{XMLData.max_health}", and it
@@ -598,25 +796,30 @@ export class StormFrontParser {
           // (xmlparser.rb: `@health, @max_health = text.scan(/-?\d+/)`). DR
           // sends a PERCENTAGE — `text='mana 86%'` (captured live) — which
           // yields ONE number, leaving max_health nil, which interpolates to
-          // the empty string. GS sends "health 100/100", so this is a
-          // DR-only shape and a `(\d+)/(\d+)` pair regex silently never
-          // matches there. Hence: take the FIRST number in the text and treat
-          // a missing or zero max as 100, which is correct for DR because
-          // these vitals ARE percentages.
+          // the empty string. Hence: take the FIRST number in the text and
+          // treat a missing or zero max as 100, which is correct for DR
+          // because these vitals ARE percentages.
           //
-          // Still deliberately narrow — only when `value` is 0. DR's live bars
-          // carry a correct `value` (86 in that capture) and take exactly the
-          // path they always did; customText bars ('inner fire 59%') likewise.
-          const textNums = value === 0 ? text.match(/-?\d+/g) : null
-          const useText  = textNums !== null && textNums.length > 0
-          const textMax  = useText && textNums.length > 1 && Number(textNums[1]) > 0
-            ? Number(textNums[1])
-            : 100
+          // Only reached when curMaxMatch above didn't already resolve
+          // current/max — a GS4 attach (if that ever exists) would already be
+          // customText='t' with a "current/max" shape indistinguishable from
+          // this, so curMaxMatch fires first and this never double-applies.
+          // Still deliberately narrow beyond that — only when `value` is 0.
+          // DR's live bars carry a correct `value` (86 in that capture) and
+          // take exactly the path they always did; customText bars
+          // ('inner fire 59%') likewise.
+          if (!curMaxMatch && value === 0) {
+            const textNums = text.match(/-?\d+/g)
+            if (textNums !== null && textNums.length > 0) {
+              current = Number(textNums[0])
+              max = textNums.length > 1 && Number(textNums[1]) > 0 ? Number(textNums[1]) : 100
+            }
+          }
           this.emit({
             type: 'vital-update',
-            id: normalizedId as 'health' | 'mana' | 'spirit' | 'stamina' | 'concentration',
-            current: useText ? Number(textNums![0]) : value,
-            max:     useText ? textMax : 100,
+            id: normalizedId as 'health' | 'mana' | 'spirit' | 'stamina' | 'concentration' | 'mindstate' | 'encumbrance',
+            current,
+            max,
             ...(label !== undefined ? { label } : {}),
           })
         }
@@ -686,88 +889,13 @@ export class StormFrontParser {
         const lower = id.toLowerCase()
         if (lower === 'main') {
           // Extract room title from subtitle — only 'main' carries this.
-          // Strip trailing " - NNNN" Simutronics room number from inside the brackets
-          // before storing — the number is not present in the Lich XML node names.
-          if (attrs.subtitle) {
-            const titleMatch = attrs.subtitle.match(/\[([^\]]+)\]/)
-            if (titleMatch) {
-              const inner      = titleMatch[1]
-              // DR carries the room id in TWO subtitle formats — handle both:
-              //   "[Whistling Wood, Barrows - 9479]"   id INSIDE the brackets after " - "
-              //   "[Arthelun Ruins, Courtyard] (56107)" id in PARENS after the brackets
-              // The parens form is the StormFront standard `[Title] (uid)`, with
-              // "(**)" meaning unmapped (e.g. "[The Heavens] (**)" during a
-              // telescope flip). Before v0.11.2 only the dash form was parsed, so
-              // parens-form rooms got NO roomId — the Lich Map's instant
-              // lichDb.get(roomId) lookup never fired and it fell back to the
-              // fragile title+desc match (the "stuck until something forces a
-              // re-emit" symptom), and $roomid was empty. The parens form also
-              // accepts a `u` prefix (`(u12345)`): with Lich's display_uid
-              // setting on, Lich REWRITES the native `(12345)` to `(u12345)`
-              // (the same game uid, u-prefixed) — `u?` parses both to the bare
-              // id so the lichDb lookup is identical (Lich 5.18 review, pitfall
-              // #65). Non-numeric parens (`(**)`, `(unknown)`) still miss →
-              // roomId stays undefined, preserving the id-absence no-op.
-              // Lich 5.20 (#1491/#1500) added an OPT-IN placement that puts the
-              // uid INSIDE the brackets: "[Town Square - 1234 - (u230008)]",
-              // where 1234 is Lich's own id and 230008 the game's. Neither of
-              // the two older patterns matches it — the dash form needs digits
-              // at the very end (this ends with ')') and the parens form needs
-              // them AFTER the ']' — so the id was lost AND the decorations
-              // stayed in the title, which would also break the Genie map's
-              // title matching. Strip it first, then fall through as before.
-              //
-              // Default users see none of this: Lich embeds nothing in the title
-              // unless the player opts in, and `<nav rm>` (now sent on every DR
-              // arrival) is the primary id source regardless.
-              const innerUid = inner.match(/\s*-\s*\(u(\d+)\)\s*$/)
-              const afterUid = innerUid ? inner.slice(0, innerUid.index) : inner
-              const trailMatch = afterUid.match(/\s*-\s*(\d+)\s*$/)
-              const cleanTitle = trailMatch
-                ? afterUid.slice(0, trailMatch.index).trim()
-                : afterUid.trim()
-              const parenMatch = (innerUid || trailMatch)
-                ? null : attrs.subtitle.match(/\]\s*\(u?(\d+)\)/)
-              // The in-bracket `(uNNNN)` is UNAMBIGUOUSLY the game uid, so it
-              // wins over the " - NNNN" slot, which is ambiguous: it holds the
-              // game's room number natively but Lich's `display_lichid` puts its
-              // OWN id there and nothing in the text tells them apart. The map
-              // indexes BOTH number spaces (MapPanel), so the ambiguous case
-              // resolves either way.
-              const roomId = innerUid
-                ? parseInt(innerUid[1], 10)
-                : trailMatch
-                  ? parseInt(trailMatch[1], 10)
-                  : parenMatch ? parseInt(parenMatch[1], 10) : undefined
-              // B121 (Rakkor, v0.8.7): emit clear-streams for room
-              // sub-components BEFORE the room-title event whenever the
-              // subtitle CHANGES (new room). DR sends streamWindow
-              // before any `<component id='room ...'/>` for the new
-              // room, so the clears fire first; components with data
-              // then re-populate via their own clear+stream-text
-              // emission, while empty sections stay cleared. Without
-              // this, if DR omits <nav> AND the new room has no players
-              // / creatures / objects component, the previous room's
-              // section data carries over until LOOK (which forces
-              // every component to re-emit). Using lastRoomTitle as
-              // the gate so the clear only fires on actual changes,
-              // not every streamWindow repaint.
-              if (cleanTitle !== this.lastRoomTitle) {
-                this.lastRoomTitle = cleanTitle
-                this.emit({ type: 'clear-stream', stream: 'room' })
-                this.emit({ type: 'clear-stream', stream: 'room-objects' })
-                this.emit({ type: 'clear-stream', stream: 'room-players' })
-                this.emit({ type: 'clear-stream', stream: 'room-creatures' })
-                this.emit({ type: 'clear-stream', stream: 'room-extra' })
-                this.emit({ type: 'clear-stream', stream: 'room-exits' })
-              }
-              this.emit({
-                type: 'room-title',
-                title: cleanTitle,
-                roomId,
-              })
-            }
-          }
+          // See extractAndEmitRoomTitle for the format handled. GS4 support:
+          // this subtitle is BRACKET-LESS for at least some GS4 accounts
+          // (verified live: `subtitle=" - Town Square, Southeast"`, no title
+          // brackets, no id) — extractAndEmitRoomTitle silently no-ops when
+          // it finds no brackets, and the parse()-level roomName fallback
+          // below picks up the real bracketed title from inline text instead.
+          if (attrs.subtitle) this.extractAndEmitRoomTitle(attrs.subtitle)
         } else if (id) {
           // Any other streamWindow is a stream declaration — translate the ID
           // the same way pushStream does so that declare and push use the same target.
@@ -896,6 +1024,23 @@ export class StormFrontParser {
         if (attrs.id === 'injuries') {
           this.inInjuriesDialog = true
           this.injuryBuf = []
+        } else if (EFFECTS_DIALOG_IDS.has(attrs.id ?? '')) {
+          this.inEffectsDialog = attrs.id as EffectsDialog
+          this.effectsBuf = []
+          // `clear='t'` (a real GS4 shape — see active_spells_clear.xml)
+          // arrives SELF-CLOSING (`<dialogData id='Active Spells'
+          // clear='t'/>`) — the parse() dispatch above only calls tagEnd()
+          // for a real `</dialogData>` closing tag, never for a self-closing
+          // one, so without this the "clear" would never finalize: no
+          // effects-update emits, and inEffectsDialog sticks open to swallow
+          // whatever unrelated <progressBar> arrives next. Finalize
+          // immediately here instead; the normal (non-self-closing, has
+          // children) shape still finalizes in tagEnd as before.
+          if (selfClosing) {
+            this.emit({ type: 'effects-update', dialog: this.inEffectsDialog, entries: this.effectsBuf })
+            this.inEffectsDialog = null
+            this.effectsBuf = []
+          }
         }
         break
 
@@ -960,8 +1105,12 @@ export class StormFrontParser {
       }
 
       default:
-        // Silently drop known protocol tags that carry no display content
-        if (!this.captureCtx && !SILENT_TAGS.has(name)) {
+        // Silently drop known protocol tags that carry no display content.
+        // Also suppressed inside an effects dialog: real GS4 captures (the
+        // Buffs fixture) carry a decorative <label id='lNNN' value='3:44 '.../>
+        // sibling beside each <progressBar> — a redundant text rendering of
+        // the same duration, safe to ignore rather than surface as noise.
+        if (!this.captureCtx && !this.inEffectsDialog && !SILENT_TAGS.has(name)) {
           this.emit({ type: 'unknown', raw: `TAG:${name} ${JSON.stringify(attrs)}` })
         }
         break
@@ -999,6 +1148,14 @@ export class StormFrontParser {
       }
       this.inInjuriesDialog = false
       this.injuryBuf = []
+      if (this.inEffectsDialog) {
+        // Unlike injuries, ALWAYS emit — an empty entries[] (the clear='t'
+        // shape, or a dialog that genuinely has nothing active) is itself a
+        // real state change a live effects panel needs to see, not a no-op.
+        this.emit({ type: 'effects-update', dialog: this.inEffectsDialog, entries: this.effectsBuf })
+        this.inEffectsDialog = null
+        this.effectsBuf = []
+      }
       return
     }
 

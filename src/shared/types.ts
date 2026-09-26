@@ -1,3 +1,34 @@
+// --- Game family (GS4 support, added alongside the original DR-only build) ---
+
+// DR and GS4 share the same StormFront/Wrayth wire protocol (same tags, same
+// tokenizer grammar) — they differ only in which stream/indicator/component
+// ids are meaningful and in game-specific domain systems (skills, spells,
+// combat). `family` is the ONE discriminator everything else branches on.
+// Deliberately NOT stored on LoginCredentials/CharacterProfile — every shard
+// code (DR/DRX/DRT/DRF/GS3/GSX/GST/GSF) already encodes its family in its
+// prefix, so `gameFamilyFromCode` derives it on demand instead of threading a
+// second, redundant field through every connection/profile path.
+export type GameFamily = 'DR' | 'GS4'
+
+// Mirrors the same prefix-check both Saga (`gameFamilyFromCode`) and VellumFE
+// (`GameType::from_game_string`) use to derive family from a shard code —
+// independently converged on by two unrelated sibling clients, so it's the
+// safe default rule: anything not starting with "DR" is GS4.
+//
+// Empty/unset code defaults to DR, NOT the general "anything else is GS4"
+// rule — this app was DR-only before GS4 support existed, and every other
+// game-code lookup already treats empty/unknown as DR (gameOptionByCode /
+// gameOptionFromPort both fall back to GAMES[0], the DR entry). An empty
+// `session.game` is a real, reachable state (e.g. a not-yet-fully-loaded
+// session) — applying the general rule to it would misclassify every
+// existing DR character as GS4 the instant this function is used anywhere,
+// silently hiding DR-only UI (the exp panel, Genie maps) for them.
+export function gameFamilyFromCode(code: string): GameFamily {
+  const trimmed = code.trim().toUpperCase()
+  if (!trimmed) return 'DR'
+  return trimmed.startsWith('DR') ? 'DR' : 'GS4'
+}
+
 // --- Session identity ---
 
 // Opaque identifier minted by the main process on successful login. Renderer
@@ -358,6 +389,7 @@ export type GameEvent =
   | ExitsEvent
   | RoomExitsTextEvent
   | InjuryUpdateEvent
+  | EffectsUpdateEvent
   | PlayerInfoEvent
   | LaunchUrlEvent
   | GameExitEvent
@@ -386,9 +418,18 @@ export interface StreamTextEvent {
 }
 
 // Vitals — current and max both provided by the server text attribute ("72 100")
+//
+// 'mindstate' / 'encumbrance' are GS4-only (wire ids `mindState`/`encumlevel` —
+// see StormFrontParser's progressbar case); 'concentration' is DR-only (wire
+// ids `concentration`/`conclevel`). Safe to share one union: DR and GS4 wire
+// streams are disjoint per session, so a DR character's stream never sends
+// `mindState` and a GS4 character's never sends `concentration` — no
+// collision, and every consumer already keys off `Record<string, ...>` rather
+// than an exhaustive switch over `id`, so widening this union needs no other
+// changes.
 export interface VitalUpdateEvent {
   type: 'vital-update'
-  id: 'health' | 'mana' | 'stamina' | 'spirit' | 'concentration'
+  id: 'health' | 'mana' | 'stamina' | 'spirit' | 'concentration' | 'mindstate' | 'encumbrance'
   current: number
   max: number
   label?: string  // custom name from server when customText='t' (e.g. "Inner Fire" for Barbarians)
@@ -540,6 +581,24 @@ export type InjuryState = Record<string, BodyPartState>
 export interface InjuryUpdateEvent {
   type: 'injury-update'
   parts: InjuryState
+}
+
+// GS4's timed-effect dialogs — Active Spells / Buffs / Debuffs / Cooldowns.
+// Each is `<dialogData id='X'><progressBar id='NNN' value='V' text='Name'
+// time='HH:MM:SS'/>...</dialogData>`; a `<dialogData id='X' clear='t'>` with
+// no children clears the list (emitted as `entries: []`). Verified against
+// real captured GS4 session fixtures (VellumFE's tests/fixtures/active_*.xml,
+// buffs_progress.xml) — not guessed. `id` is the wire's numeric spell/effect
+// id (a cooldown's is prefixed 'c', e.g. 'c123'); `percent` is the
+// progressBar's 0-100 value (StormFront convention, same field every other
+// progressbar handler reads); `time` is the raw remaining-duration string,
+// left unconverted — a display concern for whichever panel consumes this.
+export type EffectsDialog = 'Active Spells' | 'Buffs' | 'Debuffs' | 'Cooldowns'
+
+export interface EffectsUpdateEvent {
+  type: 'effects-update'
+  dialog: EffectsDialog
+  entries: Array<{ id: string; name: string; percent: number; time?: string }>
 }
 
 export interface PlayerInfoEvent {

@@ -195,7 +195,9 @@ export class LichConnection extends EventEmitter {
 
     return new Promise((resolve, reject) => {
       let settled = false
-      const args = [lichPath, mode, ...lichArguments.trim().split(/\s+/)]
+      // .filter(Boolean): an empty lichArguments (no shard flag configured)
+      // would otherwise split to [''] and push a stray empty argv entry.
+      const args = [lichPath, mode, ...lichArguments.trim().split(/\s+/).filter(Boolean)]
 
       try {
         // GUI-subsystem spawn: rubyw, no hidden-window flag, stdout+stderr to a
