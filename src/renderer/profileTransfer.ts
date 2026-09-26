@@ -42,7 +42,8 @@ import {
   loadCustomColors, saveCustomColors, coerceCustomColors, mergeCustomColors,
   collectColorLinkIds, remapColorLinks, type CustomColor,
 } from './colors'
-import { hlKey, trKey, maKey, alKey, muteKey, subKey, type RuleKeyFn } from './ruleIdentity'
+import { hlKey, trKey, maKey, alKey, muteKey, subKey, sameRuleContent, type RuleKeyFn } from './ruleIdentity'
+import { triggerCompareForm } from './triggers'
 import { loadHighlights, saveHighlights } from './highlights'
 import { loadTriggers, saveTriggers } from './triggers'
 import { loadMacros, saveMacros, loadAliases, saveAliases } from './macros'
@@ -143,7 +144,7 @@ export const TRANSFER_CATEGORIES: TransferCategory[] = [
   },
   {
     id: 'globalRules', label: 'Global Rules (All Characters)', kind: 'rules',
-    desc: 'Your All-Characters highlights, triggers, macros, aliases, mutes, and substitutes (F37). App-wide, like Named Colors — importing MERGES them into this machine’s All Characters rules regardless of the Append/Replace choice, and rules that already exist there are skipped, never duplicated.',
+    desc: 'Your All-Characters highlights, triggers, macros, aliases, mutes, and substitutes (F37). App-wide, like Named Colors — importing MERGES them into this machine’s All Characters rules regardless of the Append/Replace choice, and rules that already exist there are skipped, never duplicated (and listed, if yours is set up differently).',
     suffixes: [], // special-cased (shared _global store, not per-character state)
   },
 ]
@@ -385,11 +386,21 @@ export interface ApplyOptions {
   selected: Set<TransferCategoryId>
 }
 
+/** A rule that was NOT imported because one already there shares its pattern
+ *  (or key / word / watched variable) but is set up differently. Exact copies
+ *  are skipped silently and never appear here. */
+export interface RuleClash {
+  kind: string                         // 'trigger', 'macro', ...
+  label: string                        // its name, else its pattern / key / word
+  where: 'character' | 'global'        // which list already has the other one
+}
+
 export interface TargetResult {
   character: string
   active: boolean
   appliedCategories: TransferCategoryId[]
   themeAppWideNote: boolean   // theme couldn't be set live on an active char
+  clashes: RuleClash[]
   error?: string
 }
 
@@ -402,8 +413,10 @@ export async function applyProfileImport(
   opts: ApplyOptions,
 ): Promise<TargetResult> {
   const result: TargetResult = {
-    character: targetCharacter, active: isActive, appliedCategories: [], themeAppWideNote: false,
+    character: targetCharacter, active: isActive, appliedCategories: [], themeAppWideNote: false, clashes: [],
   }
+  const clash = (kind: string) => (it: unknown, where: RuleClash['where']) =>
+    result.clashes.push({ kind, label: ruleLabel(it), where })
   let categories = file.categories ?? {}
 
   // For inactive targets, stage onto a copy of the existing YAML state so the
@@ -479,22 +492,22 @@ export async function applyProfileImport(
         if (set === 'set' && !isActive && inactiveProfile) stagedTheme = bag.theme as string
         break
       }
-      // F63: the four global-capable types filter incoming rules that already
-      // exist in this machine's ALL-CHARACTERS store (same content key) — a
-      // rule promoted to global must not come back as a per-character copy
-      // that double-fires. Mutes/substitutes have no global store — no filter.
-      case 'highlights': applyRuleArray(store, 'highlights', bag.highlights, opts.merge, regenHighlights, hlKey, globalKeySet(loadHighlights(GLOBAL_RULES_SCOPE), hlKey)); break
-      case 'triggers':   applyRuleArray(store, 'triggers',   bag.triggers,   opts.merge, regenTriggers,  trKey, globalKeySet(loadTriggers(GLOBAL_RULES_SCOPE), trKey)); break
-      case 'macros':     applyRuleArray(store, 'macros',     bag.macros,     opts.merge, regenSimple,    maKey, globalKeySet(loadMacros(GLOBAL_RULES_SCOPE), maKey)); break
-      case 'aliases':    applyRuleArray(store, 'aliases',    bag.aliases,    opts.merge, regenSimple,    alKey, globalKeySet(loadAliases(GLOBAL_RULES_SCOPE), alKey)); break
-      case 'mutes':      applyRuleArray(store, 'mutes',       bag.mutes,       opts.merge, regenSimple, muteKey, globalKeySet(loadMutes(GLOBAL_RULES_SCOPE), muteKey)); break
-      case 'substitutes': applyRuleArray(store, 'substitutes', bag.substitutes, opts.merge, regenSimple, subKey, globalKeySet(loadSubstitutes(GLOBAL_RULES_SCOPE), subKey)); break
+      // F63: every rule type filters incoming rules that already exist in this
+      // machine's ALL-CHARACTERS store (same content key) — a rule promoted
+      // to global must not come back as a per-character copy that
+      // double-fires.
+      case 'highlights': applyRuleArray(store, 'highlights', bag.highlights, opts.merge, regenHighlights, hlKey, loadHighlights(GLOBAL_RULES_SCOPE), clash('highlight')); break
+      case 'triggers':   applyRuleArray(store, 'triggers',   bag.triggers,   opts.merge, regenTriggers,  trKey, loadTriggers(GLOBAL_RULES_SCOPE), clash('trigger')); break
+      case 'macros':     applyRuleArray(store, 'macros',     bag.macros,     opts.merge, regenSimple,    maKey, loadMacros(GLOBAL_RULES_SCOPE), clash('macro')); break
+      case 'aliases':    applyRuleArray(store, 'aliases',    bag.aliases,    opts.merge, regenSimple,    alKey, loadAliases(GLOBAL_RULES_SCOPE), clash('alias')); break
+      case 'mutes':      applyRuleArray(store, 'mutes',       bag.mutes,       opts.merge, regenSimple, muteKey, loadMutes(GLOBAL_RULES_SCOPE), clash('mute')); break
+      case 'substitutes': applyRuleArray(store, 'substitutes', bag.substitutes, opts.merge, regenSimple, subKey, loadSubstitutes(GLOBAL_RULES_SCOPE), clash('substitute')); break
       case 'groupsModes': applyGroupsModes(store, bag, opts.merge); break
       case 'contacts':   applyContacts(store, bag, opts.merge); break
       // Merged above, before the rules (F115) — listed so the category still
       // counts as applied and the order/switch invariant holds.
       case 'colors':     break
-      case 'globalRules': applyGlobalRules(bag); break
+      case 'globalRules': applyGlobalRules(bag, (kind, it) => clash(kind)(it, 'global')); break
       // B(v0.14.0 latent, fixed v0.14.6): experiences exported but never
       // applied — it was missing from `order` + this switch.
       case 'experiences': applyPlain(store, bag, TRANSFER_CATEGORIES.find(c => c.id === 'experiences')!.suffixes); break
@@ -565,8 +578,37 @@ function applyTheme(
 type RegenFn = (items: unknown[]) => unknown[]
 type KeyFn = RuleKeyFn
 
-function globalKeySet(rules: unknown[], keyOf: KeyFn): Set<string> {
-  return new Set(rules.map(keyOf))
+// A rule's display name for the clash list: its label, else what it matches.
+function ruleLabel(it: unknown): string {
+  const r = it as { name?: string; pattern?: string; key?: string; input?: string; watchVariable?: string }
+  return (r.name || r.pattern || r.key || r.input || r.watchVariable || '(unnamed)').trim()
+}
+
+// Drop every incoming rule whose content key is already in `existing`. That
+// much is the established Transfer rule: a key match means importing it would
+// double-fire (two triggers on one pattern) or never fire (two macros on one
+// key). What changed: a key match only proves the two COLLIDE, so a dropped
+// rule is REPORTED unless it is an exact copy (`sameRuleContent`). Before, a
+// same-pattern trigger with different actions vanished without a word.
+function dropCollisions(
+  incoming: unknown[], existing: unknown[], keyOf: KeyFn,
+  onClash?: (it: unknown) => void,
+): unknown[] {
+  // Triggers compare with their defaults filled in, so a rule exported by an
+  // older version isn't reported as clashing with its identical local copy.
+  const normalize = keyOf === trKey ? triggerCompareForm : undefined
+  const byKey = new Map<string, unknown[]>()
+  for (const e of existing) {
+    const k = keyOf(e)
+    const list = byKey.get(k)
+    if (list) list.push(e); else byKey.set(k, [e])
+  }
+  return incoming.filter(it => {
+    const hits = byKey.get(keyOf(it))
+    if (!hits) return true
+    if (onClash && !hits.some(h => sameRuleContent(h, it, { normalize }))) onClash(it)
+    return false
+  })
 }
 
 function applyRuleArray(
@@ -576,20 +618,22 @@ function applyRuleArray(
   merge: MergeStrategy,
   regen: RegenFn,
   keyOf: KeyFn,
-  // F63: content keys that exist in the machine's All-Characters store —
-  // incoming per-character rules matching one are dropped in BOTH merge modes
-  // (they'd double-fire on top of the global).
-  skipGlobalKeys?: Set<string>,
+  // F63: the machine's All-Characters rules. An incoming per-character rule
+  // matching one is dropped in BOTH merge modes (it would double-fire on top
+  // of the global).
+  globalRules?: unknown[],
+  // Reports a dropped rule that differs from the one it collided with. Only
+  // the six rule categories pass it; groups/modes/contacts dedup by id.
+  onClash?: (it: unknown, where: RuleClash['where']) => void,
 ) {
   if (!Array.isArray(incomingRaw) || incomingRaw.length === 0) return
   let incoming = regen(incomingRaw)
-  if (skipGlobalKeys && skipGlobalKeys.size > 0) {
-    incoming = incoming.filter(it => !skipGlobalKeys.has(keyOf(it)))
+  if (globalRules && globalRules.length > 0) {
+    incoming = dropCollisions(incoming, globalRules, keyOf, onClash && (it => onClash(it, 'global')))
   }
   if (merge === 'replace') { store.write(suffix, incoming); return }
   const existing = (store.read(suffix) as unknown[] | undefined) ?? []
-  const seen = new Set(existing.map(keyOf))
-  const merged = [...existing, ...incoming.filter(it => !seen.has(keyOf(it)))]
+  const merged = [...existing, ...dropCollisions(incoming, existing, keyOf, onClash && (it => onClash(it, 'character')))]
   store.write(suffix, merged)
 }
 
@@ -600,21 +644,20 @@ function applyRuleArray(
 // machine's ids); asGlobalRules re-normalizes always-active. Dispatches the
 // F37 change event so every mounted GameWindow re-merges live; the modal's
 // post-import _shared.yaml flush persists it.
-function applyGlobalRules(bag: Record<string, unknown>) {
+function applyGlobalRules(bag: Record<string, unknown>, onClash: (kind: string, it: unknown) => void) {
   const mergeInto = <T extends { groupIds?: string[]; allGroups?: boolean }>(
-    incomingRaw: unknown, existing: T[], keyOf: KeyFn, regen: RegenFn, save: (rules: T[]) => void,
+    kind: string, incomingRaw: unknown, existing: T[], keyOf: KeyFn, regen: RegenFn, save: (rules: T[]) => void,
   ) => {
     if (!Array.isArray(incomingRaw) || incomingRaw.length === 0) return
-    const seen = new Set(existing.map(keyOf))
-    const fresh = asGlobalRules(regen(incomingRaw) as T[]).filter(it => !seen.has(keyOf(it)))
+    const fresh = dropCollisions(asGlobalRules(regen(incomingRaw) as T[]), existing, keyOf, it => onClash(kind, it)) as T[]
     if (fresh.length > 0) save([...existing, ...fresh])
   }
-  mergeInto(bag.highlights,  loadHighlights(GLOBAL_RULES_SCOPE),  hlKey,  regenHighlights, r => saveHighlights(GLOBAL_RULES_SCOPE, r))
-  mergeInto(bag.triggers,    loadTriggers(GLOBAL_RULES_SCOPE),    trKey,  regenTriggers,   r => saveTriggers(GLOBAL_RULES_SCOPE, r))
-  mergeInto(bag.macros,      loadMacros(GLOBAL_RULES_SCOPE),      maKey,  regenSimple,     r => saveMacros(GLOBAL_RULES_SCOPE, r))
-  mergeInto(bag.aliases,     loadAliases(GLOBAL_RULES_SCOPE),     alKey,  regenSimple,     r => saveAliases(GLOBAL_RULES_SCOPE, r))
-  mergeInto(bag.mutes,       loadMutes(GLOBAL_RULES_SCOPE),       muteKey, regenSimple,    r => saveMutes(GLOBAL_RULES_SCOPE, r))
-  mergeInto(bag.substitutes, loadSubstitutes(GLOBAL_RULES_SCOPE), subKey,  regenSimple,    r => saveSubstitutes(GLOBAL_RULES_SCOPE, r))
+  mergeInto('highlight',  bag.highlights,  loadHighlights(GLOBAL_RULES_SCOPE),  hlKey,  regenHighlights, r => saveHighlights(GLOBAL_RULES_SCOPE, r))
+  mergeInto('trigger',    bag.triggers,    loadTriggers(GLOBAL_RULES_SCOPE),    trKey,  regenTriggers,   r => saveTriggers(GLOBAL_RULES_SCOPE, r))
+  mergeInto('macro',      bag.macros,      loadMacros(GLOBAL_RULES_SCOPE),      maKey,  regenSimple,     r => saveMacros(GLOBAL_RULES_SCOPE, r))
+  mergeInto('alias',      bag.aliases,     loadAliases(GLOBAL_RULES_SCOPE),     alKey,  regenSimple,     r => saveAliases(GLOBAL_RULES_SCOPE, r))
+  mergeInto('mute',       bag.mutes,       loadMutes(GLOBAL_RULES_SCOPE),       muteKey, regenSimple,    r => saveMutes(GLOBAL_RULES_SCOPE, r))
+  mergeInto('substitute', bag.substitutes, loadSubstitutes(GLOBAL_RULES_SCOPE), subKey,  regenSimple,    r => saveSubstitutes(GLOBAL_RULES_SCOPE, r))
   document.dispatchEvent(new CustomEvent('lichborne:global-rules-changed'))
 }
 

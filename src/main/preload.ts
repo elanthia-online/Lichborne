@@ -31,7 +31,7 @@ import type {
   SessionLogExportSpec, SessionLogExportResult, SessionLogDiskUsage, SessionLogWindowRow,
   CatchupDigest, CatchupProgress,
   AICapability, AIKeyStatus, AITestResult, AIChatRequest, AIChatChunk, AIChatDone, AIChatError,
-  SimuCoinStatus, UserTextPayload,
+  SimuCoinStatus, UserTextPayload, CharacterNotice, RoutedToast,
 } from '../shared/types'
 
 // One shared list — see the note on IPC in shared/types.ts.
@@ -94,8 +94,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.send('session:set-name', sessionId, character),
 
   // ── Decouple (move a character to its own / another window) ───────────────────
-  moveSessionToWindow: (sessionId: SessionId, target: 'new' | 'main' | number): Promise<void> =>
-    ipcRenderer.invoke('session:move-window', sessionId, target),
+  moveSessionToWindow: (sessionId: SessionId, target: 'new' | 'main' | number, opts?: { quiet?: boolean }): Promise<boolean> =>
+    ipcRenderer.invoke('session:move-window', sessionId, target, opts),
   getOwnedSessions: (): Promise<RosterEntry[]> => ipcRenderer.invoke('get-owned-sessions'),
   // Pull the full cross-window roster on mount (the onSessionRoster push is
   // race-prone for a freshly-opened window — it may subscribe after main's
@@ -173,6 +173,24 @@ contextBridge.exposeInMainWorld('api', {
   // commentary, keyed by character. The session has no id in the renderer yet
   // (login is an invoke that resolves at the end), so this is how the
   // connecting overlay narrates the attempt.
+  // ── Cross-window toasts (v0.20.0) ──────────────────────────────────────────
+  onCharacterNotice: (cb: (n: CharacterNotice) => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, n: CharacterNotice) => cb(n)
+    ipcRenderer.on(CH.CHARACTER_NOTICE, listener)
+    return () => ipcRenderer.removeListener(CH.CHARACTER_NOTICE, listener)
+  },
+  routeToast: (toast: RoutedToast) => ipcRenderer.send(CH.ROUTE_TOAST, toast),
+  onRoutedToast: (cb: (t: RoutedToast) => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, t: RoutedToast) => cb(t)
+    ipcRenderer.on(CH.ROUTED_TOAST, listener)
+    return () => ipcRenderer.removeListener(CH.ROUTED_TOAST, listener)
+  },
+  focusCharacter: (characterId: string) => ipcRenderer.send(CH.FOCUS_CHARACTER, characterId),
+  onSelectCharacter: (cb: (characterId: string) => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, id: string) => cb(id)
+    ipcRenderer.on(CH.SELECT_CHARACTER, listener)
+    return () => ipcRenderer.removeListener(CH.SELECT_CHARACTER, listener)
+  },
   onConnectProgress: (cb: (p: { character: string; message: string }) => void) => {
     const listener = (_e: Electron.IpcRendererEvent, p: { character: string; message: string }) => cb(p)
     ipcRenderer.on('connect-progress', listener)

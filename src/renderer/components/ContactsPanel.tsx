@@ -4,7 +4,10 @@
 // effect, an optional tag with its own effect, and group gating).
 //
 // Rendered by GameWindow, portaled to document.body, in the canonical modal
-// chrome (ui.css primitives). Per character via `useCharacter()`. Each editor
+// chrome (ui.css primitives). Per character via `useCharacter()`. Both tabs
+// share ONE two-pane layout — a sidebar with + New, search and a scrolling list
+// beside a detail pane — and the same classes (v0.20.0: Templates used to be
+// an accordion with no search, and behaved nothing like Contacts). Each editor
 // keeps a draft beside a BASELINE, so it knows when an edit would be lost and
 // asks before switching item, starting "+ New" or closing (B368); a draft
 // whose id isn't stored yet is a pending NEW item, written only on Save (B388).
@@ -20,7 +23,7 @@
 // are the shared ColorField (F115): one of your colors stays LINKED, and a
 // typed color name resolves on blur and again on Save (`normalizeColorInput`).
 
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { backdropHandlers } from '../utils/backdropClose'
 import { useEscapeClose } from '../hooks/useEscapeClose'
@@ -43,7 +46,7 @@ import { scopedKey } from '../characterScope'
 import { type HighlightEffect, HIGHLIGHT_EFFECTS, FX_USES_COLOR, DEFAULT_FX_COLOR, effectColorNote } from '../highlights'
 import GroupPicker from './GroupPicker'
 import '../styles/contacts.css'
-import { normalizeColorInput, colorLabel } from '../colors'
+import { normalizeColorInput } from '../colors'
 import ColorField, { ColorManageContext } from './ColorField'
 import '../styles/groups.css'
 
@@ -145,9 +148,13 @@ export default function ContactsPanel({ onClose, onSaved, openContactId, closeRe
   const [draft, setDraft]             = useState<Contact | null>(null)
   const [baseline, setBaseline]       = useState<Contact | null>(null)
   const [tplDraft, setTplDraft]       = useState<ContactTemplate | null>(null)
-  // The expanded template card, so opening one can scroll it fully into the list.
-  const tplCardRef                    = useRef<HTMLDivElement>(null)
   const [tplBaseline, setTplBaseline] = useState<ContactTemplate | null>(null)
+  // The Templates tab has the Contacts tab's own sidebar: search + a list that
+  // scrolls (v0.20.0 — it used to be an accordion with neither).
+  const [tplSearch, setTplSearch]     = useState('')
+  const tplSearchRef                  = useRef<HTMLInputElement>(null)
+  const tplListRef                    = useRef<HTMLDivElement>(null)
+  const tplNameRef                    = useRef<HTMLInputElement>(null)
   const [search, setSearch]           = useState('')
   const nameInputRef                  = useRef<HTMLInputElement>(null)
   const searchRef                     = useRef<HTMLInputElement>(null)
@@ -195,6 +202,14 @@ export default function ContactsPanel({ onClose, onSaved, openContactId, closeRe
       searchRef.current?.focus()
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Switching to Templates puts you in its search box, as opening the dialog
+  // does for Contacts (B397). Skips the mount, which the effect above owns.
+  const tabMounted = useRef(false)
+  useEffect(() => {
+    if (!tabMounted.current) { tabMounted.current = true; return }
+    if (tab === 'templates' && !tplDraft) tplSearchRef.current?.focus()
+  }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function getTemplate(id: string | null): ContactTemplate | null {
     return templates.find(t => t.id === id) ?? null
@@ -368,41 +383,92 @@ export default function ContactsPanel({ onClose, onSaved, openContactId, closeRe
     setTplDraft(prev => prev && { ...prev, ...patch })
   }
 
-  // A card grows DOWNWARD when it expands, so in a short window its Save/Cancel
-  // row lands below the fold — and the Name field's autoFocus has already
-  // scrolled the TOP of the form into view, which is the half you can see
-  // anyway. Bring the rest in once it has expanded.
-  //
-  // Scrolled by hand rather than with scrollIntoView, which also scrolls every
-  // ANCESTOR scroll container: the document root is `overflow: hidden` but
-  // still programmatically scrollable, so it can drag the whole app off screen
-  // (pitfall #109). Touching the list's own scrollTop can't reach anything
-  // else. The card's TOP wins when the card is taller than the list — scrolling
-  // the buttons into view would push the field being typed in out of sight.
-  useLayoutEffect(() => {
-    const card = tplCardRef.current
-    const list = card?.closest<HTMLElement>('.cp-tpl-list')
-    if (!card || !list) return
-    const c = card.getBoundingClientRect()
-    const l = list.getBoundingClientRect()
-    const below = c.bottom - l.bottom
-    const above = l.top - c.top
-    if (below > 0) list.scrollTop += Math.min(below, Math.max(0, c.top - l.top))
-    else if (above > 0) list.scrollTop -= above
-  }, [tplDraft?.id])
+  function focusTplRow(id: string) {
+    requestAnimationFrame(() => {
+      tplListRef.current?.querySelector<HTMLElement>(`[data-tpl-id="${CSS.escape(id)}"]`)?.focus()
+    })
+  }
 
-  function startEditTemplate(t: ContactTemplate) {
-    if (tplDraft?.id === t.id) return
-    confirmDiscard(tplDirty, () => openTemplate(t), tplLabel)
+  // Selecting another template asks first when the open one has unsaved changes,
+  // exactly as selecting another contact does.
+  function startEditTemplate(t: ContactTemplate, focusRow = false) {
+    if (tplDraft?.id === t.id) {
+      if (focusRow) focusTplRow(t.id)
+      return
+    }
+    confirmDiscard(tplDirty, () => {
+      openTemplate(t)
+      if (focusRow) focusTplRow(t.id)
+    }, tplLabel)
+  }
+
+  // Search matches the template's name and its tag, in stored order (the
+  // built-in Friends / Enemies stay first).
+  const visibleTemplates = useMemo(() => {
+    const q = tplSearch.trim().toLowerCase()
+    return q
+      ? templates.filter(t => t.name.toLowerCase().includes(q) || t.tagText.toLowerCase().includes(q))
+      : templates
+  }, [templates, tplSearch])
+
+  // The Contacts list's keyboard, mirrored: ↑/↓ through the list (guarded),
+  // ↑ from the top row back to the search box.
+  function onTplListKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    if (visibleTemplates.length === 0) return
+    e.preventDefault()
+    const row = (e.target as HTMLElement).closest<HTMLElement>('[data-tpl-id]')
+    const from = row?.dataset.tplId ?? (tplIsNew ? null : tplDraft?.id ?? null)
+    const at = from ? visibleTemplates.findIndex(t => t.id === from) : -1
+    if (e.key === 'ArrowUp' && at === 0) { tplSearchRef.current?.focus(); return }
+    const step = e.key === 'ArrowDown' ? 1 : -1
+    const next = at < 0
+      ? (step === 1 ? 0 : visibleTemplates.length - 1)
+      : Math.min(visibleTemplates.length - 1, Math.max(0, at + step))
+    startEditTemplate(visibleTemplates[next], true)
+  }
+
+  function onTplSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Escape' && tplSearch) {
+      // Clears the search instead of closing the dialog (pitfall #141).
+      e.preventDefault()
+      setTplSearch('')
+    } else if (e.key === 'ArrowDown' && visibleTemplates.length > 0) {
+      e.preventDefault()
+      startEditTemplate(visibleTemplates.find(t => t.id === tplDraft?.id) ?? visibleTemplates[0], true)
+    }
+  }
+
+  // How many contacts a template's deletion would affect — ONE count and
+  // wording for the row ✕ and the editor's Delete (pitfall #127).
+  function tplUses(id: string): string | null {
+    const uses = contacts.filter(c => c.templateId === id).length
+    return uses === 0 ? null : `${uses} contact${uses === 1 ? ' uses' : 's use'} it`
+  }
+
+  async function confirmDeleteTplRow(t: ContactTemplate) {
+    const uses = tplUses(t.id)
+    const ok = await confirmDelete('template', t.name.trim() || undefined,
+      uses ? `${uses} and will fall back to no template. This can't be undone.` : "This can't be undone.")
+    if (ok) deleteTemplate(t.id)
   }
 
   function closeTemplateEditor() {
+    // Focus goes back where you came from — the row, or the search box for a
+    // new template that was never saved — rather than onto nothing when the
+    // button that had it unmounts.
+    const back = tplDraft && !tplIsNew ? tplDraft.id : null
     setTplDraft(null)
     setTplBaseline(null)
+    if (back) focusTplRow(back)
+    else requestAnimationFrame(() => tplSearchRef.current?.focus())
   }
 
   function addTemplate() {
-    confirmDiscard(tplDirty, () => openTemplate(newTemplate()), tplLabel)
+    confirmDiscard(tplDirty, () => {
+      openTemplate(newTemplate())
+      setTimeout(() => tplNameRef.current?.focus(), 0)
+    }, tplLabel)
   }
 
   function saveTemplate() {
@@ -414,7 +480,10 @@ export default function ContactsPanel({ onClose, onSaved, openContactId, closeRe
     commitTemplates(current.some(t => t.id === saved.id)
       ? current.map(t => (t.id === saved.id ? saved : t))
       : [...current, saved])
-    closeTemplateEditor()
+    // Stays selected, as a saved contact does: the list keeps its place and
+    // ↑/↓ still work. (It used to close, which dropped the selection and left
+    // focus on nothing.)
+    openTemplate(saved)
   }
 
   function deleteTemplate(id: string) {
@@ -424,9 +493,8 @@ export default function ContactsPanel({ onClose, onSaved, openContactId, closeRe
   }
 
   function tplDeleteQuestion(id: string): string {
-    const uses = contacts.filter(c => c.templateId === id).length
-    if (uses === 0) return 'Delete this template?'
-    return `Delete this template? ${uses} contact${uses === 1 ? ' uses' : 's use'} it.`
+    const uses = tplUses(id)
+    return uses ? `Delete this template? ${uses}.` : 'Delete this template?'
   }
 
   function onTplEnter(e: KeyboardEvent<HTMLInputElement>) {
@@ -500,7 +568,9 @@ export default function ContactsPanel({ onClose, onSaved, openContactId, closeRe
         <div className="cp-tpl-zone">
           <div className="cp-tpl-edit-row cp-tpl-edit-row--wide">
             <label className="cp-label">Template name</label>
-            <input className="ui-field" value={d.name} autoFocus
+            {/* Focused for + New template only (addTemplate), not on every open:
+                arrowing through the list must keep focus in the list. */}
+            <input ref={tplNameRef} className="ui-field" value={d.name}
               placeholder="e.g. Friends"
               onChange={e => patchTpl({ name: e.target.value })}
               onKeyDown={onTplEnter} />
@@ -890,44 +960,96 @@ export default function ContactsPanel({ onClose, onSaved, openContactId, closeRe
         )}
 
         {tab === 'templates' && (
-          <div className="cp-tpl-body">
-            <div className="cp-tpl-top">
+          // The Contacts tab's layout, class for class: a sidebar with + New,
+          // search and a list that scrolls, beside a detail pane holding the
+          // editor. Sharing the classes keeps the two tabs from drifting apart
+          // (pitfall #113) — restyle one and both follow.
+          <div className="cp-body">
+            <div className="cp-sidebar">
               <button type="button" className="cp-new-btn" onClick={addTemplate}>+ New template</button>
-            </div>
-            <div className="cp-tpl-list">
-              {templates.length === 0 && !tplIsNew && (
-                <div className="ui-empty">
-                  No templates yet. A template sets how a contact's name looks in game text — colour, bold, an effect, and an optional tag such as [Enemy].
-                </div>
-              )}
-              {/* A pending new template has no stored row to expand, so its
-                  editor renders as its own card at the top (B388). */}
-              {tplIsNew && tplDraft && (
-                <div ref={tplCardRef} className="cp-tpl-row cp-tpl-row--expanded">{renderTemplateEditor(tplDraft)}</div>
-              )}
-              {templates.map(t => {
-                const isExpanded = tplDraft?.id === t.id
-                return (
-                  <div key={t.id} ref={isExpanded ? tplCardRef : undefined}
-                    className={`cp-tpl-row${isExpanded ? ' cp-tpl-row--expanded' : ''}`}>
-                    {isExpanded && tplDraft ? renderTemplateEditor(tplDraft) : (
-                      <div className="cp-tpl-summary" {...pressable(() => startEditTemplate(t))} aria-expanded={false}>
-                        <span className="cp-tpl-dot" style={{ background: t.textColor }} />
-                        <span className="cp-tpl-name-label"><TplPreviewText tpl={t} name={t.name || 'Unnamed'} /></span>
-                        <span className="cp-tpl-meta">
-                          <span className="cp-tpl-swatch" style={{ background: t.textColor }} title={`Text color ${colorLabel(t.textColor)}`} />
-                          <span className="cp-tpl-swatch cp-tpl-swatch--bg"
-                            style={{ background: t.bgColor === 'transparent' ? undefined : t.bgColor }}
-                            title={`Background ${t.bgColor === 'transparent' ? 'none' : colorLabel(t.bgColor)}`} />
-                          <span className="cp-tpl-tag-preview">
-                            {t.tagText ? <TagPreviewText tpl={t} /> : <em>no tag</em>}
-                          </span>
-                        </span>
-                      </div>
-                    )}
+              <div className="sidebar-search">
+                <input
+                  ref={tplSearchRef}
+                  className="sidebar-search-input"
+                  placeholder="Search templates…"
+                  aria-label="Search templates"
+                  value={tplSearch}
+                  onChange={e => setTplSearch(e.target.value)}
+                  onKeyDown={onTplSearchKeyDown}
+                />
+                {tplSearch && (
+                  <button
+                    type="button"
+                    className="sidebar-search-clear"
+                    onClick={() => { setTplSearch(''); tplSearchRef.current?.focus() }}
+                    title="Clear search"
+                    aria-label="Clear search"
+                  >✕</button>
+                )}
+                {tplSearch && (
+                  <span className="sidebar-search-count">{visibleTemplates.length} of {templates.length}</span>
+                )}
+              </div>
+              <div ref={tplListRef} className="cp-list" role="listbox" aria-label="Templates" onKeyDown={onTplListKeyDown}>
+                {/* A pending new template has no stored row yet (B388): this
+                    marks where the draft is, as the Contacts list does. */}
+                {tplIsNew && (
+                  <div className="cp-list-item cp-list-item--active cp-list-item--pending" role="option" aria-selected="true">
+                    <span className="cp-list-name">
+                      {tplDraft?.name.trim() || <em className="cp-unnamed">New template</em>}
+                    </span>
                   </div>
-                )
-              })}
+                )}
+                {templates.length === 0 && !tplIsNew && (
+                  <div className="ui-empty">No templates yet.</div>
+                )}
+                {templates.length > 0 && visibleTemplates.length === 0 && (
+                  <div className="ui-empty">No templates match “{tplSearch.trim()}”.</div>
+                )}
+                {visibleTemplates.map(t => {
+                  const active = !tplIsNew && tplDraft?.id === t.id
+                  const name = t.name.trim()
+                  return (
+                    <div
+                      key={t.id}
+                      data-tpl-id={t.id}
+                      className={`cp-list-item${active ? ' cp-list-item--active' : ''}`}
+                      {...pressable(() => startEditTemplate(t), { role: 'option', selected: active })}
+                    >
+                      {/* The name through the shared painter, so the row previews
+                          the template exactly as the game paints it (B281). */}
+                      {/* Tag then name, in the same spans a contact row uses, so
+                          one tag reads the same size in both lists. */}
+                      {t.tagText && <span className="cp-list-tag">{listTag(t)}{' '}</span>}
+                      <span className="cp-list-name" title={name || undefined}>
+                        {name ? <TplNameText tpl={t} name={name} /> : <em className="cp-unnamed">Unnamed</em>}
+                      </span>
+                      {/* No ✕ on the built-in Friends / Enemies: the loader
+                          re-adds a missing default on every read. */}
+                      {!t.isDefault && (
+                        <button
+                          type="button"
+                          className="list-item-delete"
+                          title="Delete template"
+                          aria-label={`Delete ${name || 'unnamed template'}`}
+                          onClick={e => { e.stopPropagation(); void confirmDeleteTplRow(t) }}
+                        >✕</button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            <ResizeDivider storageKey={scopedKey(character, 'automationsSidebarWidth')} />
+            <div className="cp-detail">
+              {!tplDraft ? (
+                <div className="cp-no-selection">
+                  Select a template, or add one with + New template. A template sets how a contact's name looks in game text — colour, bold, an effect, and an optional tag such as [Enemy].
+                </div>
+              ) : (
+                <div className="cp-form">{renderTemplateEditor(tplDraft)}</div>
+              )}
             </div>
           </div>
         )}

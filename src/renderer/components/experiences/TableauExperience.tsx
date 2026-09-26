@@ -35,6 +35,9 @@
 // self figure and bubbles are held clear of them; the fit-to-container scale
 // is WIDTH-dominant; bubble spacing derives from the game font (pitfall #45).
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { hashStr, monogramStyle, nameColor, nameInitials } from '../../utils/nameColor'
+import { characterColor, characterColorsByName, useCharacterColors } from '../../characterColors'
+import { useRosterOptional } from '../../RosterContext'
 import type { Contact, ContactTemplate } from '../../contacts'
 import type { ExperienceProps, SceneSpeechItem, SceneMoveItem } from '../../experiences'
 import type { SceneCreature } from '../../../shared/types'
@@ -146,11 +149,6 @@ const EMPTY_CREATURES: SceneCreature[] = []
 // bubbles / choreographed entrances / AI backdrops land in later phases
 // (§34.9 Phases 2–3) as the speech capturers verify against corpus.
 
-function hashStr(s: string): number {
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
-  return Math.abs(h)
-}
 
 // Stable seating (§32.2): hash the name to a preferred seat on the arc and
 // linear-probe collisions. Names are processed SORTED so probe results don't
@@ -198,26 +196,38 @@ function seatPos(idx: number, seatCount: number): { x: number; y: number; depth:
   return { x: 8 + t * 84, y: 46 + bow * 14, depth: 0.55 + bow * 0.45 }
 }
 
-// Procedural avatar color: the contact's template text color when the person
-// is a known Contact (the per-person color system we already have), else a
-// stable hue from the name hash. These are DATA colors (like contact colors),
-// not theme colors — saturated fills, white-halo text (the sanctioned
-// literal — Principle #4).
-function avatarColor(name: string, contacts: Contact[], templates: ContactTemplate[]): { color: string; isContact: boolean } {
-  const c = contacts.find(c => c.name && c.name.toLowerCase() === name.toLowerCase())
+// Procedural avatar color, in order (Sekmeht, v0.20.0):
+//   1. the colour YOU picked for one of your own characters (Edit Profile →
+//      characterColors);
+//   2. one of YOUR characters with no colour picked: the automatic name colour
+//      — the same one its toasts, tab and launcher badge use. Never a contact
+//      template's, even when you've filed your own character as a contact: that
+//      made Sekmeht purple here and teal everywhere else;
+//   3. anyone else who is a Contact: their template's text colour (the
+//      per-person colour system contacts already are);
+//   4. everyone else: the stable hue from their name (utils/nameColor).
+// "Your characters" = `own`: this Tableau's own character, every character of
+// yours connected right now, and any you've picked a colour for.
+// These are DATA colors, not theme colors — saturated fills, white-halo text
+// (the sanctioned literal — Principle #4).
+function avatarColor(
+  name: string, contacts: Contact[], templates: ContactTemplate[],
+  mine?: Map<string, string>, own?: Set<string>,
+): { color: string; isContact: boolean } {
+  const key = name.toLowerCase()
+  const c = contacts.find(c => c.name && c.name.toLowerCase() === key)
+  const picked = mine?.get(key)
+  if (picked) return { color: picked, isContact: !!c }
+  if (own?.has(key)) return { color: nameColor(name), isContact: !!c }
   if (c?.templateId) {
     const t = templates.find(t => t.id === c.templateId)
     if (t?.textColor) return { color: t.textColor, isContact: true }
   }
-  return { color: `hsl(${hashStr(name.toLowerCase()) % 360} 45% 38%)`, isContact: !!c }
+  return { color: nameColor(name), isContact: !!c }
 }
 
-function initials(name: string): string {
-  const SKIP = new Set(['a', 'an', 'the', 'some'])
-  const words = name.split(/\s+/).filter(w => !SKIP.has(w.toLowerCase()))
-  if (words.length >= 2) return (words[0][0] + words[words.length - 1][0]).toUpperCase()
-  return (words[0] ?? name).slice(0, 2).toUpperCase()
-}
+// The shared monogram (utils/nameColor), so toast badges match these avatars.
+const initials = nameInitials
 
 const POSTURE_LABEL: Record<string, string> = { sitting: 'sitting', prone: 'lying down', hiding: 'hiding' }
 
@@ -266,7 +276,17 @@ const DIR_VECTOR: Record<string, [number, number]> = {
 // Tableau only needs to when its own inputs change (cast/speech/moves are
 // state objects with stable identities between changes). The default export
 // wraps this at the bottom of the file.
-function TableauExperience({ character, roomState, sceneCast, speech: rawSpeech, moves: rawMoves, indicators, contacts, contactTemplates, settings, onOpenContact, onCommand, hidden, combat }: ExperienceProps) {
+function TableauExperience({ character, characterId, roomState, sceneCast, speech: rawSpeech, moves: rawMoves, indicators, contacts, contactTemplates, settings, onOpenContact, onCommand, hidden, combat }: ExperienceProps) {
+  // Your own characters' chosen colours, by name (the scene only knows names).
+  const charColors = useCharacterColors()
+  const myColors = useMemo(() => characterColorsByName(charColors), [charColors])
+  // Your own characters (see avatarColor): never painted a contact colour.
+  const roster = useRosterOptional()?.roster
+  const ownNames = useMemo(() => {
+    const out = new Set<string>([character.toLowerCase(), ...myColors.keys()])
+    for (const r of roster ?? []) out.add(r.character.toLowerCase())
+    return out
+  }, [character, myColors, roster])
   const players = sceneCast.players
   // v0.14.7 content-layer toggles (the window's ⚙ popover, ExperienceDef
   // options): gate each layer HERE, at the single entry point, so every
@@ -679,7 +699,7 @@ function TableauExperience({ character, roomState, sceneCast, speech: rawSpeech,
     .map(b => ({
       speaker: b.speaker,
       pos: seatPos(hashStr(b.speaker.toLowerCase()) % seatCount, seatCount),
-      tint: avatarColor(b.speaker, contacts, contactTemplates).color,
+      tint: avatarColor(b.speaker, contacts, contactTemplates, myColors, ownNames).color,
     }))
   const unseenPosByKey = new Map(unseenList.map(u => [u.speaker.toLowerCase(), u.pos]))
 
@@ -770,7 +790,7 @@ function TableauExperience({ character, roomState, sceneCast, speech: rawSpeech,
       placed.push({ l: cx - w / 2, t: top, r: cx + w / 2, b: top + h })
       laidBubbles.push({
         key: `${b.speaker}-${b.id}`, item: b,
-        tint: avatarColor(b.speaker, contacts, contactTemplates).color,
+        tint: avatarColor(b.speaker, contacts, contactTemplates, myColors, ownNames).color,
         left: cx, top,
         tailDx: Math.max(-(w / 2 - TAIL_INSET), Math.min(w / 2 - TAIL_INSET, ax - cx)),
         z: 40 - i,                 // newest stacks on top
@@ -925,7 +945,7 @@ function TableauExperience({ character, roomState, sceneCast, speech: rawSpeech,
         } as React.CSSProperties
         return (
           <div key={`ghost-${g.id}`} className="tableau-figure tableau-figure--ghost" style={style}>
-            <div className="tableau-avatar" style={{ background: avatarColor(g.name, contacts, contactTemplates).color }}>{initials(g.name)}</div>
+            <div className="tableau-avatar" style={monogramStyle(g.name, avatarColor(g.name, contacts, contactTemplates, myColors, ownNames).color)}>{initials(g.name)}</div>
             <div className="tableau-name">{g.name}</div>
           </div>
         )
@@ -952,7 +972,7 @@ function TableauExperience({ character, roomState, sceneCast, speech: rawSpeech,
       {seated.map(p => {
         const chatKey = p.name.toLowerCase()
         const pos = seatedPosByKey.get(chatKey) ?? seatPos(seats.get(p.name) ?? 0, seatCount)
-        const { color, isContact } = avatarColor(p.name, contacts, contactTemplates)
+        const { color, isContact } = avatarColor(p.name, contacts, contactTemplates, myColors, ownNames)
         // Contacts are clickable: the figure opens their contact card (the same
         // ContactPopover that in-text name clicks use).
         const contact = isContact ? contacts.find(c => c.name && c.name.toLowerCase() === chatKey) : undefined
@@ -979,7 +999,7 @@ function TableauExperience({ character, roomState, sceneCast, speech: rawSpeech,
             onClick={clickable ? (e => onOpenContact!(contact!.id, e.clientX, e.clientY)) : undefined}
           >
             {renderCaption(bubble, sc)}
-            <div className="tableau-avatar" style={{ background: color }}>{initials(p.name)}</div>
+            <div className="tableau-avatar" style={monogramStyle(p.name, color)}>{initials(p.name)}</div>
             <div className="tableau-name">{p.name}</div>
           </div>
         )
@@ -1008,7 +1028,11 @@ function TableauExperience({ character, roomState, sceneCast, speech: rawSpeech,
           + (indicators.hidden ? ' tableau-figure--self-hidden' : '')
           + (indicators.invisible ? ' tableau-figure--self-invisible' : '')
         const avatarStyle = {
-          background: avatarColor(character, contacts, contactTemplates).color,
+          // By id first: two of your characters can share a name, and this
+          // figure is THIS session's, whose tab and card look up by id.
+          // monogramStyle picks readable ink — a picked colour can be pale.
+          ...monogramStyle(character,
+            characterColor(charColors, { characterId }) ?? avatarColor(character, contacts, contactTemplates, myColors, ownNames).color),
           ...(ringKey ? { '--self-ring': `var(--ind-${ringKey}-color)`, '--self-glow': `var(--ind-${ringKey}-glow)` } : {}),
         } as React.CSSProperties
         return (

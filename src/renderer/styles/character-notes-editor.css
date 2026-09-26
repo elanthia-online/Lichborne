@@ -94,6 +94,34 @@
   flex: 1;
 }
 
+/* v0.20.0: the character colour — a live preview of the badge, then the
+   shared colour field. The disc is a DATA colour (Principle #4 exception) with
+   a theme-derived ring so its edge holds on a light theme (UX #9 rider); its
+   size is the badge's, in rem because this is app chrome. */
+.cne-color-error {
+  color: color-mix(in srgb, var(--color-danger) 70%, var(--text-primary));
+}
+
+.cne-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cne-color-mono {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 50%;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-primary) 28%, transparent);
+}
+
 .cne-input {
   /* NOT a bare var(--bg-input): classicLight sets --bg-input AND --bg-base to
      #ffffff, so once this modal moved to --modal-bg (= --bg-base) the fields
@@ -134,14 +162,8 @@
    v0.19.7 (B399) — the private `.cne-btn` / `.cne-btn-save` chips are gone, so
    these four dialogs' buttons match every other dialog's. */
 
-/* B345: a button whose label changes mid-action (Save → Saving…, Attach →
-   Attaching…) renders BOTH labels in one grid cell and hides the inactive one,
-   so it is always as wide as the wider label and never resizes — whatever the
-   font (pitfall #103). Refines `.ui-btn`'s inline-flex: this file loads after
-   ui.css, so at equal specificity the grid wins. */
-.cne-btn--stable { display: inline-grid; justify-items: center; }
-.cne-btn--stable > .cne-btn-label { grid-area: 1 / 1; }
-.cne-btn--stable > .cne-btn-label--off { visibility: hidden; }
+/* B345's stable-width button (Save → Saving…) now uses the shared `ui-btn--stable`
+   in ui.css; its private copy here was removed (v0.20.0). */
 
 /* Body copy for the dialogs on this chrome (Attach). These were inline
    `style={{}}` objects (UX standard #11) — classes now, so they follow one rule. */

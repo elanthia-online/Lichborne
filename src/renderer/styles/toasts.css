@@ -39,11 +39,81 @@
 /* B402: the palette's status tokens, mixed toward theme text as before. */
 .toast--success { border-left-color: color-mix(in srgb, var(--color-success) 75%, var(--text-primary)); }
 .toast--error   { border-left-color: color-mix(in srgb, var(--color-danger) 75%, var(--text-primary)); }
+.toast--warning { border-left-color: color-mix(in srgb, var(--color-warning) 75%, var(--text-primary)); }
 
 .toast-title {
   font-weight: 600;
   margin-bottom: 2px;
   line-height: 1.25;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── People (v0.20.0) ──────────────────────────────────────────────────────
+   A person is a coloured monogram — the same colour as their Living Tableau
+   avatar (utils/nameColor), so "who is this about" reads before the words do.
+   The fill is a DATA colour (the Principle #4 exception): white initials on a
+   saturated hsl(… 45% 38%), halo'd so they hold on any hue. The theme-derived
+   ring is what keeps the disc's edge visible on a light theme (UX #9 rider). */
+.toast-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.toast-person-mono {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55em;
+  height: 1.55em;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-primary) 28%, transparent);
+}
+
+.toast-person-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Several people: a row of badges under the title. */
+.toast-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin: 4px 0 4px;
+}
+
+/* A badge you can click (go to that character): a pill, so it reads as a
+   button. Neutral at rest, accent on hover/focus (pitfall #107 — no selected
+   state here to exclude). */
+.toast-person--chip {
+  font: inherit;
+  font-size: 0.78rem;
+  line-height: 1;
+  padding: 2px 8px 2px 2px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--text-primary) 5%, var(--bg-raised));
+  cursor: pointer;
+  max-width: 100%;
+}
+.toast-person--chip:hover,
+.toast-person--chip:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-raised));
 }
 
 .toast-message {

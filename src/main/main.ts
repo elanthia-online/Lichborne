@@ -84,7 +84,7 @@ import type {
   AttachCredentials, GameEvent, GameEventBatch, LoginCredentials, LoginResult,
   ConnectionStatusPayload, RawXmlPayload, ErrorPayload, SessionId,
   RosterEntry, SessionRosterPayload,
-  UserTextPayload,
+  UserTextPayload, CharacterNotice, RoutedToast,
 } from '../shared/types'
 import type { MenuAction } from '../shared/menuActions'
 
@@ -272,6 +272,47 @@ function broadcastRoster() {
   broadcastAll(CH.SESSION_ROSTER, { roster: buildRoster() } as SessionRosterPayload)
 }
 
+// ── Character notices (v0.20.0) ─────────────────────────────────────────────
+// Toasts about a character's connection, delivered to the window the player is
+// LOOKING at — which may not be the window that owns the character. Main is the
+// only place that knows both which window is focused and whether a disconnect
+// was asked for (`cleanDisconnect`), so it decides what happened and where to
+// say it; the renderer decides whether to show it (setting, on-screen already).
+// No focused Lichborne window → nothing: a toast would expire unseen, and the
+// OS-level Notify trigger action is the tool for "tell me while I'm elsewhere".
+function focusedAppWindow(): BrowserWindow | null {
+  const w = BrowserWindow.getFocusedWindow()
+  return w && !w.isDestroyed() && windows.has(w.webContents.id) ? w : null
+}
+
+// When each character last DROPPED, so the next connect can say "reconnected"
+// rather than "is in the game". Keyed by characterId because a reconnect is a
+// brand-new session. Old entries simply stop counting.
+const recentDrops = new Map<string, number>()
+const RECONNECT_WINDOW_MS = 30 * 60_000
+
+function sendCharacterNotice(s: Session, kind: CharacterNotice['kind']) {
+  if (!s.meta) return
+  const win = focusedAppWindow()
+  if (!win) return
+  const notice: CharacterNotice = {
+    characterId: s.meta.characterId,
+    character: s.meta.character,
+    kind,
+    ...(s.meta.attach ? { attach: true } : {}),
+  }
+  win.webContents.send(CH.CHARACTER_NOTICE, notice)
+}
+
+// A login or attach just succeeded: "is in the game", or "reconnected" if this
+// character dropped recently.
+function noticeConnected(s: Session) {
+  if (!s.meta) return
+  const droppedAt = recentDrops.get(s.meta.characterId)
+  recentDrops.delete(s.meta.characterId)
+  sendCharacterNotice(s, droppedAt !== undefined && Date.now() - droppedAt < RECONNECT_WINDOW_MS ? 'reconnected' : 'ready')
+}
+
 // (B301: makeCharacterId used to be a local copy here, kept in sync with the
 // renderer's by a comment alone — it now lives once in shared/characterId.ts,
 // imported at the top, so the two processes structurally cannot drift.)
@@ -329,9 +370,17 @@ function wireSession(s: Session) {
 
   s.connection.on('disconnect', () => {
     const wasClean = s.cleanDisconnect
+    const wasConnected = s.connected
     s.cleanDisconnect = false
     s.connected = false
     sendStatus(s, false, 'Disconnected', wasClean)
+    // Only a DROP of a live session is news. A disconnect the player asked for
+    // (Disconnect, closing a window, QUIT/EXIT, quitting the app) is marked
+    // clean before it happens; a login that failed was never connected.
+    if (wasConnected && !wasClean && s.meta) {
+      recentDrops.set(s.meta.characterId, Date.now())
+      sendCharacterNotice(s, 'dropped')
+    }
     // ATTACH SESSIONS RE-ATTACH THEMSELVES.
     //
     // Safe here in a way it would NOT be for a login: re-attaching starts no
@@ -443,6 +492,7 @@ function scheduleReattach(s: Session, attempt = 0) {
         if (!sessions.has(s.id)) return
         s.connected = true
         sendStatus(s, true, 'Re-attached')
+        noticeConnected(s)
         broadcastRoster()
       })
       .catch(() => {
@@ -505,7 +555,7 @@ function packagedLinuxIcon(): { icon?: string } {
   return fs.existsSync(icon) ? { icon } : {}
 }
 
-function createWindow(opts?: { secondary?: boolean; stateKey?: string }): BrowserWindow {
+function createWindow(opts?: { secondary?: boolean; stateKey?: string; inactive?: boolean }): BrowserWindow {
   // F109: reopen where this window was last time — size, position, maximized —
   // but only if that still lands on a monitor attached NOW (windowState.ts,
   // shared/windowBounds.ts). The primary is always 'main'; a decoupled window is
@@ -513,6 +563,10 @@ function createWindow(opts?: { secondary?: boolean; stateKey?: string }): Browse
   const stateKey = opts?.secondary ? opts.stateKey : 'main'
   const bounds = restoredBoundsFor(stateKey, WINDOW_SIZE)
   const win = new BrowserWindow({
+    // `inactive`: created hidden, then shown WITHOUT activation once painted
+    // (below), so a team login opening a character's own window doesn't pull
+    // the keyboard away from the character the player is already typing into.
+    ...(opts?.inactive ? { show: false } : {}),
     ...(bounds.x !== undefined && bounds.y !== undefined ? { x: bounds.x, y: bounds.y } : {}),
     width: bounds.width,
     height: bounds.height,
@@ -554,6 +608,12 @@ function createWindow(opts?: { secondary?: boolean; stateKey?: string }): Browse
   const id = win.webContents.id
   windows.set(id, win)
   if (!opts?.secondary) primaryWindowId = id
+  if (opts?.inactive) {
+    const reveal = () => { if (!win.isDestroyed() && !win.isVisible()) win.showInactive() }
+    win.once('ready-to-show', reveal)
+    // Backstop: never leave a window invisible if the first paint is slow.
+    setTimeout(reveal, 3000)
+  }
   // F109: maximize after construction (the saved rect above is the RESTORE
   // size, so un-maximizing lands where the user left it), then keep the saved
   // state current for as long as this window lives.
@@ -963,6 +1023,28 @@ function onSystemShutdown(e?: { preventDefault?: () => void }) {
   runAppShutdown()
 }
 
+// ── IPC: cross-window toasts (v0.20.0) ──────────────────────────────────────
+// A renderer asks for a toast to be shown wherever the player is looking (a
+// trigger's Toast action), and a toast's click asks to go to a character that
+// may live in another window.
+ipcMain.on(CH.ROUTE_TOAST, (_event, toast: RoutedToast) => {
+  focusedAppWindow()?.webContents.send(CH.ROUTED_TOAST, toast)
+})
+
+ipcMain.on(CH.FOCUS_CHARACTER, (_event, characterId: string) => {
+  // The newest session for this character: after a reconnect-in-place the old
+  // record is gone, but prefer a connected one if there are somehow two.
+  const matches = Array.from(sessions.values()).filter(x => x.meta?.characterId === characterId)
+  const s = matches.find(x => x.connected) ?? matches[matches.length - 1]
+  if (!s) return
+  const win = ownerWindow(s)
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+  win.webContents.send(CH.SELECT_CHARACTER, characterId)
+})
+
 // ── IPC: session lifecycle ────────────────────────────────────────────────────
 
 ipcMain.handle(CH.LOGIN, async (event, creds: LoginCredentials): Promise<LoginResult> => {
@@ -1023,6 +1105,7 @@ ipcMain.handle(CH.LOGIN, async (event, creds: LoginCredentials): Promise<LoginRe
     }
     s.connected = true
     sendStatus(s, true, 'Connected')
+    noticeConnected(s)
     // Arm the safety net HERE, not where the hold was set: it both releases the
     // hold and DELIVERS the buffer, and its window has to measure "how long
     // until the renderer mounts the GameWindow", not "how long login takes".
@@ -1082,6 +1165,7 @@ ipcMain.handle(CH.LOGIN_ATTACH, async (event, creds: AttachCredentials): Promise
     await s.connection.connectAttach(creds)
     s.connected = true
     sendStatus(s, true, 'Attached')
+    noticeConnected(s)
     scheduleReplayHoldRelease(s)
     return { ok: true, sessionId: s.id }
   } catch (err) {
@@ -1139,9 +1223,11 @@ function scheduleReplayHoldRelease(s: Session) {
 // numeric id moves the session to an existing window (e.g. re-home to primary).
 // The socket/parser/LichBridge are NEVER touched — only ownerWindowId changes,
 // so owner-targeted event routing follows the session to its new window.
-ipcMain.handle('session:move-window', (_event, sessionId: SessionId, target: 'new' | 'main' | number) => {
+ipcMain.handle('session:move-window', (_event, sessionId: SessionId, target: 'new' | 'main' | number, opts?: { quiet?: boolean }): boolean => {
+  // Returns whether the character MOVED — a team login trusts this rather than
+  // assuming, since the refusals below are silent.
   const s = getSession(sessionId)
-  if (!s) return
+  if (!s) return false
   const sourceWindowId = s.ownerWindowId
 
   if (target === 'new') {
@@ -1149,10 +1235,10 @@ ipcMain.handle('session:move-window', (_event, sessionId: SessionId, target: 'ne
     // window empty for no benefit. The UI greys this out too; this is the
     // authoritative backstop covering every entry point.
     const ownedCount = Array.from(sessions.values()).filter(x => x.ownerWindowId === sourceWindowId).length
-    if (ownedCount <= 1) return
+    if (ownedCount <= 1) return false
     // F109: key the new window by this character, so decoupling them again
     // reopens their window where it was last left.
-    const win = createWindow({ secondary: true, stateKey: s.meta ? `char:${s.meta.characterId}` : undefined })
+    const win = createWindow({ secondary: true, stateKey: s.meta ? `char:${s.meta.characterId}` : undefined, inactive: !!opts?.quiet })
     s.ownerWindowId = win.webContents.id
     s.replayTarget = win.webContents.id  // this window earned a history replay
     s.holdingForReplay = true            // hold live until the replay is delivered
@@ -1164,14 +1250,14 @@ ipcMain.handle('session:move-window', (_event, sessionId: SessionId, target: 'ne
     windowById(sourceWindowId)?.webContents.send('session-release', sessionId)
     broadcastRoster()
     refreshMenuState()
-    return
+    return true
   }
 
   // Move to an already-open window ('main' → primary, or a specific id): push an
   // acquire to it (its renderer is live with a listener), release from source.
   const targetId = target === 'main' ? primaryWindowId : target
   const targetWin = windowById(targetId)
-  if (!targetWin || targetId === sourceWindowId) return
+  if (!targetWin || targetId === sourceWindowId) return false
   s.ownerWindowId = targetId
   s.replayTarget = targetId  // the receiving window earned a history replay
   s.holdingForReplay = true  // hold live until the replay is delivered
@@ -1189,6 +1275,7 @@ ipcMain.handle('session:move-window', (_event, sessionId: SessionId, target: 'ne
     const stillOwned = Array.from(sessions.values()).some(x => x.ownerWindowId === sourceWindowId)
     if (!stillOwned) windowById(sourceWindowId)?.destroy()
   }
+  return true
 })
 
 // A freshly-loaded window pulls the sessions main has assigned to it (used by a

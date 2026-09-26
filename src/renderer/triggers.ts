@@ -22,13 +22,13 @@
 // `'main'`, not `'any'` (B128, Jaded, v0.8.9 — DR routes speech to both
 // `main` and the conversation stream, so `'any'` double-fired).
 
-export type ActionType = 'command' | 'echo' | 'notify' | 'sound' | 'webhook' | 'variable' | 'flash' | 'beep' | 'log'
+export type ActionType = 'command' | 'echo' | 'notify' | 'toast' | 'sound' | 'webhook' | 'variable' | 'flash' | 'beep' | 'log'
 
 export type WatchStream = 'any' | string
 
 export type GateVariable =
   | 'health' | 'mana' | 'stamina' | 'spirit' | 'concentration'
-  | 'rt' | 'stance' | 'spell'
+  | 'rt' | 'ct' | 'stance' | 'spell'
   | 'bleeding' | 'stunned' | 'dead' | 'hidden' | 'invisible'
   | 'room'
 
@@ -48,6 +48,11 @@ export interface TriggerAction {
   // command
   command?: string
   delayMs?: number
+  /** Hold the command until roundtime has cleared (DR rejects most commands
+   *  during RT). ABSENT = ON: this is the default for every command action,
+   *  including rules saved before the field existed — only an explicit
+   *  `false` sends immediately. Read it through `actionWaitsForRt`. */
+  waitForRt?: boolean
   // echo
   //
   // The style fields mirror what a highlight and a contact template offer, so
@@ -67,6 +72,12 @@ export interface TriggerAction {
   // notify
   notifyTitle?: string
   notifyBody?: string
+  // toast (v0.20.0) — a Lichborne notification in the window the player is
+  // looking at, wherever the trigger fired. Unlike `notify`, it never leaves
+  // the app. Clicking it goes to the character the trigger fired for.
+  toastTitle?: string
+  toastMessage?: string
+  toastKind?: 'info' | 'success' | 'warning' | 'error'
   // sound
   soundPreset?: 'chime' | 'alert' | 'alarm' | 'ping'
   soundFile?: string   // WAV/audio file path — takes priority over soundPreset when set
@@ -207,12 +218,20 @@ export function echoLineStyle(
   }
 }
 
+/** Whether a command action should wait for roundtime to clear before it is
+ *  sent. Default ON (see `TriggerAction.waitForRt`). A Lich command (`;…`)
+ *  never waits: it goes to Lich, not the game, so RT does not apply to it. */
+export function actionWaitsForRt(action: TriggerAction, cmd = action.command ?? ''): boolean {
+  return action.waitForRt !== false && !cmd.trimStart().startsWith(';')
+}
+
 export function newTriggerAction(type: ActionType = 'command'): TriggerAction {
   return {
     id: crypto.randomUUID(),
     type,
     command: '',
     delayMs: 0,
+    waitForRt: true,
     echoMessage: '',
     echoStream: 'log',
     echoColor: '',
@@ -220,6 +239,9 @@ export function newTriggerAction(type: ActionType = 'command'): TriggerAction {
     echoBold: false,
     notifyTitle: 'Lichborne',
     notifyBody: '$line',
+    toastTitle: '$characterName',
+    toastMessage: '$line',
+    toastKind: 'info',
     soundPreset: 'chime',
     webhookUrl: '',
     webhookMessage: '$line',
@@ -254,6 +276,22 @@ export function newTrigger(pattern = ''): TriggerRule {
   }
 }
 
+/** A trigger with every default filled in, for comparing two rules' CONTENT.
+ *  A rule saved by an older version lacks fields added since (`waitForRt`, the
+ *  toast fields, …), which reads the same as their default at runtime but made
+ *  a structural compare call an old rule and its identical new copy "different"
+ *  — a refused move, a false clash on import. Defaults come from the same
+ *  factories that make new rules, so the two can't disagree. Ids are ignored by
+ *  the compare, so the fresh ids the factories mint don't matter. */
+export function triggerCompareForm(rule: unknown): unknown {
+  const r = rule as TriggerRule
+  return {
+    ...newTrigger(),
+    ...r,
+    actions: (r.actions ?? []).map(a => ({ ...newTriggerAction(a.type), ...a })),
+  }
+}
+
 export function newGate(): StateGate {
   return { id: crypto.randomUUID(), variable: 'health', operator: '<', value: '50', connector: 'and' }
 }
@@ -271,6 +309,7 @@ export const GATE_VARIABLES: { value: GateVariable; label: string; numeric: bool
   { value: 'spirit',        label: 'Spirit %',        numeric: true  },
   { value: 'concentration', label: 'Concentration %', numeric: true  },
   { value: 'rt',            label: 'Roundtime (sec)', numeric: true  },
+  { value: 'ct',            label: 'Cast time (sec)', numeric: true  },
   { value: 'stance',        label: 'Stance',          numeric: false },
   { value: 'spell',         label: 'Prepared spell',  numeric: false },
   { value: 'room',          label: 'Room name',       numeric: false },
@@ -284,42 +323,57 @@ export const GATE_VARIABLES: { value: GateVariable; label: string; numeric: bool
 export const NUMERIC_OPERATORS: GateOperator[] = ['<', '<=', '>', '>=', '=', '!=']
 export const STRING_OPERATORS:  GateOperator[] = ['=', '!=']
 
-export const INTERPOLATABLE_VARS: { name: string; desc: string }[] = [
-  { name: 'match',         desc: 'matched text (same as $0)' },
-  { name: '0',             desc: 'full matched text' },
-  { name: '1',             desc: 'first capture group' },
-  { name: '2',             desc: 'second capture group' },
-  { name: '3',             desc: 'third capture group' },
-  { name: 'name',          desc: 'named capture group — (?<name>…) → $name' },
-  { name: 'line',          desc: 'full matched line' },
-  { name: 'characterName', desc: 'logged-in character name' },
-  { name: 'date',          desc: 'current date' },
-  { name: 'time',          desc: 'current time' },
-  { name: 'timestamp',     desc: 'epoch milliseconds' },
-  { name: 'health',        desc: 'health %' },
-  { name: 'mana',          desc: 'mana %' },
-  { name: 'stamina',       desc: 'stamina %' },
-  { name: 'spirit',        desc: 'spirit %' },
-  { name: 'concentration', desc: 'concentration %' },
-  { name: 'rt',            desc: 'roundtime seconds' },
-  { name: 'ct',            desc: 'cast time seconds' },
-  { name: 'stance',        desc: 'current stance' },
-  { name: 'spell',         desc: 'prepared spell' },
-  { name: 'left',          desc: 'left hand item' },
-  { name: 'right',         desc: 'right hand item' },
-  { name: 'room',          desc: 'room name' },
-  { name: 'roomid',        desc: 'room id number' },
-  { name: 'exits',         desc: 'room exits (comma-separated)' },
-  { name: 'bleeding',      desc: 'true/false' },
-  { name: 'poisoned',      desc: 'true/false' },
-  { name: 'diseased',      desc: 'true/false' },
-  { name: 'stunned',       desc: 'true/false' },
-  { name: 'unconscious',   desc: 'true/false (needs statusprompt)' },
-  { name: 'webbed',        desc: 'true/false' },
-  { name: 'joined',        desc: 'true/false' },
-  { name: 'hidden',        desc: 'true/false' },
-  { name: 'invisible',     desc: 'true/false' },
-  { name: 'dead',          desc: 'true/false' },
+/** Sections of the "Insert variable" menu, in reading order. */
+export const VAR_GROUPS = [
+  { id: 'match',  title: 'From the matched line' },
+  { id: 'who',    title: 'Character & time' },
+  { id: 'vitals', title: 'Vitals (percent)' },
+  { id: 'combat', title: 'Timers, stance & spell' },
+  { id: 'where',  title: 'Hands & room' },
+  { id: 'status', title: 'Status (true / false)' },
+] as const
+export type VarGroupId = typeof VAR_GROUPS[number]['id']
+
+// The editor's DISPLAY list of `$vars`. The values come from the engine's
+// `buildVars` (useTriggerEngine.ts) — a var added there belongs here too.
+// `textOnly` = only meaningful when the trigger fires on game text (a variable
+// trigger has no regex groups; its $match / $line are the new value).
+export const INTERPOLATABLE_VARS: { name: string; desc: string; group: VarGroupId; textOnly?: boolean }[] = [
+  { name: 'match',         group: 'match',  desc: 'the text the pattern matched (same as $0)' },
+  { name: '0',             group: 'match',  desc: 'the text the pattern matched' },
+  { name: '1',             group: 'match',  desc: 'first ( ) capture group in a Regex pattern', textOnly: true },
+  { name: '2',             group: 'match',  desc: 'second capture group', textOnly: true },
+  { name: '3',             group: 'match',  desc: 'third capture group', textOnly: true },
+  { name: 'name',          group: 'match',  desc: 'a named group — (?<who>\\w+) gives you $who', textOnly: true },
+  { name: 'line',          group: 'match',  desc: 'the whole line that matched' },
+  { name: 'characterName', group: 'who',    desc: "your character's name" },
+  { name: 'date',          group: 'who',    desc: "today's date" },
+  { name: 'time',          group: 'who',    desc: 'the current time' },
+  { name: 'timestamp',     group: 'who',    desc: 'current time in milliseconds (for logs)' },
+  { name: 'health',        group: 'vitals', desc: 'health %' },
+  { name: 'mana',          group: 'vitals', desc: 'mana %' },
+  { name: 'stamina',       group: 'vitals', desc: 'stamina %' },
+  { name: 'spirit',        group: 'vitals', desc: 'spirit %' },
+  { name: 'concentration', group: 'vitals', desc: 'concentration %' },
+  { name: 'rt',            group: 'combat', desc: 'roundtime seconds left' },
+  { name: 'ct',            group: 'combat', desc: 'cast time seconds left' },
+  { name: 'stance',        group: 'combat', desc: 'current stance' },
+  { name: 'spell',         group: 'combat', desc: 'the spell you have prepared' },
+  { name: 'left',          group: 'where',  desc: "what's in your left hand" },
+  { name: 'right',         group: 'where',  desc: "what's in your right hand" },
+  { name: 'room',          group: 'where',  desc: 'room name' },
+  { name: 'roomid',        group: 'where',  desc: 'room id number' },
+  { name: 'exits',         group: 'where',  desc: 'obvious exits, comma-separated' },
+  { name: 'bleeding',      group: 'status', desc: 'bleeding' },
+  { name: 'poisoned',      group: 'status', desc: 'poisoned' },
+  { name: 'diseased',      group: 'status', desc: 'diseased' },
+  { name: 'stunned',       group: 'status', desc: 'stunned' },
+  { name: 'unconscious',   group: 'status', desc: 'unconscious (needs SET STATUSPROMPT)' },
+  { name: 'webbed',        group: 'status', desc: 'webbed' },
+  { name: 'joined',        group: 'status', desc: 'joined to a group' },
+  { name: 'hidden',        group: 'status', desc: 'hidden' },
+  { name: 'invisible',     group: 'status', desc: 'invisible' },
+  { name: 'dead',          group: 'status', desc: 'dead' },
 ]
 
 export const WATCH_STREAM_OPTIONS = [

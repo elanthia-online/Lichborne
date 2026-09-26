@@ -420,7 +420,26 @@
    used (B456: that difference had no comment defending it). */
 .ma-var-menu {
   min-width: 180px;
-  max-height: 240px;
+  /* The trigger list's descriptions are sentences; without a ceiling the menu
+     grows as wide as the longest one. They wrap instead. */
+  max-width: 380px; /* 340 until v0.20.0's live values took a column */
+  max-height: 320px;
+}
+
+/* VarMenu's optional explanation line above the list. On `--bg-raised`, so
+   `--text-secondary` rather than a dim token (pitfall #150). */
+.ma-var-note {
+  padding: 5px 10px 6px;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+/* A section heading at the very top of the menu has nothing above it to be
+   divided from. */
+.ma-var-menu > div:first-child > .ma-var-section:first-child {
+  border-top: none;
+  margin-top: 0;
 }
 
 /* B380: a real <button> per item (keyboard-reachable). The row recipe and the
@@ -444,6 +463,10 @@
   font-size: 0.82rem;
   min-width: 56px;
   flex-shrink: 0;
+  /* A long user variable name wraps rather than running past the menu's
+     max-width. */
+  max-width: 45%;
+  overflow-wrap: anywhere;
 }
 
 .ma-var-item span {
@@ -451,6 +474,40 @@
   font-size: 0.75rem;
   flex: 1;
   line-height: 1.45;
+}
+
+/* v0.20.0: what the variable holds right now (VarMenu LiveVarsContext). The
+   last thing in the row, one line, never wider than a third of the menu —
+   a room title is long. `em` rather than `span` so the description rule above
+   (flex: 1) doesn't claim it. Code font: it is the literal text that would be
+   inserted. On the popover's --bg-raised, so --text-primary mixed toward the
+   accent rather than a dim token (pitfall #150). */
+.ma-var-item .ma-var-live {
+  flex-shrink: 0;
+  max-width: 34%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: normal;
+  font-family: var(--code-font-family);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--accent) 25%, var(--text-primary));
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 14%, transparent);
+}
+.ma-var-item .ma-var-live--empty {
+  font-family: inherit;
+  font-style: italic;
+  color: var(--text-secondary);
+}
+
+/* The "values are live" line sits under the menu's own note. */
+.ma-var-menu.ma-var-menu--live { width: min(380px, calc(100vw - 16px)); }
+
+.ma-var-note + .ma-var-note--live {
+  padding-top: 0;
 }
 
 /* Section divider inside the variable picker (separates $vars from {Tokens}). */

@@ -31,7 +31,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import type { LineStyleHint } from '../../shared/types'
 import {
   type TriggerRule, type TriggerAction, type StateGate, type GateOperator,
-  buildTriggerRegex, interpolate, echoLineStyle,
+  buildTriggerRegex, interpolate, echoLineStyle, actionWaitsForRt,
 } from '../triggers'
 import { isRuleActive } from '../groups'
 import { literalGate } from '../regexLiteral'
@@ -39,8 +39,13 @@ import { IS_MAC } from '../lichSettings'
 
 export interface TriggerGameState {
   vitals: Record<string, { current: number; max: number }>
-  rtSeconds: number
-  ctSeconds: number
+  /** RT / CT as local-clock EXPIRY times (epoch ms, 0 = none) — the same
+   *  server-anchored value the timer bar uses (B192). Stored as an expiry, not
+   *  a seconds count, because a count taken when the tag arrived never decays:
+   *  DR sends nothing when RT runs out, so a stored `5` stayed `5` until the
+   *  next roundtime tag. Read seconds-left through `secondsLeft`. */
+  rtExpires: number
+  ctExpires: number
   stance: string
   spell: string
   leftHand: string
@@ -60,6 +65,8 @@ export interface TriggerCallbacks {
   disableTrigger: (id: string) => void
   flashWindow:  () => void
   writeLog:     (file: string, content: string) => void
+  /** A Lichborne toast in the window the player is looking at (routed by main). */
+  toast:        (title: string, message: string, kind: 'info' | 'success' | 'warning' | 'error') => void
   onFire?:      (name: string, matched: string, detail: string, stream: string, ruleId: string) => void
 }
 
@@ -122,6 +129,12 @@ function playBeep() {
   } catch {}
 }
 
+/** Whole seconds left until `expires` (epoch ms), rounded UP so an RT with
+ *  0.2s left still reads 1 — never 0 while the game would still refuse. */
+export function secondsLeft(expires: number, now = Date.now()): number {
+  return Math.max(0, Math.ceil((expires - now) / 1000))
+}
+
 function getGateActual(gate: StateGate, state: TriggerGameState): string {
   switch (gate.variable) {
     case 'health':        return String(state.vitals.health?.current        ?? 0)
@@ -129,7 +142,8 @@ function getGateActual(gate: StateGate, state: TriggerGameState): string {
     case 'stamina':       return String(state.vitals.stamina?.current       ?? 0)
     case 'spirit':        return String(state.vitals.spirit?.current        ?? 0)
     case 'concentration': return String(state.vitals.concentration?.current ?? 0)
-    case 'rt':            return String(Math.ceil(state.rtSeconds))
+    case 'rt':            return String(secondsLeft(state.rtExpires))
+    case 'ct':            return String(secondsLeft(state.ctExpires))
     case 'stance':        return state.stance.toLowerCase()
     case 'spell':         return state.spell
     case 'room':          return state.roomTitle
@@ -195,9 +209,9 @@ function buildVars(
     stamina:       String(state.vitals.stamina?.current       ?? 0),
     spirit:        String(state.vitals.spirit?.current        ?? 0),
     concentration: String(state.vitals.concentration?.current ?? 0),
-    rt:            String(Math.ceil(state.rtSeconds)),
-    ct:            String(Math.ceil(state.ctSeconds)),
-    casttime:      String(Math.ceil(state.ctSeconds)),
+    rt:            String(secondsLeft(state.rtExpires)),
+    ct:            String(secondsLeft(state.ctExpires)),
+    casttime:      String(secondsLeft(state.ctExpires)),
     stance:        state.stance,
     spell:         state.spell,
     preparedspell: state.spell,
@@ -226,9 +240,13 @@ function buildVars(
 
 function summarizeAction(action: TriggerAction, vars: Record<string, string>): string {
   switch (action.type) {
-    case 'command':  return `cmd: "${interpolate(action.command ?? '', vars).trim()}"`
+    case 'command': {
+      const cmd = interpolate(action.command ?? '', vars).trim()
+      return `cmd: "${cmd}"${actionWaitsForRt(action, cmd) ? ' (after RT)' : ''}`
+    }
     case 'echo':     return `echo → ${action.echoStream ?? 'log'}: "${interpolate(action.echoMessage ?? '', vars).trim()}"`
     case 'notify':   return `notify: "${interpolate(action.notifyTitle ?? 'Lichborne', vars)}"`
+    case 'toast':    return `toast: "${interpolate(action.toastMessage ?? '', vars).trim()}"`
     case 'sound':    return action.soundFile ? `sound: ${action.soundFile.split(/[\\/]/).pop()}` : `sound: ${action.soundPreset ?? 'chime'}`
     case 'beep':     return 'beep'
     case 'flash':    return 'flash window'
@@ -252,17 +270,26 @@ function executeAction(
   vars: Record<string, string>,
   cbs: TriggerCallbacks,
   trackTimer: (handle: ReturnType<typeof setTimeout>) => void,
+  sendAfterRt: (cmd: string, firedAt: number, firedSeq: number) => void,
+  firedSeq: number,
 ) {
   switch (action.type) {
     case 'command': {
       const cmd = interpolate(action.command ?? '', vars).trim()
       if (!cmd) return
+      // The fire moment is captured NOW, not when a delay elapses: the RT
+      // queue's settle rule is "has the turn this trigger fired in closed?",
+      // and after a multi-second delay it long since has.
+      const firedAt = Date.now()
+      const send = actionWaitsForRt(action, cmd)
+        ? () => sendAfterRt(cmd, firedAt, firedSeq)
+        : () => cbs.sendCommand(cmd)
       const delay = action.delayMs ?? 0
       if (delay > 0) {
-        const handle = setTimeout(() => cbs.sendCommand(cmd), delay)
+        const handle = setTimeout(send, delay)
         trackTimer(handle)
       } else {
-        cbs.sendCommand(cmd)
+        send()
       }
       break
     }
@@ -300,6 +327,13 @@ function executeAction(
       // attention request from the active app (Apple's documented behaviour,
       // not verified here). Windows/Linux unchanged.
       if (IS_MAC) cbs.flashWindow()
+      break
+    }
+    case 'toast': {
+      const message = interpolate(action.toastMessage ?? '', vars).trim()
+      if (!message) return
+      const title = interpolate(action.toastTitle ?? '', vars).trim()
+      cbs.toast(title, message, action.toastKind ?? 'info')
       break
     }
     case 'sound':
@@ -343,7 +377,13 @@ export function useTriggerEngine(
   stateRef: React.MutableRefObject<TriggerGameState>,
   callbacks: TriggerCallbacks,
   activeGroupStatesRef: React.MutableRefObject<Record<string, boolean>>,
-): { processLine: (stream: string, lineText: string) => void; processVariableChange: (name: string, newValue: string) => void; cancelPending: () => void } {
+): {
+  processLine: (stream: string, lineText: string) => void
+  processVariableChange: (name: string, newValue: string) => void
+  cancelPending: () => void
+  notePrompt: () => void
+  noteTimer: (name: 'rt' | 'ct', expires: number) => void
+} {
   // Compiled text-trigger regexes — recompiled whenever rules change
   const compiledRef = useRef<{ rule: TriggerRule; regex: RegExp | null; fastLower: string | null }[]>([])
   // Variable-watch rules index
@@ -371,13 +411,89 @@ export function useTriggerEngine(
     pendingTimersRef.current.add(handle)
   }, [])
 
+  // ── Wait-for-roundtime queue ──────────────────────────────────────────────
+  //
+  // A command action with `waitForRt` (the default) goes through this FIFO
+  // instead of straight to the socket. Two conditions release the head:
+  //
+  // 1. SETTLED — a prompt has arrived since the trigger fired (or
+  //    RT_SETTLE_CAP_MS has passed). This is the load-bearing half: the parser
+  //    emits `roundtime` at the `<prompt>` tag, AFTER every text line of that
+  //    server turn, so a trigger matching "You swing…" fires BEFORE the RT that
+  //    swing starts is known. Checking RT at fire time would read the old,
+  //    usually-zero value and send at once, which is the bug this exists for.
+  //    The cap covers lines no prompt follows (a Lich script's echo).
+  // 2. RT CLEAR — `now >= rtExpires`, read live at pump time, so an RT that is
+  //    extended while a command waits is honoured.
+  //
+  // After a command is sent, the NEXT queued one re-arms its settle, so it waits
+  // for the prompt answering the command just sent — and therefore for any RT
+  // that command starts. Two queued commands (`stand` then `attack`) go one
+  // round apart instead of back-to-back into "...wait 3 seconds."
+  //
+  // No grace is added to the RT expiry: it is anchored on the prompt's whole-
+  // second server time (B192), which floors the server clock, so the computed
+  // expiry lands at or after the real one — late by network latency, never early.
+  const RT_SETTLE_CAP_MS = 1000
+  const rtQueueRef   = useRef<{ cmd: string; since: number; seq: number }[]>([])
+  const promptSeqRef = useRef(0)
+  const pumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pumpRef      = useRef<() => void>(() => {})
+  const timerEndRef  = useRef<Record<'rt' | 'ct', ReturnType<typeof setTimeout> | null>>({ rt: null, ct: null })
+
+  // One pending wake-up at a time; each pump recomputes the right one.
+  const schedulePump = useCallback((ms: number) => {
+    if (pumpTimerRef.current !== null) clearTimeout(pumpTimerRef.current)
+    pumpTimerRef.current = setTimeout(() => {
+      pumpTimerRef.current = null
+      pumpRef.current()
+    }, Math.max(0, ms))
+  }, [])
+
+  const pump = useCallback(() => {
+    const q = rtQueueRef.current
+    while (q.length > 0) {
+      const now  = Date.now()
+      const head = q[0]
+      const settled = promptSeqRef.current > head.seq || now - head.since >= RT_SETTLE_CAP_MS
+      if (!settled) { schedulePump(head.since + RT_SETTLE_CAP_MS - now); return }
+      const rtEnd = stateRef.current.rtExpires
+      if (now < rtEnd) { schedulePump(rtEnd - now); return }
+      q.shift()
+      callbacks.sendCommand(head.cmd)
+      if (q.length > 0) { q[0].since = now; q[0].seq = promptSeqRef.current }
+    }
+  }, [stateRef, callbacks, schedulePump])
+  useEffect(() => { pumpRef.current = pump }, [pump])
+
+  // Deferred with a 0ms timer, never pumped inline: we are called mid-batch, and
+  // sending here would echo `>cmd` ahead of the batch's own lines (and, for
+  // notePrompt, ahead of the prompt it merges into).
+  const sendAfterRt = useCallback((cmd: string, firedAt: number, firedSeq: number) => {
+    rtQueueRef.current.push({ cmd, since: firedAt, seq: firedSeq })
+    schedulePump(0)
+  }, [schedulePump])
+
+  /** Call once per game prompt (GameWindow, after the batch's RT event). */
+  const notePrompt = useCallback(() => {
+    promptSeqRef.current++
+    if (rtQueueRef.current.length > 0) schedulePump(0)
+  }, [schedulePump])
+
   const cancelPending = useCallback(() => {
     for (const h of pendingTimersRef.current) clearTimeout(h)
     pendingTimersRef.current.clear()
+    rtQueueRef.current = []
+    if (pumpTimerRef.current !== null) { clearTimeout(pumpTimerRef.current); pumpTimerRef.current = null }
+    for (const k of ['rt', 'ct'] as const) {
+      const h = timerEndRef.current[k]
+      if (h !== null) { clearTimeout(h); timerEndRef.current[k] = null }
+    }
   }, [])
 
   const processLine = useCallback((stream: string, lineText: string) => {
     const now       = Date.now()
+    const firedSeq  = promptSeqRef.current
     const state     = stateRef.current
     const textLower = lineText.toLowerCase()
 
@@ -428,17 +544,27 @@ export function useTriggerEngine(
       }
 
       for (const action of rule.actions) {
-        executeAction(action, vars, callbacks, trackTimer)
+        executeAction(action, vars, callbacks, trackTimer, sendAfterRt, firedSeq)
       }
 
       if (rule.oneShot) {
         callbacks.disableTrigger(rule.id)
       }
     }
-  }, [stateRef, callbacks, trackTimer])
+  }, [stateRef, callbacks, trackTimer, sendAfterRt])
 
-  const processVariableChange = useCallback((name: string, newValue: string) => {
+  // `settled` = this change is not part of a server turn, so a command it
+  // queues has no incoming RT to wait for (see noteTimer). -1 is below every
+  // prompt count, so the RT queue treats the command as settled at once.
+  // `onlyGated`: reach only rules with a CONDITION on this variable. Used by
+  // the roundtime-end fire (noteTimer): a rule watching `rt` with no condition
+  // fired once per roundtime before that fire existed, and would now fire
+  // twice (start AND end) — two `attack`s per round. Only a rule that checks
+  // the value (e.g. `rt = 0`) can tell the end from the start, so only those
+  // hear it.
+  const processVariableChange = useCallback((name: string, newValue: string, settled = false, onlyGated = false) => {
     const now   = Date.now()
+    const firedSeq = settled ? -1 : promptSeqRef.current
     const state = stateRef.current
 
     for (const rule of varRulesRef.current) {
@@ -446,6 +572,7 @@ export function useTriggerEngine(
       if (!isRuleActive(rule.groupIds ?? [], activeGroupStatesRef.current, rule.allGroups ?? false)) continue
       if (!rule.watchVariable) continue
       if (rule.watchVariable.toLowerCase() !== name.toLowerCase()) continue
+      if (onlyGated && !(rule.gates ?? []).some(g => g.variable === name)) continue
 
       if (rule.cooldownSeconds > 0) {
         const last = cooldownsRef.current[rule.id] ?? 0
@@ -469,12 +596,37 @@ export function useTriggerEngine(
       }
 
       for (const action of rule.actions) {
-        executeAction(action, vars, callbacks, trackTimer)
+        executeAction(action, vars, callbacks, trackTimer, sendAfterRt, firedSeq)
       }
 
       if (rule.oneShot) callbacks.disableTrigger(rule.id)
     }
-  }, [stateRef, callbacks, trackTimer, varRulesRef, cooldownsRef, activeGroupStatesRef])
+  }, [stateRef, callbacks, trackTimer, sendAfterRt, varRulesRef, cooldownsRef, activeGroupStatesRef])
 
-  return { processLine, processVariableChange, cancelPending }
+  // ── RT / CT end ──────────────────────────────────────────────────────────
+  //
+  // DR announces a roundtime when it STARTS and says nothing when it ends, so a
+  // variable trigger watching `rt` could only ever see the start. GameWindow
+  // reports each RT/CT expiry here and we fire the variable change with `0` when
+  // it runs out, so "when rt reaches 0" works — for rules with a condition on
+  // that variable only (`onlyGated`), so a condition-less rule keeps firing once
+  // per roundtime instead of twice.
+  //
+  // A newer expiry replaces the pending timer, so an extended RT fires once, at
+  // its real end. The fire is `settled`: an RT running out is not a server turn,
+  // so a queued command from it has nothing to wait for and must not sit out the
+  // 1s settle cap. Cleared by cancelPending (disconnect, and GameWindow unmount,
+  // so the window a character moved OUT of can't fire it a second time).
+  const noteTimer = useCallback((name: 'rt' | 'ct', expires: number) => {
+    const prev = timerEndRef.current[name]
+    if (prev !== null) { clearTimeout(prev); timerEndRef.current[name] = null }
+    const ms = expires - Date.now()
+    if (ms <= 0) return
+    timerEndRef.current[name] = setTimeout(() => {
+      timerEndRef.current[name] = null
+      processVariableChange(name, '0', true, true)
+    }, ms)
+  }, [processVariableChange])
+
+  return { processLine, processVariableChange, cancelPending, notePrompt, noteTimer }
 }

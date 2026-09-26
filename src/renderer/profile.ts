@@ -41,6 +41,8 @@ import { scopedKey, normalizeCharacter, GLOBAL_RULES_SCOPE } from './characterSc
 import { sharedMigrations, characterMigrations, runMigrations } from './profile-migrations'
 import { loadBulkSets, saveBulkSets } from './bulkSets'
 import { loadCommandHistorySettings, saveCommandHistorySettings } from './commandHistorySettings'
+import { loadCharacterNoticesEnabled, saveCharacterNoticesEnabled } from './characterNotices'
+import { loadCharacterColors, storeCharacterColors, coerceCharacterColors } from './characterColors'
 import { getOverviewPersisted, applyOverviewState } from './overviewStore'
 import { loadSessionLogSettings, saveSessionLogSettings, DEFAULT_SESSION_LOG_SETTINGS } from './sessionLogSettings'
 import { loadAIConfig, saveAIConfig, DEFAULT_AI_CONFIG } from './aiConfig'
@@ -137,6 +139,8 @@ export function buildSharedProfile(): SharedProfile {
     bulkConnectSeparateWindows: localStorage.getItem('lichborne.bulkConnectSeparateWindows') === 'true',
     automationAnalytics: localStorage.getItem('lichborne.automationAnalytics') === 'true',
     commandHistory: loadCommandHistorySettings(),
+    characterNotices: loadCharacterNoticesEnabled(),
+    characterColors: loadCharacterColors(),
     overview:   getOverviewPersisted(),
     bulkSets:   loadBulkSets(),
     customColors: loadCustomColors(),
@@ -315,6 +319,15 @@ export async function importSharedProfile(): Promise<void> {
 
   if (data.commandHistory && typeof data.commandHistory === 'object') {
     saveCommandHistorySettings(data.commandHistory as { minLength: number })
+  }
+
+  // Only a real boolean is taken; anything else leaves the default (on).
+  if (typeof data.characterNotices === 'boolean') saveCharacterNoticesEnabled(data.characterNotices)
+
+  // Character colours: coerced (a hand-edited YAML can't smuggle in a non-string),
+  // and only when present, so an older file never wipes colours set since.
+  if (data.characterColors && typeof data.characterColors === 'object') {
+    storeCharacterColors(coerceCharacterColors(data.characterColors))
   }
 
   // Overview options (v0.19.0 Views). applyOverviewState REBUILDS the record

@@ -79,10 +79,19 @@
      taking `--accent`: `.character-tab-health.health-warn` is already
      `var(--accent)`, so an accent label would blur into the health readout.
      The accent lives in the fill + hairline, where nothing competes with it. */
-  background: color-mix(in srgb, var(--accent) 13%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  /* v0.20.0: the character's own colour when one was picked in Edit Profile
+     (--char-color, set inline), else the accent. */
+  background: color-mix(in srgb, var(--char-color, var(--accent)) 13%, transparent);
+  border-color: color-mix(in srgb, var(--char-color, var(--accent)) 30%, transparent);
   color: var(--text-primary, #ddd);
   font-weight: 600;
+}
+
+/* A character with a colour keeps a faint hairline of it while NOT selected,
+   so the colour still says who is who across the strip. Border only — the fill
+   stays the active tab's, or two coloured tabs would both look selected. */
+.character-tab--colored:not(.character-tab--active) {
+  border-color: color-mix(in srgb, var(--char-color) 22%, transparent);
 }
 
 /* v0.8.0 UX: tight name+pill+game cluster. Sits inside .character-tab
@@ -205,6 +214,71 @@
 @media (prefers-reduced-motion: reduce) {
   .character-tab--reconnecting .character-tab-glyph { animation: none; }
 }
+
+/* ── Team Login placeholder tabs (v0.20.0) ──────────────────────────────────
+   A team member still on the way in: the real tab's silhouette, greyed, so the
+   whole team is visible in the strip and a stalled or failed login is in plain
+   sight. It's a <button> (click opens the Team Login panel), so it resets the
+   font and colour a button doesn't inherit. Dashed outline = not a tab yet. */
+.character-tab--pending {
+  position: relative;
+  font-family: inherit;
+  font-style: italic;
+  border: 1px dashed color-mix(in srgb, var(--text-primary) 22%, transparent);
+  border-bottom-style: dashed;
+  opacity: 0.75;
+  overflow: hidden;
+}
+.character-tab--pending .character-tab-name,
+.character-tab--pending .character-tab-game { color: var(--text-muted); }
+.character-tab--pending:hover { opacity: 1; }
+
+.character-tab--pending-connecting {
+  opacity: 0.9;
+  border-color: color-mix(in srgb, var(--color-warning) 55%, transparent);
+}
+.character-tab--pending-connecting .character-tab-glyph {
+  color: color-mix(in srgb, var(--color-warning) 70%, var(--text-primary));
+  animation: char-tab-spin 0.9s linear infinite;
+}
+.character-tab--pending-failed {
+  opacity: 0.9;
+  border-color: color-mix(in srgb, var(--color-danger) 55%, transparent);
+}
+.character-tab--pending-failed .character-tab-glyph {
+  color: color-mix(in srgb, var(--color-danger) 70%, var(--text-primary));
+}
+
+/* The "loading bar in the tab" — indeterminate, like the panel's: the login
+   has steps, not a percentage. */
+.character-tab-pending-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: color-mix(in srgb, var(--color-warning) 18%, transparent);
+  overflow: hidden;
+}
+.character-tab-pending-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 35%;
+  background: var(--color-warning);
+  animation: char-tab-pending-slide 1.4s ease-in-out infinite;
+}
+@keyframes char-tab-pending-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(290%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .character-tab--pending-connecting .character-tab-glyph,
+  .character-tab-pending-bar::after { animation: none; }
+}
+:root[data-epilepsy-safe='true'] .character-tab--pending-connecting .character-tab-glyph,
+:root[data-epilepsy-safe='true'] .character-tab-pending-bar::after { animation: none; }
 
 .character-tab-close {
   appearance: none;

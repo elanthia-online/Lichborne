@@ -1,0 +1,299 @@
+/* ── Team Login panel + app-bar pill (TeamLoginPanel.tsx, v0.20.0) ──────────
+   The house modal chrome (UX standard #10) comes from COMPOSING the ui.css
+   skeleton — `ui-modal-backdrop ui-modal ui-modal-head ui-modal-title
+   ui-modal-foot` — so a retune of the house tokens reaches this dialog too
+   (UX #12: never a private copy). Only what is specific to it lives here. Status colours are the theme's semantic
+   `--color-success / --color-warning / --color-danger`, mixed toward the text
+   or surface so they stay readable on light AND dark themes (pitfalls #55,
+   #150) — green READY, amber in progress, red failed.
+
+   z-index 1500 is the connect-overlay tier (pitfall #118d): above the + modal
+   (1000) a team can be launched from, below toasts (2050) so the finish toast
+   is never hidden under it. */
+
+.tlr-backdrop { z-index: 1500; }
+
+.tlr-panel {
+  width: min(880px, 100%);
+  outline: none;
+}
+
+/* One character's login (SoloConnectPanel): the same chrome and tile, sized for
+   one — a single tile stretched to 880px read as a banner, not a card. */
+.tlr-panel.tlr-panel--solo { width: min(520px, 100%); }
+
+.tlr-head-count {
+  flex: 1;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tiles wrap onto more rows for a big team; the grid scrolls, the header and
+   footer never do (pitfall #109: its size comes from user data). */
+.tlr-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  /* The team SHARES the width: 2 characters at half each, 4 at a quarter.
+     `--tlr-cols` is min(team size, 4), set by the component — a column count
+     that follows the data, so there's never an empty track leaving a gap. A
+     team of 5+ wraps at four per row. */
+  grid-template-columns: repeat(var(--tlr-cols, 4), minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px 16px;
+}
+/* A narrow window can't fit four across; two per row keeps names readable. */
+@media (max-width: 640px) {
+  .tlr-grid { grid-template-columns: repeat(var(--tlr-cols-narrow, 2), minmax(0, 1fr)); }
+}
+
+/* ── Tile ───────────────────────────────────────────────────────────────── */
+
+.tlr-tile {
+  --tlr-state: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-subtle, var(--border));
+  border-radius: 8px;
+  background: var(--bg-raised);
+  transition: border-color var(--ui-transition), background var(--ui-transition), opacity var(--ui-transition);
+}
+
+/* Waiting / skipped are quiet, but only the NAME and badge dim — the tile's
+   explanation stays readable. A whole-tile opacity took its muted text to
+   ~2.2:1 on light themes (pitfall #150). */
+.tlr-tile--waiting .tlr-tile-head,
+.tlr-tile--waiting .tlr-tile-sub,
+.tlr-tile--waiting .tlr-tile-badge,
+.tlr-tile--skipped .tlr-tile-head,
+.tlr-tile--skipped .tlr-tile-sub,
+.tlr-tile--skipped .tlr-tile-badge { opacity: 0.6; }
+.tlr-tile--skipped .tlr-tile-meta { color: var(--text-secondary); }
+.tlr-tile--connecting { --tlr-state: var(--color-warning); border-color: color-mix(in srgb, var(--color-warning) 45%, var(--border)); }
+.tlr-tile--ready      { --tlr-state: var(--color-success); border-color: color-mix(in srgb, var(--color-success) 55%, var(--border)); }
+.tlr-tile--failed     { --tlr-state: var(--color-danger);  border-color: color-mix(in srgb, var(--color-danger) 50%, var(--border)); }
+
+/* The chosen character (the footer's Play button names it), and the one
+   being played. */
+.tlr-tile--selected {
+  /* The character's own colour when one was picked (--char-color, set inline
+     from characterColors), else the theme accent. */
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--char-color, var(--accent)) 70%, transparent);
+}
+.tlr-tile--playing {
+  background: color-mix(in srgb, var(--color-success) 8%, var(--bg-raised));
+}
+
+.tlr-tile-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 10px 12px 8px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.tlr-tile-main:disabled { cursor: default; }
+.tlr-tile--ready .tlr-tile-main:not(:disabled):hover {
+  background: color-mix(in srgb, var(--color-success) 7%, transparent);
+}
+
+.tlr-tile-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+/* The character's badge (v0.20.0) — the same monogram as their toasts and
+   Tableau avatar (utils/nameColor). A data colour with a theme-derived ring
+   (Principle #4 exception, UX #9 rider). */
+.tlr-tile-mono {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 50%;
+  font-size: 0.72em;
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-primary) 28%, transparent);
+}
+
+.tlr-tile-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--tlr-state);
+}
+
+.tlr-tile-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tlr-tile-sub {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+/* Status word. Colour is mixed toward the text so it clears contrast on the
+   tile surface on every theme; the dot and border carry the pure hue. */
+.tlr-tile-badge {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--tlr-state) 70%, var(--text-primary));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tlr-state) 45%, transparent);
+}
+
+.tlr-tile-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+  min-height: 2.6em;   /* same height waiting or ready, so rows don't jump */
+  font-size: 0.8rem;
+}
+
+.tlr-tile-step {
+  color: var(--text-secondary);
+  /* ALWAYS two lines tall, clamped to two: a step that fits one line and the
+     next that wraps to two would otherwise grow and shrink the tile — and the
+     whole panel — on every step (Sekmeht; pitfall #103). The line-height is set
+     HERE so the min-height's em arithmetic is this element's own, not an
+     inherited one (pitfall #116). tabular-nums keeps the ticking seconds from
+     re-wrapping the line. */
+  line-height: 1.35;
+  min-height: calc(2 * 1.35em);
+  font-variant-numeric: tabular-nums;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* A step that hasn't moved in a while says so — the difference between
+   "working" and "stuck" was invisible before. */
+.tlr-tile-stall {
+  color: color-mix(in srgb, var(--color-warning) 70%, var(--text-primary));
+  font-variant-numeric: tabular-nums;
+}
+
+.tlr-tile-meta { color: var(--text-muted); }
+.tlr-tile-health { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.tlr-tile-room {
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tlr-tile-error {
+  color: color-mix(in srgb, var(--color-danger) 75%, var(--text-primary));
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* An indeterminate bar: DR gives no percentage, only steps, so it says
+   "working" rather than claiming a fraction it doesn't know. */
+.tlr-tile-bar {
+  height: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-warning) 18%, transparent);
+}
+.tlr-tile-bar-fill {
+  width: 35%;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--color-warning);
+  animation: tlr-slide 1.4s ease-in-out infinite;
+}
+@keyframes tlr-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(290%); }
+}
+
+.tlr-tile-action {
+  margin: 0 12px 10px;
+  align-self: flex-start;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+
+.tlr-foot-text { flex: 1; min-width: 0; }
+.tlr-status { font-weight: 600; font-variant-numeric: tabular-nums; }
+.tlr-hint { color: var(--text-secondary); font-size: 0.8rem; margin-top: 2px; }
+
+/* ── App-bar pill ───────────────────────────────────────────────────────── */
+
+/* Sized off the app bar's own font (em), like the bar's other controls, so it
+   tracks the font setting. Scoped under .app-bar-actions so it outranks that
+   container's narrow-window `button` rule (app-bar.css), which would otherwise
+   replace its padding and size. */
+.app-bar-actions .tlr-pill,
+.tlr-pill {
+  --tlr-state: var(--color-warning);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 0.2em 0.7em;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--tlr-state) 50%, var(--border));
+  background: color-mix(in srgb, var(--tlr-state) 10%, transparent);
+  color: color-mix(in srgb, var(--tlr-state) 60%, var(--text-primary));
+  font: inherit;
+  font-size: 0.85em;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tlr-pill:hover { background: color-mix(in srgb, var(--tlr-state) 18%, transparent); }
+.tlr-pill--done   { --tlr-state: var(--color-success); }
+.tlr-pill--failed { --tlr-state: var(--color-danger); }
+
+.tlr-pill-icon { display: inline-flex; align-items: center; }
+.tlr-pill-spin {
+  width: 0.8em;
+  height: 0.8em;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--tlr-state) 30%, transparent);
+  border-top-color: var(--tlr-state);
+  animation: tlr-spin 0.9s linear infinite;
+}
+@keyframes tlr-spin { to { transform: rotate(360deg); } }
+
+/* Motion is decoration; the words and colours carry the state (UX #9b).
+   Both switches, as the placeholder tabs honour both. */
+:root[data-epilepsy-safe='true'] .tlr-tile-bar-fill,
+:root[data-epilepsy-safe='true'] .tlr-pill-spin { animation: none; }
+:root[data-epilepsy-safe='true'] .tlr-tile-bar-fill { width: 100%; opacity: 0.6; }
+@media (prefers-reduced-motion: reduce) {
+  .tlr-tile-bar-fill, .tlr-pill-spin { animation: none; }
+  .tlr-tile-bar-fill { width: 100%; opacity: 0.6; }
+}

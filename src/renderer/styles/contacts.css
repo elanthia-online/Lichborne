@@ -233,115 +233,16 @@ textarea.cp-textarea {
 
 /* ── Templates tab ───────────────────────────────────────────────────────── */
 
-.cp-tpl-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
+/* The Templates tab uses the Contacts tab's own two-pane classes above (v0.20.0):
+   `.cp-body` / `.cp-sidebar` / `.cp-list` / `.cp-detail`, with the editor in a
+   `.cp-form`. It used to be an accordion of cards with no search and a list
+   that only scrolled as a whole; those card rules were removed with it. */
 
-.cp-tpl-top {
-  flex-shrink: 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.cp-tpl-top .cp-new-btn {
-  border-bottom: none;
-}
-
-.cp-tpl-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Each template is a CARD (matches the Settings look) — bordered, rounded, a
-   subtle surface, with a clear accent state while it's being edited. Surface
-   shifts are color-mix toward --text-primary so they read on light + dark
-   (pitfall #55). */
-.cp-tpl-row {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--text-primary) 3%, var(--bg-base));
-  overflow: hidden;
-  transition: border-color var(--ui-transition), background var(--ui-transition);
-}
-.cp-tpl-row--expanded {
-  border-color: var(--accent-dim);
-  background: color-mix(in srgb, var(--accent) 5%, var(--bg-base));
-}
-
-.cp-tpl-summary {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  cursor: pointer;
-  transition: background var(--ui-transition);
-}
-
-.cp-tpl-summary:hover { background: color-mix(in srgb, var(--text-primary) 6%, transparent); }
-
-.cp-tpl-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.cp-tpl-name-label {
-  font-size: 0.88rem;
-  /* Deliberately NOT bold. This row previews the template, and <strong>
-     resolves to --ui-bold-weight (600 at the default text weight) — exactly
-     what this rule used to force — so a bolded template looked identical to an
-     unbolded one here. A preview must show the template, never the panel's own
-     styling. */
-  min-width: 80px;
-}
-
-.cp-tpl-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-}
-
-.cp-tpl-swatch {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-}
-
-.cp-tpl-swatch--bg {
-  background-image: linear-gradient(45deg, var(--border-faint) 25%, transparent 25%,
-    transparent 75%, var(--border-faint) 75%),
-    linear-gradient(45deg, var(--border-faint) 25%, transparent 25%,
-    transparent 75%, var(--border-faint) 75%);
-  background-size: 6px 6px;
-  background-position: 0 0, 3px 3px;
-}
-
-.cp-tpl-tag-preview {
-  font-size: 0.78rem;
-  color: var(--text-dim);
-}
-
-.cp-tpl-tag-preview em { color: var(--text-muted); }
-
-/* ── Template inline edit form ───────────────────────────────────────────── */
+/* ── Template edit form ───────────────────────────────────────────── */
 
 .cp-tpl-edit {
-  padding: 12px 14px 14px;
-  /* Transparent so the card's (accent-tinted while expanded) surface shows
-     through, with a hairline separating it from the summary row above. */
-  background: transparent;
-  border-top: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  /* Sits in the detail pane's `.cp-form`, which supplies the padding and the
+     scroll, as it does for a contact. */
   /* A GRID, not a single column. The dialog is 88vw, so eleven short
      label+field rows stacked vertically used a couple of hundred pixels of a
      card well over a thousand wide, and ran off the bottom of the list --
@@ -363,7 +264,10 @@ textarea.cp-textarea {
    when it is genuinely narrow. */
 .cp-tpl-zone {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  /* min(): the editor now sits beside a resizable sidebar, so its pane can be
+     narrower than 240px (a small window, a wide sidebar). A plain 240px track
+     would then overflow sideways. */
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
   gap: 9px 20px;
   align-items: start;
 }

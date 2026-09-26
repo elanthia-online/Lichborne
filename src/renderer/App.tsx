@@ -3,9 +3,9 @@
 // `App` mounts the two APP-LEVEL providers — `RosterProvider` (main's
 // cross-window session list) and `SessionsProvider` (this window's tabs) —
 // around `AppShell`, the single component that owns everything above the
-// per-character GameWindows. `ConnectStep` is a deliberately isolated leaf so
-// the ~1/s connect commentary re-renders one line, not every game window
-// (v0.18.0 perf audit).
+// per-character GameWindows. The ~1/s connect commentary is subscribed to
+// INSIDE the Team Login tiles (TeamLoginPanel's TileStep), never held here, so
+// it re-renders one line, not every game window (v0.18.0 perf audit).
 //
 // WHAT AppShell OWNS (each block below carries its own history):
 //  • The session RENDER: every session gets a `.session-shell` that is hidden
@@ -71,6 +71,7 @@ import AppBar from './components/AppBar'
 import QuickSend from './components/QuickSend'
 import BulkConnectPicker from './components/BulkConnectPicker'
 import { showToast } from './toasts'
+import { characterNoticeToast, withdrawNotice, supersededBy, loadCharacterNoticesEnabled } from './characterNotices'
 
 // B356/B364: the contract with main — an `updater-log` message starting with
 // this is shown as a toast (prefix stripped); every other one is console-only.
@@ -78,7 +79,8 @@ const UPDATER_NOTICE_PREFIX = '[notice] '
 import ToastHost from './components/ToastHost'
 import ConfirmHost from './components/ConfirmHost'
 import { GroupsProvider } from './components/GroupsContext'
-import { SessionsProvider, useSessions, type CharacterId } from './SessionsContext'
+import { SessionsProvider, useSessions, makeCharacterId, type CharacterId } from './SessionsContext'
+import { TeamLoginPanel, SoloConnectPanel, TeamLoginPill, teamCounts, trackConnectSteps, type TeamRun, type TeamMember } from './components/TeamLoginPanel'
 import { RosterProvider, useRoster } from './RosterContext'
 import { CharacterProvider } from './CharacterContext'
 import { flushPendingProfileSaves, exportCharacterProfile, importCharacterProfile, clearCharacterLocalStorage, importSharedProfile, exportSharedProfile, saveLastSessionCharacters, scheduleSharedProfileSave } from './profile'
@@ -118,23 +120,6 @@ export default function App() {
         <AppShell />
       </SessionsProvider>
     </RosterProvider>
-  )
-}
-
-// Live connect commentary, isolated in its own leaf so the ~1/second progress
-// updates during a Lich wait re-render ONLY this line — not AppShell and every
-// GameWindow under it. Keying on `character` also makes the stale-step problem
-// impossible by construction: a step for a different character never renders,
-// so a failed attempt's last message can't flash over the next one.
-function ConnectStep({ character }: { character: string }) {
-  const [step, setStep] = useState<{ character: string; message: string } | null>(null)
-  useEffect(() => window.api.onConnectProgress(p => setStep(p)), [])
-  // Reset when the overlay moves to a different character (bulk connect).
-  useEffect(() => { setStep(null) }, [character])
-  return (
-    <div className="launcher-connecting-step">
-      {step?.character === character ? step.message : 'Starting…'}
-    </div>
   )
 }
 
@@ -298,6 +283,53 @@ function AppShell() {
     return () => { unsubAcquire(); unsubRelease() }
   }, [addSession, removeSession, updateStatus])
 
+  // ── Cross-window toasts (v0.20.0) ──────────────────────────────────────────
+  // Main sends these only to the FOCUSED window (it picks where the player is
+  // looking), so each shows once. Listeners subscribe once and read live state
+  // through refs.
+  const activeIdRef = useRef(activeId)
+  activeIdRef.current = activeId
+  useEffect(() => {
+    const goTo = (characterId: string) => () => window.api.focusCharacter(characterId)
+    // A character is in the game / dropped / reconnected. The rules for when
+    // to stay quiet live in characterNotices.ts (and its harness).
+    const unsubNotice = window.api.onCharacterNotice(n => {
+      // Connected in front of the player: they know, and it's about to be the
+      // tab they're looking at. A DROP still shows.
+      if (n.kind !== 'dropped' && foregroundConnectsRef.current.has(n.character.toLowerCase())) return
+      const run = teamRunRef.current
+      const toast = characterNoticeToast(n, {
+        enabled: loadCharacterNoticesEnabled(),
+        viewingId: viewRef.current === 'session' ? activeIdRef.current : null,
+        // By NAME too: main announces a login from inside its handler, before
+        // the renderer's await returns and the tile learns its characterId.
+        inOpenTeamPanel: !!run?.expanded && run.members.some(m =>
+          m.characterId === n.characterId || m.pick.name.toLowerCase() === n.character.toLowerCase()),
+      }, goTo)
+      // Newer news about a character takes it off the older, opposite toast —
+      // a reconnect must not leave it listed as "disconnected". Only touches a
+      // toast already on screen; runs even when this notice itself is quiet.
+      for (const k of supersededBy(n.kind)) showToast(withdrawNotice(k, n.characterId, goTo))
+      if (toast) showToast(toast)
+    })
+    // A trigger's Toast action, from this window or another.
+    const unsubRouted = window.api.onRoutedToast(t => {
+      showToast({
+        kind: t.kind, title: t.title, message: t.message,
+        ...(t.character ? { people: [{ name: t.character, characterId: t.characterId }] } : {}),
+        ...(t.characterId ? { onClick: goTo(t.characterId), clickHint: 'Click to go to that character' } : {}),
+      })
+    })
+    // "Go to this character", arriving after main focused this window. Leaves
+    // the Overview so the character is actually on screen.
+    const unsubSelect = window.api.onSelectCharacter(characterId => {
+      if (!sessionsRef.current.some(s => s.characterId === characterId)) return
+      setActive(characterId)
+      if (viewRef.current === 'overview') setViewMode('session')
+    })
+    return () => { unsubNotice(); unsubRouted(); unsubSelect() }
+  }, [setActive])
+
   // F62 (v0.15.2): snapshot the live character set for the launcher's
   // "Reconnect Last" button. Reads the ROSTER (all windows) so decoupled
   // characters are included; PRIMARY window only (one writer, no cross-window
@@ -361,8 +393,18 @@ function AppShell() {
     })
   }
 
+  // A team login already running: refuse up front, before anything is
+  // disconnected (the Keep/Switch chooser's "switch" logs characters out first,
+  // and runBulkConnect's own guard would only refuse AFTER that).
+  function teamRunBusy(): boolean {
+    if (!teamRunRef.current || teamRunRef.current.done) return false
+    showToast({ title: 'A team login is already running', message: 'Wait for it to finish, or open it from the Team login pill and Stop it.' })
+    return true
+  }
+
   function handleReconnectLast(picks: LauncherCharacter[]) {
     if (reconnectPrompt) return
+    if (teamRunBusy()) return
     // Eligibility lives in the PURE planReconnect (reconnectPlan.ts) so the
     // rules harness locks it: connected-only roster reads, already-on skips,
     // account conflicts → chooser rows, one-per-account batch dedup.
@@ -385,6 +427,7 @@ function AppShell() {
 
   async function confirmReconnectPrompt() {
     if (!reconnectPrompt || reconnectBusy) return
+    if (teamRunBusy()) { setReconnectPrompt(null); return }
     const { todo, conflicts } = reconnectPrompt
     setReconnectBusy(true)
     try {
@@ -423,30 +466,47 @@ function AppShell() {
   // Bumped each time the wizard adds tiles — Launcher useEffect-keyed on this
   // re-fetches the profiles list so newly-discovered characters appear.
   const [launcherRefreshKey, setLauncherRefreshKey] = useState(0)
-  // Bulk Connect (v0.8.0, F21). Three states across the lifecycle:
+  // Bulk Connect (v0.8.0, F21). Two states across the lifecycle:
   //  - bulkPickerSource: Launcher passed its character list → picker modal open
-  //  - bulkProgress: sequential connect is running; shows progress overlay
-  //  - bulkSummary: all attempts done; shows summary modal with per-char status
+  //  - teamRun: the sequential connect and its outcome, drawn by the Team Login
+  //    panel / app-bar pill (TeamLoginPanel.tsx, v0.20.0 — replaced the old
+  //    progress card + text summary)
   const [bulkPickerSource, setBulkPickerSource] = useState<LauncherCharacter[] | null>(null)
   // Team to preload when the picker opens from a Teams row's Edit (null = a
   // normal Team Login, nothing preselected).
   const [bulkPickerSet, setBulkPickerSet] = useState<string | null>(null)
-  const [bulkProgress, setBulkProgress] = useState<{ currentIndex: number; total: number; currentName: string } | null>(null)
+  // The team run. State for RENDER, mirrored in a ref for the async loop and
+  // the panel handlers, which would otherwise read a stale closure. Writes go
+  // through setTeamRun so the two can never disagree — and never through a
+  // setState updater, which StrictMode may run twice.
+  const [teamRun, setTeamRunState] = useState<TeamRun | null>(null)
+  const teamRunRef = useRef<TeamRun | null>(null)
+  // "Open each in its own window", remembered for a Retry after the run.
+  const teamSeparateRef = useRef(false)
+  // Hides the ✓ pill a few seconds after a clean finish.
+  const teamPillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Which characters have a tab in THIS window — a READY tile whose tab the
+  // player has since closed must not offer Play.
+  const openCharacterIds = useMemo(() => new Set(sessions.map(s => s.characterId)), [sessions])
+  // The pill and the placeholder tabs live in the app bar, which exists only
+  // while a character is open. If the player closes every tab while the panel
+  // is folded, bring the panel back — otherwise the run (and any failure's
+  // Retry) would have nowhere on screen to be found.
+  useEffect(() => {
+    const r = teamRunRef.current
+    if (r && !r.expanded && sessions.length === 0) patchTeam({ expanded: true })
+  }, [sessions.length]) // eslint-disable-line react-hooks/exhaustive-deps
   // NOTE: the live connect commentary deliberately does NOT live in AppShell
   // state. It updates ~once per SECOND during a Lich wait, and GameWindow is
   // not memoized (its onDisconnect is an inline arrow), so holding it here
   // re-rendered EVERY connected character's game window once a second for up
   // to 30s — a real hitch while other characters are playing. It lives in the
-  // <ConnectStep> leaf below instead, which subscribes itself; nothing else
-  // in the tree re-renders when a step arrives (v0.18.0 perf audit).
-  const [bulkSummary, setBulkSummary] = useState<
-    { ok: string[]; failed: { name: string; error: string }[]; skipped?: string[]; stopped?: boolean } | null>(null)
-  // Set by the progress overlay's Stop button; read at the top of each loop
-  // iteration in runBulkConnect.
+  // tile's TileStep leaf (TeamLoginPanel) instead — for a single connect too,
+  // via SoloConnectPanel — which subscribes itself; nothing else in the tree
+  // re-renders when a step arrives (v0.18.0 perf audit).
+  // Set by the panel's Stop button; read at the top of each loop iteration in
+  // runBulkConnect (a ref, because the loop closure cannot see state).
   const bulkStopRef = useRef(false)
-  // Mirrors the ref for RENDER only (a ref change does not re-render). The ref
-  // stays the source of truth because the loop closure cannot see state.
-  const [bulkStopped, setBulkStopped] = useState(false)
   const [showLichSetup, setShowLichSetup] = useState(false)
   const [showQuickSend, setShowQuickSend] = useState<{ initialCommand: string } | null>(null)
   // Profile Transfer (Launcher → Transfer). AppShell hosts the modal because it
@@ -1059,10 +1119,15 @@ function AppShell() {
     window.api.checkForUpdates()
   }
 
-  function handleConnected(info: SessionInfo) {
-    addSession(info)
+  // `quiet`: a team login's background connect. The tab is added without
+  // taking focus (you may already be playing another character), and no
+  // dialog is closed — the player may have opened one since the run began.
+  function handleConnected(info: SessionInfo, opts?: { quiet?: boolean }): CharacterId {
+    if (opts?.quiet) return addSession(info, { activate: false })
+    const id = addSession(info)
     setShowAdd(false)
     setShowWizard(false)
+    return id
   }
 
   // Card click → grace window → actual connect. The grace window is cancellable
@@ -1196,7 +1261,26 @@ function AppShell() {
     setPendingConnect(null)
   }
 
+  // Characters being connected IN FRONT of the player (a tile's Connect, the
+  // tab menu's Reconnect, the attach dialog). Main announces "is in the game"
+  // from inside its login handler — before this window has switched to the new
+  // tab — so without this every ordinary connect toasted about itself (and a
+  // cancelled one about a character being logged straight back out). Released
+  // a little after the connect settles: main's notice can land a moment before
+  // the login call returns. Quiet team connects never go in here.
+  const foregroundConnectsRef = useRef(new Set<string>())
+  function markForeground(name: string): () => void {
+    const key = name.toLowerCase()
+    foregroundConnectsRef.current.add(key)
+    return () => { setTimeout(() => foregroundConnectsRef.current.delete(key), 2000) }
+  }
+
   async function runConnect(c: LauncherCharacter) {
+    const release = markForeground(c.name)
+    try { await runConnectBody(c) } finally { release() }
+  }
+
+  async function runConnectBody(c: LauncherCharacter) {
     // EVERY entry starts uncancelled. `handleCardConnect` resets this before
     // its grace timer, but three other paths reach here — the tab menu's
     // Reconnect, and both attempts of the account-conflict resolve — and none
@@ -1328,7 +1412,13 @@ function AppShell() {
   // keeps the ambient profile export (exportCharacterProfile's
   // read-merge-write, where `built` wins on account) writing the same
   // account back instead of clobbering it.
-  async function runAttach(
+  async function runAttach(...args: Parameters<typeof runAttachBody>): Promise<string | null> {
+    // A quiet (team) attach isn't in front of the player — it SHOULD toast.
+    const release = args[6] ? () => {} : markForeground(args[0])
+    try { return await runAttachBody(...args) } finally { release() }
+  }
+
+  async function runAttachBody(
     character: string,
     host: string,
     port: number,
@@ -1344,7 +1434,9 @@ function AppShell() {
     // than a richer return type because the modal's onAttach contract is
     // "error sentence or null", and only the bulk path needs the id (to
     // honour "open each in its own window").
-    out?: { sessionId?: SessionId },
+    out?: { sessionId?: SessionId; characterId?: CharacterId },
+    // A team login's background attach: no focus change, no dialog closed.
+    quiet?: boolean,
   ): Promise<string | null> {
     let account = fixed?.account ?? 'attach'
     let game = fixed?.game ?? 'DR'
@@ -1397,16 +1489,16 @@ function AppShell() {
       })
     }
 
-    setShowAttach(false)
-    handleConnected({
+    if (!quiet) setShowAttach(false)
+    const characterId = handleConnected({
       sessionId: result.sessionId,
       account,
       character,
       game,
       useLich: true,
       attach: { host, port },
-    })
-    if (out) out.sessionId = result.sessionId
+    }, { quiet })
+    if (out) { out.sessionId = result.sessionId; out.characterId = characterId }
     return null
   }
 
@@ -1460,10 +1552,12 @@ function AppShell() {
   // Idempotent — handleCardConnect calls it early (to skip the connecting
   // overlay for a no-op) and tryAttachPick calls it again for the callers
   // that don't pre-check; main's destroySession no-ops on an unknown id.
-  function prepareTileAttach(c: LauncherCharacter): 'focused' | 'ready' {
-    const existing = sessions.find(s => s.character.toLowerCase() === c.name.toLowerCase())
+  function prepareTileAttach(c: LauncherCharacter, quiet?: boolean): 'focused' | 'ready' {
+    // sessionsRef, not `sessions`: the team loop calls this minutes after the
+    // render it started in, and a stale list could destroy the wrong session.
+    const existing = sessionsRef.current.find(s => s.character.toLowerCase() === c.name.toLowerCase())
     if (existing?.status.connected) {
-      setActive(existing.characterId)
+      if (!quiet) setActive(existing.characterId)
       return 'focused'
     }
     if (existing) window.api.destroySession(existing.sessionId)
@@ -1487,18 +1581,24 @@ function AppShell() {
   async function tryAttachPick(
     c: LauncherCharacter,
     cancelled?: { current: boolean },
-  ): Promise<{ ok: true; sessionId?: SessionId } | { fallback: true } | { error: string }> {
+    quiet?: boolean,
+  ): Promise<{ ok: true; sessionId?: SessionId; characterId?: CharacterId } | { fallback: true } | { error: string }> {
     const target = c.attach
     if (!target) return { fallback: true }
-    if (prepareTileAttach(c) === 'focused') return { ok: true }
-    const out: { sessionId?: SessionId } = {}
+    // Already open: hand back THAT tab's id. An attach-only tile's account is a
+    // placeholder, so an id computed from the tile needn't match the real tab.
+    if (prepareTileAttach(c, quiet) === 'focused') {
+      return { ok: true, characterId: sessionsRef.current.find(s => s.character.toLowerCase() === c.name.toLowerCase())?.characterId }
+    }
+    const out: { sessionId?: SessionId; characterId?: CharacterId } = {}
     const err = await runAttach(
       c.name, target.host, target.port,
       { account: c.account, game: c.game },
       cancelled,
       out,
+      quiet,
     )
-    if (err === null) return { ok: true, sessionId: out.sessionId }
+    if (err === null) return { ok: true, sessionId: out.sessionId, characterId: out.characterId }
     const nothingListening = /Nothing accepted the connection/i.test(err)
     const canLogin = !!c.account && c.account.toLowerCase() !== 'attach'
     if (nothingListening && canLogin) return { fallback: true }
@@ -1531,10 +1631,107 @@ function AppShell() {
       .catch(err => setConnectError(String(err)))
   }
 
-  // Bulk Connect: walks the user-confirmed picks sequentially. Each char
-  // gets the same connect flow as a single-tile click (login IPC, profile
-  // import/export, session.add). Per-character errors don't abort the
-  // sequence — we accumulate them and show a summary at the end. v0.8.0 (F21).
+  // ── Team login (F21 v0.8.0; panel + play-while-loading v0.20.0) ────────────
+  //
+  // Walks the confirmed picks ONE AT A TIME (Lich serves one front-end per
+  // launch, and DR allows one character per account — see serializeLichLaunch).
+  // Every character connects QUIETLY: its tab is added without taking focus, so
+  // the screen behind the panel stays still and a character the player has
+  // already started playing keeps the keyboard. The Team Login panel draws the
+  // run (TeamLoginPanel.tsx); playing a READY character folds it into the
+  // app-bar pill while the rest keep going. Per-character errors never abort
+  // the sequence.
+  function setTeamRun(next: TeamRun | null) {
+    teamRunRef.current = next
+    setTeamRunState(next)
+  }
+  function patchTeam(patch: Partial<TeamRun>) {
+    const r = teamRunRef.current
+    if (r) setTeamRun({ ...r, ...patch })
+  }
+  function patchMember(i: number, patch: Partial<TeamMember>) {
+    const r = teamRunRef.current
+    if (r) setTeamRun({ ...r, members: r.members.map((m, j) => (j === i ? { ...m, ...patch } : m)) })
+  }
+  function clearTeamPillTimer() {
+    if (teamPillTimerRef.current) { clearTimeout(teamPillTimerRef.current); teamPillTimerRef.current = null }
+  }
+  function closeTeamRun() {
+    clearTeamPillTimer()
+    setTeamRun(null)
+  }
+  // "Open each in its own window": the first character to connect stays here,
+  // and each later one moves out. Judged by who is READY in this window, so a
+  // failed first pick doesn't leave this window without the team's first
+  // character (and a Retry after the run follows the same rule).
+  function hasReadyHere(except: number): boolean {
+    return (teamRunRef.current?.members ?? []).some((m, j) => j !== except && m.status === 'ready' && !m.inOwnWindow)
+  }
+
+  // Connect ONE team member, quietly. Shared by the run and by Retry.
+  async function connectTeamMember(
+    c: LauncherCharacter, moveToOwnWindow: boolean,
+  ): Promise<{ characterId: CharacterId; inOwnWindow: boolean } | { error: string }> {
+    try {
+      // ATTACH FIRST for a saved-target character (Reconnect Last / Team
+      // Login / a saved set). Without this the batch ran the login flow for
+      // an attach tile and died on "No saved password" — an attach-only
+      // stub has no password to find, and even a real account would be
+      // starting a SECOND Lich against a headless session that is still
+      // logged in. tryAttachPick is shared with the tile Connect button, so
+      // the fallback judgement can't drift between them.
+      if (c.attach) {
+        const outcome = await tryAttachPick(c, undefined, true)
+        if ('ok' in outcome) {
+          // `sessionId` is absent when an already-open tab was found rather
+          // than attached — nothing new to move, and moving a tab the player
+          // already had open would be a surprise.
+          // Main may refuse the move (it never empties a window); only its
+          // answer says whether the character really left.
+          const own = moveToOwnWindow && !!outcome.sessionId
+            && await window.api.moveSessionToWindow(outcome.sessionId, 'new', { quiet: true })
+          return { characterId: outcome.characterId ?? makeCharacterId(c.account, c.name, c.game), inOwnWindow: !!own }
+        }
+        if ('error' in outcome) return { error: outcome.error }
+        // fallback → fall through to the normal login path below.
+      }
+      const adv = loadAdvanced()
+      const password = await window.api.loadPassword(c.account)
+      if (password === null) return { error: 'No saved password — add it with Add account' }
+      const gameOpt = gameOptionByCode(c.game)
+      const creds: LoginCredentials = {
+        account: c.account, password, character: c.name,
+        game: c.game, lichArguments: gameOpt.lichArguments,
+        useLich: c.useLich, lichPath: adv.lichPath, rubyPath: adv.rubyPath,
+        lichPort: gameOpt.port, lichMode: adv.lichMode,
+      }
+      const result = await window.api.login(creds)
+      if (!result.ok) return { error: result.error ?? 'Connection failed' }
+      try {
+        const loaded = await importCharacterProfile(c.name)
+        if (!loaded) clearCharacterLocalStorage(c.name)
+      } catch (err) { console.error(err) }
+      try {
+        await exportCharacterProfile(c.account, c.name, c.game, c.useLich)
+      } catch (err) { console.error(err) }
+      const characterId = handleConnected({
+        sessionId: result.sessionId,
+        account: c.account,
+        character: c.name,
+        game: c.game,
+        useLich: c.useLich,
+      }, { quiet: true })
+      // `quiet`: the new window opens WITHOUT taking focus (main's
+      // showInactive), so a player typing into another character keeps it.
+      // Main may refuse (it never empties a window) — use its answer.
+      const own = moveToOwnWindow
+        && await window.api.moveSessionToWindow(result.sessionId, 'new', { quiet: true })
+      return { characterId, inOwnWindow: !!own }
+    } catch (err) {
+      return { error: String(err) }
+    }
+  }
+
   async function runBulkConnect(picks: LauncherCharacter[], separateWindows = false) {
     setBulkPickerSource(null)
     setBulkPickerSet(null)
@@ -1543,8 +1740,15 @@ function AppShell() {
     // + tab's compact launcher closes that modal, the way a single-character
     // connect does. Otherwise it is still sitting there when the run ends.
     setShowAdd(false)
-    const ok: string[] = []
-    const failed: { name: string; error: string }[] = []
+    if (picks.length === 0) return
+    // One run at a time: two loops would interleave logins on one account slot
+    // and write one panel. A FINISHED run (a pill left up by a failure) is
+    // simply replaced.
+    if (teamRunRef.current && !teamRunRef.current.done) {
+      showToast({ title: 'A team login is already running', message: 'Click the Team login pill in the app bar to see it, or Stop it there first.' })
+      return
+    }
+    clearTeamPillTimer()
     // STOP, not cancel (Sekmeht: the individual connect got a Cancel and a team
     // login had none). Deliberately weaker than the single-character Cancel,
     // and the label says so. `window.api.login` cannot be aborted, so the
@@ -1552,91 +1756,92 @@ function AppShell() {
     // down would throw away a wait of up to 30s and leave its account slot
     // churning. So Stop means "attempt no MORE characters": the current one
     // finishes and is kept, the remainder are skipped and reported as such.
-    // A ref, not state, because the loop body holds a stale closure over any
-    // state value for the whole run.
     bulkStopRef.current = false
-    setBulkStopped(false)
-    let stopped = false
-    const skipped: string[] = []
+    teamSeparateRef.current = separateWindows
+    trackConnectSteps()
+    setTeamRun({
+      members: picks.map(p => ({ pick: p, status: 'waiting' })),
+      done: false, stopping: false, expanded: true,
+    })
     for (let i = 0; i < picks.length; i++) {
-      const c = picks[i]
       if (bulkStopRef.current) {
-        stopped = true
-        skipped.push(...picks.slice(i).map(p => p.name))
+        const r = teamRunRef.current
+        if (r) setTeamRun({ ...r, members: r.members.map((m, j) => (j >= i ? { ...m, status: 'skipped' } : m)) })
         break
       }
-      setBulkProgress({ currentIndex: i + 1, total: picks.length, currentName: c.name })
-      try {
-        // ATTACH FIRST for a saved-target character (Reconnect Last / Team
-        // Login / a saved set). Without this the batch ran the login flow for
-        // an attach tile and died on "No saved password" — an attach-only
-        // stub has no password to find, and even a real account would be
-        // starting a SECOND Lich against a headless session that is still
-        // logged in. tryAttachPick is shared with the tile Connect button, so
-        // the fallback judgement can't drift between them.
-        if (c.attach) {
-          const outcome = await tryAttachPick(c)
-          if ('ok' in outcome) {
-            // Same "open each in its own window" treatment as a logged-in
-            // character. `sessionId` is absent when an already-open tab was
-            // focused rather than attached — nothing new to move, and moving
-            // a tab the player already had open would be a surprise.
-            if (separateWindows && i > 0 && outcome.sessionId) {
-              await window.api.moveSessionToWindow(outcome.sessionId, 'new')
-            }
-            ok.push(c.name)
-            continue
-          }
-          if ('error' in outcome) {
-            failed.push({ name: c.name, error: outcome.error })
-            continue
-          }
-          // fallback → fall through to the normal login path below.
-        }
-        const adv = loadAdvanced()
-        const password = await window.api.loadPassword(c.account)
-        if (password === null) {
-          failed.push({ name: c.name, error: 'No saved password — add via Add Account' })
-          continue
-        }
-        const gameOpt = gameOptionByCode(c.game)
-        const creds: LoginCredentials = {
-          account: c.account, password, character: c.name,
-          game: c.game, lichArguments: gameOpt.lichArguments,
-          useLich: c.useLich, lichPath: adv.lichPath, rubyPath: adv.rubyPath,
-          lichPort: gameOpt.port, lichMode: adv.lichMode,
-        }
-        const result = await window.api.login(creds)
-        if (!result.ok) {
-          failed.push({ name: c.name, error: result.error ?? 'Connection failed' })
-          continue
-        }
-        try {
-          const loaded = await importCharacterProfile(c.name)
-          if (!loaded) clearCharacterLocalStorage(c.name)
-        } catch (err) { console.error(err) }
-        try {
-          await exportCharacterProfile(c.account, c.name, c.game, c.useLich)
-        } catch (err) { console.error(err) }
-        handleConnected({
-          sessionId: result.sessionId,
-          account: c.account,
-          character: c.name,
-          game: c.game,
-          useLich: c.useLich,
-        })
-        // "Open each in its own window": the first connected character stays in
-        // this window; each subsequent one is decoupled into its own new window.
-        if (separateWindows && i > 0) {
-          await window.api.moveSessionToWindow(result.sessionId, 'new')
-        }
-        ok.push(c.name)
-      } catch (err) {
-        failed.push({ name: c.name, error: String(err) })
-      }
+      patchMember(i, { status: 'connecting', error: undefined, startedAt: Date.now() })
+      const out = await connectTeamMember(picks[i], separateWindows && hasReadyHere(i))
+      patchMember(i, 'error' in out
+        ? { status: 'failed', error: out.error }
+        : { status: 'ready', characterId: out.characterId, inOwnWindow: out.inOwnWindow })
     }
-    setBulkProgress(null)
-    setBulkSummary({ ok, failed, skipped, stopped })
+    finishTeamRun()
+  }
+
+  // The run (or a Retry) is over. A panel still on screen just shows the
+  // outcome. If the player went off to play, it lands as a TOAST instead —
+  // never by reopening the panel over what they're typing — and the pill
+  // either retires (all good) or stays amber until they look (a failure).
+  function finishTeamRun() {
+    const r = teamRunRef.current
+    if (!r) return
+    const next: TeamRun = { ...r, done: true, stopping: false }
+    setTeamRun(next)
+    if (next.expanded) return
+    const c = teamCounts(next)
+    const skipped = c.skipped ? `, ${c.skipped} skipped` : ''
+    if (c.failed > 0) {
+      const names = next.members.filter(m => m.status === 'failed').map(m => m.pick.name).join(', ')
+      showToast({
+        kind: 'error',
+        title: 'Team login finished',
+        message: `${c.ready} connected${skipped}. ${names} didn't connect — click the Team login pill in the app bar for why, or to retry.`,
+      })
+      return
+    }
+    showToast({ kind: 'success', message: `Team login finished: ${c.ready} connected${skipped}.` })
+    teamPillTimerRef.current = setTimeout(() => {
+      teamPillTimerRef.current = null
+      // Only if it's still the finished run nobody reopened.
+      const cur = teamRunRef.current
+      if (cur && cur.done && !cur.expanded) setTeamRun(null)
+    }, 4000)
+  }
+
+  // Retry one failed character, after the run. It goes through the same quiet
+  // connect, so it can't take focus either.
+  async function retryTeamMember(i: number) {
+    const r = teamRunRef.current
+    if (!r || !r.done || r.members[i]?.status !== 'failed') return
+    const pick = r.members[i].pick
+    setTeamRun({ ...r, done: false, members: r.members.map((m, j) => (j === i ? { ...m, status: 'connecting', error: undefined, startedAt: Date.now() } : m)) })
+    const out = await connectTeamMember(pick, teamSeparateRef.current && hasReadyHere(i))
+    patchMember(i, 'error' in out
+      ? { status: 'failed', error: out.error }
+      : { status: 'ready', characterId: out.characterId, inOwnWindow: out.inOwnWindow })
+    finishTeamRun()
+  }
+
+  // Play a READY character: switch to it, and get the panel out of the way —
+  // closed when there's nothing left to report, folded into the pill while
+  // the run goes on or a failure still wants attention.
+  function playTeamMember(i: number) {
+    const r = teamRunRef.current
+    const m = r?.members[i]
+    if (!r || !m?.characterId || m.status !== 'ready' || m.inOwnWindow) return
+    // The player may have closed that tab since it connected.
+    if (!sessionsRef.current.some(s => s.characterId === m.characterId)) return
+    setActive(m.characterId)
+    if (viewRef.current === 'overview') setViewMode('session')
+    if (r.done && teamCounts(r).failed === 0) closeTeamRun()
+    else patchTeam({ expanded: false, played: m.characterId })
+  }
+
+  function openTeamOverview() {
+    setViewMode('overview')
+    const r = teamRunRef.current
+    if (r && teamCounts(r).failed === 0) closeTeamRun()
+    else patchTeam({ expanded: false })
   }
 
   // Build per-account groups for the BulkConnectPicker. Filters out hidden
@@ -1782,6 +1987,21 @@ function AppShell() {
           onReconnect={handleReconnectTab}
           reconnectingIds={reconnectingIds}
           simucoin={simucoin}
+          teamPill={teamRun && !teamRun.expanded
+            ? <TeamLoginPill run={teamRun} onOpen={() => { clearTeamPillTimer(); patchTeam({ expanded: true }) }} />
+            : null}
+          // A running team's characters that have no tab yet (waiting,
+          // connecting, failed) show as placeholder tabs. A connected one has
+          // its real tab; one in its own window lives elsewhere; a skipped one
+          // was the player's choice and needs nothing.
+          pendingTabs={teamRun?.members
+            .filter(m => m.status === 'waiting' || m.status === 'connecting' || m.status === 'failed')
+            // A real tab already here for this character (it just landed and
+            // the tile hasn't caught up, or an old one is being re-logged):
+            // don't show a placeholder beside it.
+            .filter(m => !sessions.some(s => s.character.toLowerCase() === m.pick.name.toLowerCase()))
+            .map(m => ({ key: `${m.pick.account}|${m.pick.name}`, name: m.pick.name, game: m.pick.game, status: m.status as 'waiting' | 'connecting' | 'failed' }))}
+          onPendingClick={() => { clearTeamPillTimer(); patchTeam({ expanded: true }) }}
         />
       )}
 
@@ -1990,27 +2210,18 @@ function AppShell() {
         />
       )}
 
+      {/* A single character's login wears the Team Login look: one tile with
+          the live step, the stall counter and the bar (Sekmeht). It only DRAWS —
+          this pendingConnect flow still owns cancel, conflicts and errors. Keyed
+          on the character so each attempt mounts fresh (its tile then ignores
+          the previous attempt's last step), and Esc = Cancel from inside it
+          (B341: without its own entry, Esc would close the + window beneath). */}
       {pendingConnect && (
-        <div className="launcher-connecting">
-          {/* Esc = its Cancel (B341). Without an entry of its own, Esc here
-              would fall through and close the + window underneath mid-connect,
-              taking any connect error shown there with it. */}
-          <EscToClose onClose={cancelPendingConnect} />
-          <div className="launcher-connecting-card">
-            <div className="launcher-spinner" />
-            <div className="launcher-connecting-body">
-              <div className="launcher-connecting-text">
-                Connecting to <span className="launcher-connecting-name">{pendingConnect.name}</span>…
-              </div>
-              {/* The actual step, so a slow connect is legible instead of an
-                  opaque spinner (a 30s Lich wait used to look like a hang). */}
-              <ConnectStep character={pendingConnect.name} />
-            </div>
-            <button className="launcher-connecting-cancel" onClick={cancelPendingConnect}>
-              Cancel
-            </button>
-          </div>
-        </div>
+        <SoloConnectPanel
+          key={`${pendingConnect.account}|${pendingConnect.name}`}
+          character={pendingConnect}
+          onCancel={cancelPendingConnect}
+        />
       )}
 
       {pendingConflict && (
@@ -2129,122 +2340,23 @@ function AppShell() {
         />
       )}
 
-      {/* Team Login progress — single "currently connecting Sekmeht (1 of 3)…"
-          overlay during the sequential connect.
-          This used to say "no cancel button mid-sequence (would leave a
-          partially-connected state)". REVERSED in v0.18.4 (Sekmeht: the
-          individual connect has a Cancel and a team login had none). The old
-          objection was real but pointed the wrong way — partial connection is
-          unavoidable the moment the run starts, so the choice was never
-          "partial or clean", it was "partial with an escape or partial while
-          you sit through every remaining Lich wait". Hence STOP rather than
-          Cancel: it skips the characters not yet attempted and keeps the one
-          in flight, because that login cannot be aborted anyway. */}
-      {/* B374: no inline z-index. It used to be 9000 — above toasts (2050),
-          About (2010) and context menus (2100), outside the pitfall #118(d)
-          tier map. It is a connect overlay, so `.launcher-connecting`'s own
-          1500 tier (above the + modal it can be launched from) is correct. */}
-      {bulkProgress && (
-        <div className="launcher-connecting">
-          {/* An Esc-stack entry with a no-op close (pitfall #141d): the run
-              can't be dismissed, but registering it keeps this overlay a
-              DIALOG. Without it the stack empties when the picker unmounts,
-              and the last-dialog home focus put the caret in the command bar
-              underneath this scrim, where typing is invisible and Enter
-              reaches the game (pitfall #131). */}
-          <EscToClose onClose={() => {}} />
-          <div className="launcher-connecting-card">
-            <div className="launcher-spinner" />
-            <div className="launcher-connecting-body">
-              <div className="launcher-connecting-text">
-                Connecting <span className="launcher-connecting-name">{bulkProgress.currentName}</span>
-                <span className="launcher-connecting-count"> · {bulkProgress.currentIndex} of {bulkProgress.total}</span>
-              </div>
-              <ConnectStep character={bulkProgress.currentName} />
-              {/* Progress rail — a sequential run of 5 characters should show
-                  how far along it is, not just a spinner. */}
-              <div className="launcher-connecting-bar" aria-hidden="true">
-                <div
-                  className="launcher-connecting-bar-fill"
-                  style={{ width: `${Math.round((bulkProgress.currentIndex - 1) / bulkProgress.total * 100)}%` }}
-                />
-              </div>
-            </div>
-            {/* Only worth offering while there is something left to skip — on
-                the last character Stop could not do anything, and a button
-                that cannot act is worse than none (UX standard #1). Disables
-                itself once pressed so the state is visible rather than the
-                click just seeming to do nothing while the current login runs
-                to completion. */}
-            {bulkProgress.currentIndex < bulkProgress.total && (
-              <button
-                className="launcher-connecting-cancel"
-                disabled={bulkStopped}
-                onClick={() => { bulkStopRef.current = true; setBulkStopped(true) }}
-                title="Finish the character currently connecting, then stop — the rest are skipped"
-              >
-                {bulkStopped ? 'Stopping…' : 'Stop'}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Bulk Connect summary — shown when all attempts finish. Reports
-          per-character success/failure so the user knows what landed and
-          what didn't. */}
-      {bulkSummary && (
-        // B342 / B341 — Esc and the scrim do what Done does.
-        <div className="launcher-connecting" {...backdropHandlers(() => setBulkSummary(null))}>
-          <EscToClose onClose={() => setBulkSummary(null)} />
-          <div className="launcher-connecting-card launcher-dialog">
-            {/* Title states the OUTCOME, not just that it finished — "all
-                connected" vs "N didn't connect" is the thing the user needs. */}
-            <div className="launcher-dialog-head">
-              {/* A STOPPED run says so in the title. Reporting only "Connected
-                  2" after the user pressed Stop reads as the team having been
-                  short, rather than as their own choice being honoured. */}
-              {bulkSummary.stopped
-                ? `Stopped — connected ${bulkSummary.ok.length} of ${bulkSummary.ok.length + bulkSummary.failed.length + (bulkSummary.skipped?.length ?? 0)}`
-                : bulkSummary.failed.length === 0
-                  ? `Connected ${bulkSummary.ok.length} character${bulkSummary.ok.length === 1 ? '' : 's'}`
-                  : `Connected ${bulkSummary.ok.length}, ${bulkSummary.failed.length} failed`}
-            </div>
-            <div className="launcher-dialog-body">
-              {bulkSummary.ok.length > 0 && (
-                <div className="launcher-result launcher-result--ok">
-                  <span className="launcher-result-icon" aria-hidden="true">✓</span>
-                  <span>{bulkSummary.ok.join(', ')}</span>
-                </div>
-              )}
-              {/* Skipped is NOT a failure — muted, and named so it is obvious
-                  they can simply be connected afterwards. */}
-              {(bulkSummary.skipped?.length ?? 0) > 0 && (
-                <div className="launcher-result launcher-result--skipped">
-                  <span className="launcher-result-icon" aria-hidden="true">–</span>
-                  <span>Skipped: {bulkSummary.skipped!.join(', ')}</span>
-                </div>
-              )}
-              {bulkSummary.failed.length > 0 && (
-                <div className="launcher-result launcher-result--fail">
-                  <span className="launcher-result-icon" aria-hidden="true">✕</span>
-                  <div>
-                    Didn&apos;t connect:
-                    <ul className="launcher-result-list">
-                      {bulkSummary.failed.map(f => (
-                        <li key={f.name}><strong>{f.name}</strong> — {f.error}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="launcher-dialog-foot">
-              <button className="launcher-connecting-cancel launcher-connecting-cancel--primary"
-                onClick={() => setBulkSummary(null)}>Done</button>
-            </div>
-          </div>
-        </div>
+      {/* Team Login (v0.20.0) — one panel for the whole run: a tile per
+          character, playable the moment it's READY. Folded into the app-bar
+          pill while the player is off playing (see runBulkConnect). */}
+      {teamRun?.expanded && (
+        <TeamLoginPanel
+          run={teamRun}
+          activeId={activeId}
+          windowCharacterCount={sessions.length}
+          openIds={openCharacterIds}
+          canCollapse={sessions.length > 0}
+          onPlay={playTeamMember}
+          onRetry={i => { void retryTeamMember(i) }}
+          onStop={() => { bulkStopRef.current = true; patchTeam({ stopping: true }) }}
+          onCollapse={() => patchTeam({ expanded: false })}
+          onClose={closeTeamRun}
+          onOverview={openTeamOverview}
+        />
       )}
 
       {/* v0.8.0 (B99): "Closing…" overlay covers the up-to-5s graceful-

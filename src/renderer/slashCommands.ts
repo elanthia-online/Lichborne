@@ -18,7 +18,7 @@ import { newMute, type MuteRule } from './mutes'
 import { newSubstitute, type SubstituteRule } from './substitutes'
 import { newContact, newTemplate, formatLastSeen, DR_GUILDS, type Contact, type ContactTemplate } from './contacts'
 import { newAlias, type AliasRule } from './macros'
-import { newTrigger, type TriggerRule } from './triggers'
+import { newTrigger, actionWaitsForRt, type TriggerRule, type TriggerAction } from './triggers'
 
 // Automations-panel tabs an `edit` verb can open (Phase 2). Matches the
 // AutomationsPanel Tab union for the tabs that support open-by-rule-id.
@@ -50,6 +50,9 @@ export interface SlashContext {
    *  the registry stays pure — it never touches storage itself. */
   getCommandHistoryMinLength: () => number
   setCommandHistoryMinLength: (n: number) => void
+  // v0.20.0 — character status notifications (app-wide).
+  getCharacterNotices: () => boolean
+  setCharacterNotices: (on: boolean) => void
   toggleMainTimestamps: () => void
   /** Views (v0.19.0, DESIGN §47). Same rule as the history settings above: the
    *  registry entry stays a dumb matcher and every read/write goes through the
@@ -329,6 +332,12 @@ export function parseDuration(token: string): number | null {
   return rounded > 0 ? rounded : null   // "0.2m" rounds to nothing — reject it
 }
 
+/** Summary tag for a command action that does NOT wait for roundtime — the
+ *  exception is what's worth printing, since waiting is the default. */
+const rtNote = (a: TriggerAction): string =>
+  a.type === 'command' && a.command && !actionWaitsForRt(a) && !a.command.trimStart().startsWith(';')
+    ? ' (ignores RT)' : ''
+
 const MODE_OPT: SlashOptionSpec = { key: 'mode', values: ['text', 'phrase', 'regex'], hint: 'how the pattern matches (text = whole words, phrase = exact substring, regex)' }
 const CASE_OPT: SlashOptionSpec = { key: 'case', values: ['on', 'off'], hint: 'case-sensitive matching' }
 
@@ -598,10 +607,11 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
       MODE_OPT,
       CASE_OPT,
       { key: 'cooldown', hint: 'seconds before it can fire again (e.g. cooldown=10)' },
+      { key: 'rt', hint: 'wait (default) = hold the command until roundtime clears · now = send even during roundtime', values: ['wait', 'now'] },
       { key: 'name', hint: 'a label for the rule' },
     ],
     flags: ['once'],
-    description: 'Quick trigger: when text matches, send a command (gates/multi-action in the editor)',
+    description: 'Quick trigger: when text matches, send a command once roundtime clears (gates/multi-action in the editor)',
     example: '/trigger add "You feel fully rested" do "stand"',
     run: (ctx, p) => {
       // Accept both `"pattern" do "command"` and `"pattern" "command"` — the
@@ -621,8 +631,9 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
       if (p.flags.has('once')) rule.oneShot = true
       if (rule.mode === 'regex') { try { new RegExp(rule.pattern) } catch { return err(`"${rule.pattern}" isn't a valid regex.`) } }
       rule.actions[0].command = command   // newTrigger ships with one command action
+      if (p.options.rt === 'now') rule.actions[0].waitForRt = false
       ctx.applyTriggers([...ctx.getTriggers(), rule])
-      return ok(`Trigger added: "${pattern}" → ${command}${rule.cooldownSeconds ? ` (cooldown ${rule.cooldownSeconds}s)` : ''}${rule.oneShot ? ' (once)' : ''} — gates/more actions in the editor (/trigger edit).`)
+      return ok(`Trigger added: "${pattern}" → ${command}${rtNote(rule.actions[0])}${rule.cooldownSeconds ? ` (cooldown ${rule.cooldownSeconds}s)` : ''}${rule.oneShot ? ' (once)' : ''} — gates/more actions in the editor (/trigger edit).`)
     },
   },
   {
@@ -647,7 +658,7 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
     run: (ctx, p) => listRules('trigger', ctx.getTriggers(), p.args[0],
       r => {
         const act = r.actions[0]
-        const what = act?.type === 'command' && act.command ? act.command : `${r.actions.length} action${r.actions.length === 1 ? '' : 's'}`
+        const what = act?.type === 'command' && act.command ? `${act.command}${rtNote(act)}` : `${r.actions.length} action${r.actions.length === 1 ? '' : 's'}`
         return `"${r.pattern}" → ${what} (${r.watchStream}, ${r.mode}${r.cooldownSeconds ? `, cd ${r.cooldownSeconds}s` : ''}${r.oneShot ? ', once' : ''})`
       },
       r => r.pattern),
@@ -1206,6 +1217,25 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
     },
   },
 
+  // ── /notices (v0.20.0) ─────────────────────────────────────────────────
+  // The /timestamps shape: one entry, on|off, bare toggles.
+  {
+    noun: 'notices', nounAliases: ['notice'], verb: '',
+    args: [{ name: 'on|off', required: false, kind: 'word', hint: 'omit to toggle' }],
+    options: [], flags: [],
+    description: 'Toggle notifications when another character is in the game, disconnects, or reconnects',
+    example: '/notices off',
+    run: (ctx, p) => {
+      const want = p.args[0]?.toLowerCase()
+      if (want && want !== 'on' && want !== 'off') return err(`/notices takes "on", "off", or nothing (toggle) — not "${p.args[0]}".`)
+      const next = want ? want === 'on' : !ctx.getCharacterNotices()
+      ctx.setCharacterNotices(next)
+      return ok(next
+        ? 'Character notifications ON — you will get a small notice when another character is in the game, drops, or reconnects (all characters).'
+        : 'Character notifications OFF (all characters). Trigger Toast actions still show.')
+    },
+  },
+
   // ── /view (Views — DESIGN §47) ────────────────────────────────────────────
   // A bare+verbs noun like /ai and /colors: the BARE form reports status and
   // toggles, the verbs switch and configure. Per the palette rule there is
@@ -1499,7 +1529,7 @@ const NOUN_HELP: Record<string, string> = {
   alias:      'Typed shortcuts — one word expands into full commands',
   history:    'Control which commands the up-arrow remembers',
   view:       'Switch between one character (Session) and all of them at once (Overview)',
-  trigger:    'React to game text automatically (text matches → command sends)',
+  trigger:    'React to game text automatically (text matches → command sends when roundtime clears)',
   contact:    'Track players — their names get colored everywhere they appear',
   template:   'Reusable name styles (like Friends/Enemies) to file contacts under',
   mode:       'Switch which rule groups are active, all at once',
@@ -1508,6 +1538,7 @@ const NOUN_HELP: Record<string, string> = {
   theme:      'Change how the whole app looks',
   log:        'Search everything that happened in your saved session history',
   timestamps: 'Show the time next to each line in the main window',
+  notices:    'Turn the "character is in the game / disconnected" notifications on or off',
   clear:      'Wipe the main window (your Session Log still keeps everything)',
   colors:     'Named colors — make your own, and everything using one changes when you change it (/colors manage)',
   ai:         'AI features (bring your own key) — /ai catchup 30m summarizes what happened',

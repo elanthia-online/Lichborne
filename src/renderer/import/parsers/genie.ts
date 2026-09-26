@@ -17,12 +17,14 @@
 //
 // Per file: highlights.cfg → highlights (type → mode/scope mapping); names.cfg
 // → Contacts with per-colour `templateName`; triggers.cfg → triggers via
-// `parseActionParts` (B133's alias families for send/var/sound, `##` = literal
+// `parseActionParts` (B133's alias families for send/var/sound — the send
+// forms keep Genie's timing: `#send`/`#do` wait for roundtime, `#put` does
+// not, a queue form's leading pause becomes `delayMs`; `##` = literal
 // `#`, `#send #X` recursed (B130), `#nop`/`#comment` silently skipped, every
 // other `#command` recorded as `dropped` → `partial`; eval `e/…/` triggers
 // `unsupported`); gags.cfg → mutes; substitutes.cfg → substitutes (regex, `$N`
 // passes through); presets.cfg → `themeVars`; variables.cfg is count-only.
-import { ImportResult, ImportHighlight, ImportMacro, ImportAlias, ImportTrigger, ImportMute, ImportSubstitute, ImportEchoAction, ImportVarAction, ImportLogAction } from '../types'
+import { ImportResult, ImportHighlight, ImportMacro, ImportAlias, ImportTrigger, ImportMute, ImportSubstitute, ImportEchoAction, ImportVarAction, ImportLogAction, ImportCommandOpts } from '../types'
 import { normalizeStreamId } from '../../../shared/streamAliases'
 import { parseGenieColor } from '../colorUtils'
 import { normalizeGenieKey } from '../keyNormalizer'
@@ -457,6 +459,7 @@ function parseEchoAction(raw: string): ImportEchoAction {
 // Split a Genie action string on ; and categorise each part.
 function parseActionParts(actionRaw: string): {
   commands:        string[]
+  commandOpts:     ImportCommandOpts[]   // index-aligned with `commands`
   echoActions:     ImportEchoAction[]
   varActions:      ImportVarAction[]
   logActions:      ImportLogAction[]
@@ -464,10 +467,18 @@ function parseActionParts(actionRaw: string): {
   hasFlash:        boolean
   hasBeep:         boolean
   hasLibrarySound: boolean   // true when a #play arg looks like a Genie built-in name, not a file path
+  usedDo:          boolean   // a #do was imported — its stun/web wait is not modelled
   dropped:         string[]
 } {
   const parts = actionRaw.split(';').map(s => s.trim()).filter(Boolean)
   const commands:    string[]             = []
+  const commandOpts: ImportCommandOpts[]  = []
+  // The ONLY writer of `commands`, so `commandOpts` stays index-aligned.
+  // Defaults to Lichborne's own default: wait for roundtime, no delay.
+  const pushCommand = (cmd: string, opts: ImportCommandOpts = { delayMs: 0, waitForRt: true }) => {
+    commands.push(cmd)
+    commandOpts.push(opts)
+  }
   const echoActions: ImportEchoAction[]  = []
   const varActions:  ImportVarAction[]   = []
   const logActions:  ImportLogAction[]   = []
@@ -476,6 +487,7 @@ function parseActionParts(actionRaw: string): {
   let hasFlash        = false
   let hasBeep         = false
   let hasLibrarySound = false
+  let usedDo          = false
 
   // B133 (Sekmeht, v0.8.9): aliases for the cleanly-mappable commands.
   // Genie has multiple #commands that do the same thing (e.g. #put / #send
@@ -486,15 +498,25 @@ function parseActionParts(actionRaw: string): {
   // at the action layer — they all set a variable — so the aliases all
   // map to the same `variable` action. See the full Genie command list
   // in CLAUDE.md pitfall #47.
-  const COMMAND_PREFIX_RE = /^#(?:send|put|q|que|queue)\s+/i
+  //
+  // The send family differs in TIMING, per Genie's Command.cs (verified against
+  // Genie4 source): `#put` and a bare command send at once (SendText); `#send`
+  // queues with WaitForRoundtime; `#do` queues waiting out roundtime, stun and
+  // webbing; `#queue`/`#que` queue with a delay and no roundtime wait. Every
+  // queueing form takes a leading pause in SECONDS (`#send 2 look`), which must
+  // come off the command text — it used to import as the command `2 look`.
+  // `#q` has no case of its own in Genie's source; it stays with the queue
+  // forms because the importer has always accepted it.
+  const COMMAND_PREFIX_RE = /^#(send|put|do|q|que|queue)\s+/i
   const VAR_PREFIX_RE     = /^#(?:var|variable|setvar|setvariable|tvar|tempvar|tempvariable|svar)\s+/i
   const SOUND_PREFIX_RE   = /^#(?:play|playsound|playwave)\s+/i
 
   for (const part of parts) {
     if (!part.startsWith('#')) {
-      // Plain game command
+      // Plain game command. Genie sent these at once; here they take the
+      // Lichborne default (wait for roundtime) — the reason that default exists.
       const cmd = stripSendMarker(part.replace(/^\\x/, '').trim())
-      if (cmd) commands.push(cmd)
+      if (cmd) pushCommand(cmd)
       continue
     }
 
@@ -503,14 +525,38 @@ function parseActionParts(actionRaw: string): {
     // write `##5`). Strip the leading `#` and treat as plain command.
     if (part.startsWith('##')) {
       const cmd = stripSendMarker(part.slice(1).trim())
-      if (cmd) commands.push(cmd)
+      if (cmd) pushCommand(cmd)
       continue
     }
 
     const lower = part.toLowerCase()
 
-    if (COMMAND_PREFIX_RE.test(part)) {
-      const cmd = stripSendMarker(part.replace(COMMAND_PREFIX_RE, '').trim())
+    const sendMatch = part.match(COMMAND_PREFIX_RE)
+    if (sendMatch) {
+      const verb = sendMatch[1].toLowerCase()
+      let body = part.slice(sendMatch[0].length).trim()
+      let delayMs = 0
+      let pauseMatched = false
+      if (verb !== 'put') {
+        const pause = body.match(/^(\d+(?:\.\d+)?|\.\d+)(?:\s+|$)/)
+        if (pause) {
+          pauseMatched = true
+          delayMs = Math.round(parseFloat(pause[1]) * 1000)
+          body = body.slice(pause[0].length).trim()
+        }
+      }
+      const opts: ImportCommandOpts = { delayMs, waitForRt: verb === 'send' || verb === 'do' }
+      const cmd = stripSendMarker(body)
+      const isQueueVerb = verb === 'q' || verb === 'que' || verb === 'queue'
+      // Genie queue CONTROL, not a command to send: `#send|#do|#queue clear`
+      // empties Genie's queue. And `#queue` always takes a delay first — with
+      // one word it LISTS the queue, with more it reads the first word as the
+      // delay (Command.cs). Imported as-is, these would send "clear" or "look"
+      // to DragonRealms, so they are reported as unsupported instead.
+      if ((verb !== 'put' && cmd.toLowerCase() === 'clear') || (isQueueVerb && !pauseMatched)) {
+        dropped.push(part)
+        continue
+      }
       if (cmd) {
         // B130 (Jaded, v0.8.9): if the inner content itself starts with `#`,
         // it's a Genie internal command, not a DR command. The common
@@ -524,7 +570,8 @@ function parseActionParts(actionRaw: string): {
         // `#flash` → hasFlash, `#beep` → hasBeep, etc.
         if (cmd.startsWith('#')) {
           const inner = parseActionParts(cmd)
-          commands.push(...inner.commands)
+          inner.commands.forEach((c, i) => pushCommand(c, inner.commandOpts[i]))
+          if (inner.usedDo) usedDo = true
           echoActions.push(...inner.echoActions)
           varActions.push(...inner.varActions)
           logActions.push(...inner.logActions)
@@ -534,7 +581,8 @@ function parseActionParts(actionRaw: string): {
           if (inner.hasLibrarySound) hasLibrarySound = true
           dropped.push(...inner.dropped)
         } else {
-          commands.push(cmd)
+          pushCommand(cmd, opts)
+          if (verb === 'do') usedDo = true
         }
       }
     } else if (lower.startsWith('#echo')) {
@@ -587,7 +635,7 @@ function parseActionParts(actionRaw: string): {
       // Lichborne's static rule model doesn't support), connection
       // control (#connect, #disconnect, #exit, #reconnect), UI control
       // (#statusbar, #window, #position), Genie's scripting flow (#if,
-      // #parse, #event, #goto, #do, #pause, #wait, #waitfor), math /
+      // #parse, #event, #goto, #pause, #wait, #waitfor), math /
       // random / eval (#math, #evalmath, #random, #eval — Lichborne
       // variable actions only store, don't compute), and mapping /
       // movement (#mapper, #map, #walk, #walkto, #go, #goto, #path).
@@ -597,7 +645,7 @@ function parseActionParts(actionRaw: string): {
     // Everything else (##escaped, #put without body, etc.) is silently skipped
   }
 
-  return { commands, echoActions, varActions, logActions, soundFiles, hasFlash, hasBeep, hasLibrarySound, dropped }
+  return { commands, commandOpts, echoActions, varActions, logActions, soundFiles, hasFlash, hasBeep, hasLibrarySound, usedDo, dropped }
 }
 
 function parseTriggers(text: string): ImportTrigger[] {
@@ -637,8 +685,8 @@ function parseTriggers(text: string): ImportTrigger[] {
     const triggerPattern = stripGenieSlashWrap(patternRaw).pattern
 
     const {
-      commands, echoActions, varActions, logActions,
-      soundFiles, hasFlash, hasBeep, hasLibrarySound, dropped,
+      commands, commandOpts, echoActions, varActions, logActions,
+      soundFiles, hasFlash, hasBeep, hasLibrarySound, usedDo, dropped,
     } = parseActionParts(actionRaw)
 
     // No importable actions at all — surface as unsupported instead of silently dropping
@@ -674,6 +722,9 @@ function parseTriggers(text: string): ImportTrigger[] {
     if (hasLibrarySound) {
       notes.push('Genie sound mapped to a built-in preset — change it in the trigger if you want a different one')
     }
+    if (usedDo) {
+      notes.push('Genie #do also waited while stunned or webbed; here it waits for roundtime only')
+    }
 
     results.push({
       kind:          'trigger',
@@ -684,6 +735,7 @@ function parseTriggers(text: string): ImportTrigger[] {
       matchType:     'regex',
       caseSensitive: false,
       commands,
+      commandOpts,
       echoActions,
       varActions,
       logActions,

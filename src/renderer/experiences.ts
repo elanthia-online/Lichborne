@@ -1178,6 +1178,9 @@ export function liveSpellEffects(state: SpellState | undefined, now: number, inc
 
 export interface ExperienceProps {
   character: string
+  /** This character's id (account::character::game) — for lookups a name can't
+   *  answer, e.g. its chosen colour when two of your characters share a name. */
+  characterId?: string
   roomState: RoomState
   sceneCast: SceneCast
   speech: SceneSpeechItem[]

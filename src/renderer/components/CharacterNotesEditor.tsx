@@ -11,6 +11,12 @@
 // `document.body`. `guildLabel()` is the display-side helper the Launcher's
 // card pills use; the `.cne-*` markup is mirrored there too.
 //
+// v0.20.0: also the character's COLOUR (characterColors.ts) — which is NOT a
+// profile field: it lives app-wide in _shared.yaml, keyed by account::character, so
+// every window can paint that character's badge, tab and focus rings at once.
+// Save writes it there directly (plus the shared-profile save) before handing
+// the three profile fields to `onSave`. It counts toward `dirty` like the rest.
+//
 // B368: closing with an unsaved edit (✕, Cancel, backdrop, Esc) asks first —
 // `dirty` compares the patch Save WOULD write against the same normalisation
 // of the initial values, so it means exactly "Save would change something".
@@ -20,6 +26,11 @@ import { backdropHandlers } from "../utils/backdropClose"
 import { useEscapeClose } from '../hooks/useEscapeClose'
 import { differs } from '../hooks/useUnsaved'
 import { confirmDiscard } from '../confirm'
+import ColorField from './ColorField'
+import { characterColor, isPaintableColor, loadCharacterColors, setCharacterColor } from '../characterColors'
+import { normalizeColorInput } from '../colors'
+import { scheduleSharedProfileSave } from '../profile'
+import { monogramStyle, nameColorHex, nameInitials } from '../utils/nameColor'
 import { createPortal } from 'react-dom'
 import '../styles/character-notes-editor.css'
 
@@ -63,6 +74,8 @@ function toPatch(guild: string, circle: string, notes: string): ProfilePatch {
 
 interface Props {
   characterName: string
+  /** account::character::game — what the colour is keyed by. */
+  characterId: string
   initialGuild: string | undefined
   initialCircle: number | undefined
   initialNotes: string | undefined
@@ -72,6 +85,7 @@ interface Props {
 
 export default function CharacterNotesEditor({
   characterName,
+  characterId,
   initialGuild,
   initialCircle,
   initialNotes,
@@ -82,13 +96,24 @@ export default function CharacterNotesEditor({
   const [circle, setCircle] = useState<string>(initialCircle == null ? '' : String(initialCircle))
   const [notes,  setNotes]  = useState(initialNotes ?? '')
   const [busy,   setBusy]   = useState(false)
+  // '' = no colour of your own (the automatic one shows instead).
+  const [initialColor] = useState(() => characterColor(loadCharacterColors(), { characterId }) ?? '')
+  const [color,  setColor]  = useState(initialColor)
   const titleId = useId()
 
   // The baseline, captured once at open. Save unmounts the editor on success
   // (Launcher clears `editingNotes`), so it never needs re-basing.
   const [baseline] = useState(() =>
     toPatch(initialGuild ?? '', initialCircle == null ? '' : String(initialCircle), initialNotes ?? ''))
-  const dirty = differs(toPatch(guild, circle, notes), baseline)
+  // What Save would store: typed text resolved the way the field resolves it on
+  // blur, so Enter straight after typing `ember` or `3fb950` saves the link or
+  // the hex, not the raw text (ColorField calls onEnter before its own onChange
+  // has rendered).
+  const resolvedColor = color.trim() ? normalizeColorInput(color.trim(), { link: true }).trim() : ''
+  // A colour nothing can paint (a half-typed name) is refused rather than
+  // stored: every surface's color-mix() would go invalid.
+  const colorBad = resolvedColor !== '' && !isPaintableColor(resolvedColor)
+  const dirty = differs(toPatch(guild, circle, notes), baseline) || resolvedColor !== initialColor
 
   // Every way out goes through here. While a save is in flight it does
   // nothing, like the disabled ✕.
@@ -104,10 +129,16 @@ export default function CharacterNotesEditor({
   useEscapeClose(requestClose)
 
   async function handleSave() {
-    if (busy) return
+    if (busy || colorBad) return
     setBusy(true)
     try {
       await onSave(toPatch(guild, circle, notes))
+      // AFTER the profile save: if that throws, the editor stays open and dirty,
+      // and a Cancel then really does discard the colour too.
+      if (resolvedColor !== initialColor) {
+        setCharacterColor(characterId, resolvedColor || null)
+        scheduleSharedProfileSave()
+      }
     } finally {
       setBusy(false)
     }
@@ -162,6 +193,34 @@ export default function CharacterNotesEditor({
             </label>
           </div>
 
+          <div className="cne-label">
+            <span>Color</span>
+            <div className="cne-color-row">
+              {/* What the colour looks like on a badge — live, before saving. */}
+              <span className="cne-color-mono" style={monogramStyle(characterName, !colorBad && resolvedColor ? resolvedColor : undefined)} aria-hidden="true">
+                {nameInitials(characterName)}
+              </span>
+              <ColorField
+                value={color}
+                onChange={setColor}
+                label={`${characterName}'s color`}
+                none={{ value: '', label: 'Automatic' }}
+                defaultSwatch={nameColorHex(characterName)}
+                placeholder="Automatic"
+                onEnter={() => void handleSave()}
+                aboveDialogs
+              />
+            </div>
+            {colorBad && (
+              <span className="ui-hint cne-color-error" role="alert">
+                “{color.trim()}” isn't a color. Pick one from the ▾ list, type a hex like #3fb950, or clear it for Automatic.
+              </span>
+            )}
+            <span className="ui-hint">
+              Marks {characterName} across Lichborne: toast badges, the character tab, Team Login, the Overview and the Living Tableau. Pick one of your named colors to keep it linked. Automatic uses a color from the name.
+            </span>
+          </div>
+
           <label className="cne-label cne-label--notes">
             Notes
             <textarea
@@ -182,9 +241,10 @@ export default function CharacterNotesEditor({
           {/* B345: both labels are always rendered in one grid cell, so the
               button keeps the wider one's width and Save → Saving… never
               resizes it (character-notes-editor.css). */}
-          <button type="button" className="ui-btn ui-btn--primary cne-btn--stable" onClick={handleSave} disabled={busy}>
-            <span className={`cne-btn-label${busy ? ' cne-btn-label--off' : ''}`}>Save</span>
-            <span className={`cne-btn-label${busy ? '' : ' cne-btn-label--off'}`} aria-hidden={!busy}>Saving…</span>
+          <button type="button" className="ui-btn ui-btn--primary ui-btn--stable" onClick={handleSave} disabled={busy || colorBad}
+            title={colorBad ? "Fix the color first, or clear it for Automatic" : undefined}>
+            <span className={`ui-btn-label${busy ? ' ui-btn-label--off' : ''}`}>Save</span>
+            <span className={`ui-btn-label${busy ? '' : ' ui-btn-label--off'}`} aria-hidden={!busy}>Saving…</span>
           </button>
         </div>
       </div>

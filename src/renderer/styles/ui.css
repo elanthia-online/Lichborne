@@ -696,3 +696,24 @@ textarea.ui-field { resize: vertical; line-height: 1.45; }
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
+
+/* ── Popovers over the high dialog tier, and stable-width buttons (v0.20.0) ──
+   `ui-menu--top-tier`: a popover opened from a dialog ABOVE the 100–400 tier —
+   `.cne-backdrop` (Edit Profile, Team Login's editor) is 1600 — must clear it,
+   or it opens underneath and its button looks dead (pitfall #118). 1700 stays
+   below Quick Send (2000), toasts and the confirm tier. Two classes, so it wins
+   over `.ui-menu` / `.ui-color-suggest` without relying on file order.
+
+   `ui-btn--stable`: a button whose label CHANGES (Save → Saving…, "Play Agan" →
+   "Play Sekmeht") renders every label stacked in one grid cell and hides all but
+   the current one, so it is always as wide as the widest. A width that follows
+   the label re-wraps the text beside it and moves the whole dialog (pitfall
+   #103). Edit Profile's Save and Attach's Attach use it too: B345's private
+   `cne-btn--stable` copy was folded into this one. It sits at the END of ui.css,
+   after `.ui-btn`, so at equal specificity its grid wins over inline-flex. */
+.ui-menu.ui-menu--top-tier,
+.ui-color-suggest.ui-menu--top-tier { z-index: 1700; }
+
+.ui-btn--stable { display: inline-grid; justify-items: center; }
+.ui-btn--stable > .ui-btn-label { grid-area: 1 / 1; white-space: nowrap; }
+.ui-btn--stable > .ui-btn-label--off { visibility: hidden; }

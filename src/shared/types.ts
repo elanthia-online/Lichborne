@@ -151,7 +151,42 @@ export const IPC = {
   // until v0.19.0. Hoisted here so there is one list: see the header note.
   SESSION_DESTROY:   'session:destroy',
   SESSION_ROSTER:    'session-roster',
+  // v0.20.0 cross-window notifications. Main decides WHICH window shows a
+  // toast (the one the player is looking at); see CharacterNotice / RoutedToast.
+  CHARACTER_NOTICE:  'character-notice',
+  ROUTE_TOAST:       'route-toast',
+  ROUTED_TOAST:      'routed-toast',
+  FOCUS_CHARACTER:   'focus-character',
+  SELECT_CHARACTER:  'select-character',
 } as const
+
+// A character's connection changed in a way worth telling the player about,
+// wherever they are looking (v0.20.0). Main sends it ONLY to the focused
+// Lichborne window, so it is shown once; the renderer decides whether to show
+// it (the setting, and not for the character already on screen).
+//  - ready: a login or attach finished
+//  - dropped: the connection was lost WITHOUT the player asking (never sent for
+//    Disconnect, closing a window, typing QUIT/EXIT or quitting the app)
+//  - reconnected: a character that dropped is back
+export interface CharacterNotice {
+  characterId: string
+  character: string
+  kind: 'ready' | 'dropped' | 'reconnected'
+  /** Attach mode re-attaches on its own after a drop. */
+  attach?: boolean
+}
+
+// A toast a renderer wants shown in whichever window the player is looking at
+// (a trigger's Toast action firing for a character in another window, or in
+// the background). `characterId` makes it clickable: go to that character.
+export interface RoutedToast {
+  title?: string
+  message: string
+  kind?: 'info' | 'success' | 'warning' | 'error'
+  characterId?: string
+  /** Whose trigger it was — drawn as that character's badge. */
+  character?: string
+}
 
 // --- Per-session IPC payloads ---
 // All push channels that report session state carry the originating sessionId.

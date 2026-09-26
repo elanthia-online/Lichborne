@@ -112,7 +112,10 @@ interface SessionsContextValue {
   sessions: SessionRecord[]
   activeId: CharacterId | null
   setActive: (id: CharacterId) => void
-  addSession: (info: SessionInfo) => CharacterId
+  // `activate: false` adds the tab WITHOUT switching to it (a team login's
+  // background connects, so a character you are already playing keeps focus).
+  // It still becomes active when nothing is, or nothing would be shown.
+  addSession: (info: SessionInfo, opts?: { activate?: boolean }) => CharacterId
   removeSession: (id: CharacterId) => void
   getSession: (id: CharacterId) => SessionRecord | undefined
   updateStatus: (id: CharacterId, partial: Partial<SessionStatus>) => void
@@ -129,7 +132,7 @@ export function SessionsProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<SessionRecord[]>([])
   const [activeId, setActiveId] = useState<CharacterId | null>(null)
 
-  const addSession = useCallback((info: SessionInfo): CharacterId => {
+  const addSession = useCallback((info: SessionInfo, opts?: { activate?: boolean }): CharacterId => {
     const characterId = makeCharacterId(info.account, info.character, info.game)
     setSessions(prev => {
       // Replace if a session for this characterId already exists (reconnect
@@ -159,7 +162,8 @@ export function SessionsProvider({ children }: { children: ReactNode }) {
       }
       return [...prev, record]
     })
-    setActiveId(characterId)
+    if (opts?.activate === false) setActiveId(curr => curr ?? characterId)
+    else setActiveId(characterId)
     return characterId
   }, [])
 

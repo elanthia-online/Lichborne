@@ -25,7 +25,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { pressable } from '../utils/pressable'
 import { ResizeDivider } from './ResizeDivider'
-import { createPortal } from 'react-dom'
+import VarMenu from './VarMenu'
 import InlineConfirm from './InlineConfirm'
 import { confirmDelete, confirmDiscard } from '../confirm'
 import { useReportUnsaved, differs } from '../hooks/useUnsaved'
@@ -51,6 +51,9 @@ interface Props {
   onSaved?:     () => void
   initialTab?:  'aliases' | 'macros'
   openAliasId?: string // v0.14.6: open an existing alias for edit (slash /alias edit)
+  // v0.20.0: open an existing macro — the "Applies to" move reopens the rule
+  // it moved, and macros were the one type with no way to be opened.
+  openMacroId?: string
   analyticsOn?: boolean
   // F37/F63 (v0.15.2): which store this panel edits ('global' = All Characters
   // scope — groups rows hidden) + the cross-store MOVE callback for the
@@ -62,114 +65,28 @@ interface Props {
 
 // ── Var Picker ────────────────────────────────────────────────────────────────
 
-interface VarPickerProps {
+// The shared "$" insert menu (VarMenu.tsx), shaped for this panel: the $vars,
+// then — macros only — the {Tokens}, which replay history rather than read state.
+function MaVarPicker({ inputRef, value, onChange, vars, tokens }: {
   inputRef: React.RefObject<HTMLInputElement>
   value: string
   onChange: (v: string) => void
   vars: { name: string; desc: string }[]
-  // v0.8.3: optional list of {Name} tokens (RepeatLast etc.) rendered as a
-  // second section below the $vars. Only the macro editor passes this —
-  // aliases don't support token playback.
+  // v0.8.3: optional {Name} tokens (RepeatLast etc.). Only the macro editor
+  // passes these — aliases don't support token playback.
   tokens?: { name: string; desc: string }[]
-}
-
-function MaVarPicker({ inputRef, value, onChange, vars, tokens }: VarPickerProps) {
-  const [open, setOpen]       = useState(false)
-  const [pos,  setPos]        = useState({ top: 0, left: 0 })
-  const btnRef  = useRef<HTMLButtonElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function onOutside(e: MouseEvent) {
-      if (!btnRef.current?.contains(e.target as Node) && !menuRef.current?.contains(e.target as Node))
-        setOpen(false)
-    }
-    // B380: Esc closes the menu ONLY — preventDefault tells the Automations
-    // dialog's Esc handler (useEscapeClose) the key was used, so the dialog
-    // stays open — and hands focus back to the $ button. ↑/↓ move between items.
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setOpen(false)
-        btnRef.current?.focus()
-        return
-      }
-      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
-      const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('.ma-var-item') ?? [])
-      if (items.length === 0) return
-      e.preventDefault()
-      const i = items.indexOf(document.activeElement as HTMLButtonElement)
-      const next = e.key === 'ArrowDown' ? (i + 1) % items.length : (i <= 0 ? items.length - 1 : i - 1)
-      items[next].focus()
-    }
-    document.addEventListener('mousedown', onOutside)
-    document.addEventListener('keydown', onKey)
-    // The menu is portaled to the end of <body>, so Tab from the $ button never
-    // reaches it — start keyboard users on the first item.
-    const raf = requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>('.ma-var-item')?.focus())
-    return () => {
-      cancelAnimationFrame(raf)
-      document.removeEventListener('mousedown', onOutside)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open])
-
-  function handleOpen() {
-    const rect = btnRef.current?.getBoundingClientRect()
-    if (rect) setPos({ top: rect.bottom + 4, left: rect.right })
-    setOpen(v => !v)
-  }
-
-  function insertText(literal: string) {
-    const el  = inputRef.current
-    const at  = el ? (el.selectionStart ?? value.length) : value.length
-    const next = value.slice(0, at) + literal + value.slice(at)
-    onChange(next)
-    setOpen(false)
-    setTimeout(() => {
-      el?.focus()
-      const np = at + literal.length
-      el?.setSelectionRange(np, np)
-    }, 0)
-  }
-
+}) {
   return (
-    <>
-      <button
-        ref={btnRef}
-        className="ma-var-btn"
-        type="button"
-        onClick={handleOpen}
-        title="Insert variable or token"
-        aria-label="Insert variable or token"
-        aria-haspopup="menu"
-        aria-expanded={open}
-      >$</button>
-      {open && createPortal(
-        <div ref={menuRef} className="ui-menu ma-var-menu" role="menu" aria-label="Insert variable or token" style={{ top: pos.top, left: pos.left, transform: 'translateX(-100%)' }}>
-          {/* B380: real buttons, so each item is keyboard-reachable. */}
-          {vars.map(v => (
-            <button type="button" role="menuitem" key={`v-${v.name}`} className="ui-menu-item ui-menu-item--baseline ma-var-item" onClick={() => insertText(`$${v.name}`)}>
-              <code>${v.name}</code>
-              <span>{v.desc}</span>
-            </button>
-          ))}
-          {tokens && tokens.length > 0 && (
-            <>
-              <div className="ma-var-section">Special tokens</div>
-              {tokens.map(t => (
-                <button type="button" role="menuitem" key={`t-${t.name}`} className="ui-menu-item ui-menu-item--baseline ma-var-item" onClick={() => insertText(`{${t.name}}`)}>
-                  <code>{`{${t.name}}`}</code>
-                  <span>{t.desc}</span>
-                </button>
-              ))}
-            </>
-          )}
-        </div>,
-        document.body,
-      )}
-    </>
+    <VarMenu
+      inputRef={inputRef as React.RefObject<HTMLInputElement | HTMLTextAreaElement>}
+      value={value}
+      onChange={onChange}
+      title="Insert variable or token"
+      sections={[
+        { items: vars.map(v => ({ label: `$${v.name}`, insert: `$${v.name}`, desc: v.desc })) },
+        { title: 'Special tokens', items: (tokens ?? []).map(t => ({ label: `{${t.name}}`, insert: `{${t.name}}`, desc: t.desc })) },
+      ]}
+    />
   )
 }
 
@@ -281,7 +198,7 @@ export function KeyBindingField({ value, onChange }: KeyBindingFieldProps) {
 
 // ── Main Panel ────────────────────────────────────────────────────────────────
 
-export default function MacrosPanel({ onSaved, initialTab, openAliasId, analyticsOn = false, scope = 'character', onMoveScope }: Props) {
+export default function MacrosPanel({ onSaved, initialTab, openAliasId, openMacroId, analyticsOn = false, scope = 'character', onMoveScope }: Props) {
   // The key recorder above preventDefaults every key it captures, Esc
   // included, so cancelling a recording never closes the Automations dialog.
   const hideGroups = scope === 'global'
@@ -323,6 +240,18 @@ export default function MacrosPanel({ onSaved, initialTab, openAliasId, analytic
     confirmDiscard(aliasDirty, () => selectAlias(r))
   }, [openAliasId, aliases]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The same for a macro. Its own applied-ref, so an alias request and a macro
+  // request can never cancel each other out.
+  const appliedMacroOpenRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!openMacroId) { appliedMacroOpenRef.current = undefined; return }
+    if (appliedMacroOpenRef.current === openMacroId) return
+    const r = macros.find(x => x.id === openMacroId)
+    if (!r) return
+    appliedMacroOpenRef.current = openMacroId
+    confirmDiscard(macroDirty, () => selectMacro(r))
+  }, [openMacroId, macros]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Alias CRUD ──────────────────────────────────────────────────────────────
 
   function selectAlias(r: AliasRule) {
@@ -352,11 +281,19 @@ export default function MacrosPanel({ onSaved, initialTab, openAliasId, analytic
     : !aliasDraft.commands.some(c => c.trim()) ? 'Enter at least one command to save'
     : null
 
+  // The rule as it is stored. Shared by Save and the "Applies to" move — the
+  // move stores it too (in the other list), so the two can't store it
+  // differently (an untrimmed pattern would miss its twin there).
+  function finalizedAlias(d: AliasRule): AliasRule {
+    const t = { ...d, input: d.input.trim() }
+    if (!t.name) t.name = t.input
+    t.commands = t.commands.filter(c => c.trim())
+    return t
+  }
+
   function saveAlias() {
     if (!aliasDraft || aliasSaveBlock) return
-    const trimmed = { ...aliasDraft, input: aliasDraft.input.trim() }
-    if (!trimmed.name) trimmed.name = trimmed.input
-    trimmed.commands = trimmed.commands.filter(c => c.trim())
+    const trimmed = finalizedAlias(aliasDraft)
     const updated = isPendingNew
       ? [...aliases, trimmed]
       : aliases.map(r => r.id === trimmed.id ? trimmed : r)
@@ -435,11 +372,16 @@ export default function MacrosPanel({ onSaved, initialTab, openAliasId, analytic
     : !macroDraft.commands.some(c => c.trim()) ? 'Enter at least one command to save'
     : null
 
+  function finalizedMacro(d: MacroRule): MacroRule {
+    const t = { ...d }
+    if (!t.name) t.name = t.key
+    t.commands = t.commands.filter(c => c.trim())
+    return t
+  }
+
   function saveMacro() {
     if (!macroDraft || macroSaveBlock) return
-    const trimmed = { ...macroDraft }
-    if (!trimmed.name) trimmed.name = trimmed.key
-    trimmed.commands = trimmed.commands.filter(c => c.trim())
+    const trimmed = finalizedMacro(macroDraft)
     const updated = isPendingNew
       ? [...macros, trimmed]
       : macros.map(r => r.id === trimmed.id ? trimmed : r)
@@ -605,19 +547,21 @@ export default function MacrosPanel({ onSaved, initialTab, openAliasId, analytic
                         <button
                           type="button"
                           className={`rule-scope-btn${scope === 'character' ? ' rule-scope-btn--on' : ''}`}
-                          disabled={scope === 'character'}
-                          onClick={() => onMoveScope('aliases', aliasDraft)}
+                          disabled={scope === 'character' || !!aliasSaveBlock}
+                          onClick={() => onMoveScope('aliases', finalizedAlias(aliasDraft))}
                           title={scope === 'character'
                             ? 'This alias belongs to this character'
+                            : aliasSaveBlock ? `${aliasSaveBlock}, then you can move it`
                             : 'Move this alias to the character you have open — every OTHER character stops getting it'}
                         >This character</button>
                         <button
                           type="button"
                           className={`rule-scope-btn${scope === 'global' ? ' rule-scope-btn--on' : ''}`}
-                          disabled={scope === 'global'}
-                          onClick={() => onMoveScope('aliases', aliasDraft)}
+                          disabled={scope === 'global' || !!aliasSaveBlock}
+                          onClick={() => onMoveScope('aliases', finalizedAlias(aliasDraft))}
                           title={scope === 'global'
                             ? 'This alias applies to every character'
+                            : aliasSaveBlock ? `${aliasSaveBlock}, then you can move it`
                             : 'Move this alias to All characters — it will work for every character on every account'}
                         >All characters</button>
                       </div>
@@ -827,19 +771,21 @@ export default function MacrosPanel({ onSaved, initialTab, openAliasId, analytic
                         <button
                           type="button"
                           className={`rule-scope-btn${scope === 'character' ? ' rule-scope-btn--on' : ''}`}
-                          disabled={scope === 'character'}
-                          onClick={() => onMoveScope('macros', macroDraft)}
+                          disabled={scope === 'character' || !!macroSaveBlock}
+                          onClick={() => onMoveScope('macros', finalizedMacro(macroDraft))}
                           title={scope === 'character'
                             ? 'This macro belongs to this character'
+                            : macroSaveBlock ? `${macroSaveBlock}, then you can move it`
                             : 'Move this macro to the character you have open — every OTHER character stops getting it'}
                         >This character</button>
                         <button
                           type="button"
                           className={`rule-scope-btn${scope === 'global' ? ' rule-scope-btn--on' : ''}`}
-                          disabled={scope === 'global'}
-                          onClick={() => onMoveScope('macros', macroDraft)}
+                          disabled={scope === 'global' || !!macroSaveBlock}
+                          onClick={() => onMoveScope('macros', finalizedMacro(macroDraft))}
                           title={scope === 'global'
                             ? 'This macro applies to every character'
+                            : macroSaveBlock ? `${macroSaveBlock}, then you can move it`
                             : 'Move this macro to All characters — its key will work for every character on every account'}
                         >All characters</button>
                       </div>

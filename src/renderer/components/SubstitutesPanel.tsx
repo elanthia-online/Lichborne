@@ -128,10 +128,18 @@ export default function SubstitutesPanel({ onSaved, prefill, openRuleId, analyti
     : regexInvalid ? 'Fix the regular expression to save'
     : null
 
+  // The rule as it is stored. Shared by Save and the "Applies to" move — the
+  // move stores it too (in the other list), so the two can't store it
+  // differently (an untrimmed pattern would miss its twin there).
+  function finalized(d: SubstituteRule): SubstituteRule {
+    const t = { ...d, pattern: d.pattern.trim() }
+    if (!t.name) t.name = t.pattern
+    return t
+  }
+
   function saveDraft() {
     if (!draft || saveBlock) return
-    const trimmed = { ...draft, pattern: draft.pattern.trim() }
-    if (!trimmed.name) trimmed.name = trimmed.pattern
+    const trimmed = finalized(draft)
     persist(isPendingNew ? [...rules, trimmed] : rules.map(r => r.id === trimmed.id ? trimmed : r))
     setDraft(trimmed)
     setBaseline(trimmed)
@@ -269,19 +277,21 @@ export default function SubstitutesPanel({ onSaved, prefill, openRuleId, analyti
                 <button
                   type="button"
                   className={`rule-scope-btn${scope === 'character' ? ' rule-scope-btn--on' : ''}`}
-                  disabled={scope === 'character'}
-                  onClick={() => onMoveScope(draft)}
+                  disabled={scope === 'character' || !!saveBlock}
+                  onClick={() => onMoveScope(finalized(draft))}
                   title={scope === 'character'
                     ? 'This substitute belongs to this character'
+                    : saveBlock ? `${saveBlock}, then you can move it`
                     : 'Move this substitute to the character you have open — every OTHER character stops getting it'}
                 >This character</button>
                 <button
                   type="button"
                   className={`rule-scope-btn${scope === 'global' ? ' rule-scope-btn--on' : ''}`}
-                  disabled={scope === 'global'}
-                  onClick={() => onMoveScope(draft)}
+                  disabled={scope === 'global' || !!saveBlock}
+                  onClick={() => onMoveScope(finalized(draft))}
                   title={scope === 'global'
                     ? 'This substitute applies to every character'
+                    : saveBlock ? `${saveBlock}, then you can move it`
                     : 'Move this substitute to All characters — it will rewrite this text for every character on every account'}
                 >All characters</button>
               </div>

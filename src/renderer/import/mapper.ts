@@ -142,9 +142,16 @@ export function mapAlias(a: ImportAlias): AliasRule {
 export function mapTrigger(t: ImportTrigger): TriggerRule {
   const actions: TriggerAction[] = []
 
-  for (const cmd of t.commands) {
-    actions.push({ id: nanoid(), type: 'command', command: cmd, delayMs: 0 })
-  }
+  t.commands.forEach((cmd, i) => {
+    // `commandOpts` is index-aligned with `commands` when a source knows the
+    // timing (Genie's #send/#put/#queue). Without it the command takes the
+    // Lichborne defaults: no delay, and `waitForRt` left absent = wait.
+    const o = t.commandOpts?.[i]
+    actions.push({
+      id: nanoid(), type: 'command', command: cmd, delayMs: o?.delayMs ?? 0,
+      ...(o ? { waitForRt: o.waitForRt } : {}),
+    })
+  })
 
   for (const echo of (t.echoActions ?? [])) {
     actions.push({

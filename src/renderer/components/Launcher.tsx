@@ -36,6 +36,9 @@ import { loadLastSessionCharacters, exportSharedProfile } from '../profile'
 import { loadBulkSets, saveBulkSets, removeBulkSet, upsertBulkSet, BULK_SET_NAME_MAX, BULK_SETS_KEY, BULK_SETS_CHANGED_EVENT } from '../bulkSets'
 import ContextMenu, { type CtxItem } from './ContextMenu'
 import CharacterNotesEditor, { guildLabel } from './CharacterNotesEditor'
+import { makeCharacterId } from '../../shared/characterId'
+import { characterColor, useCharacterColors } from '../characterColors'
+import { monogramStyle, nameInitials } from '../utils/nameColor'
 import '../styles/launcher.css'
 
 export interface LauncherCharacter {
@@ -282,15 +285,18 @@ function TeamRow({ team, onConnect, onToggleFavorite, onMenu }: {
             the whole reason someone wrote them. */}
         {team.notes && <div className="launcher-team-notes">{team.notes}</div>}
       </div>
+      {/* The character card's own Connect button (Sekmeht: the teams one
+          didn't match) — same class, so a restyle of one is a restyle of both
+          (pitfall #113). `launcher-team-connect` only places it in the row. */}
       <button
         type="button"
-        className="launcher-team-connect"
+        className="launcher-card-connect launcher-team-connect"
         disabled={team.readyCount === 0}
         onClick={() => onConnect(team.name)}
         title={team.readyCount === 0
           ? 'Everyone on this team is already logged in'
           : `Log in ${team.readyCount} character${team.readyCount === 1 ? '' : 's'}`}
-      >Connect{team.readyCount > 0 ? ` ${team.readyCount}` : ''}</button>
+      >Connect{team.readyCount > 0 ? ` ${team.readyCount}` : ''} →</button>
       <button
         type="button"
         className="launcher-team-menu"
@@ -622,14 +628,21 @@ function CharacterCard({ character: c, busy, onConnect, onMenu, onToggleTest, on
   const circleText = (typeof c.circle === 'number' && !Number.isNaN(c.circle)) ? String(c.circle) : null
   const guildLine = [guild, circleText].filter(Boolean).join(' ')
   const hasNotes = !!(c.notes && c.notes.trim())
+  // The colour picked in Edit Profile (v0.20.0): the badge, and the card's
+  // hairline. Absent → the automatic badge colour and the theme's border.
+  const chosenColor = characterColor(useCharacterColors(), { characterId: makeCharacterId(c.account, c.name, c.game) })
   return (
     <div
-      className={`launcher-card${busy ? ' launcher-card--busy' : ''}${c.hidden ? ' launcher-card--hidden' : ''}`}
+      className={`launcher-card${busy ? ' launcher-card--busy' : ''}${c.hidden ? ' launcher-card--hidden' : ''}${chosenColor ? ' launcher-card--colored' : ''}`}
+      style={chosenColor ? { ['--char-color' as string]: chosenColor } as React.CSSProperties : undefined}
       onContextMenu={e => onMenu(e, c)}
     >
       {/* Header row: name on the left, heart + kebab on the right. */}
       <div className="launcher-card-header">
-        <span className="launcher-card-name">{c.name}</span>
+        <span className="launcher-card-who">
+          <span className="launcher-card-mono" style={monogramStyle(c.name, chosenColor)} aria-hidden="true">{nameInitials(c.name)}</span>
+          <span className="launcher-card-name">{c.name}</span>
+        </span>
         <div className="launcher-card-actions">
           <button
             type="button"
@@ -1505,6 +1518,7 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
       {editingNotes && (
         <CharacterNotesEditor
           characterName={editingNotes.name}
+          characterId={makeCharacterId(editingNotes.account, editingNotes.name, editingNotes.game)}
           initialGuild={editingNotes.guild}
           initialCircle={editingNotes.circle}
           initialNotes={editingNotes.notes}

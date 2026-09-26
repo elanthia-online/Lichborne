@@ -23,7 +23,7 @@
 // here is the FULL editor; slash `/trigger` only fills the built-in command
 // action. Classes are `.trg-*`. Analytics is opt-in via `analyticsOn`.
 
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, createContext, useContext, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { pressable } from '../utils/pressable'
 import { ResizeDivider } from './ResizeDivider'
 import InlineConfirm from './InlineConfirm'
@@ -36,8 +36,9 @@ import {
   buildTriggerRegex, isValidTriggerRegex,
   interpolate,
   GATE_VARIABLES, NUMERIC_OPERATORS, STRING_OPERATORS,
-  INTERPOLATABLE_VARS, WATCH_STREAM_OPTIONS, echoLineStyle,
+  INTERPOLATABLE_VARS, VAR_GROUPS, WATCH_STREAM_OPTIONS, echoLineStyle, actionWaitsForRt,
 } from '../triggers'
+import VarMenu, { type VarMenuSection } from './VarMenu'
 import { colorLabel, colorHex } from '../colors'
 import { renderHighlightedLine } from '../utils/renderSegmentFull'
 import { HIGHLIGHT_EFFECTS, FX_USES_COLOR, DEFAULT_FX_COLOR, effectColorNote, type HighlightEffect } from '../highlights'
@@ -96,6 +97,7 @@ const ACTION_LABELS: Record<ActionType, string> = {
   command:  '⌨ Command',
   echo:     '📢 Echo',
   notify:   '🔔 Notify',
+  toast:    '💬 Toast',
   sound:    '🔊 Sound',
   webhook:  '🔗 Webhook',
   variable: '📋 Variable',
@@ -104,7 +106,50 @@ const ACTION_LABELS: Record<ActionType, string> = {
   log:      '📄 Log',
 }
 
-const ACTION_TYPES: ActionType[] = ['command', 'echo', 'notify', 'sound', 'flash', 'beep', 'log', 'webhook', 'variable']
+const ACTION_TYPES: ActionType[] = ['command', 'echo', 'toast', 'notify', 'sound', 'flash', 'beep', 'log', 'webhook', 'variable']
+
+// One line per action type saying what it DOES (UX standard #8) — shown at the
+// top of each action card and as the type picker's hover text.
+const ACTION_DESCS: Record<ActionType, string> = {
+  command:  'Sends a command to the game, as if you typed it.',
+  echo:     'Shows a message in a Lichborne window. Nothing is sent to the game.',
+  notify:   "Pops up your system's desktop notification — for when Lichborne is in the background or minimized.",
+  toast:    'Shows a Lichborne notification in the window you are using, even when this fires for another character or window. Click it to go to that character.',
+  sound:    'Plays a sound.',
+  flash:    'Flashes Lichborne in the taskbar to get your attention.',
+  beep:     'Plays a short beep.',
+  log:      'Adds a line to a text file.',
+  webhook:  'Posts a message to a web address, such as a Discord channel webhook.',
+  variable: 'Remembers a value under a name you can use later as $name.',
+}
+
+// Where an echo can go. The echo stream is a free-text id in the saved rule,
+// so a value outside this list (an imported one, a Lich script's stream) is
+// kept and offered as-is rather than silently changed.
+const ECHO_STREAM_OPTIONS = [
+  { value: 'main', label: 'Main window' },
+  ...WATCH_STREAM_OPTIONS.filter(o => o.value !== 'any' && o.value !== 'main'),
+]
+
+// Gate variables that read as true/false get a true/false picker instead of a
+// free-text box (the engine compares against the literal 'true' / 'false').
+const BOOLEAN_GATES = new Set<GateVariable>(['bleeding', 'stunned', 'dead', 'hidden', 'invisible'])
+
+// Example values for the free-text gate box, so it's clear what to type.
+const GATE_PLACEHOLDERS: Partial<Record<GateVariable, string>> = {
+  rt: '0', ct: '0', stance: 'e.g. defensive', spell: 'e.g. None', room: 'exact room name',
+}
+
+// Names a Variable change trigger can watch: every game value GameWindow
+// reports through processVariableChange (vitals, rt/ct, stance, spell, hands,
+// room, exits, and the indicator flags — `unconscious` included, which the
+// parser emits as an indicator from the status prompt). The same catalogue as
+// the $ menu minus the match/clock entries, which never "change".
+const WATCHABLE_VARS = INTERPOLATABLE_VARS.filter(v => v.group !== 'match' && v.group !== 'who')
+
+const OPERATOR_TITLES: Record<GateOperator, string> = {
+  '<': 'less than', '<=': 'at most', '>': 'more than', '>=': 'at least', '=': 'is', '!=': 'is not',
+}
 
 // B379: why a draft can't be saved, or null. A text trigger with no pattern
 // used to save (buildTriggerRegex returns null for it, so it never fired); a
@@ -133,37 +178,50 @@ interface Props {
   onMoveScope?: (rule: TriggerRule) => void
 }
 
-// ── VarPicker ─────────────────────────────────────────────────────────────────
+// ── Variable menu ─────────────────────────────────────────────────────────────
 
-interface VarPickerProps {
+// What the "$" menu needs to know about the trigger being edited. Provided once
+// by the panel rather than threaded through every ActionCard and VarInputRow.
+// Module-level, so it survives the panel's re-renders (UX standard #4).
+const VarMenuContext = createContext<{ triggerType: 'text' | 'variable'; userVars: string[] }>({
+  triggerType: 'text', userVars: [],
+})
+
+// The shared "$" insert menu (VarMenu.tsx), sectioned by VAR_GROUPS. It
+// replaced a native <select> that read "$var" like a setting to choose.
+function TriggerVarMenu({ inputRef, value, onChange }: {
   inputRef: React.RefObject<HTMLInputElement | HTMLTextAreaElement>
   value: string
   onChange: (v: string) => void
-}
-
-function VarPicker({ inputRef, value, onChange }: VarPickerProps) {
-  function handleSelect(e: React.ChangeEvent<HTMLSelectElement>) {
-    const varName = e.target.value
-    if (!varName) return
-    const el = inputRef.current
-    const pos = el ? (el.selectionStart ?? value.length) : value.length
-    const next = value.slice(0, pos) + `$${varName}` + value.slice(pos)
-    onChange(next)
-    e.target.value = ''
-    setTimeout(() => {
-      el?.focus()
-      const newPos = pos + varName.length + 1
-      el?.setSelectionRange(newPos, newPos)
-    }, 0)
-  }
-
+}) {
+  const { triggerType, userVars } = useContext(VarMenuContext)
+  const isVar = triggerType === 'variable'
+  const sections: VarMenuSection[] = VAR_GROUPS.map(g => ({
+    title: g.title,
+    items: INTERPOLATABLE_VARS
+      .filter(v => v.group === g.id && !(isVar && v.textOnly))
+      .map(v => ({
+        label: `$${v.name}`,
+        insert: `$${v.name}`,
+        // A variable trigger has no matched text: buildVars passes the NEW
+        // VALUE as both the match and the line.
+        desc: isVar && (v.name === 'match' || v.name === '0' || v.name === 'line')
+          ? "the watched variable's new value"
+          : v.desc,
+      })),
+  }))
+  sections.push({
+    title: 'Set by your triggers',
+    items: userVars.map(n => ({ label: `$${n}`, insert: `$${n}`, desc: 'from a Set variable action' })),
+  })
   return (
-    <select className="trg-var-select" defaultValue="" onChange={handleSelect}>
-      <option value="" disabled>$var</option>
-      {INTERPOLATABLE_VARS.map(v => (
-        <option key={v.name} value={v.name}>${v.name} — {v.desc}</option>
-      ))}
-    </select>
+    <VarMenu
+      inputRef={inputRef}
+      value={value}
+      onChange={onChange}
+      sections={sections}
+      note="Each $name is replaced with its live value when the trigger fires."
+    />
   )
 }
 
@@ -188,7 +246,7 @@ function VarInputRow({ label, value, onChange, placeholder }: VarInputProps) {
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
       />
-      <VarPicker inputRef={inputRef as React.RefObject<HTMLInputElement | HTMLTextAreaElement>} value={value} onChange={onChange} />
+      <TriggerVarMenu inputRef={inputRef as React.RefObject<HTMLInputElement | HTMLTextAreaElement>} value={value} onChange={onChange} />
     </div>
   )
 }
@@ -214,6 +272,8 @@ function ActionCard({ action, canRemove, onChange, onRemove }: ActionCardProps) 
           className="trg-action-type-select"
           value={action.type}
           onChange={e => up({ type: e.target.value as ActionType })}
+          title={ACTION_DESCS[action.type]}
+          aria-label="Action type"
         >
           {ACTION_TYPES.map(t => (
             <option key={t} value={t}>{ACTION_LABELS[t]}</option>
@@ -225,6 +285,7 @@ function ActionCard({ action, canRemove, onChange, onRemove }: ActionCardProps) 
       </div>
 
       <div className="trg-action-fields">
+        <div className="trg-action-desc">{ACTION_DESCS[action.type]}</div>
         {action.type === 'command' && (
           <>
             <VarInputRow
@@ -233,17 +294,38 @@ function ActionCard({ action, canRemove, onChange, onRemove }: ActionCardProps) 
               onChange={v => up({ command: v })}
               placeholder="e.g. get herb"
             />
-            <div className="trg-action-row">
+            <div className="trg-action-row" title="Wait this long before sending. 1000 ms = 1 second. 0 = right away.">
               <label className="trg-label">Delay</label>
               <input
                 className="trg-input trg-cooldown-input"
                 type="number"
                 min={0}
                 max={30000}
+                step={100}
                 value={action.delayMs ?? 0}
                 onChange={e => up({ delayMs: Math.max(0, parseInt(e.target.value) || 0) })}
               />
               <span className="trg-delay-unit">ms</span>
+            </div>
+            <div className="trg-action-row">
+              <label className="trg-label">Roundtime</label>
+              <label
+                className="trg-checkbox-label"
+                title={
+                  (action.command ?? '').trimStart().startsWith(';')
+                    ? "Lich commands (starting with ;) always send right away. Roundtime only limits game commands."
+                    : "Hold this command until roundtime clears. With no roundtime it sends at once; with 5 seconds left it waits 5 seconds. Untick for commands DragonRealms accepts during roundtime, like say or stance."
+                }
+              >
+                <input
+                  type="checkbox"
+                  className="trg-checkbox"
+                  checked={actionWaitsForRt(action)}
+                  disabled={(action.command ?? '').trimStart().startsWith(';')}
+                  onChange={e => up({ waitForRt: e.target.checked })}
+                />
+                <span>Wait for roundtime to clear</span>
+              </label>
             </div>
           </>
         )}
@@ -257,13 +339,18 @@ function ActionCard({ action, canRemove, onChange, onRemove }: ActionCardProps) 
               placeholder="Message to echo…"
             />
             <div className="trg-action-row">
-              <label className="trg-label">Stream</label>
-              <input
-                className="trg-input"
-                value={action.echoStream ?? 'log'}
+              <label className="trg-label">Show in</label>
+              <select
+                className="trg-select"
+                value={action.echoStream || 'log'}
                 onChange={e => up({ echoStream: e.target.value })}
-                placeholder="log"
-              />
+                title="Which window shows the message. If that window isn't open, it shows in the main window instead."
+              >
+                {ECHO_STREAM_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                {!ECHO_STREAM_OPTIONS.some(o => o.value === (action.echoStream || 'log')) && (
+                  <option value={action.echoStream}>{action.echoStream}</option>
+                )}
+              </select>
             </div>
             {/* F118: the same styling vocabulary a highlight and a contact
                 template offer, so an echo can be found on screen the same way.
@@ -345,23 +432,15 @@ function ActionCard({ action, canRemove, onChange, onRemove }: ActionCardProps) 
             </div>
           </>
         )}
-        {action.type === 'flash' && (
-          <div className="trg-action-note">Flashes the application in the OS taskbar to draw attention.</div>
-        )}
-        {action.type === 'beep' && (
-          <div className="trg-action-note">Plays a short system beep sound.</div>
-        )}
         {action.type === 'log' && (
           <>
-            <div className="trg-action-row">
-              <label className="trg-label">File</label>
-              <input
-                className="trg-input"
-                value={action.logFile ?? ''}
-                onChange={e => up({ logFile: e.target.value })}
-                placeholder="e.g. Ranklog-$characterName.txt"
-              />
-            </div>
+            {/* The file name interpolates too, so it gets the $ menu. */}
+            <VarInputRow
+              label="File"
+              value={action.logFile ?? ''}
+              onChange={v => up({ logFile: v })}
+              placeholder="e.g. Ranklog-$characterName.txt"
+            />
             <VarInputRow
               label="Message"
               value={action.logMessage ?? ''}
@@ -395,6 +474,41 @@ function ActionCard({ action, canRemove, onChange, onRemove }: ActionCardProps) 
                 On macOS this also bounces the Dock icon, in case the notification doesn't appear.
               </div>
             )}
+          </>
+        )}
+
+        {action.type === 'toast' && (
+          <>
+            <VarInputRow
+              label="Title"
+              value={action.toastTitle ?? ''}
+              onChange={v => up({ toastTitle: v })}
+              placeholder="$characterName"
+            />
+            <VarInputRow
+              label="Message"
+              value={action.toastMessage ?? ''}
+              onChange={v => up({ toastMessage: v })}
+              placeholder="$line"
+            />
+            <div className="trg-action-row">
+              <label className="trg-label">Style</label>
+              <select
+                className="trg-select"
+                value={action.toastKind ?? 'info'}
+                onChange={e => up({ toastKind: e.target.value as TriggerAction['toastKind'] })}
+                title="The colour of the notification's edge. Error stays up longer (10s instead of 4s)."
+              >
+                <option value="info">Info</option>
+                <option value="success">Success (green)</option>
+                <option value="warning">Warning (amber)</option>
+                <option value="error">Error (red, stays 10s)</option>
+              </select>
+            </div>
+            <div className="trg-action-note">
+              Shows only while Lichborne is the app in front. For a notification when it's in the
+              background, use Notify.
+            </div>
           </>
         )}
 
@@ -473,6 +587,9 @@ function ActionCard({ action, canRemove, onChange, onRemove }: ActionCardProps) 
               onChange={v => up({ webhookMessage: v })}
               placeholder="$line"
             />
+            <div className="trg-action-note">
+              Sent as {'{ "content": "…" }'}, which is what a Discord webhook expects.
+            </div>
           </>
         )}
 
@@ -493,6 +610,11 @@ function ActionCard({ action, canRemove, onChange, onRemove }: ActionCardProps) 
               onChange={v => up({ varValue: v })}
               placeholder="value or $match"
             />
+            <div className="trg-action-note">
+              Use it as ${action.varName?.trim() || 'name'} in later actions and triggers, or
+              watch it with a Variable change trigger. It's kept in memory only, not saved
+              with your profile.
+            </div>
           </>
         )}
       </div>
@@ -521,8 +643,12 @@ function GateRow({ gate, onChange, onRemove }: GateRowProps) {
           const newVar = e.target.value as GateVariable
           const newVarDef = GATE_VARIABLES.find(v => v.value === newVar)
           const defaultOp: GateOperator = newVarDef?.numeric ? '<' : '='
-          onChange({ ...gate, variable: newVar, operator: defaultOp })
+          // A yes/no gate starts at "yes" rather than carrying over "50".
+          const value = BOOLEAN_GATES.has(newVar) ? 'true'
+            : BOOLEAN_GATES.has(gate.variable) ? '' : gate.value
+          onChange({ ...gate, variable: newVar, operator: defaultOp, value })
         }}
+        aria-label="Condition"
       >
         {GATE_VARIABLES.map(v => (
           <option key={v.value} value={v.value}>{v.label}</option>
@@ -532,15 +658,33 @@ function GateRow({ gate, onChange, onRemove }: GateRowProps) {
         className="trg-select trg-gate-select--op"
         value={gate.operator}
         onChange={e => onChange({ ...gate, operator: e.target.value as GateOperator })}
+        title={OPERATOR_TITLES[gate.operator]}
+        aria-label="Comparison"
       >
-        {ops.map(op => <option key={op} value={op}>{op}</option>)}
+        {ops.map(op => <option key={op} value={op} title={OPERATOR_TITLES[op]}>{op}</option>)}
       </select>
-      <input
-        className="trg-input trg-gate-value"
-        value={gate.value}
-        onChange={e => onChange({ ...gate, value: e.target.value })}
-        placeholder={varDef?.numeric ? '50' : 'value'}
-      />
+      {BOOLEAN_GATES.has(gate.variable) ? (
+        <select
+          className="trg-select trg-gate-value"
+          value={gate.value}
+          onChange={e => onChange({ ...gate, value: e.target.value })}
+          aria-label="Value"
+        >
+          <option value="true">yes</option>
+          <option value="false">no</option>
+          {/* A value typed before this became a picker stays visible, not lost. */}
+          {gate.value !== 'true' && gate.value !== 'false' && <option value={gate.value}>{gate.value || '(empty)'}</option>}
+        </select>
+      ) : (
+        <input
+          className="trg-input trg-gate-value"
+          value={gate.value}
+          onChange={e => onChange({ ...gate, value: e.target.value })}
+          placeholder={GATE_PLACEHOLDERS[gate.variable] ?? (varDef?.numeric ? '50' : 'value')}
+          aria-label="Value"
+          title={gate.variable === 'room' ? 'The whole room name, exactly as the game shows it (capitals don\'t matter)' : undefined}
+        />
+      )}
       <button type="button" className="trg-gate-remove" onClick={onRemove} title="Remove condition" aria-label="Remove condition">×</button>
     </div>
   )
@@ -563,6 +707,22 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
   const [testStream, setTestStream] = useState('main')
   const nameInputRef = useRef<HTMLInputElement>(null)
   const appliedOpenRef = useRef<string | undefined>(undefined)
+  const watchListId = useId()
+
+  // Names set by a "Set variable" action anywhere in this trigger list —
+  // including the one being edited — offered in the $ menu and the
+  // Watch-variable suggestions.
+  const userVars = useMemo(() => {
+    const names = new Set<string>()
+    for (const r of draft ? [...rules, draft] : rules)
+      for (const a of r.actions)
+        if (a.type === 'variable' && a.varName?.trim()) names.add(a.varName.trim())
+    return [...names].sort((a, b) => a.localeCompare(b))
+  }, [rules, draft])
+  const varMenuCtx = useMemo(
+    () => ({ triggerType: (draft?.triggerType ?? 'text') as 'text' | 'variable', userVars }),
+    [draft?.triggerType, userVars],
+  )
 
   const dirty = !!draft && !!baseline && differs(draft, baseline)
   useReportUnsaved(dirty)
@@ -629,14 +789,25 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
     }
     const summary = draft.actions.map(a => {
       switch (a.type) {
-        case 'command':  return `Command: "${interpolate(a.command ?? '', sampleVars)}"`
+        case 'command': {
+          const cmd = interpolate(a.command ?? '', sampleVars)
+          const when = [
+            a.delayMs ? `after ${a.delayMs / 1000}s` : '',
+            actionWaitsForRt(a, cmd) ? 'once roundtime clears' : '',
+          ].filter(Boolean).join(', ')
+          return `Command: "${cmd}"${when ? ` (${when})` : ''}`
+        }
         // colorLabel: a linked color is stored as `var(--lb-color-…, #hex)`,
         // which would print in full here instead of the color's name.
         // The summary is user-facing documentation (Principle #11), so it names
         // every style the action applies — a bolded or shimmering echo that
         // summarises as plain teaches the list wrong.
-        case 'echo':     return `Echo → ${a.echoStream ?? 'log'}${echoStyleSummary(a)}: "${interpolate(a.echoMessage ?? '', sampleVars)}"`
+        case 'echo': {
+          const where = ECHO_STREAM_OPTIONS.find(o => o.value === (a.echoStream || 'log'))?.label ?? a.echoStream
+          return `Echo → ${where}${echoStyleSummary(a)}: "${interpolate(a.echoMessage ?? '', sampleVars)}"`
+        }
         case 'notify':   return `Notify: "${interpolate(a.notifyTitle ?? 'Lichborne', sampleVars)}"`
+        case 'toast':    return `Toast: "${interpolate(a.toastTitle ?? '', sampleVars)}" — "${interpolate(a.toastMessage ?? '', sampleVars)}"`
         case 'sound':    return a.soundFile ? `Sound: ${a.soundFile.split(/[\\/]/).pop()}` : `Sound: ${a.soundPreset ?? 'chime'}`
         case 'flash':    return 'Flash window'
         case 'beep':     return 'Beep'
@@ -678,10 +849,17 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
 
   const saveBlock = triggerSaveBlock(draft)
 
+  // The rule as it is stored. Shared by Save and the "Applies to" move, which
+  // also stores it (in the other list), so the two can't store it differently.
+  function finalized(d: TriggerRule): TriggerRule {
+    const t = { ...d, pattern: d.pattern.trim() }
+    if (!t.name) t.name = t.pattern || t.watchVariable?.trim() || 'Unnamed trigger'
+    return t
+  }
+
   function saveDraft() {
     if (!draft || saveBlock) return
-    const trimmed = { ...draft, pattern: draft.pattern.trim() }
-    if (!trimmed.name) trimmed.name = trimmed.pattern || trimmed.watchVariable?.trim() || 'Unnamed trigger'
+    const trimmed = finalized(draft)
     let updated: TriggerRule[]
     if (isPendingNew) {
       updated = [...rules, trimmed]
@@ -773,6 +951,7 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
   const testResult = draft ? computeTest() : null
 
   const body = (
+    <VarMenuContext.Provider value={varMenuCtx}>
         <div className="trg-body">
 
           {/* Sidebar */}
@@ -807,8 +986,8 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
                   <button
                     type="button"
                     className={`trg-toggle${r.enabled ? ' trg-toggle--on' : ''}`}
-                    title={r.enabled ? 'Disable' : 'Enable'}
-                    aria-label={r.enabled ? 'Disable' : 'Enable'}
+                    title={r.enabled ? 'On. Click to turn this trigger off.' : 'Off. Click to turn this trigger on.'}
+                    aria-label={r.enabled ? 'Turn off' : 'Turn on'}
                     onClick={e => { e.stopPropagation(); toggleEnabled(r.id) }}
                   />
                   {/* B396: the full label, since the row truncates it. */}
@@ -816,7 +995,7 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
                   <div className="trg-list-badges" style={{ marginLeft: 'auto' }}>
                     {r.actions.slice(0, 3).map(a => (
                       <span key={a.id} className="trg-badge" title={ACTION_LABELS[a.type]}>
-                        {a.type === 'command' ? '⌨' : a.type === 'echo' ? '📢' : a.type === 'notify' ? '🔔' : a.type === 'sound' ? '🔊' : a.type === 'flash' ? '⚡' : a.type === 'beep' ? '🔔' : a.type === 'log' ? '📄' : a.type === 'webhook' ? '🔗' : '📋'}
+                        {(ACTION_LABELS[a.type] ?? '📋 ?').split(' ')[0]}
                       </span>
                     ))}
                     {r.actions.length > 3 && <span className="trg-badge">+{r.actions.length - 3}</span>}
@@ -895,23 +1074,28 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
                     <div className="trg-field">
                       <label className="trg-label">Applies to</label>
                       <div className="rule-scope-row">
+                        {/* A move SAVES the draft into the other list, so it
+                            must pass the same checks Save does — otherwise a
+                            blank new trigger was written there unfinished. */}
                         <button
                           type="button"
                           className={`rule-scope-btn${scope === 'character' ? ' rule-scope-btn--on' : ''}`}
-                          disabled={scope === 'character'}
-                          onClick={() => onMoveScope(draft)}
+                          disabled={scope === 'character' || !!saveBlock}
+                          onClick={() => onMoveScope(finalized(draft))}
                           title={scope === 'character'
                             ? 'This trigger belongs to this character'
-                            : 'Move this trigger to the character you have open — every OTHER character stops getting it'}
+                            : saveBlock ? `${saveBlock}, then you can move it`
+                            : 'Move this trigger to the character you have open — every OTHER character stops getting it. Saves your changes.'}
                         >This character</button>
                         <button
                           type="button"
                           className={`rule-scope-btn${scope === 'global' ? ' rule-scope-btn--on' : ''}`}
-                          disabled={scope === 'global'}
-                          onClick={() => onMoveScope(draft)}
+                          disabled={scope === 'global' || !!saveBlock}
+                          onClick={() => onMoveScope(finalized(draft))}
                           title={scope === 'global'
                             ? 'This trigger applies to every character'
-                            : 'Move this trigger to All characters — it will fire for every character on every account (group gating is removed; global rules are always active)'}
+                            : saveBlock ? `${saveBlock}, then you can move it`
+                            : 'Move this trigger to All characters — it will fire for every character on every account (group gating is removed; global rules are always active). Saves your changes.'}
                         >All characters</button>
                       </div>
                     </div>
@@ -952,8 +1136,9 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
                               className={`trg-mode-btn${draft.mode === m ? ' trg-mode-btn--active' : ''}`}
                               onClick={() => setDraft({ ...draft, mode: m })}
                               title={
-                                m === 'text'   ? 'Whole-word match' :
-                                m === 'phrase' ? 'Exact substring' : 'Regular expression'
+                                m === 'text'   ? 'Whole words, anywhere in the line: "troll" matches "a troll attacks" but not "trolley"' :
+                                m === 'phrase' ? 'This exact text, even inside a word: "roll" matches "troll" and "rolling"' :
+                                'A regular expression, for patterns and captures: "You get (.+) from" puts the item in $1'
                               }
                             >
                               {m === 'text' ? 'Text' : m === 'phrase' ? 'Phrase' : 'Regex'}
@@ -964,7 +1149,10 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
                           type="button"
                           className={`trg-mode-btn trg-mode-btn--case${draft.caseSensitive ? ' trg-mode-btn--active' : ''}`}
                           onClick={() => setDraft({ ...draft, caseSensitive: !draft.caseSensitive })}
-                          title={draft.caseSensitive ? 'Case-sensitive' : 'Case-insensitive'}
+                          title={draft.caseSensitive
+                            ? 'Match case: ON. "Troll" will not match "troll". Click to ignore capitals.'
+                            : 'Match case: off. "Troll" also matches "troll". Click to match capitals exactly.'}
+                          aria-pressed={draft.caseSensitive}
                         >
                           Aa
                         </button>
@@ -978,11 +1166,20 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
                       <label className="trg-label">Watch variable</label>
                       <input
                         className="trg-input"
+                        list={watchListId}
                         value={draft.watchVariable ?? ''}
                         onChange={e => setDraft({ ...draft, watchVariable: e.target.value })}
-                        placeholder="e.g. health, mana, myVar"
+                        placeholder="e.g. health, rt, right, myVar"
                       />
-                      <div className="trg-pattern-hint">Fires whenever this variable's value changes.</div>
+                      <datalist id={watchListId}>
+                        {WATCHABLE_VARS.map(v => <option key={v.name} value={v.name}>{v.desc}</option>)}
+                        {userVars.map(n => <option key={`u-${n}`} value={n}>set by your triggers</option>)}
+                      </datalist>
+                      <div className="trg-pattern-hint">
+                        Fires whenever this value changes. Use $match in an action for the new
+                        value. To act when roundtime ENDS, watch <code>rt</code> and add the condition
+                        Roundtime = 0 (the same for <code>ct</code> and Cast time).
+                      </div>
                     </div>
                     )}
 
@@ -994,6 +1191,9 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
                           value={draft.watchStream}
                           onChange={e => setDraft({ ...draft, watchStream: e.target.value })}
                           disabled={(draft.triggerType ?? 'text') === 'variable'}
+                          title={(draft.triggerType ?? 'text') === 'variable'
+                            ? 'Not used: a Variable change trigger watches a value, not text'
+                            : 'Which game text to check. Main is the story window. Speech also goes to Conversation, so "Any stream" can fire twice for one line.'}
                         >
                           {WATCH_STREAM_OPTIONS.map(o => (
                             <option key={o.value} value={o.value}>{o.label}</option>
@@ -1005,6 +1205,7 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
                         <label className="trg-label">Cooldown</label>
                         <div className="trg-cooldown-row">
                           <input
+                            title="After firing, ignore further matches for this many seconds. 0 = no cooldown."
                             className="trg-input trg-cooldown-input"
                             type="number"
                             min={0}
@@ -1013,7 +1214,7 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
                             onChange={e => setDraft({ ...draft, cooldownSeconds: Math.max(0, parseFloat(e.target.value) || 0) })}
                           />
                           <span className="trg-cooldown-unit">sec</span>
-                          <label className="trg-checkbox-label">
+                          <label className="trg-checkbox-label" title="Fire once, then switch this trigger off. It stays in the list; turn it back on with its dot.">
                             <input
                               type="checkbox"
                               className="trg-checkbox"
@@ -1049,6 +1250,18 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
                             />
                           </Fragment>
                         ))}
+                        {/* Shown with no conditions too, so the section explains
+                            itself before anything is in it (UX #8a). */}
+                        {draft.gates.length === 0 && (
+                          <div className="trg-pattern-hint">
+                            Optional. Only fire while these are true, e.g. Health % &lt; 50, or Stunned is no.
+                          </div>
+                        )}
+                        {draft.gates.length > 1 && (
+                          <div className="trg-pattern-hint">
+                            Click AND / OR to switch. They're read top to bottom: A OR B AND C means (A or B) and C.
+                          </div>
+                        )}
                         <button type="button" className="trg-add-gate-btn" onClick={addGate}>
                           + Add condition
                         </button>
@@ -1061,6 +1274,9 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
                     <div className="trg-section-header">
                       <span className="trg-section-title">Then</span>
                       <div className="trg-section-line" />
+                    </div>
+                    <div className="trg-section-hint">
+                      Every action runs, top to bottom. Click $ in a field to insert a live value such as $health.
                     </div>
 
                     <div className="trg-action-list">
@@ -1087,6 +1303,15 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
                       <div className="trg-section-line" />
                     </div>
 
+                    {(draft.triggerType ?? 'text') === 'variable' ? (
+                    <div className="trg-section-hint">
+                      Testing checks a pattern against a sample line, so it only applies to Game text triggers.
+                    </div>
+                    ) : (<>
+                    <div className="trg-section-hint">
+                      Paste a line from the game to check the pattern. Nothing is sent. Game values like
+                      $health use sample numbers here.
+                    </div>
                     <div className="trg-test-row" data-enter-save="off">
                       <input
                         className="trg-input"
@@ -1094,11 +1319,14 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
                         value={testInput}
                         onChange={e => setTestInput(e.target.value)}
                         placeholder="Type a sample game line…"
+                        aria-label="Sample game line"
                       />
                       <select
                         className="trg-select trg-test-stream"
                         value={testStream}
                         onChange={e => setTestStream(e.target.value)}
+                        title="Which stream the sample line pretends to come from, to check the Watch stream setting"
+                        aria-label="Sample line's stream"
                       >
                         {WATCH_STREAM_OPTIONS.filter(o => o.value !== 'any').map(o => (
                           <option key={o.value} value={o.value}>{o.label}</option>
@@ -1119,6 +1347,7 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
                         )}
                       </div>
                     )}
+                    </>)}
                   </div>
 
                 </div>
@@ -1153,6 +1382,7 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
           </div>
 
         </div>
+    </VarMenuContext.Provider>
   )
 
   if (!an.on) return body
