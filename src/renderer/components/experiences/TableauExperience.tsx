@@ -16,7 +16,10 @@
 //     that auto-switches to the 26-seat amphitheater, "+N others" overflow,
 //     promote-on-speak), then CONVERSATION GRAVITY (`circlePos` — talkers drift
 //     into an inner circle, directed speech pulls pairs together, self gravity)
-//     and a self personal-space push;
+//     and a self personal-space push. A player figure has a right-click menu
+//     (v0.20.1; Enter opens it from the keyboard): Say to… / Whisper to… type
+//     the start of the line into the command bar via `onDirect`, and a
+//     contact also gets their card;
 //   • choreography: entrances slide in from their origin edge, departures
 //     linger as ghosts (skipped under epilepsy-safe), thoughts are WISPS in the
 //     bottom-left log and never a body (§32.2);
@@ -34,8 +37,10 @@
 // gauge / status-chip / wisp heights are MEASURED in a layout effect so the
 // self figure and bubbles are held clear of them; the fit-to-container scale
 // is WIDTH-dominant; bubble spacing derives from the game font (pitfall #45).
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { hashStr, monogramStyle, nameColor, nameInitials } from '../../utils/nameColor'
+import { activateOnKey } from '../../utils/pressable'
+import ContextMenu, { type CtxItem } from '../ContextMenu'
 import { characterColor, characterColorsByName, useCharacterColors } from '../../characterColors'
 import { useRosterOptional } from '../../RosterContext'
 import type { Contact, ContactTemplate } from '../../contacts'
@@ -276,7 +281,16 @@ const DIR_VECTOR: Record<string, [number, number]> = {
 // Tableau only needs to when its own inputs change (cast/speech/moves are
 // state objects with stable identities between changes). The default export
 // wraps this at the bottom of the file.
-function TableauExperience({ character, characterId, roomState, sceneCast, speech: rawSpeech, moves: rawMoves, indicators, contacts, contactTemplates, settings, onOpenContact, onCommand, hidden, combat }: ExperienceProps) {
+function TableauExperience({ character, characterId, roomState, sceneCast, speech: rawSpeech, moves: rawMoves, indicators, contacts, contactTemplates, settings, isActive, onOpenContact, onCommand, onDirect, hidden, combat }: ExperienceProps) {
+  // v0.20.1: the player right-click menu — who it's for, where it opened, and
+  // whether the keyboard opened it (then focus goes into the menu).
+  const [figMenu, setFigMenu] = useState<{ x: number; y: number; name: string; contactId?: string; keyboard: boolean } | null>(null)
+  // Stable, because ContextMenu re-binds its outside-click listener whenever
+  // onClose changes and this scene re-renders on every bubble tick.
+  const closeFigMenu = useCallback(() => setFigMenu(null), [])
+  // The menu is portaled to <body>, so switching characters would leave it
+  // floating over the other one — and a pick would type into a hidden bar.
+  useEffect(() => { if (!isActive) setFigMenu(null) }, [isActive])
   // Your own characters' chosen colours, by name (the scene only knows names).
   const charColors = useCharacterColors()
   const myColors = useMemo(() => characterColorsByName(charColors), [charColors])
@@ -973,11 +987,16 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
         const chatKey = p.name.toLowerCase()
         const pos = seatedPosByKey.get(chatKey) ?? seatPos(seats.get(p.name) ?? 0, seatCount)
         const { color, isContact } = avatarColor(p.name, contacts, contactTemplates, myColors, ownNames)
-        // Contacts are clickable: the figure opens their contact card (the same
-        // ContactPopover that in-text name clicks use).
+        // v0.20.1 (Sekmeht): every interaction with a person is on ONE right-click
+        // menu — Say to… / Whisper to…, plus the contact card (the same
+        // ContactPopover in-text name clicks use) for a contact. More verbs go
+        // on the same menu. A plain left-click does nothing.
         const contact = isContact ? contacts.find(c => c.name && c.name.toLowerCase() === chatKey) : undefined
-        const clickable = !!(contact && onOpenContact)
-        const tip = `${p.posture ? `${p.descriptor} (${POSTURE_LABEL[p.posture]})` : p.descriptor}${p.dead ? ' (dead)' : ''}${clickable ? ' — click for contact card' : ''}`
+        const hasCard = !!(contact && onOpenContact)
+        const hasMenu = !!onDirect || hasCard
+        const tip = `${p.posture ? `${p.descriptor} (${POSTURE_LABEL[p.posture]})` : p.descriptor}${p.dead ? ' (dead)' : ''}${hasMenu ? ' — right-click for options' : ''}`
+        const openMenu = (x: number, y: number, keyboard: boolean) =>
+          setFigMenu({ x, y, name: p.name, contactId: hasCard ? contact!.id : undefined, keyboard })
         const bubble = bubbleFor(p.name)
         const sc = 0.8 + pos.depth * 0.25
         const entry = entrances.get(p.name.toLowerCase())
@@ -993,10 +1012,20 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
         return (
           <div
             key={p.name}
-            className={`tableau-figure${isContact ? ' tableau-figure--contact' : ''}${clickable ? ' tableau-figure--clickable' : ''}${p.posture ? ' tableau-figure--seated-posture' : ''}${p.posture === 'hiding' ? ' tableau-figure--hiding' : ''}${p.dead ? ' tableau-figure--player-dead' : ''}${bubble ? ' tableau-figure--speaking' : ''}${entry ? ' tableau-figure--enter' : ''}`}
+            className={`tableau-figure${isContact ? ' tableau-figure--contact' : ''}${hasMenu ? ' tableau-figure--menu' : ''}${p.posture ? ' tableau-figure--seated-posture' : ''}${p.posture === 'hiding' ? ' tableau-figure--hiding' : ''}${p.dead ? ' tableau-figure--player-dead' : ''}${bubble ? ' tableau-figure--speaking' : ''}${entry ? ' tableau-figure--enter' : ''}`}
             style={style}
             title={tip}
-            onClick={clickable ? (e => onOpenContact!(contact!.id, e.clientX, e.clientY)) : undefined}
+            onContextMenu={hasMenu ? (e => { e.preventDefault(); openMenu(e.clientX, e.clientY, false) }) : undefined}
+            // Keyboard parity (pitfall #142): Tab reaches a figure and Enter/Space
+            // opens the same menu at the figure, with focus in it.
+            {...(hasMenu ? {
+              role: 'button', tabIndex: 0, 'aria-haspopup': 'menu' as const, 'aria-label': `${p.name} — options`,
+              onKeyDown: activateOnKey(() => {
+                const el = document.activeElement as HTMLElement | null
+                const r = el?.getBoundingClientRect()
+                openMenu(r ? r.left + r.width / 2 : 0, r ? r.bottom : 0, true)
+              }),
+            } : {})}
           >
             {renderCaption(bubble, sc)}
             <div className="tableau-avatar" style={monogramStyle(p.name, color)}>{initials(p.name)}</div>
@@ -1120,6 +1149,22 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
         <div className="tableau-empty">No one else is here.</div>
       )}
       </div>
+
+      {figMenu && (() => {
+        const m = figMenu
+        const items: CtxItem[] = []
+        if (onDirect) {
+          items.push({ label: `Say to ${m.name}…`, onClick: () => onDirect('say', m.name) })
+          items.push({ label: `Whisper to ${m.name}…`, onClick: () => onDirect('whisper', m.name) })
+        }
+        if (m.contactId && onOpenContact) {
+          if (items.length) items.push({ label: null })
+          items.push({ label: 'Contact card', onClick: () => onOpenContact(m.contactId!, m.x, m.y) })
+        }
+        // Keyed per opening, so a second keyboard-opened menu mounts afresh and
+        // focusFirst runs again.
+        return <ContextMenu key={`${m.name}:${m.x}:${m.y}`} x={m.x} y={m.y} items={items} onClose={closeFigMenu} focusFirst={m.keyboard} />
+      })()}
     </div>
   )
 }

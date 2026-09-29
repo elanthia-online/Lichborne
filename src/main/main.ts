@@ -2106,10 +2106,78 @@ ipcMain.on('write-log', (_e, filename: string, content: string) => {
     else if (!writeLogTimer) writeLogTimer = setTimeout(flushWriteLogs, 1000)
   } catch {}
 })
-ipcMain.on('download-update',    () => autoUpdater.downloadUpdate())
+// ── Fake update mode (dev only, v0.20.1) ─────────────────────────────────────
+// An unpackaged run has no working updater, so the update pill could never be
+// seen outside a packaged build older than the newest release. With
+// LICHBORNE_FAKE_UPDATE set, a run FROM SOURCE sends the same IPC messages a
+// real update would — the real renderer path is exercised, not a mock-up:
+//   LICHBORNE_FAKE_UPDATE=1     available → download fills over ~8s → ready
+//   LICHBORNE_FAKE_UPDATE=fail  the FIRST download stops at 40% with an error;
+//                               Try again then completes, to show recovery
+// Restart & install does NOT quit in this mode; it answers with a toast. Never
+// active in an installed build (`app.isPackaged`), whatever the environment says.
+const FAKE_UPDATE: '1' | 'fail' | null = (() => {
+  if (app.isPackaged) return null
+  const v = process.env.LICHBORNE_FAKE_UPDATE
+  return v === 'fail' ? 'fail' : v ? '1' : null
+})()
+let fakeDownloadTimer: ReturnType<typeof setInterval> | null = null
+let fakeFailedOnce = false
+
+/** One patch above the running version, so the pill reads plausibly. */
+function fakeUpdateVersion(): string {
+  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(app.getVersion())
+  return m ? `${m[1]}.${m[2]}.${Number(m[3]) + 1}` : '9.9.9'
+}
+
+function sendFakeUpdateAvailable() {
+  // The latest release page, which exists — a tag for the made-up version
+  // would be a 404.
+  const feed = UPDATE_FEEDS[UPDATE_FEEDS.length - 1]
+  primaryWindow()?.webContents.send('update-available', fakeUpdateVersion(),
+    `https://github.com/${feed.owner}/${feed.repo}/releases/latest`)
+}
+
+function runFakeDownload() {
+  if (fakeDownloadTimer) return   // a download is already "running"
+  let pct = 0
+  fakeDownloadTimer = setInterval(() => {
+    pct += 2.5
+    const w = primaryWindow()?.webContents
+    if (FAKE_UPDATE === 'fail' && !fakeFailedOnce && pct >= 40) {
+      clearInterval(fakeDownloadTimer!); fakeDownloadTimer = null
+      fakeFailedOnce = true
+      w?.send(CH.UPDATE_ERROR, 'Simulated failure (LICHBORNE_FAKE_UPDATE=fail)')
+      return
+    }
+    w?.send(CH.UPDATE_PROGRESS, Math.min(100, Math.round(pct)))
+    if (pct >= 100) {
+      clearInterval(fakeDownloadTimer!); fakeDownloadTimer = null
+      w?.send('update-downloaded')
+    }
+  }, 200)
+}
+
+// v0.20.1: a failed download is reported to the pill, which offers a retry.
+// Before, the promise's rejection went unhandled and the banner said
+// "Downloading update…" forever.
+ipcMain.on('download-update',    () => {
+  if (FAKE_UPDATE) { runFakeDownload(); return }
+  lastPercent = -1
+  autoUpdater.downloadUpdate().catch((err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('[auto-updater] download failed:', msg)
+    primaryWindow()?.webContents.send(CH.UPDATE_ERROR, msg)
+  })
+})
 // Installing an update quits the app; the user consented by clicking Install,
 // so the close-confirmation stands down for it (see `quitAlreadyConfirmed`).
 ipcMain.on('install-update',     () => {
+  if (FAKE_UPDATE) {
+    primaryWindow()?.webContents.send('updater-log',
+      '[notice] Fake update mode: the install was skipped and nothing was restarted.')
+    return
+  }
   quitAlreadyConfirmed = true
   // SELF-HEALING, because this flag disables a safety feature. quitAndInstall()
   // normally tears the app down within a second — so if we are still alive well
@@ -2129,6 +2197,7 @@ ipcMain.on('check-for-updates',  () => {
   // updater-log line carrying it is shown on screen as a toast rather than only
   // logged — this one used to reach the console alone, so the user saw
   // "Checking…" flash and no answer.
+  if (FAKE_UPDATE) { sendFakeUpdateAvailable(); return }
   if (process.platform === 'darwin') {
     primaryWindow()?.webContents.send('updater-log',
       '[notice] Auto-update is unavailable on macOS (unsigned beta build) — download new versions from GitHub Releases.')
@@ -2170,6 +2239,14 @@ const UPDATE_FEEDS = [
 // to the launcher's updater log — without this gate, every launch before the
 // transfer would show a scary ERROR for the (expected) missing new-home repo.
 let updaterProbing = false
+// The feed whose check is in flight, so 'update-available' can link to that
+// release's notes on the repository that actually answered (v0.20.1). Set per
+// attempt inside the one-at-a-time dual-feed run, so it can't be another run's.
+let updateFeedInFlight: { owner: string; repo: string } | null = null
+// The last whole percent sent to the pill. Module-level so each download can
+// reset it: a retry after a failure at 40% would otherwise drop its own first
+// 40% report and leave the pill reading "Starting…" one step too long.
+let lastPercent = -1
 
 // Concurrent invocations JOIN the in-flight run (the serializeLichLaunch shape).
 // Without this, a menu-click check overlapping the startup check interleaves two
@@ -2194,6 +2271,7 @@ function checkForUpdatesDualFeed(opts?: { manual?: boolean }): Promise<void> {
         const feed = UPDATE_FEEDS[i]
         updaterProbing = i < UPDATE_FEEDS.length - 1
         autoUpdater.setFeedURL({ provider: 'github', owner: feed.owner, repo: feed.repo })
+        updateFeedInFlight = feed
         try {
           const res = await autoUpdater.checkForUpdates()
           // res is null only when the updater is inactive (unpackaged dev build) —
@@ -2233,7 +2311,20 @@ function setupAutoUpdater() {
   autoUpdater.autoDownload = false
   // Auto-update UI lives in the primary (launcher) window.
   autoUpdater.on('update-available', (info) => {
-    primaryWindow()?.webContents.send('update-available', info.version)
+    // The release page on the repo that answered — tags are `v<version>`
+    // (release-prepare.mjs / publish.mjs). Built here, not in the renderer,
+    // because only main knows which of the two feeds it was.
+    const feed = updateFeedInFlight ?? UPDATE_FEEDS[UPDATE_FEEDS.length - 1]
+    const notesUrl = `https://github.com/${feed.owner}/${feed.repo}/releases/tag/v${info.version}`
+    primaryWindow()?.webContents.send('update-available', info.version, notesUrl)
+  })
+  // v0.20.1: whole-percent progress for the pill's bar. Rounded so a fast
+  // download doesn't flood the renderer with sub-percent repaints.
+  autoUpdater.on('download-progress', (p) => {
+    const pct = Math.max(0, Math.min(100, Math.round(p.percent)))
+    if (pct === lastPercent) return
+    lastPercent = pct
+    primaryWindow()?.webContents.send(CH.UPDATE_PROGRESS, pct)
   })
   autoUpdater.on('update-downloaded', () => {
     primaryWindow()?.webContents.send('update-downloaded')
@@ -2552,6 +2643,8 @@ app.whenReady().then(() => {
   createWindow()
   setupMenu()
   if (app.isPackaged) setupAutoUpdater()
+  // Dev only: the fake update (see FAKE_UPDATE). Same 3s delay as a real check.
+  else if (FAKE_UPDATE) setTimeout(sendFakeUpdateAvailable, 3000)
   // B354: system restart / shut down / log out. The event exists on Linux and
   // macOS only, so Windows never loads powerMonitor here and is unchanged. The
   // typings declare the listener with no parameter although Electron passes

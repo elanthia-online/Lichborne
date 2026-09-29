@@ -20,6 +20,7 @@ import type { TextLine } from '../../shared/types'
 import type { Contact, ContactTemplate } from '../contacts'
 import type { CompiledRule } from '../HighlightsContext'
 import { renderHighlightedLine } from '../utils/renderSegmentFull'
+import { useTextStylesVersion } from '../textStyles'
 
 export interface TextLineRowProps {
   line: TextLine
@@ -47,6 +48,9 @@ export const TextLineRow = memo(function TextLineRow({
   line, matchRules, lineRules, contacts, templates, nameRegex,
   onContactClick, onSendCommand, autoLinkUrls = true, webLinkSafety = true, showTimestamp,
 }: TextLineRowProps) {
+  // Text styles (v0.20.1) are read at render time by renderSegment; subscribing
+  // here is what repaints a memoized row when the player changes one.
+  useTextStylesVersion()
   // A line-scope highlight's colour must WIN over preset/fg segment colours
   // (thoughts/speech/lnet/substituted lines), not just tint the container
   // behind them — Cherisse; its effect paints every run a match-scope rule
@@ -66,7 +70,9 @@ export const TextLineRow = memo(function TextLineRow({
     // selection, so a copy spanning more rows than are mounted used to lose
     // everything above the viewport (B152's known ceiling). Cheap: one
     // attribute, no effect on the memo.
-    <div className="text-line" data-line-id={line.id} style={monoStyle ?? undefined}>
+    // `text-line--mono` lets the text-style stylesheet leave mono tables alone,
+    // so a bigger or different font on bold text can't break their columns.
+    <div className={line.mono ? 'text-line text-line--mono' : 'text-line'} data-line-id={line.id} style={monoStyle ?? undefined}>
       {showTimestamp && line.timestamp && (
         <span className="ts-prefix">{fmtTimestamp(line.timestamp)}</span>
       )}

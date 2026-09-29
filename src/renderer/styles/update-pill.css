@@ -1,0 +1,281 @@
+/* ============================================================
+   UPDATE PILL — v0.20.1 (replaces the full-width update ribbon)
+   `upd-` prefix, checked unique. Sized in em so it follows its
+   host: the app bar (anchored to the game font) or the launcher's
+   update strip. Colours are theme vars mixed toward the text
+   colour, so each tone reads on light and dark themes alike
+   (pitfall #150 — a bare accent can be darker than its own
+   background on some themes).
+   ============================================================ */
+
+.upd-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+/* One tone per phase, set on the wrapper so the pill, its bar, the card's bar
+   and the card's primary button all inherit it. */
+.upd-wrap         { --upd-tone: var(--accent); }
+.upd-wrap--ready  { --upd-tone: var(--color-success); }
+.upd-wrap--failed { --upd-tone: var(--color-warning); }
+
+/* `.upd-wrap .upd-pill` / `.upd-card .upd-btn` rather than one class: the app
+   bar's narrow tier restyles `.app-bar-actions button` (0,1,1) and would
+   otherwise re-pad and re-size the pill and every button in its card. */
+.upd-wrap .upd-pill {
+  position: relative;
+  overflow: hidden;              /* clips the progress bar to the pill's corners */
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.25em 0.75em;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--upd-tone) 50%, var(--border));
+  background: color-mix(in srgb, var(--upd-tone) 10%, transparent);
+  color: color-mix(in srgb, var(--upd-tone) 60%, var(--text-primary));
+  font-family: inherit;
+  font-size: 0.92em;
+  line-height: 1;                /* a pill stays a capsule (pitfall #77) */
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 120ms, border-color 120ms;
+}
+.upd-wrap .upd-pill:hover,
+.upd-wrap .upd-pill[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--upd-tone) 18%, transparent);
+  border-color: color-mix(in srgb, var(--upd-tone) 70%, var(--border));
+}
+
+.upd-glyph {
+  display: inline-block;
+  width: 1em;
+  text-align: center;
+  font-weight: var(--ui-bold-weight);
+}
+/* "Ready" is the one state asking you to act, so its glyph breathes a little.
+   Motion is decoration; the colour change carries the meaning (UX #9b). */
+.upd-wrap--ready .upd-glyph { animation: upd-breathe 2.4s ease-in-out infinite; }
+@keyframes upd-breathe {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+/* ── Progress (the pill's underline and the card's button share the fill) ── */
+
+.upd-pill-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: color-mix(in srgb, var(--upd-tone) 18%, transparent);
+}
+
+.upd-bar-fill {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--upd-tone) 80%, var(--text-primary));
+  transform-origin: left center;
+  /* scaleX, never width — compositor-only, no layout per update (pitfall #160
+     family; progress arrives in whole-percent steps, so a short transition
+     just smooths the steps). */
+  transform: scaleX(0);
+  transition: transform 300ms linear;
+}
+/* Before the first percent arrives: a short segment sweeps across. */
+.upd-bar--indeterminate .upd-bar-fill {
+  transform: none;
+  right: auto;
+  width: 30%;
+  animation: upd-sweep 1.2s ease-in-out infinite;
+}
+@keyframes upd-sweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(340%); }
+}
+
+/* Epilepsy-safe: no breathing, no sweep. The indeterminate bar holds still as
+   a short segment, which still says "working". */
+:root[data-epilepsy-safe='true'] .upd-wrap--ready .upd-glyph,
+:root[data-epilepsy-safe='true'] .upd-wrap--ready .upd-badge,
+:root[data-epilepsy-safe='true'] .upd-bar--indeterminate .upd-bar-fill {
+  animation: none;
+}
+
+/* ── The card ───────────────────────────────────────────────────────────── */
+
+.upd-card {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 80;                   /* above the app bar's own stacking context (70) */
+  /* A fixed width, and every row below holds its height in every phase, so
+     the card keeps one size while the download moves along (pitfall #103). */
+  width: 22em;
+  max-width: calc(100vw - 16px);
+  box-sizing: border-box;
+  background: var(--modal-bg, var(--bg-base));
+  border: 1px solid var(--modal-border, var(--border));
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  color: var(--text-primary);
+  font-size: 0.95em;
+  text-align: left;
+  white-space: normal;
+  overflow: hidden;              /* rounds the actions row's corners */
+}
+
+/* Header: a round badge in the phase's tone, then title / version / link. */
+.upd-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75em;
+  padding: 0.9em 1em 0.5em;
+}
+
+.upd-badge {
+  flex: none;
+  width: 2.1em;
+  height: 2.1em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 1.05em;
+  line-height: 1;
+  font-weight: var(--ui-bold-weight);
+  background: color-mix(in srgb, var(--upd-tone) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--upd-tone) 45%, transparent);
+  color: color-mix(in srgb, var(--upd-tone) 60%, var(--text-primary));
+}
+.upd-wrap--ready .upd-badge { animation: upd-breathe 2.4s ease-in-out infinite; }
+
+.upd-head-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+}
+
+.upd-title {
+  font-weight: var(--ui-bold-weight);
+  line-height: 1.2;
+}
+
+.upd-version {
+  color: var(--text-secondary);
+  font-size: 0.9em;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.upd-current { color: var(--text-secondary); opacity: 0.85; }
+
+.upd-card .upd-notes {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  margin: 0.1em 0 0;
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 0.9em;
+  line-height: 1.2;
+  color: color-mix(in srgb, var(--accent) 55%, var(--text-primary));
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.upd-card .upd-notes:hover { color: var(--text-primary); }
+
+/* What happens next (or why it failed). Two lines reserved and clamped, so
+   the card doesn't change height between phases or for a long error. The
+   left padding lines it up under the title, past the badge: head padding 1em
+   + badge 2.1em x 1.05 + gap 0.75em = 3.955 card-em, divided by this row's
+   own 0.88em font. */
+.upd-hint {
+  padding: 0.1em 1.1em 0.8em calc(3.955em / 0.88);
+  color: var(--text-secondary);
+  font-size: 0.88em;
+  line-height: 1.35;
+  min-height: calc(2 * 1.35em);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.upd-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.6em 0.8em;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+}
+
+.upd-card .upd-btn {
+  padding: 0.5em 1em;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.95em;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 120ms, border-color 120ms, color 120ms;
+}
+.upd-card .upd-btn--quiet:hover { color: var(--text-primary); background: var(--bg-hover); }
+
+/* The primary: a filled chip in the phase's tone, the same recipe as
+   ui-btn--primary. A fixed min-width so its label can change with the phase
+   ("Download" → "Downloading 42%" → "Restart & install") without the row
+   moving. While downloading it holds the progress fill behind its label. */
+.upd-card .upd-btn--primary {
+  position: relative;
+  overflow: hidden;
+  min-width: 11.5em;
+  font-weight: var(--ui-bold-weight);
+  font-variant-numeric: tabular-nums;
+  border-color: color-mix(in srgb, var(--upd-tone) 40%, transparent);
+  background: color-mix(in srgb, var(--upd-tone) 15%, transparent);
+  color: color-mix(in srgb, var(--upd-tone) 55%, var(--text-primary));
+}
+.upd-card .upd-btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--upd-tone) 24%, transparent);
+  border-color: color-mix(in srgb, var(--upd-tone) 60%, transparent);
+}
+.upd-card .upd-btn--primary:disabled { cursor: default; }
+
+/* The fill is a tint, not the solid pill-bar colour, so the label on top
+   stays readable wherever the fill has reached. */
+.upd-btn--progress .upd-bar-fill {
+  background: color-mix(in srgb, var(--upd-tone) 28%, transparent);
+}
+.upd-btn-label { position: relative; }   /* above the fill */
+
+/* ── The launcher's update strip ────────────────────────────────────────── */
+
+/* One fixed height whatever it holds — "Check for updates", "You're up to
+   date" or the pill — so the launcher never moves as the update check runs. */
+.upd-strip {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 71;                   /* the card overlays the launcher below */
+  height: 2rem;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 10px;
+  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--border-faint);
+  font-size: 0.8rem;
+}

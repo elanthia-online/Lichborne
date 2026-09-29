@@ -70,6 +70,24 @@ A few ideas shape everything:
 
 ## What's New in the Latest Version
 
+**v0.20.1**
+
+- **Text styles.** Give room names — or speech, thoughts, whispers, bold text,
+  room descriptions and your own commands — their own font, size, bold,
+  italic, capitals and text effect, under **Settings → Text styles**. Make room
+  names big and fancy; leave the rest alone and it looks exactly as before.
+- **Compass options.** Show or hide the compass, make it smaller or larger,
+  move it to any corner, give it a backing so it stands out over busy text,
+  choose how faint the unavailable exits are, and optionally click an arrow to
+  walk. In **Settings → Layout**, or `/compass`.
+- **Talk from the Living Tableau.** Right-click a person for **Say to…** or
+  **Whisper to…** — it types `say @Name ` or `whisper Name ` into your command
+  bar for you to finish. Contacts also get their card there.
+- **A tidier update notice.** New versions show as a small **Update** pill in
+  the top bar instead of a bar across the window. Click it to see what's new,
+  download, and restart when you're ready — it asks first if characters are
+  connected.
+
 **v0.20.0**
 
 - **Triggers wait for your roundtime.** A trigger's command now waits until
@@ -100,22 +118,6 @@ A few ideas shape everything:
 - **Fixed:** a team login that could hang forever on one character; trigger
   echoes to the Game window that never appeared; and Genie triggers that
   imported `#send 2 look` as the command "2 look".
-
-**v0.19.9**
-
-- **Lichborne uses a lot less memory**, especially if you run several characters
-  or keep a map open. The map database is now loaded once and shared by every
-  character instead of separately by each one, and map tiles no longer pile up
-  in memory for the whole session. If you use **Windowed Panels** with a map
-  window always visible, this is the release where that stops costing you.
-- **And a lot less CPU while nothing is happening.** Three things were animating
-  continuously that were only ever meant to animate briefly — the Moons sky, the
-  Spell Monitor's bars, and a background poll for the Lich Scripts panel that ran
-  even when the panel wasn't on screen. Nothing looks different; the client just
-  stops working hard at nothing.
-- **Fixed:** a stream panel could grow past its 500-line limit without bound if a
-  burst landed exactly on the limit; the map's ↺ reload button always re-reads
-  the database; an unchanged Lich script list no longer redraws every 5 seconds.
 
 ## On the Horizon (Roadmap)
 
@@ -346,7 +348,7 @@ Either way, **drag a stream tab along its bar to reorder it**, and add streams w
 
 ### Themes & accessibility
 
-Open the **Theme** picker for a gallery of built-in light and dark themes, or craft your own in the **Theme Editor** (every color is adjustable). **Settings** holds font size, line height, and the accessibility options — high-contrast, color-blind palettes, large print, and an epilepsy-safe mode that calms animations. Everything you build or pick is yours and travels with [Transfer](#transfer-a-setup-between-your-characters).
+Open the **Theme** picker for a gallery of built-in light and dark themes, or craft your own in the **Theme Editor** (every color is adjustable). **Settings** holds font size, line height, and the accessibility options — high-contrast, color-blind palettes, large print, and an epilepsy-safe mode that calms animations. **Settings → Text styles** gives each kind of game text its own look — a font, size, bold/italic, capitals and a text effect for room names, descriptions, speech, whispers, thoughts, bold text and your own commands (sizes are a percentage of your game font, so they follow it). Room descriptions offer only the calm effects, since a moving effect over whole paragraphs is heavy on your computer, and a row tells you when an effect with its own pale colours would be hard to read on your light theme. Everything you build or pick is yours and travels with [Transfer](#transfer-a-setup-between-your-characters).
 
 ### Automations: highlights, triggers, macros, aliases
 
@@ -418,6 +420,8 @@ Open the **Maps** button for two very different map views. Both track your curre
 
 A **Room** panel that reads like the game itself — title, description, "You also see…", and "Also here:" lines, always visible and never scrolling away — plus a clickable **"Obvious paths: north, east."** line and a small ⚔ count when creatures are present. Your contact colors, highlights, and mutes paint it exactly like the main window.
 
+The **compass** in the corner of the game window lights up the exits from your room. In **Settings → Layout** you can hide it, resize it, move it to another corner, give it a backing so it reads over busy text, set how faint the unavailable exits are, and turn on **click to walk** (click an arrow to go that way — unlit ones too, for exits a spell has hidden). `/compass` does the same from the command bar.
+
 ### Vitals & timers
 
 Your health/mana/etc. show in the **vitals bar** (there's a **Compact Vitals** option in Settings). **Roundtime** and **cast-time** live right inside the command box as a draining bar or per-second chips (your pick in Settings). DR's **aim timer** (`toggle aim`) rides there too in green. Colors are yours in the Theme Editor.
@@ -455,7 +459,7 @@ There are three Experiences today, all **[Beta]**:
 
 Your room, rendered as a living scene.
 
-- **Everyone becomes an avatar** in their [Contact](#contacts) colors. Your Contacts wear a ✦ and are **clickable** for their card. Your own avatar shows your condition (hidden, bleeding, dead, and the rest).
+- **Everyone becomes an avatar** in their [Contact](#contacts) colors. Your Contacts wear a ✦. **Right-click anyone** for **Say to…** or **Whisper to…**, which types `say @Name ` or `whisper Name ` into your command bar for you to finish (anything you'd already typed becomes the message), and **Contact card** for your contacts. Your own avatar shows your condition (hidden, bleeding, dead, and the rest).
 - **Speech blooms as comic bubbles** — whispers dotted and private, emotes as action captions. **Telepathic thoughts collect in a quiet log in the bottom-left corner** (newest at the bottom, older ones fading up) so they never cover the scene.
 - **Arrivals slide in** from the direction they came; **departures walk out** as fading ghosts. Hiders and the invisible show as shadows; the dead lie greyed until a resurrection stands them up.
 - **The seating tells the story** — talkers gather toward the middle (you included), pairs in conversation drift together, and a crowd spreads into an amphitheater.
@@ -701,6 +705,7 @@ Type `/` for the live palette; type `/help` in-game for the always-current list,
 - `/mode <Name>` (bare `/mode` lists modes) · `/group on|off <Name>`
 - `/panel open|close <stream>` · `/theme <name>` · `/clear`
 - `/timestamps on|off` · `/log search "text"`
+- `/compass` (settings) · `/compass on|off` · `/compass size small|medium|large` · `/compass corner br|bl|tr|tl` · `/compass backing none|subtle|solid` · `/compass dim 25` · `/compass click on|off`
 - `/notices on|off` (toasts when your other characters come in, drop, or reconnect)
 - `/colors` (shows every named color) · `/colors add "Buff drop" #ff9040` · `/colors rename "Buff drop" "Buffs"` · `/colors remove "Buffs"` · `/colors manage` (opens the Colors tab)
 

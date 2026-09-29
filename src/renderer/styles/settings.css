@@ -199,6 +199,12 @@
 
 .sp-select:focus { border-color: var(--accent-dim); }
 
+/* v0.20.1 — a slider row (the compass's unavailable-exit opacity). The
+   native control takes the theme accent; the value beside it is fixed-width
+   tabular digits so the row doesn't shift as it changes (pitfall #103). */
+.sp-range { width: 9rem; accent-color: var(--accent); }
+.sp-range-value { min-width: 2.6rem; text-align: right; font-variant-numeric: tabular-nums; }
+
 /* ── Number input row ────────────────────────────────────────────── */
 
 .sp-number-row {

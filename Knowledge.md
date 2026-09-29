@@ -1020,6 +1020,51 @@ no dedicated window is configured (`lib/game_text_processor.rb`). Lichborne
 treats it the same way via `STREAM_FALLBACK['shopWindow'] = 'main'`, and it stays
 discoverable as a panel.
 
+## DR commands — directed SAY and WHISPER syntax (v0.20.1)
+
+Captured by Sekmeht from the game's own `SAY` help (typing `say` with no
+message), verbatim:
+
+```
+Usage:
+  SAY message                        Will say a message for all of the room to hear
+  " message                          Will say a message for all of the room to hear
+  ' message                          Will say a message for all of the room to hear
+  NOTE:  SAY, ', and " are interchangeable
+  SAY /EMOTE message                 Will say a message for all of the room to hear with emotion
+  SAY @PERSON message                Will say a message for all of the room to hear but directed to
+                                       PERSON
+  SAY /EMOTE @PERSON message         Will say a message for all of the room to hear but directed to
+                                       PERSON with emotion
+  SAY @PERSON /EMOTE message         Will say a message for all of the room to hear but directed to
+                                       PERSON with emotion
+  SAY /SETEMOTE EMOTE                Will set a default emote.  If you speak without specifying an emote
+                                       you will use your default emote.
+  SAY /SETEMOTE CLEAR                Will clear your default emote.
+  SAY /HELP EMOTE                    Displays a list of valid emotes
+  SAY /HELP EXAMPLES                 Display some examples for using SAY
+```
+
+What a client needs from it:
+
+- **Directed speech is `@PERSON`**, and it is still heard by the whole room
+  (it is not private). The emote may come before or after the target.
+- **`SAY`, `'` and `"` are one command.** Anything that recognises a say line
+  must accept all three.
+- **`/SETEMOTE` and `/HELP` are sub-commands, not emotes.** A `/word` after SAY
+  is an emote UNLESS it is one of those two.
+- **WHISPER** (Sekmeht): `whisper PERSON message` — the target is a bare first
+  word, no `@`. Private to that person.
+- The game's reply to directed speech is **"You say to Agan, …"**, the shape the
+  SceneParser's say capturer already reads for its `target` (conversation
+  gravity, DESIGN §35.7).
+
+Not yet verified in-game: whether `' @Agan hi` (a space after the apostrophe)
+parses the same as `'@Agan hi`. The help's "interchangeable" suggests it does.
+
+Lichborne use: the Living Tableau's right-click Say to… / Whisper to…
+(`directedLine` in `src/renderer/utils/sayTo.ts`, DESIGN §50.3).
+
 ## DR stream inventory — routing decisions grounded in the sibling clients (v0.19.3 sweep)
 
 Every `<pushStream id="…">` DR is known to emit, cross-checked against Frostbite's

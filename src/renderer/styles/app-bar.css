@@ -190,6 +190,9 @@
    58em alongside Tier 1 for the sixth button.) */
 @container (max-width: 66em) {
   .app-bar-actions .app-bar-collapsible { display: none; }
+  /* v0.20.1: the update pill keeps only its arrow here; the version is in its
+     tooltip and in the card it opens. */
+  .app-bar-actions .upd-label { display: none; }
   .app-bar-more-item--overflow { display: block; }
   .app-bar-more-sep.app-bar-more-item--overflow { display: block; }
 }

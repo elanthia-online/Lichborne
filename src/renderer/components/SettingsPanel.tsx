@@ -35,7 +35,7 @@ import { pressable } from '../utils/pressable'
 import { confirmAction } from '../confirm'
 import { createPortal } from 'react-dom'
 import type { SessionLogDiskUsage, SimuCoinStatus } from '../../shared/types'
-import { FONT_FAMILIES, FONT_FAMILY_LABELS, DEFAULT_SETTINGS, resolveFontFamily, type AppSettings } from '../settings'
+import { FONT_FAMILIES, FONT_FAMILY_LABELS, DEFAULT_SETTINGS, resolveFontFamily, isFontPreset, type AppSettings } from '../settings'
 import { HIGHLIGHT_EFFECTS, type HighlightEffect } from '../highlights'
 // The preview is painted by the SAME builder the app bar uses, so what you
 // pick here is exactly what you get up there (pitfall #127 / B281).
@@ -50,6 +50,7 @@ import {
   type SimuCoinConfig, type SimuCoinAccountConfig,
 } from '../simucoinConfig'
 import LichSetupDialog from './LichSetupDialog'
+import TextStylesEditor from './TextStylesEditor'
 import '../styles/settings.css'
 import '../styles/login.css'
 
@@ -179,7 +180,7 @@ function RadioGroup<T extends string>({ label, value, options, onChange, disable
 // ── F61: settings search + section nav ─────────────────────────────────
 // Section names in render order — drives the nav rail. Keep in sync with the
 // `sec*` section wrappers in the JSX below.
-const SECTION_NAMES = ['Display', 'Accessibility', 'Layout', 'Overview', 'Behavior', 'Session Log', 'AI', 'SimuCoins', 'Lich Setup'] as const
+const SECTION_NAMES = ['Display', 'Text styles', 'Accessibility', 'Layout', 'Overview', 'Behavior', 'Session Log', 'AI', 'SimuCoins', 'Lich Setup'] as const
 
 // Row-visibility helper for the global settings filter: empty query shows
 // everything; otherwise a row stays visible when the (lowercased, trimmed)
@@ -276,7 +277,7 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
     const ok = await confirmAction({
       title: 'Reset settings to defaults?',
       message: `Display, accessibility, layout and behavior settings for ${character} go back to their defaults.`,
-      detail: 'That includes the font, line height, text weight and any per-panel text sizes. Settings shared by every character — Overview, command history, Session Log, AI and SimuCoins — are not changed.',
+      detail: 'That includes the font, line height, text weight, text styles, the compass options and any per-panel text sizes. Settings shared by every character — Overview, command history, Session Log, AI and SimuCoins — are not changed.',
       confirmLabel: 'Reset',
       danger: true,
     })
@@ -493,7 +494,7 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
   // (the preferred face) so the list shows the correct active row. For an
   // explicit font name the value passes through unchanged.
   const activeFontName = (() => {
-    const chain = FONT_FAMILIES[settings.fontFamily]
+    const chain = isFontPreset(settings.fontFamily) ? FONT_FAMILIES[settings.fontFamily] : undefined
     if (!chain) return settings.fontFamily
     const first = chain.match(/^'([^']+)'/)
     return first ? first[1] : settings.fontFamily
@@ -517,6 +518,11 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
   // Live wordmark preview for the row below — same builder as the app bar.
   const brandPreview   = paintBrandMark(settings.brandEffect)
 
+  // v0.20.1: one search row for the whole editor, with every kind as a keyword.
+  const vTextStyles    = vis('Text styles', 'Text styles', 'room name', 'room description', 'speech',
+                             'whisper', 'thought', 'bold', 'command', 'font', 'size', 'italic', 'small caps', 'effect', 'saga')
+  const secTextStyles  = vTextStyles
+
   const vLargePrint    = vis('Accessibility', 'Large print')
   const vHighContrast  = vis('Accessibility', 'High contrast')
   const vEpilepsy      = vis('Accessibility', 'Epilepsy safe mode', 'animations')
@@ -530,7 +536,15 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
   // B336: the label spells out roundtime / cast time; the old "RT / CT" stays
   // as a search term for anyone who knows it by the abbreviation.
   const vTimerStyle    = vis('Layout', 'Roundtime / cast time timer style', 'RT / CT', 'roundtime')
+  // v0.20.1 (Q): the floating compass options.
+  const vCompassShow   = vis('Layout', 'Show the compass', 'compass', 'exits', 'directions')
+  const vCompassLook   = vis('Layout', 'Compass size', 'Compass corner', 'Compass backing', 'Unavailable exits', 'compass', 'opacity', 'transparent', 'position')
+  const vCompassClick  = vis('Layout', 'Click an arrow to walk', 'compass', 'click to walk', 'move')
+  // The look/click rows only render while the compass is shown, so they only
+  // count toward the section then — or a search for "opacity" with the compass
+  // hidden would show a Layout header with nothing under it.
   const secLayout      = vVitalsPos || vCompactVitals || vCompactExp || vIconBarPos || vTimerStyle
+                      || vCompassShow || ((vCompassLook || vCompassClick) && settings.compassVisible)
 
   // Views (v0.19.0). App-wide, like Session Log / AI / SimuCoins — the Overview
   // is cross-character by definition, so these can't be per-character settings.
@@ -595,6 +609,7 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
   // jump to a section that isn't on screen. Keys MUST match SECTION_NAMES.
   const sectionRendered: Record<string, boolean> = {
     Display: secDisplay,
+    'Text styles': secTextStyles,
     Accessibility: secAccess,
     Layout: secLayout,
     Overview: secOverview,
@@ -677,7 +692,7 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
           <div className="sp-font-picker">
             <div className="sp-font-picker-header">
               <span className="sp-field-label">Font family</span>
-              <span className="sp-font-current">{FONT_FAMILY_LABELS[settings.fontFamily] ?? settings.fontFamily}</span>
+              <span className="sp-font-current">{(isFontPreset(settings.fontFamily) && FONT_FAMILY_LABELS[settings.fontFamily]) || settings.fontFamily}</span>
             </div>
             <div className="sp-font-filters ui-tabs" role="group" aria-label="Show fonts">
               <button type="button" aria-pressed={fontFilter === 'all'}
@@ -854,6 +869,23 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
           </>)}
           </section>}
 
+          {/* ── Text styles (v0.20.1) ────────────────────────────── */}
+          {secTextStyles && <section className="sp-sec" ref={el => { sectionRefs.current['Text styles'] = el }}>
+          <div className="sp-divider" />
+          <div className="sp-section-label">Text styles</div>
+          <div className="sp-field-desc">
+            Give a kind of game text its own font, size and effect — room names especially. Anything you
+            leave on <strong>Default</strong> looks the way it always has. Sizes are a percent of your game
+            font, so they still follow Font size. Tables like <code>exp</code> keep their own font so their
+            columns stay lined up.
+          </div>
+          <TextStylesEditor
+            styles={settings.textStyles}
+            fonts={systemFonts}
+            onChange={next => set('textStyles', next)}
+          />
+          </section>}
+
           {/* ── Accessibility ────────────────────────────────────── */}
           {secAccess && <section className="sp-sec" ref={el => { sectionRefs.current['Accessibility'] = el }}>
           <div className="sp-divider" />
@@ -934,6 +966,63 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
               { value: 'top',    label: 'Top',    description: 'Stance, timers, hands, and compass below the toolbar' },
               { value: 'bottom', label: 'Bottom', description: 'Stance, timers, hands, and compass above the command bar' },
             ]}
+          />}
+
+          {vCompassShow && <Toggle
+            label="Show the compass"
+            description="The arrows over the game text that light up for the exits in this room. The Room panel lists them either way."
+            checked={settings.compassVisible}
+            onChange={v => set('compassVisible', v)}
+          />}
+
+          {vCompassLook && settings.compassVisible && (<>
+          <div className="sp-field-row">
+            <label className="sp-field-label" htmlFor="sp-compass-size">Compass size</label>
+            <select id="sp-compass-size" className="sp-select" value={settings.compassSize}
+                    onChange={e => set('compassSize', e.target.value as AppSettings['compassSize'])}>
+              <option value="small">Small</option>
+              <option value="medium">Medium (original)</option>
+              <option value="large">Large</option>
+            </select>
+          </div>
+          <div className="sp-field-row">
+            <label className="sp-field-label" htmlFor="sp-compass-corner">Compass corner</label>
+            <select id="sp-compass-corner" className="sp-select" value={settings.compassCorner}
+                    onChange={e => set('compassCorner', e.target.value as AppSettings['compassCorner'])}>
+              <option value="bottom-right">Bottom right (original)</option>
+              <option value="bottom-left">Bottom left</option>
+              <option value="top-right">Top right</option>
+              <option value="top-left">Top left</option>
+            </select>
+          </div>
+          <div className="sp-field-row">
+            <label className="sp-field-label" htmlFor="sp-compass-backing">
+              Compass backing <span className="sp-field-hint">(helps over busy text)</span>
+            </label>
+            <select id="sp-compass-backing" className="sp-select" value={settings.compassBacking}
+                    onChange={e => set('compassBacking', e.target.value as AppSettings['compassBacking'])}>
+              <option value="none">None — see-through (original)</option>
+              <option value="subtle">Subtle</option>
+              <option value="solid">Solid</option>
+            </select>
+          </div>
+          <div className="sp-field-row">
+            <label className="sp-field-label" htmlFor="sp-compass-dim">
+              Unavailable exits <span className="sp-field-hint">(how visible the directions you can't take are)</span>
+            </label>
+            <input id="sp-compass-dim" type="range" min={10} max={100} step={1}
+                   className="sp-range"
+                   value={Math.round(settings.compassDimOpacity * 100)}
+                   onChange={e => set('compassDimOpacity', Number(e.target.value) / 100)} />
+            <span className="sp-number-unit sp-range-value">{Math.round(settings.compassDimOpacity * 100)}%</span>
+          </div>
+          </>)}
+
+          {vCompassClick && settings.compassVisible && <Toggle
+            label="Click an arrow to walk"
+            description="Click an arrow to go that way (it sends the full direction, like north). Unlit arrows work too, for exits a spell has hidden. Off by default, because it makes the arrows catch clicks meant for the text underneath."
+            checked={settings.compassClickable}
+            onChange={v => set('compassClickable', v)}
           />}
 
           {vTimerStyle && <RadioGroup

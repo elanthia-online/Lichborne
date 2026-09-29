@@ -236,8 +236,8 @@ contextBridge.exposeInMainWorld('api', {
   simucoinHasPassword: (account: string): Promise<boolean> =>
     ipcRenderer.invoke('simucoin:has-password', account),
 
-  onUpdateAvailable: (cb: (version: string) => void) => {
-    const listener = (_e: Electron.IpcRendererEvent, version: string) => cb(version)
+  onUpdateAvailable: (cb: (version: string, notesUrl?: string) => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, version: string, notesUrl?: string) => cb(version, notesUrl)
     ipcRenderer.on('update-available', listener)
     return () => ipcRenderer.removeListener('update-available', listener)
   },
@@ -246,6 +246,18 @@ contextBridge.exposeInMainWorld('api', {
     const listener = () => cb()
     ipcRenderer.on('update-downloaded', listener)
     return () => ipcRenderer.removeListener('update-downloaded', listener)
+  },
+
+  // v0.20.1: download progress (whole percent) and a failed download.
+  onUpdateProgress: (cb: (percent: number) => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, percent: number) => cb(percent)
+    ipcRenderer.on(CH.UPDATE_PROGRESS, listener)
+    return () => ipcRenderer.removeListener(CH.UPDATE_PROGRESS, listener)
+  },
+  onUpdateError: (cb: (message: string) => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, message: string) => cb(message)
+    ipcRenderer.on(CH.UPDATE_ERROR, listener)
+    return () => ipcRenderer.removeListener(CH.UPDATE_ERROR, listener)
   },
 
   downloadUpdate:   () => ipcRenderer.send('download-update'),

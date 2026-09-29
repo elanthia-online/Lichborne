@@ -509,5 +509,9 @@ export function renderSegmentFull(
     }
   }
 
-  return <span key={segKey}>{parts}</span>
+  // `data-ts` names the segment's text kind on the wrapper, so a text style
+  // (Settings → Text styles, v0.20.1) also reaches the highlighted and contact
+  // runs inside it — only the unmatched runs carry `data-preset`. Nothing
+  // styles `data-ts` unless the player set a style for that kind.
+  return <span key={segKey} data-ts={seg.preset ?? (seg.bold ? 'bold' : undefined)}>{parts}</span>
 }
