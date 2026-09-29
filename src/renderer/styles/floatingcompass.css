@@ -18,6 +18,12 @@
    surface area: --compass-active-text, --compass-active-glow,
    --compass-inactive-text, --compass-center-text. */
 .floating-compass {
+  /* v0.20.1: --fc-cell (18/24/32px) drives every dimension below, so the
+     size setting scales the whole design together (B305). --fc-dim is the
+     player's opacity for unavailable exits. Both default to the old fixed
+     values, so an unconfigured compass is unchanged. */
+  --fc-cell: 24px;
+  --fc-dim: 0.45;
   position: absolute;
   bottom: 12px;
   right: 12px;
@@ -29,11 +35,63 @@
   pointer-events: none;
 }
 
+/* Corners. Bottom-right stays the default (the rule above). */
+.floating-compass--bottom-left  { right: auto; left: 12px; }
+.floating-compass--top-right    { bottom: auto; top: 12px; }
+.floating-compass--top-left     { bottom: auto; top: 12px; right: auto; left: 12px; }
+
+/* Backing (Q: "difficult to see against a wall of text"). Drawn from the
+   theme's own app background, so it is dark on dark themes and light on
+   light ones — the v0.7.x backing was a fixed rgba(0,0,0,.55) and dropped a
+   black blob on light themes (B90). No backdrop blur either; B90 found it
+   smeared the text behind. */
+.floating-compass--backing-subtle,
+.floating-compass--backing-solid {
+  padding: calc(var(--fc-cell) * 0.2);
+  border-radius: calc(var(--fc-cell) * 0.25);
+}
+.floating-compass--backing-subtle {
+  background: color-mix(in srgb, var(--bg-app) 72%, transparent);
+}
+.floating-compass--backing-solid {
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+/* Click-to-walk: every direction takes clicks, lit or not (a spell can hide a
+   room's exits). The gaps between cells stay see-through, so a click between
+   arrows still lands on the text beneath. */
+.floating-compass--clickable .fc-cell--button {
+  pointer-events: auto;
+  cursor: pointer;
+  font-family: inherit;
+}
+/* A <button> brings the UA's padding and `font` shorthand. Reset them per KIND
+   of cell, never across both: the UP/DOWN/OUT chips keep their own side
+   padding — without it a lit chip is narrower than an unlit one, and since that
+   row sets the compass's width, the whole grid slid sideways as exits changed. */
+.floating-compass--clickable .fc-cell.fc-cell--button { padding: 0; }
+.floating-compass--clickable .fc-special-cell.fc-cell--button { line-height: inherit; }
+.floating-compass--clickable .fc-cell--button:hover {
+  background: color-mix(in srgb, var(--compass-active-text) 18%, transparent);
+}
+/* An unlit direction brightens halfway toward lit under the pointer, so you
+   can see which one you're about to try. It never looks fully lit — that
+   still means the game showed an exit. */
+.floating-compass--clickable .fc-cell--inactive.fc-cell--button:hover {
+  opacity: calc(var(--fc-dim) + (1 - var(--fc-dim)) * 0.5);
+}
+.floating-compass--clickable .fc-cell--button:focus-visible {
+  outline: 2px solid var(--compass-active-text);
+  outline-offset: 0;
+}
+
 .fc-grid {
   display: grid;
-  grid-template-columns: repeat(3, 24px);
-  grid-template-rows: repeat(3, 24px);
-  gap: 2px;
+  grid-template-columns: repeat(3, var(--fc-cell));
+  grid-template-rows: repeat(3, var(--fc-cell));
+  gap: calc(var(--fc-cell) / 12);
 }
 
 .fc-cell {
@@ -42,15 +100,15 @@
      gaps are one pixel design, and scaling the FONTS alone would break the
      alignment. If the compass ever needs to track the font setting, the whole
      geometry converts together, not these rules piecemeal. */
-  width: 24px;
-  height: 24px;
+  width: var(--fc-cell);
+  height: var(--fc-cell);
   border-radius: 3px;
-  font-size: 0.95rem;        /* arrow glyphs render at ~15-16px */
+  font-size: calc(var(--fc-cell) * 0.633);   /* 15.2px at the default 24px cell */
   font-weight: 700;
   /* Arrow glyphs (↖ ↑ ↗ …) are stroked thin by most fonts and barely
      respond to font-weight. text-stroke thickens the path directly so
      the arrows read as chunky regardless of which font is in play. */
-  -webkit-text-stroke: 0.6px currentColor;
+  -webkit-text-stroke: calc(var(--fc-cell) / 40) currentColor;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -77,7 +135,7 @@
   background: transparent;
   color: var(--compass-inactive-text);
   border: 1px solid transparent;
-  opacity: 0.45;             /* visible at rest but clearly subordinate to active */
+  opacity: var(--fc-dim);    /* visible at rest but clearly subordinate to active */
 }
 
 /* v0.8.2: .fc-cell--center removed — the centre `·` glyph drew off-cell
@@ -92,15 +150,15 @@
 .fc-special {
   display: flex;
   flex-direction: row;
-  gap: 3px;
+  gap: calc(var(--fc-cell) / 8);
 }
 
 .fc-special-cell {
-  min-width: 24px;
-  height: 18px;
-  padding: 0 6px;
+  min-width: var(--fc-cell);
+  height: calc(var(--fc-cell) * 0.75);
+  padding: 0 calc(var(--fc-cell) / 4);
   border-radius: 3px;
-  font-size: 0.6rem;         /* readable for UP/DN/OUT text */
+  font-size: calc(var(--fc-cell) * 0.4);     /* 9.6px at the default 24px cell */
   font-weight: 700;
   display: flex;
   align-items: center;

@@ -14,6 +14,7 @@
 
 import { newHighlight, type HighlightRule, HIGHLIGHT_EFFECTS, effectiveEffect } from './highlights'
 import { CMD_HISTORY_MIN_MAX } from './commandHistorySettings'
+import type { CompassOptions } from './settings'
 import { newMute, type MuteRule } from './mutes'
 import { newSubstitute, type SubstituteRule } from './substitutes'
 import { newContact, newTemplate, formatLastSeen, DR_GUILDS, type Contact, type ContactTemplate } from './contacts'
@@ -46,6 +47,9 @@ export interface SlashContext {
   getTriggers: () => TriggerRule[]
   applyTriggers: (rules: TriggerRule[]) => void
   getMainTimestamps: () => boolean
+  /** v0.20.1 — the floating compass options (per character). */
+  getCompass: () => CompassOptions
+  setCompass: (patch: Partial<CompassOptions>) => void
   /** App-wide command-history minimum length (F82). Read/write via the ctx so
    *  the registry stays pure — it never touches storage itself. */
   getCommandHistoryMinLength: () => number
@@ -250,6 +254,23 @@ export interface ParsedSlash {
 
 const err = (...lines: SlashLine[]): SlashResult => ({ ok: false, lines })
 const ok = (...lines: SlashLine[]): SlashResult => ({ ok: true, lines })
+
+// /compass (v0.20.1): the corner words it accepts, short forms included.
+const COMPASS_CORNER_WORDS: Record<string, CompassOptions['compassCorner']> = {
+  br: 'bottom-right', 'bottom-right': 'bottom-right', bottomright: 'bottom-right',
+  bl: 'bottom-left',  'bottom-left': 'bottom-left',   bottomleft: 'bottom-left',
+  tr: 'top-right',    'top-right': 'top-right',       topright: 'top-right',
+  tl: 'top-left',     'top-left': 'top-left',         topleft: 'top-left',
+}
+
+/** The bare /compass report — one line, every option. */
+function compassSummary(c: CompassOptions): string {
+  if (!c.compassVisible) return 'Compass: hidden. /compass on shows it.'
+  return `Compass: ${c.compassSize}, ${c.compassCorner.replace('-', ' ')} corner, `
+    + `${c.compassBacking === 'none' ? 'no backing' : `${c.compassBacking} backing`}, `
+    + `unavailable exits at ${Math.round(c.compassDimOpacity * 100)}%, `
+    + `click-to-walk ${c.compassClickable ? 'on' : 'off'}.`
+}
 
 // Shared summary formatters (also used by /list output).
 // Reports what the rule actually DOES. `effect` was missing, so
@@ -1217,6 +1238,102 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
     },
   },
 
+  // ── /compass (v0.20.1) ─────────────────────────────────────────────────
+  // A bare+verbs noun (the /ai shape): bare reports, the verbs change one
+  // option each. on/off are verbs rather than a bare argument, because the
+  // palette suppresses a bare+verbs noun's own arg hint (NOUNS_WITH_VERBS).
+  {
+    noun: 'compass', nounAliases: [], verb: '',
+    args: [], options: [], flags: [],
+    description: 'Show the floating compass settings',
+    example: '/compass',
+    run: (ctx) => ok(compassSummary(ctx.getCompass())),
+  },
+  {
+    noun: 'compass', nounAliases: [], verb: 'on',
+    args: [], options: [], flags: [],
+    description: 'Show the floating compass',
+    example: '/compass on',
+    run: (ctx) => { ctx.setCompass({ compassVisible: true }); return ok('Compass ON.') },
+  },
+  {
+    noun: 'compass', nounAliases: [], verb: 'off',
+    args: [], options: [], flags: [],
+    description: 'Hide the floating compass (the Room panel still lists exits)',
+    example: '/compass off',
+    run: (ctx) => { ctx.setCompass({ compassVisible: false }); return ok('Compass OFF.') },
+  },
+  {
+    noun: 'compass', nounAliases: [], verb: 'size',
+    args: [{ name: 'small|medium|large', required: true, kind: 'word', hint: 'medium is the original size' }],
+    options: [], flags: [],
+    description: 'Make the compass smaller or larger',
+    example: '/compass size large',
+    run: (ctx, p) => {
+      const v = p.args[0].toLowerCase()
+      if (v !== 'small' && v !== 'medium' && v !== 'large') return err(`/compass size takes small, medium or large — not "${p.args[0]}".`)
+      ctx.setCompass({ compassSize: v })
+      return ok(`Compass size: ${v}.`)
+    },
+  },
+  {
+    noun: 'compass', nounAliases: [], verb: 'corner',
+    args: [{ name: 'corner', required: true, kind: 'word', hint: 'bottom-right (br), bottom-left (bl), top-right (tr) or top-left (tl)' }],
+    options: [], flags: [],
+    description: 'Move the compass to another corner of the game window',
+    example: '/compass corner tl',
+    run: (ctx, p) => {
+      // hasOwnProperty, not a bare index: "constructor" would resolve to a function.
+      const key = p.args[0].toLowerCase()
+      const v = Object.prototype.hasOwnProperty.call(COMPASS_CORNER_WORDS, key) ? COMPASS_CORNER_WORDS[key] : undefined
+      if (!v) return err(`/compass corner takes br, bl, tr or tl (or the full words, like top-left) — not "${p.args[0]}".`)
+      ctx.setCompass({ compassCorner: v })
+      return ok(`Compass moved to the ${v.replace('-', ' ')} corner.`)
+    },
+  },
+  {
+    noun: 'compass', nounAliases: [], verb: 'backing',
+    args: [{ name: 'none|subtle|solid', required: true, kind: 'word', hint: 'a plate behind the compass, in your theme colours' }],
+    options: [], flags: [],
+    description: 'Put a plate behind the compass so it reads over busy text',
+    example: '/compass backing subtle',
+    run: (ctx, p) => {
+      const v = p.args[0].toLowerCase()
+      if (v !== 'none' && v !== 'subtle' && v !== 'solid') return err(`/compass backing takes none, subtle or solid — not "${p.args[0]}".`)
+      ctx.setCompass({ compassBacking: v })
+      return ok(v === 'none' ? 'Compass backing off.' : `Compass backing: ${v}.`)
+    },
+  },
+  {
+    noun: 'compass', nounAliases: [], verb: 'dim',
+    args: [{ name: 'percent', required: true, kind: 'word', hint: '10-100 — how visible the unavailable exits are (45 is the original)' }],
+    options: [], flags: [],
+    description: 'Set how visible the unavailable directions are',
+    example: '/compass dim 25',
+    run: (ctx, p) => {
+      const raw = p.args[0].replace(/%$/, '')
+      const n = Number(raw)
+      if (!/^\d+$/.test(raw) || n < 10 || n > 100) return err(`/compass dim takes a percent from 10 to 100 — not "${p.args[0]}".`)
+      ctx.setCompass({ compassDimOpacity: n / 100 })
+      return ok(`Unavailable directions now show at ${n}%.`)
+    },
+  },
+  {
+    noun: 'compass', nounAliases: [], verb: 'click',
+    args: [{ name: 'on|off', required: true, kind: 'word', hint: 'on: click an arrow to walk that way (unlit ones too)' }],
+    options: [], flags: [],
+    description: 'Turn click-to-walk on the compass on or off',
+    example: '/compass click on',
+    run: (ctx, p) => {
+      const v = p.args[0].toLowerCase()
+      if (v !== 'on' && v !== 'off') return err(`/compass click takes on or off — not "${p.args[0]}".`)
+      ctx.setCompass({ compassClickable: v === 'on' })
+      return ok(v === 'on'
+        ? 'Click-to-walk ON — click an arrow to go that way. Unlit arrows work too, for exits a spell has hidden. The gaps between arrows still let clicks through to the text.'
+        : 'Click-to-walk OFF — the compass is see-through to clicks again.')
+    },
+  },
+
   // ── /notices (v0.20.0) ─────────────────────────────────────────────────
   // The /timestamps shape: one entry, on|off, bare toggles.
   {
@@ -1538,6 +1655,7 @@ const NOUN_HELP: Record<string, string> = {
   theme:      'Change how the whole app looks',
   log:        'Search everything that happened in your saved session history',
   timestamps: 'Show the time next to each line in the main window',
+  compass:    'The floating compass — show or hide it, resize it, move it, give it a backing',
   notices:    'Turn the "character is in the game / disconnected" notifications on or off',
   clear:      'Wipe the main window (your Session Log still keeps everything)',
   colors:     'Named colors — make your own, and everything using one changes when you change it (/colors manage)',

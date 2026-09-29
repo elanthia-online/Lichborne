@@ -57,6 +57,9 @@ interface Props {
   // The Team Login pill (v0.20.0): shown while a team login runs in the
   // background, or finished with a failure. Owned by App, which owns the run.
   teamPill?: React.ReactNode
+  // The update pill (v0.20.1) — owned by App, which owns the update lifecycle.
+  // Null when there is no update to talk about.
+  updatePill?: React.ReactNode
   // …and the team's not-yet-connected characters as placeholder tabs.
   pendingTabs?: PendingTab[]
   onPendingClick?: () => void
@@ -66,7 +69,7 @@ function dispatchSessionAction(action: string) {
   document.dispatchEvent(new CustomEvent('lichborne:session-action', { detail: { action } }))
 }
 
-export default function AppBar({ onAdd, onClose, onReconnect, reconnectingIds, simucoin, teamPill, pendingTabs, onPendingClick }: Props) {
+export default function AppBar({ onAdd, onClose, onReconnect, reconnectingIds, simucoin, teamPill, updatePill, pendingTabs, onPendingClick }: Props) {
   const { sessions, activeId } = useSessions()
   const active = sessions.find(s => s.characterId === activeId)
   const st = active?.status
@@ -152,6 +155,11 @@ export default function AppBar({ onAdd, onClose, onReconnect, reconnectingIds, s
         {/* Team Login pill — beside the tabs it is filling in, and before the
             panel buttons so it never moves as they collapse (B178 tiers). */}
         {teamPill}
+        {/* Update pill (v0.20.1) — a fixed-size chip, so an update arriving or
+            downloading never moves anything; it replaced a full-width ribbon
+            that pushed the whole window down. Before the panel buttons for the
+            same reason as the pills beside it (B178 tiers). */}
+        {updatePill}
         {/* SimuCoin (F71) — quiet by default: renders nothing unless an account
             is opted in or offerable. Placed before the panel buttons so it sits
             next to the tabs and never moves as buttons collapse (B178 tiers). */}

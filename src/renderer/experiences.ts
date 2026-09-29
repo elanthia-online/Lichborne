@@ -18,6 +18,7 @@ import { ROISAN_SECONDS, ANLAS_ROISAEN } from '../shared/elanthianTime'
 import type { AppSettings } from './settings'
 import type { Contact, ContactTemplate } from './contacts'
 import type { FloatRect } from './freeLayout'
+import type { DirectedVerb } from './utils/sayTo'
 import TableauExperience from './components/experiences/TableauExperience'
 import MoonsExperience from './components/experiences/MoonsExperience'
 import SpellMonitorExperience from './components/experiences/SpellMonitorExperience'
@@ -1200,6 +1201,11 @@ export interface ExperienceProps {
   // for user-initiated actions inside an Experience, e.g. clicking a creature to
   // `face #id` from the combat arena. NOT for automation (AI never sends).
   onCommand?: (cmd: string) => void
+  // v0.20.1 (subkermorianranger, Sekmeht): start a line to a person in the
+  // command bar — `say @Name ` or `whisper Name ` — caret at the end, for the
+  // player to finish and send. Nothing is SENT by this; the Tableau's player
+  // right-click menu calls it. Rules: utils/sayTo.ts `directedLine`.
+  onDirect?: (verb: DirectedVerb, name: string) => void
   // v0.14.7: content layers the user toggled OFF via the window's ⚙ popover
   // (option-id → true; see ExperienceDef.options). Absent = show everything.
   hidden?: Record<string, boolean>

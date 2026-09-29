@@ -147,6 +147,10 @@ export const IPC = {
   UPDATE_DOWNLOADED: 'update-downloaded',
   DOWNLOAD_UPDATE:   'download-update',
   INSTALL_UPDATE:    'install-update',
+  // v0.20.1 update pill: download progress (whole percent) and a failed
+  // download (its message), so the pill can show a bar and offer a retry.
+  UPDATE_PROGRESS:   'update-progress',
+  UPDATE_ERROR:      'update-error',
   // These two lived ONLY in main's and preload's private copies of this map
   // until v0.19.0. Hoisted here so there is one list: see the header note.
   SESSION_DESTROY:   'session:destroy',

@@ -531,7 +531,7 @@ StormFront `<preset>` tags map to visual styles:
 | `expiry` | Expiring effect warning | Orange |
 | `store` | Commerce text | Green |
 
-Each preset has both a **foreground (text) color** and a **background (highlight) color**. The highlight defaults to transparent (off) for all presets across all themes. Players can enable a highlight color per preset in the theme editor — useful for making speech, thoughts, or expiry warnings pop with a tinted background. Both colors are fully themeable and per-character via profiles.
+Each preset has both a **foreground (text) color** and a **background (highlight) color**. The highlight defaults to transparent (off) for all presets across all themes. Players can enable a highlight color per preset in the theme editor — useful for making speech, thoughts, or expiry warnings pop with a tinted background. Both colors are fully themeable and per-character via profiles. **v0.20.1:** each preset can also take its own font, size, weight, slant, case and effect — Settings → Text styles, §50.1.
 
 ---
 
@@ -707,7 +707,7 @@ Bar 1 (Stance) is always active. Bars 2–6 are empty when the condition is not 
 
 **Floating Compass**
 
-The compass is a **chrome-less overlay** (v0.7.1) anchored to the **bottom-right corner of the game text area**, floating above the scrolling text. It shows the standard 3×3 directional grid (NW/N/NE/W/·/E/SW/S/SE) above a horizontal row of special exits (UP / DOWN / OUT). There is no panel background, border, or padding — the cells float directly over the game text. **Active exits illuminate via themed text color + `text-shadow` glow** (`--compass-active-text` + `--compass-active-glow`); inactive cells render at `opacity: 0.45` (visible enough to see the compass shape at rest, faint enough that lit cells obviously dominate). Arrow glyphs (↖ ↑ ↗ …) carry `-webkit-text-stroke: 0.6px currentColor` because Unicode arrows barely respond to font-weight; text-stroke thickens them reliably regardless of font. The compass is non-interactive (`pointer-events: none`) and consumes no layout space. Themed CSS surface: `--compass-active-text`, `--compass-active-glow`, `--compass-inactive-text`, `--compass-center-text`. (Earlier v0.7.x iterations had a themed panel-bg/border + chip-style active cells; those were removed when the chrome-less design landed — the corresponding vars were stripped from the Theme Editor as dead config.)
+The compass is a **chrome-less overlay** (v0.7.1) anchored to the **bottom-right corner of the game text area**, floating above the scrolling text. It shows the standard 3×3 directional grid (NW/N/NE/W/·/E/SW/S/SE) above a horizontal row of special exits (UP / DOWN / OUT). There is no panel background, border, or padding — the cells float directly over the game text. **Active exits illuminate via themed text color + `text-shadow` glow** (`--compass-active-text` + `--compass-active-glow`); inactive cells render at `opacity: 0.45` (visible enough to see the compass shape at rest, faint enough that lit cells obviously dominate). Arrow glyphs (↖ ↑ ↗ …) carry `-webkit-text-stroke: 0.6px currentColor` because Unicode arrows barely respond to font-weight; text-stroke thickens them reliably regardless of font. The compass is non-interactive (`pointer-events: none`) by default and consumes no layout space. **v0.20.1:** show/hide, size, corner, a theme-coloured backing, the dimmed-exit opacity and an opt-in click-to-walk are per-character settings — §50.2. Themed CSS surface: `--compass-active-text`, `--compass-active-glow`, `--compass-inactive-text`, `--compass-center-text`. (Earlier v0.7.x iterations had a themed panel-bg/border + chip-style active cells; those were removed when the chrome-less design landed — the corresponding vars were stripped from the Theme Editor as dead config.)
 
 **RT / CT**
 
@@ -3348,20 +3348,27 @@ Powered by `electron-updater`. Only runs when the app is packaged (`app.isPackag
 
 **On launch (3s delay):** `autoUpdater.checkForUpdates()` fetches `latest.yml` from the GitHub release and compares versions silently.
 
-**Update states (managed in `App.tsx`):**
+**Update states (managed in `App.tsx`, drawn by [UpdatePill.tsx](src/renderer/components/UpdatePill.tsx), v0.20.1):**
 
-| State | Banner | Action |
+| State | Pill / card title | Primary button |
 |---|---|---|
-| `idle` | Hidden — Check for Updates button shown on login screen | — |
-| `available` | "Update vX.Y.Z available" | Download button → triggers `autoUpdater.downloadUpdate()` |
-| `downloading` | "Downloading update…" | No action (wait) |
-| `ready` | "Update ready to install" | Restart & Install → `autoUpdater.quitAndInstall()` |
+| `idle` | No pill — the launcher's strip shows Check for updates / "You're up to date" | — |
+| `available` | ↓ Update X · "Update available" | Download → `autoUpdater.downloadUpdate()` |
+| `downloading` | ↓ with an underline bar · "Downloading update" | Disabled; the button fills and reads "Downloading N%" |
+| `ready` | ↻ breathing, success tone · "Ready to install" | Restart & install → confirm if anyone is connected → `quitAndInstall()` |
+| `failed` | !, warning tone · "Download failed" + the reason | Try again |
 
-The banner is rendered at the `App` level (above both login and game screens) so it's visible regardless of connection state. It uses a green-tinted dark palette that reads clearly across all themes without importing theme CSS vars.
+**The pill replaced a full-width ribbon (B479).** The ribbon sat in the page flow, so appearing pushed the app down, and it changed height between states. The pill lives in fixed-height strips — the app bar (after the Team Login pill) and, when no character is open, the launcher's `.upd-strip` — so it can't move anything, and its label is "Update X" in every state so it can't change width. The card opens under it: a tone badge and a plain title, "Lichborne X · you have Y", a **What's new ↗** link, a two-line hint, and Later + one primary button. While downloading, the primary button carries the progress fill, so the card has no row that sits empty in other states. Fixed width, reserved hint lines and a fixed button min-width hold one size in every state (pitfall #103). Tooltips never carry the live percent (pitfall #145).
 
-**Dismissable:** The banner has a ✕ button so players can dismiss and install at their own pace after safely logging out. The dismissed state resets if a new update event fires.
+**Main → renderer:** `update-available(version, notesUrl)` — the notes link is the release page on the feed that answered the check (`updateFeedInFlight`, see §18.4.1); `UPDATE_PROGRESS` (whole percents); `update-downloaded`; `UPDATE_ERROR` when `downloadUpdate()` rejects (B480). A re-check never moves the state back from downloading or ready (B482).
 
-**Check for Updates button:** Shown only on the login screen (not in-game) in a thin bar at the top right. Subtle muted style. Shows "Checking…" while in flight, then "You're up to date" if no update is found. Disappears when the update banner takes over.
+**Install asks first when characters are connected (B481).** Main's `install-update` sets `quitAlreadyConfirmed`, so the multi-character close confirmation stands down for an install. The renderer therefore confirms BEFORE sending it, through `confirmAction`, whenever the roster has anyone connected — naming how many, and that attach sessions need re-attaching afterwards.
+
+**Later** hides the pill until the next launch; a finished download shows it again, and Help → Check for updates brings it back.
+
+**Check for Updates button:** on the launcher's update strip (top right), shown when no update is pending. Shows "Checking…" while in flight, then "You're up to date".
+
+**Fake update mode (dev only).** An unpackaged run has no working updater. With `LICHBORNE_FAKE_UPDATE=1`, main sends the same IPC sequence a real update would — available after 3s (the next patch version), a download that fills over ~8s, ready — so the real renderer path can be seen and tested. `=fail` stops the FIRST download at 40% with an error, so Try again can be exercised. Restart & install answers with a toast and does nothing. It is ignored whenever `app.isPackaged`, whatever the environment says.
 
 **`autoDownload: false`** — the user always initiates the download. The app never downloads without consent.
 
@@ -7220,7 +7227,7 @@ gates** (procedural fallbacks always).
      greys exactly the corpses, >10 → "+N more"; supersedes the ×N chip); the **self figure wearing
      its indicator states** (hidden/invisible shadow, dead grey, condition-colored ring + per-state
      chips, from the new `indicators` Experience prop); **clickable contact figures** (✦ + the
-     `onOpenContact` prop opening the same ContactPopover as in-text name clicks); cross-layer
+     `onOpenContact` prop opening the same ContactPopover as in-text name clicks; v0.20.1 moved it onto the player right-click menu, §50.3); cross-layer
      **window snapping** (Experience ↔ panel windows, B185); and the scene background matching the
      floating-window surface (`--experience-scene-bg`→`--bg-app`, B186). **The lesson:** the Tableau
      evolves in small reversible steps; resist big-bang re-layouts.
@@ -10537,3 +10544,83 @@ imported theme can carry `#3FB950` while everything we offer is lowercase).
 - **An echo already printed keeps its color** (§49.5).
 - **Named highlight STYLES** (color + background + bold + effect as one preset, like contact templates) are deliberately not built. Phase 3 would reuse this link idea.
 - **"Find similar colors in use"** (link the slightly-off oranges in bulk) is Phase 2.
+
+---
+
+## 50. Text styles, compass options, and the Tableau person menu (v0.20.1)
+
+Three tester requests from the same week, built together. Two came from subkermorianranger (*"Say @playername in the command line for the living tableau when Player character is selected via mouse click"*; *"Ability to change font and size for room names so it can be fancy like saga"*), one from Q, TheUndistinguishedGentlegnome (*"Directional compass options would be nice. Sometimes it's difficult to see against a wall of text… More/Less opaque options maybe."*). Sekmeht widened the first into a right-click menu with a whisper option, and the second into styling for every kind of game text rather than room names alone.
+
+### 50.1 Text styles (F125)
+
+**What it is.** Settings → Text styles: a font, size, weight, slant, case and effect for each KIND of game text — room names, room descriptions, speech, whispers, thoughts, bold text, and the echo of your own commands. The kinds are the parser's preset ids (§4.4), so the feature reaches everything already tagged with one: the main window, every stream panel, the Room panel and the Overview feed.
+
+**Where it lives.** `AppSettings.textStyles`, per character (Sekmeht's choice, beside the game font it modifies). It rides the settings JSON, so it is in `state:` → YAML and moves with Profile Transfer's Display & Accessibility category without a registration. `coerceTextStyles` validates it on every load: an unknown kind, an out-of-range size, an unknown effect or an empty style is dropped, never clamped into something the player didn't choose.
+
+**Default = unchanged.** Every field is optional and "Default" removes it, so a character with no styles stores `{}`, generates an empty stylesheet, and renders byte-identically to v0.20.0 (harness C1).
+
+**Two delivery paths — keep them split.**
+- **Font, size, weight, slant and case are one generated `<style id="lb-text-styles">`** (`applyTextStyles`, called from `applySettingsToDOM`). A stylesheet rather than CSS variables because an unset variable doesn't fall back to the rule before it — it resets the property, which would have stripped the room name's default bold. Rules are emitted only for fields that are set. The selector is `[data-preset="X"][data-preset]:not(.text-line--mono *)`: the doubled attribute outranks panels.css's own `[data-preset]` rules by specificity rather than by load order, and the `:not()` leaves mono tables (`exp`, `inv`) alone so a bigger or different font can't break their columns (`TextLineRow` adds `text-line--mono`).
+- **The effect needs markup** (per-letter spans, an inner span for clip-text effects — pitfall #148), so `renderSegment` asks the module store `presetEffect()` and wraps the text itself, in the same `content` slot a line-scope highlight uses. A caller's own content wins: a highlight aimed at this line is more specific than a whole kind of text. Memoized rows subscribe through `useTextStylesVersion` (useSyncExternalStore), and **the version is bumped only when an EFFECT changes** — font and size repaint through the stylesheet on their own, and bumping for them re-ran the whole highlight ruleset over every mounted row on every click of the size buttons.
+
+**Split segments.** When a highlight or a contact name splits a segment into runs, the matched runs carry no `data-preset`. `renderSegmentFull` therefore stamps the wrapper `data-ts="<kind>"`, the generated sheet styles `[data-ts]` too, and a nested rule resets the unmatched runs' size to 100% so it can't compound (150% of 150%). Without it, "Vayne" (a contact) stayed normal size inside a 150% speech line.
+
+**Sizes are percentages** of the game font, so a styled kind still follows Font size (Principle #9). The scroll re-snap effect includes `settings.textStyles`, since a bigger room name reshapes rows exactly as a font change does.
+
+**The Room panel** takes the room-name style on its title (effect included, via `presetEffectContent`) and the room-description font and size on its description (`alsoSelectors`). The description takes no effect: it is rendered through the highlight path as unstyled text, and routing it through a preset would also change its colour.
+
+**It follows the active character**, like the game font: `applySettingsToDOM` runs for whoever owns the document, so two characters with different styles switch as you switch tabs, and the Overview cards all show the front character's styles.
+
+**Editor.** [TextStylesEditor.tsx](src/renderer/components/TextStylesEditor.tsx), `.tse-` prefix. One `<details>` row per kind; the summary shows what's set and a live preview drawn by the real `renderSegment` on the game background, so the preview is the game's own paint (pitfall #127). The row body is only built while open (each Font select lists every installed font). The size box takes a draft so typing "150" doesn't clamp at the "1".
+
+**Effects per kind.** A `TextStyleTarget` may declare `effects`; room descriptions offer only `PARAGRAPH_EFFECTS` (none, glow, pulse, neon). A description is a paragraph (median 364 characters in the captured session) and several are mounted while you travel, so Wave and Bounce would animate every character and the sweeping gradients would repaint whole paragraphs every frame. Glow is static, Pulse animates opacity only, Neon changes at a few keyframes. `coerceTextStyle(raw, id)` enforces the list on load; the editor explains the shorter list in the row. A new long-text kind should declare `effects` the same way.
+
+**Themes own colour, text styles own shape.** No theme variable sets a font property, so the two never overlap. The one meeting point is effects with a fixed palette: Shimmer, Rainbow, Gold and Frost (`PALE_EFFECTS`) paint pale colours that wash out on a light background. The row warns when the current theme's `--bg-app` resolves light (a hidden probe + `isLightComputedColor`, so a `var()`/`color-mix()` theme value is judged as it paints). Text styles were deliberately NOT made part of themes: themes are app-wide and shared as files, fonts are whatever is installed on each machine, and the game font these modify is already per character.
+
+**Known limits.**
+- The game tags only "Name says," as speech, not the quote, so a speech style doesn't reach the words said. The row's description says so.
+- "Your commands" also restyles the prompt, because the echo merges into the prompt's line as one segment.
+- Wave/Bounce restart where a contact or highlight splits a line (the B444 geometry isn't applied to preset effects).
+- Font names containing an apostrophe or quote can't be used; they are stripped so a name can never escape its CSS string.
+- Gradient isn't offered: it needs a second colour this editor has no field for.
+
+**No slash command, by decision** (Principle #11): it is a visual editor with seven kinds × six properties, and a live preview is the point of it.
+
+### 50.2 Compass options (F126)
+
+The compass (§5.7, "Floating Compass") was one fixed design. v0.20.1 gives it six per-character settings — Settings → Layout, and `/compass`:
+
+| Setting | Values | Default (= the old compass) |
+|---|---|---|
+| `compassVisible` | on / off | on |
+| `compassSize` | small / medium / large (18 / 24 / 32px cells) | medium |
+| `compassCorner` | bottom-right / bottom-left / top-right / top-left | bottom-right |
+| `compassBacking` | none / subtle / solid | none |
+| `compassDimOpacity` | 0.1 – 1 | 0.45 |
+| `compassClickable` | on / off | off |
+
+- **Size scales the whole geometry through one `--fc-cell` variable** — cells, gaps, glyph size, text stroke and the UP/DOWN/OUT row. B305 recorded that scaling the glyphs alone breaks the grid; this is the "whole geometry together" it asked for. At 24px every value equals the old fixed CSS.
+- **The backing is drawn from `--bg-app`** (subtle is 72% of it), so it is dark on dark themes and light on light ones. The v0.7.x backing (B90) was a fixed `rgba(0,0,0,.55)` with a blur, which dropped a black blob on light themes and smeared the text behind; neither is repeated.
+- **Click-to-walk makes EVERY direction a button, lit or not (Sekmeht).** A spell can hide a room's exits, so nothing lights, and a player who knows the way must still be able to try it — the game decides whether the move works. Lit only sets brightness; an unlit cell's tooltip reads "Try going north (no obvious exit shown)" and it brightens halfway on hover, never fully (full still means the game showed an exit). The gaps between cells stay `pointer-events: none`, so a click between arrows still lands on the text. A cell sends the full direction word through the canonical echoing `sendCommand` (it echoes `>north` and is logged), from the shared [exitWords.ts](src/renderer/exitWords.ts) — also the Room panel's table, because `dn` is not a command and `down` is. The buttons don't take focus on mouse-down (the next Enter must send what's typed, not walk again) and Space walks too.
+- **The Ctrl+F search bar moved above the compass** (z 5 → 11), because a top-right compass now overlaps it.
+- `coerceSettings` validates all six on load, falling back to `DEFAULT_SETTINGS` rather than restated literals (pitfall #121).
+
+**Slash surface:** `/compass` (bare = status), `/compass on|off`, `size`, `corner br|bl|tr|tl` (full words too), `backing`, `dim <10-100>`, `click on|off`. On/off are verbs rather than a bare argument because the palette suppresses a bare+verbs noun's own argument hint.
+
+### 50.3 The Tableau person menu (F127)
+
+Right-clicking a player in the Living Tableau opens a menu:
+
+- **Say to *Name*…** → `say @Name ` in the command bar.
+- **Whisper to *Name*…** → `whisper Name `.
+- **Contact card** (for a contact, under a divider) — this used to be the left-click; it moved here so a person has one interaction surface (Sekmeht: *"each person in the living tableau only has a right-click option… then we can add more options as time goes"*).
+
+A plain left-click does nothing; the cursor is the context-menu cursor and the tooltip says "right-click for options". From the keyboard, Tab reaches a figure and Enter opens the same menu with focus on its first item (`ContextMenu`'s new opt-in `focusFirst`). The menu closes when the Tableau stops being the active character's (it is portaled to `<body>` and would otherwise float over the next character).
+
+**Nothing is sent.** The items only TYPE into the command bar, caret at the end, for the player to finish and press Enter; `GameWindow.directTo` writes `setCommand` + `commandRef`, leaves history browsing, and focuses through `focusCommandInput`.
+
+**The syntax is DR's own.** From the in-game `SAY` help (captured by Sekmeht): `SAY @PERSON message`; `SAY /EMOTE @PERSON message` and `SAY @PERSON /EMOTE message` both work; `SAY`, `'` and `"` are interchangeable. Whisper is `whisper PERSON message`. Knowledge.md records it.
+
+**What's already typed is kept** ([sayTo.ts](src/renderer/utils/sayTo.ts), `directedLine`, harnessed): an empty bar gets the bare prefix; a say line (any of the three verbs, an emote and a target in either order) or a whisper line gives up its message and its target is replaced; a say line keeps its verb and emote; a whisper drops the emote; anything else becomes the message. `/setemote` and `/help` are SAY's own sub-commands, not emotes.
+
+**Adding an option** is one `CtxItem` in the menu block at the end of `TableauExperience`. A verb that types into the command bar goes through `onDirect` and `directedLine`; one that sends straight away goes through `onCommand`. No slash command — the menu is the surface.

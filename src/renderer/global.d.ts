@@ -102,7 +102,10 @@ declare global {
       simucoinCheck: (account: string, claim?: boolean) => Promise<SimuCoinStatus>
       simucoinCached: () => Promise<SimuCoinStatus[]>
       simucoinHasPassword: (account: string) => Promise<boolean>
-      onUpdateAvailable: (cb: (version: string) => void) => () => void
+      /** `notesUrl`: the release page on the repo that answered (v0.20.1). */
+      onUpdateAvailable: (cb: (version: string, notesUrl?: string) => void) => () => void
+      onUpdateProgress: (cb: (percent: number) => void) => () => void
+      onUpdateError: (cb: (message: string) => void) => () => void
       onUpdateDownloaded: (cb: () => void) => () => void
       downloadUpdate: () => void
       installUpdate: () => void

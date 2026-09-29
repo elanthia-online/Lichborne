@@ -397,9 +397,11 @@
   content: ' ✦';
   color: var(--accent);
 }
-/* …and they're clickable (opens the contact card). */
-.tableau-figure--clickable { cursor: pointer; }
-.tableau-figure--clickable:hover .tableau-avatar {
+/* v0.20.1: every player has a right-click menu (Say to… / Whisper to…, and
+   the contact card for a contact). The context-menu cursor says "right-click
+   me" where a pointer would promise a left-click that does nothing. */
+.tableau-figure--menu { cursor: context-menu; }
+.tableau-figure--menu:hover .tableau-avatar {
   outline-color: var(--accent);
   filter: brightness(1.15);
 }

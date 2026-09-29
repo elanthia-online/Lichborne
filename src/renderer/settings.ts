@@ -4,17 +4,20 @@
 // / line height, large print, high contrast, colour-blind mode, epilepsy-safe,
 // vitals/icon bar positions, compact vitals / compact exp, timer style, URL
 // auto-linking + web-link safety (F23), map animations, text weight (B113),
-// and the per-panel font overrides (F31, `panelFontSizes`). Each field's own
-// comment carries its history. Stored under `scopedKey(character,'settings')`
-// and loaded by spreading the saved JSON over DEFAULT_SETTINGS, so a field a
-// previous version never wrote just takes its default. `loadSettings()` with
+// the per-panel font overrides (F31, `panelFontSizes`), and (v0.20.1) the
+// per-kind text styles and the compass options. Each field's own comment
+// carries its history. Stored under `scopedKey(character,'settings')` and
+// loaded by spreading the saved JSON over DEFAULT_SETTINGS, so a field a
+// previous version never wrote just takes its default; `coerceSettings` then
+// validates the fields whose shape matters. `loadSettings()` with
 // NO character is the boot path and returns pure defaults. Session Log
 // preferences are deliberately NOT here — they're app-wide (see
 // sessionLogSettings.ts).
 //
 // `applySettingsToDOM` is the single writer of the game-area CSS vars
 // (`--game-font-size` / `--game-line-height` / `--game-font-family` / the
-// text-weight pair), the large-print root font size, `data-epilepsy-safe`,
+// text-weight pair), the text-style stylesheet, the large-print root font
+// size, `data-epilepsy-safe`,
 // and then the two OVERLAYS — high contrast first, colour-blind after it so
 // the more specific semantics win. Those overlay keys are the SAME custom
 // properties the theme sets (`--bg-*`, `--text-*`, `--vital-*`, …), so any
@@ -25,6 +28,7 @@ import type { ThemeVars } from './themes'
 // Type-only, so it is erased at compile time and adds no runtime dependency
 // on the (much larger) highlights module.
 import type { HighlightEffect } from './highlights'
+import { applyTextStyles, coerceTextStyles, type TextStyles } from './textStyles'
 
 export interface AppSettings {
   fontSize: number       // game text size in px, 10–24
@@ -80,9 +84,31 @@ export interface AppSettings {
   // character you are looking at, so it is per-character on purpose, and the
   // app bar reads the ACTIVE session's value through SessionStatus.
   brandEffect: HighlightEffect
+  // v0.20.1 (subkermorianranger): a font / size / weight / slant / case /
+  // effect per KIND of game text — room names above all. Absent kinds render
+  // as they always have. Validated by coerceTextStyles on every read and
+  // applied by textStyles.ts. Per character, like the game font it sits beside.
+  textStyles: TextStyles
+  // v0.20.1 (Q): the floating compass. It was fixed until now — always on,
+  // 24px cells, bottom-right, see-through, 45% for exits you can't take. The
+  // defaults below ARE those values, so nothing changes until a player asks.
+  compassVisible: boolean
+  compassSize: 'small' | 'medium' | 'large'
+  compassCorner: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
+  /** A theme-coloured plate behind the compass, so it reads over busy text. */
+  compassBacking: 'none' | 'subtle' | 'solid'
+  /** Opacity of the arrows for exits that aren't available, 0.1–1. */
+  compassDimOpacity: number
+  /** Click an arrow to walk that way. Off by default: the compass is otherwise
+   *  see-through to clicks on the text beneath it. */
+  compassClickable: boolean
   // NOTE: Session Log preferences are NOT here — they are app-wide, not
   // per-character. See sessionLogSettings.ts (stored in _shared.yaml).
 }
+
+/** The compass options — the slice FloatingCompass and /compass work with. */
+export type CompassOptions = Pick<AppSettings,
+  'compassVisible' | 'compassSize' | 'compassCorner' | 'compassBacking' | 'compassDimOpacity' | 'compassClickable'>
 
 export const DEFAULT_SETTINGS: AppSettings = {
   fontSize: 12,
@@ -114,6 +140,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   panelFontSizes: {},
   // Static — the wordmark takes its colours from the theme, as it always has.
   brandEffect: 'none',
+  textStyles: {},
+  compassVisible: true,
+  compassSize: 'medium',
+  compassCorner: 'bottom-right',
+  compassBacking: 'none',
+  compassDimOpacity: 0.45,
+  compassClickable: false,
 }
 
 // v0.18.0 cross-platform: Menlo (macOS) and DejaVu/Liberation (Linux) appended
@@ -162,7 +195,14 @@ function fontFallbackTail(name: string): string {
 /** The CSS font-family value for a stored setting: a preset key's chain, or a
  *  raw font name followed by the matching cross-platform tail (B348). */
 export function resolveFontFamily(font: string): string {
-  return FONT_FAMILIES[font] ?? `'${font}', ${fontFallbackTail(font)}`
+  // Own-property check: a stored "constructor" or "toString" would otherwise
+  // resolve to a function's source text and land in CSS.
+  return isFontPreset(font) ? FONT_FAMILIES[font] : `'${font}', ${fontFallbackTail(font)}`
+}
+
+/** True for a FONT_FAMILIES key (not an inherited property like "toString"). */
+export function isFontPreset(font: string): boolean {
+  return Object.prototype.hasOwnProperty.call(FONT_FAMILIES, font)
 }
 
 export const FONT_FAMILY_LABELS: Record<string, string> = {
@@ -181,8 +221,32 @@ export function loadSettings(character?: string): AppSettings {
   // loaded once a GameWindow mounts for that character.
   if (!character) return { ...DEFAULT_SETTINGS }
   try {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(storageKey(character)) ?? '{}') }
+    return coerceSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(storageKey(character)) ?? '{}') })
   } catch { return { ...DEFAULT_SETTINGS } }
+}
+
+const COMPASS_SIZES = new Set(['small', 'medium', 'large'])
+const COMPASS_CORNERS = new Set(['bottom-right', 'bottom-left', 'top-right', 'top-left'])
+const COMPASS_BACKINGS = new Set(['none', 'subtle', 'solid'])
+
+/** The v0.20.1 fields validated. The spread above only fills MISSING keys, so a
+ *  hand-edited or imported value of the wrong shape would otherwise reach the
+ *  DOM; each falls back to its default rather than to a restated literal
+ *  (pitfall #121). Older fields keep their existing behaviour. */
+export function coerceSettings(s: AppSettings): AppSettings {
+  const D = DEFAULT_SETTINGS
+  // typeof first: Number(null) is 0, which would clamp to 10% instead of the default.
+  const dim = typeof s.compassDimOpacity === 'number' ? s.compassDimOpacity : NaN
+  return {
+    ...s,
+    textStyles: coerceTextStyles(s.textStyles),
+    compassVisible: typeof s.compassVisible === 'boolean' ? s.compassVisible : D.compassVisible,
+    compassSize: COMPASS_SIZES.has(s.compassSize) ? s.compassSize : D.compassSize,
+    compassCorner: COMPASS_CORNERS.has(s.compassCorner) ? s.compassCorner : D.compassCorner,
+    compassBacking: COMPASS_BACKINGS.has(s.compassBacking) ? s.compassBacking : D.compassBacking,
+    compassDimOpacity: Number.isFinite(dim) ? Math.min(1, Math.max(0.1, dim)) : D.compassDimOpacity,
+    compassClickable: typeof s.compassClickable === 'boolean' ? s.compassClickable : D.compassClickable,
+  }
 }
 
 export function saveSettings(character: string, s: AppSettings): void {
@@ -355,6 +419,9 @@ export function applySettingsToDOM(s: AppSettings): void {
     setVar('--game-text-stroke', '0')
     setVar('--game-text-weight', '400')
   }
+
+  // v0.20.1: per-kind text styles (a generated stylesheet + effect store).
+  applyTextStyles(s.textStyles, resolveFontFamily)
 
   // Scale entire UI for large print
   root.style.fontSize = s.largePrint ? '16px' : ''

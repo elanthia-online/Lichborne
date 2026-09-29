@@ -25,9 +25,14 @@ interface Props {
   y: number
   items: CtxItem[]
   onClose: () => void
+  /** Move focus to the first enabled item on open — for a menu opened from
+   *  the KEYBOARD, which would otherwise leave focus behind on the opener with
+   *  no way into the portaled menu. Off by default: a right-click must not
+   *  steal focus from the command bar. */
+  focusFirst?: boolean
 }
 
-export default function ContextMenu({ x, y, items, onClose }: Props) {
+export default function ContextMenu({ x, y, items, onClose, focusFirst }: Props) {
   const menuRef = useRef<HTMLDivElement>(null)
   // Clamp the root menu into the viewport so a tall menu near a screen edge
   // doesn't overflow off-screen (measured before paint, so no flicker).
@@ -43,6 +48,11 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
       top:  Math.max(m, Math.min(y, window.innerHeight - height - m)),
     })
   }, [x, y, items.length])
+
+  useEffect(() => {
+    if (!focusFirst) return
+    menuRef.current?.querySelector<HTMLButtonElement>('button.ctx-menu-item:not(:disabled)')?.focus()
+  }, [focusFirst])
 
   useEffect(() => {
     function onDown(e: MouseEvent) {
@@ -62,7 +72,23 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
   }, [onClose])
 
   return createPortal(
-    <div ref={menuRef} className="ctx-menu" style={{ left: pos.left, top: pos.top }}>
+    <div
+      ref={menuRef}
+      className="ctx-menu"
+      style={{ left: pos.left, top: pos.top }}
+      // The menu is portaled, but React events still bubble up the React tree,
+      // so an unhandled right-click here would reach the opener's own menu (a
+      // floating window's Close menu) and open that on top of this one.
+      onContextMenu={e => e.preventDefault()}
+      // Space on a focused item: activate it ourselves. Left alone, the
+      // type-anywhere handler (F60) sees a printable key on a plain button and
+      // moves it into the command bar instead.
+      onKeyDown={e => {
+        if (e.key !== ' ') return
+        const t = e.target as HTMLElement
+        if (t instanceof HTMLButtonElement && t.classList.contains('ctx-menu-item')) { e.preventDefault(); t.click() }
+      }}
+    >
       <MenuRows items={items} onClose={onClose} />
     </div>,
     document.body

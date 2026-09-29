@@ -12,8 +12,28 @@
 // segment's preset colour — inline, colour ONLY, never the preset's background
 // or the segment's bold/links (the parameter comment has the full story).
 // `content` replaces the text inside that element: a line-scope EFFECT rides
-// an inner span there, so the segment keeps its own element.
+// an inner span there, so the segment keeps its own element. With no `content`,
+// a text style's effect for this preset (textStyles.ts, v0.20.1) takes the same
+// slot; its font/size/weight come from a generated stylesheet, not from here.
 import type { TextSegment } from '../../shared/types'
+import { presetEffect } from '../textStyles'
+import { resolveEffect, effectContent } from './highlightEffects'
+
+/** The effect span a text style puts inside a preset's element, or undefined
+ *  when that preset has no effect. Exported for surfaces that show the same
+ *  text outside a segment (the Room panel's title). The colour is the
+ *  segment's own when it has one, else the preset's theme colour. */
+export function presetEffectContent(text: string, preset: string | undefined, color?: string): React.ReactNode | undefined {
+  const pe = presetEffect(preset)
+  if (!pe) return undefined
+  const fx = resolveEffect(pe.effect, color ?? `var(${pe.colorVar})`, null)
+  return (
+    <span
+      className={fx.className || undefined}
+      style={{ ...fx.vars, ...(fx.glowShadow ? { textShadow: fx.glowShadow } : {}) }}
+    >{effectContent(text, fx.perLetter)}</span>
+  )
+}
 
 // v0.8.1 (F23): wrap external URLs in Simu's bounce page so the user gets
 // a "You are leaving Play.net" confirmation before the actual destination
@@ -52,9 +72,14 @@ export function renderSegment(
   // background, and this element also carries the links.
   content?: React.ReactNode,
 ): React.ReactNode {
-  const body = content ?? seg.text
   const preset = seg.preset ?? (seg.bold ? 'bold' : undefined)
   const fgColor = overrideColor ?? (seg.fg ? '#' + seg.fg : undefined)
+  // v0.20.1 text styles: the player can give a KIND of text an effect (Settings
+  // → Text styles). It rides an inner span for the same reason a line effect
+  // does, and a caller's own `content` (a line-scope highlight's effect) wins —
+  // a rule the player aimed at this line is more specific than a whole kind.
+  if (content === undefined && seg.text) content = presetEffectContent(seg.text, preset, fgColor)
+  const body = content ?? seg.text
   const style: React.CSSProperties | undefined =
     fgColor || seg.bg
       ? { ...(fgColor ? { color: fgColor } : {}), ...(seg.bg ? { backgroundColor: '#' + seg.bg } : {}) }

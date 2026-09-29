@@ -72,6 +72,7 @@ import DebugPanel from './DebugPanel'
 import VitalsBar from './VitalsBar'
 import IconBar from './IconBar'
 import FloatingCompass from './FloatingCompass'
+import { directedLine, type DirectedVerb } from '../utils/sayTo'
 import PanelFrame, { type TabDef, type PanelType, PANEL_LABELS, ALL_PANEL_TYPES, makeTab, expIdFromTab } from './PanelFrame'
 import PanelManager from './PanelManager'
 import WindowLayer from './WindowLayer'
@@ -3901,7 +3902,8 @@ export default function GameWindow({
   // stickToBottom arms suppression synchronously here (covering the relayout)
   // and converges across the multi-frame re-measure. reindex pulls the last row
   // into range first since the font change may have shifted it off-screen.
-  useEffect(() => { stickToBottom(true) }, [settings.fontSize, settings.lineHeight, settings.largePrint]) // eslint-disable-line react-hooks/exhaustive-deps
+  // v0.20.1: text styles reshape rows the same way (a bigger room name).
+  useEffect(() => { stickToBottom(true) }, [settings.fontSize, settings.lineHeight, settings.largePrint, settings.textStyles]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-snap when this tab becomes ACTIVE again (pitfall #24). An inactive tab
   // is display:none → its scroller + every Virtuoso row measure 0×0; on the
@@ -4822,6 +4824,14 @@ export default function GameWindow({
       getTriggers: () => triggers,
       applyTriggers: rules => { saveTriggers(session.character, rules); setTriggers(rules); saveProfile() },
       getMainTimestamps: () => !!streamTimestamps['main'],
+      // v0.20.1 — per character, the Settings panel's own save path.
+      getCompass: () => settings,
+      setCompass: patch => {
+        const next = { ...settings, ...patch }
+        setSettings(next)
+        saveSettings(session.character, next)
+        scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+      },
       // v0.20.0 — app-wide, the same shape as the history setting below.
       getCharacterNotices: () => loadCharacterNoticesEnabled(),
       setCharacterNotices: (on: boolean) => {
@@ -5665,6 +5675,25 @@ export default function GameWindow({
     window.api.sendCommand(sessionIdRef.current, 'weather')
   }, [])
 
+  // v0.20.1 (subkermorianranger, Sekmeht): "Say to…" / "Whisper to…" on a
+  // player in the Living Tableau starts `say @Name ` or `whisper Name ` in the
+  // command bar. It only TYPES — nothing is sent until the player presses
+  // Enter. The line rules (keeping what's already typed) live in directedLine.
+  const directTo = useCallback((verb: DirectedVerb, name: string) => {
+    const next = directedLine(commandRef.current, verb, name)
+    setCommand(next)
+    commandRef.current = next
+    // Leave history browsing, as typing does: otherwise ↓ would restore the
+    // pre-browse draft and throw this line away.
+    historyIdxRef.current = -1
+    // After React commits the new value: focus, then put the caret at the end.
+    requestAnimationFrame(() => {
+      focusCommandInput()
+      const inp = inputRef.current
+      if (inp && document.activeElement === inp) inp.setSelectionRange(next.length, next.length)
+    })
+  }, [focusCommandInput])
+
   function renderExperienceContent(expId: string, hidden?: Record<string, boolean>): React.ReactNode {
     const def = experienceById(expId)
     if (!def) return null
@@ -5684,6 +5713,7 @@ export default function GameWindow({
         isActive={isActive}
         onOpenContact={openContactPopover}
         onCommand={sendCommand}
+        onDirect={directTo}
         hidden={hidden}
         moons={moonsState}
         serverClockOffsetMs={serverClockOffsetMs}
@@ -5987,7 +6017,9 @@ export default function GameWindow({
             {searchOpen && (
               <ScrollbackSearch lines={lines} onJump={handleSearchJump} onClose={handleSearchClose} onClearHit={() => setSearchHitId(null)} />
             )}
-            <FloatingCompass exits={exits} />
+            {/* v0.20.1: the compass options, and click-to-walk through the
+                canonical echoing send (a walk shows as >north and is logged). */}
+            <FloatingCompass exits={exits} options={settings} onWalk={sendCommand} />
           </div>
   )
 

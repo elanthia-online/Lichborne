@@ -68,6 +68,8 @@ import AboutModal from './components/AboutModal'
 import QuitConfirmModal, { type QuitConfirmRequest } from './components/QuitConfirmModal'
 import GameWindow from './components/GameWindow'
 import AppBar from './components/AppBar'
+import UpdatePill from './components/UpdatePill'
+import { confirmAction } from './confirm'
 import QuickSend from './components/QuickSend'
 import BulkConnectPicker from './components/BulkConnectPicker'
 import { showToast } from './toasts'
@@ -105,7 +107,9 @@ declare global {
   }
 }
 
-type UpdateState = 'idle' | 'available' | 'downloading' | 'ready'
+// v0.20.1: 'failed' — a download that errored now says so and offers a retry
+// (it used to sit on "Downloading update…" forever).
+type UpdateState = 'idle' | 'available' | 'downloading' | 'ready' | 'failed'
 
 // Attach mode: last successful attach, for prefilling the modal.
 // Deliberately GLOBAL (not per-character scoped) — it answers "what did I
@@ -532,6 +536,11 @@ function AppShell() {
   const [updateState, setUpdateState] = useState<UpdateState>('idle')
   const [updateVersion, setUpdateVersion] = useState('')
   const [updateDismissed, setUpdateDismissed] = useState(false)
+  // v0.20.1 update pill: download progress, the release-notes link main built
+  // for the repo that answered, and why a download failed.
+  const [updatePercent, setUpdatePercent] = useState<number | null>(null)
+  const [updateNotesUrl, setUpdateNotesUrl] = useState<string | null>(null)
+  const [updateError, setUpdateError] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
   const [upToDate, setUpToDate] = useState(false)
 
@@ -1082,13 +1091,25 @@ function AppShell() {
   }), [scAccounts, scWithPassword, scStatuses, scBusy, runSimucoin])
 
   useEffect(() => {
-    const unsubAvailable = window.api.onUpdateAvailable((version) => {
+    const unsubAvailable = window.api.onUpdateAvailable((version, notesUrl) => {
       setUpdateVersion(version)
-      setUpdateState('available')
+      setUpdateNotesUrl(notesUrl ?? null)
+      // A re-check while a download is running (or finished) must not knock
+      // the pill back to "available" and offer a second download.
+      setUpdateState(prev => (prev === 'downloading' || prev === 'ready') ? prev : 'available')
       setUpdateDismissed(false)
     })
     const unsubDownloaded = window.api.onUpdateDownloaded(() => {
       setUpdateState('ready')
+      setUpdatePercent(100)
+      setUpdateDismissed(false)
+    })
+    const unsubProgress = window.api.onUpdateProgress((percent) => setUpdatePercent(percent))
+    // A failed download comes back into view even if the pill was put away:
+    // the player started it, so they should hear it didn't finish.
+    const unsubError = window.api.onUpdateError((message) => {
+      setUpdateError(message)
+      setUpdateState('failed')
       setUpdateDismissed(false)
     })
     const unsubLog = window.api.onUpdaterLog((msg) => {
@@ -1104,13 +1125,53 @@ function AppShell() {
       }
       if (msg === 'No update available') setUpToDate(true)
     })
-    return () => { unsubAvailable(); unsubDownloaded(); unsubLog() }
+    return () => { unsubAvailable(); unsubDownloaded(); unsubProgress(); unsubError(); unsubLog() }
   }, [])
 
   function handleDownload() {
     setUpdateState('downloading')
+    setUpdatePercent(null)
+    setUpdateError(null)
     window.api.downloadUpdate()
   }
+
+  // v0.20.1: installing quits Lichborne, and main deliberately skips its own
+  // "characters are connected" confirmation for an install (it treats the
+  // click as consent — see quitAlreadyConfirmed in main.ts). So the question
+  // is asked HERE, before the click reaches main, naming what will happen.
+  // Counts characters in EVERY window (the roster), not just this one.
+  async function handleInstallUpdate() {
+    const live = roster.filter(r => r.connected)
+    if (live.length > 0) {
+      const attached = live.filter(r => r.attach).length
+      const n = live.length
+      const ok = await confirmAction({
+        title: 'Restart to install the update?',
+        message: `Lichborne will close, install ${updateVersion} and open again.`,
+        detail: `${n} connected character${n === 1 ? '' : 's'} will be disconnected.`
+          + (attached > 0 ? ` Attached sessions keep running in Lich; re-attach after the restart.` : ''),
+        confirmLabel: 'Restart & install',
+        danger: true,
+      })
+      if (!ok) return
+    }
+    window.api.installUpdate()
+  }
+
+  // The pill, when there is something to say. Shown in the app bar, or in the
+  // launcher's update strip when no character is open (no app bar then).
+  const updatePill = updateState !== 'idle' && !updateDismissed ? (
+    <UpdatePill
+      phase={updateState}
+      version={updateVersion}
+      percent={updatePercent}
+      notesUrl={updateNotesUrl}
+      error={updateError}
+      onDownload={handleDownload}
+      onInstall={() => { void handleInstallUpdate() }}
+      onLater={() => setUpdateDismissed(true)}
+    />
+  ) : null
 
   function handleCheckForUpdates() {
     setChecking(true)
@@ -1953,30 +2014,21 @@ function AppShell() {
       {/* The confirm queue (confirmAction / confirmDelete / confirmDiscard) —
           one host per window, above every dialog it can be opened from. */}
       <ConfirmHost homeFocus={dialogHomeFocus} />
-      {(updateState !== 'idle' && !updateDismissed) && (
-        <div className="update-banner">
-          {updateState === 'available' && (
+      {/* v0.20.1: the launcher's update strip. One fixed height whatever it
+          holds, so the launcher never moves as a check runs or an update
+          arrives (the old ribbon pushed the whole window down and changed
+          height between its states). With characters open, the pill lives in
+          the app bar instead. */}
+      {showFullLogin && (
+        <div className="upd-strip">
+          {updatePill ?? (
             <>
-              <span>Update v{updateVersion} available</span>
-              <button className="update-btn" onClick={handleDownload}>Download</button>
+              {upToDate && <span className="update-up-to-date">You're up to date</span>}
+              <button className="update-btn-check" onClick={handleCheckForUpdates} disabled={checking}>
+                {checking ? 'Checking…' : 'Check for updates'}
+              </button>
             </>
           )}
-          {updateState === 'downloading' && <span>Downloading update…</span>}
-          {updateState === 'ready' && (
-            <>
-              <span>Update ready to install</span>
-              <button className="update-btn update-btn--install" onClick={() => window.api.installUpdate()}>Restart &amp; Install</button>
-            </>
-          )}
-          <button className="update-dismiss" onClick={() => setUpdateDismissed(true)} title="Dismiss">✕</button>
-        </div>
-      )}
-      {showFullLogin && (updateState === 'idle' || updateDismissed) && (
-        <div className="update-check-bar">
-          {upToDate && <span className="update-up-to-date">You're up to date</span>}
-          <button className="update-btn-check" onClick={handleCheckForUpdates} disabled={checking}>
-            {checking ? 'Checking…' : 'Check for Updates'}
-          </button>
         </div>
       )}
 
@@ -1987,6 +2039,7 @@ function AppShell() {
           onReconnect={handleReconnectTab}
           reconnectingIds={reconnectingIds}
           simucoin={simucoin}
+          updatePill={updatePill}
           teamPill={teamRun && !teamRun.expanded
             ? <TeamLoginPill run={teamRun} onOpen={() => { clearTeamPillTimer(); patchTeam({ expanded: true }) }} />
             : null}

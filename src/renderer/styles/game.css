@@ -736,7 +736,8 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 3px 6px;
-  z-index: 5;
+  /* v0.20.1: above the floating compass (10), which can now sit top-right. */
+  z-index: 11;
   box-shadow: 0 2px 8px rgba(0, 0, 0, .5);
 }
 

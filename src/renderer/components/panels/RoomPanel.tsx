@@ -21,28 +21,17 @@ import type { RoomState, TextSegment } from '../../../shared/types'
 import { useContacts } from '../../ContactsContext'
 import { useHighlights } from '../../HighlightsContext'
 import { renderSegmentFull, renderHighlightedLine } from '../../utils/renderSegmentFull'
+import { DIR_WORDS } from '../../exitWords'
+import { presetEffectContent } from '../../utils/renderSegment'
+import { useTextStylesVersion } from '../../textStyles'
 
 interface Props {
   room: RoomState
   onSendCommand: (cmd: string) => void
 }
 
-// Compass token → the full direction WORD. Doubles as the display text and the
-// command sent on click (full words are always-valid DR commands — the raw
-// compass token 'dn' is not).
-const DIR_WORDS: Record<string, string> = {
-  n:   'north',
-  ne:  'northeast',
-  e:   'east',
-  se:  'southeast',
-  s:   'south',
-  sw:  'southwest',
-  w:   'west',
-  nw:  'northwest',
-  up:  'up',
-  dn:  'down',
-  out: 'out',
-}
+// Compass token → full direction word (display text AND the command a click
+// sends) lives in exitWords.ts, shared with the floating compass.
 
 // v0.14.7 (F52 follow-up, Sekmeht's Weaving Room screenshots): the exits line
 // is the GAME'S OWN sentence from the room exits component — "Obvious paths:
@@ -107,6 +96,8 @@ export default memo(function RoomPanel({ room, onSendCommand }: Props) {
   // player-matching rule paints only the "Also here:" line. Skipped on
   // `desc` (multi-sentence prose; a single match would over-paint).
   const { matchRules, lineRules } = useHighlights()
+  // v0.20.1: repaint the title when the room-name text style changes.
+  useTextStylesVersion()
 
   const hasContent = room.title || room.desc || room.exits.length > 0 || room.exitsText
     || room.objects.length > 0 || room.creatures.length > 0
@@ -159,7 +150,7 @@ export default memo(function RoomPanel({ room, onSendCommand }: Props) {
     <div className="room-panel">
       {room.title && (
         <div className="room-panel-title">
-          <span className="room-panel-title-text">[{room.title}]</span>
+          <span className="room-panel-title-text">{presetEffectContent(`[${room.title}]`, 'roomname', 'var(--room-title-color)') ?? `[${room.title}]`}</span>
           {creatureCount > 0 && (
             <span className="room-creature-chip" title={`${creatureCount} creature${creatureCount === 1 ? '' : 's'} here (bold entries in the room)`}>
               ⚔ {creatureCount}

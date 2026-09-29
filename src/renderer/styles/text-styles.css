@@ -1,0 +1,128 @@
+/* ============================================================
+   TEXT STYLES — Settings → Text styles (v0.20.1)
+   One disclosure row per kind of game text. The `tse-` prefix is
+   this editor's alone (checked unique, UX #10c).
+   App chrome is rem-sized like the rest of Settings; only the
+   PREVIEW uses the game font, because it shows game text.
+   ============================================================ */
+
+.tse {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 16px 8px;
+  gap: 2px;
+}
+
+.tse-row {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--modal-bg);
+}
+
+/* A row with a style set gets an accent hairline, so what you've changed is
+   findable at a glance (UX #1: the rest stays quiet). */
+.tse-row--set { border-color: color-mix(in srgb, var(--accent) 45%, var(--border-subtle)); }
+
+.tse-summary {
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr) minmax(0, 1.4fr);
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+  list-style: none;
+  line-height: 1.2;
+  border-radius: var(--radius-sm);
+}
+.tse-summary::-webkit-details-marker { display: none; }
+.tse-summary:hover { background: var(--bg-hover); }
+
+.tse-label {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+/* The disclosure arrow rides the label, so it sits in the grid like text. */
+.tse-label::before {
+  content: '▸';
+  display: inline-block;
+  width: 1em;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+.tse-row[open] > .tse-summary .tse-label::before { content: '▾'; }
+
+.tse-state {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tse-row--set .tse-state { color: var(--text-secondary); }
+
+/* The preview IS game text, painted by the game's own renderer and stylesheet,
+   so it sits on the game background in the game font. One line, clipped — a
+   250% room name must not blow the row apart. */
+.tse-preview {
+  display: block;
+  /* Vertical room for Wave/Bounce (they lift letters ~0.3em) and for glow
+     shadows, which the clip below would otherwise cut. The hairline gives the
+     box an edge where --bg-app and the row's --modal-bg are both white
+     (Classic Light — pitfall #55). */
+  padding: 0.35em 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--game-font-family);
+  font-size: var(--game-font-size);
+  /* The game's own line height, so the preview is the game text row. */
+  line-height: var(--game-line-height, 1.35);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tse-body {
+  padding: 4px 10px 10px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tse-body .ui-hint { padding-top: 4px; }
+.tse-body .tse-hint { margin: 0; padding-top: 0; }
+/* The light-theme warning: the warning hue mixed toward the text colour so it
+   reads on every theme (pitfall #150), with a bar so it isn't colour alone. */
+.tse-body .tse-hint--warn {
+  padding-left: 8px;
+  border-left: 2px solid color-mix(in srgb, var(--color-warning) 70%, transparent);
+  color: color-mix(in srgb, var(--color-warning) 45%, var(--text-primary));
+}
+
+.tse-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 8px 14px;
+}
+
+.tse-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.tse-field .sp-select { width: 100%; min-width: 0; }
+
+.tse-field-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tse-actions {
+  display: flex;
+  justify-content: flex-end;
+}

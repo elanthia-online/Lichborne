@@ -1,69 +1,62 @@
-## v0.20.0
+## v0.20.1
 
-### Triggers wait for roundtime
+Three ideas from our testers this week: make room names (and any other kind of game text) look how you want, make the compass easier to see, and talk to people straight from the Living Tableau.
 
-A trigger that sends a command now **waits for your roundtime to clear** before sending it. If you're not in roundtime, it sends straight away, exactly as before. If you have five seconds left, it waits five seconds and then sends.
+### Text styles — make room names stand out
 
-Before this, a trigger fired the moment its line appeared, which in combat usually meant the command arrived during roundtime and the game threw it away. A trigger that sends several commands waits before each one, so a chain like `stand;attack` now works in the middle of a fight.
+**Settings → Text styles** lets you give each kind of game text its own look: **room names**, **room descriptions**, **speech**, **whispers**, **thoughts**, **bold text** (creatures, deaths), and **the commands you type**. For each one you can pick:
 
-- It's **on by default, for every trigger you already have.** Each command has a **Wait for roundtime** checkbox if you want one to send immediately instead.
-- **Lich commands (anything starting with `;`) never wait.** Lich handles its own timing.
-- If you disconnect, anything still waiting is dropped, so nothing old gets sent when you log back in.
-- **`$rt` and `$ct` now count down in real seconds** in trigger messages and conditions, and a trigger can act **when roundtime ends**: watch the `rt` variable and add the condition *Roundtime = 0*. There's also a new **Cast time** condition.
-- From the command bar: `/trigger add "pattern" do "command" rt=now` makes a trigger that doesn't wait (`rt=wait` is the default).
+- a **font** (any font installed on your computer),
+- a **size**, as a percentage of your game font, so it still grows and shrinks with your Font size setting,
+- **bold** or not, **italic** or upright, **small caps** or **all capitals**,
+- a **text effect** — the same ones highlights use: glow, shimmer, rainbow, gold, fire, frost, neon, pulse, wave, bounce. Room descriptions offer only the calm ones (glow, pulse, neon), because a moving effect across whole paragraphs is heavy on your computer.
 
-**Importing from Genie** now keeps Genie's timing too. `#send` and `#do` wait for roundtime, `#put` sends immediately, and `#send 2 look` becomes *look, after a 2-second pause*. It used to import as the command "2 look".
+Shimmer, rainbow, gold and frost bring their own pale colours, so on a light theme the row warns you they'll be hard to read.
 
-### A new Toast action for triggers
+Each row shows a live preview of the real thing. Anything you leave on **Default** looks exactly as it does today. Styles apply everywhere that text appears — the game window, your stream panels, the Room panel and the Overview — and they're per character, so each one can have its own look. Tables like `exp` and `inv` keep their normal font so their columns stay lined up.
 
-Triggers can now pop up a **Toast**, the small notification that slides up in the corner of the window you're looking at. Give it a title, a message and a colour. Unlike **Notify** (your system's desktop notification), a toast stays inside Lichborne and appears in whichever of its windows you're using.
+One thing to know: the game only marks the **"Name says,"** part of speech as speech, not the quote itself, so a speech style changes the attribution rather than the words.
 
-### Know what your other characters are doing
+*Suggested by subkermorianranger ("so it can be fancy like Saga").*
 
-When you run more than one character, Lichborne now tells you when another one **comes into the game**, **disconnects**, or **reconnects**, with a toast in whatever window you're looking at. Click it to go straight to that character, even if it's in a different window.
+### Compass options
 
-Each character gets a small coloured badge — the same colour as their avatar in the Living Tableau — so you can tell who a toast is about at a glance. If several characters drop at once, you get **one** toast naming them all instead of a pile, with a badge for each that takes you there. A toast also stays put while your mouse is over it (or while you've tabbed to it). When a character reconnects, it comes off the "disconnected" toast, and clicking one character's badge takes you there while leaving the others listed.
+The compass that lights up the exits over your game text now has settings, under **Settings → Layout**:
 
-It's on by default. Turn it off under **Settings → Character status notifications**, or type `/notices off`.
+- **Show or hide** it.
+- **Size:** small, medium (the original) or large — the whole compass scales together.
+- **Corner:** any of the four.
+- **Backing:** a subtle or solid plate behind it in your theme's colours, so it's easy to see over a wall of text.
+- **Unavailable exits:** a slider for how faint the directions you can't take are.
+- **Click to walk:** click an arrow to go that way. Unlit arrows work too — some spells hide a room's exits, and if you know the way you can still try it. It's off unless you turn it on, and the gaps between arrows still let clicks through to the text underneath.
 
-### Give each character a colour
+Nothing changes until you touch a setting. You can also use `/compass` — for example `/compass size large`, `/compass corner tl`, `/compass backing subtle` or `/compass dim 25`.
 
-**Edit profile** on the launcher now has a **Color** for each character. Pick one and Lichborne uses it to mark that character everywhere: their toast badge, their tab (the selected tab takes the colour, the others a faint outline), their Team Login tile, the selection ring on their Overview card, their launcher card, and their figure in the Living Tableau. Choose one of your **named colours** and it stays linked — change the named colour later and the character follows. Leave it on **Automatic** and nothing changes from how it looks today.
+*Suggested by Q, TheUndistinguishedGentlegnome.*
 
-One related change: in the Living Tableau, **your own characters** always wear their own colour, even if you've added them as a contact on a coloured template, so a character can't be one colour in the Tableau and another everywhere else. Other people still take their contact template's colour there, as before.
+### Talk to someone from the Living Tableau
 
-### A clearer trigger editor
+**Right-click anyone in the Living Tableau** for a menu:
 
-- Every field now explains itself when you hover over it, and each section says what it's for.
-- The **`$`** button next to a message is now a proper menu for inserting a variable, grouped by what the variable is about (your vitals, your hands, the room, the text that matched…). It used to be a dropdown that looked like a setting. Macros and aliases use the same menu.
-- **The `$` menu shows what each variable holds right now** — `$health 87`, `$right` your weapon, `$rt` counting down while you watch — so you can see what a trigger would say before you write it.
-- Choosing what to watch in a Variable trigger now suggests the variable names, and the conditions show what a sensible value looks like.
+- **Say to Agan…** puts `say @Agan ` in your command bar.
+- **Whisper to Agan…** puts `whisper Agan ` there.
+- **Contact card**, for people on your contact list (this used to be a plain click).
 
-### Team Login, redesigned
+Nothing is sent until you press Enter — just type your message. If you'd already typed something, it becomes the message, and if there's already a say or whisper line in the bar, only the name changes, so you can pick the wrong person and fix it with another right-click. Emotes stay where you put them (`say @Agan /happy hi`).
 
-Logging in a team now opens a panel with a **tile for every character**, showing where each one is: waiting, connecting (with what it's doing right now), ready, or failed and why.
+From the keyboard: Tab to a person and press Enter to open the same menu.
 
-- **Start playing while the rest connect.** As soon as a character is ready, pick it and press **Play**, or just double-click its tile. The panel tucks into a small pill in the top bar and the rest of the team keeps logging in behind you without stealing focus. Click the pill to bring the panel back.
-- **Characters still connecting show up as tabs right away**, with a small loading indicator, so you can see who's coming.
-- **The first character in your team's order is the default**, not the last one to finish.
-- **"Open each in its own window"** now opens those windows quietly behind the one you're using.
-- The **Play** button keeps one width whichever character you choose, so the panel doesn't jump as you click between tiles.
-- The **Connect** button on a saved team now looks like the one on a character card.
-- **Logging in one character looks the same too:** a single tile showing each step as it happens, how long it's been waiting, and a Cancel.
-- A character that fails gets a **Retry** button once the rest have finished, and the tile tells you what went wrong.
+*Suggested by subkermorianranger.*
 
-### Moving rules between "This Character" and "All Characters"
+### A tidier update notice
 
-- **After a move, the editor follows the rule.** Flip a trigger to *All Characters* and you're taken to it there, still selected. Before, the list you were looking at went blank and the rule appeared to be gone.
-- **A move never throws away a rule.** If the other side already has a *different* rule with the same pattern, the move is refused and Lichborne tells you why. Before, your rule could be deleted in favour of the one already there.
-- The move takes what's in the editor, including edits you haven't saved, and it's greyed out while the rule has a problem that would stop it saving.
+When a new version is out, you'll now see a small **Update** pill in the top bar (or on the launcher) instead of a bar across the top of the window, so nothing on screen moves when an update turns up. Click it for a card that says what's happening in plain words, shows which version you're on, and links to **What's new** on GitHub. The download's progress shows in the pill and in the card's button, and you can keep playing while it runs.
 
-### Fixed
+- **Restart & install now asks first** if you have characters connected, and says how many will be disconnected. It used to restart straight away.
+- **A download that fails now says so**, with the reason and a **Try again** button. It used to sit on "Downloading…" forever.
+- **Later** hides the pill until the next launch; **Help → Check for updates** brings it back.
 
-- **A team login could hang forever on one character**: no tab, no error, and the launcher showing that character as already logged in. If the login server went quiet partway through, Lichborne kept waiting for an answer that never came. It now gives up after its time limit and reports the problem like any other failed login.
-- **Moving a trigger to *All Characters* (or back) could delete a different trigger.** Every trigger that watches a variable was being treated as the same rule as every other one, so moving one could remove another. Transfer had the same problem and could skip them on import.
-- **Profile Transfer now tells you about rules it didn't bring over.** If the character you're importing into already has a *different* rule with the same pattern, Transfer keeps yours and lists the ones it skipped, instead of skipping them silently.
-- **A trigger's Echo to the Game window never appeared**, and neither did an echo to a panel you didn't have open. Both now show in the Game window, after the line that fired them.
-- **Genie queue commands no longer import as game commands.** `#send clear` used to import as a trigger that sent the word "clear" to DragonRealms.
-- A trigger saved with an action type this version doesn't recognise (from a hand-edited profile, say) no longer breaks the whole Triggers list.
-- **Contacts → Templates works with a long list.** With many templates, every template was squashed flat and the one you were editing was cut off, Save button included. The Templates tab now works exactly like the Contacts tab: a list on the left that scrolls, a **search** box, and the editor on the right.
+### Fixes
+
+- Right-clicking inside an open menu in a floating window no longer opens a second menu on top of it.
+- **Space** now chooses the highlighted item in a right-click menu, instead of typing a space into the command bar.
