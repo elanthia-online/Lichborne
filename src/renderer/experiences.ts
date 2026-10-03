@@ -11,8 +11,8 @@
 // discovery-filter audit. If a change here seems to need a panel-system file,
 // the design is drifting back to §34.2's rejected models — stop and re-read.
 import type { ComponentType } from 'react'
-import type { RoomState, ScenePlayer, SceneCreature } from '../shared/types'
-import type { CombatRange, AssessEntity } from '../shared/combatExtract'
+import type { RoomState, ScenePlayer, SceneCreature, CreatureStatus } from '../shared/types'
+import type { CombatRange, AssessEntity, Engagement, StrikeEvent } from '../shared/combatExtract'
 import { sunPositionAt } from '../shared/elanthianSun'
 import { ROISAN_SECONDS, ANLAS_ROISAEN } from '../shared/elanthianTime'
 import type { AppSettings } from './settings'
@@ -526,7 +526,44 @@ export interface ExperienceCombatState {
   assess: AssessEntity[]
   // When `assess` was captured (Date.now()); consumers age it out (on-demand).
   assessAt: number
+  // v0.20.2: who you are closing with, or who is closing on you, kept live from
+  // the game's own range narration between assesses (combatExtract). Names are
+  // as the game wrote them; the Tableau draws the ones that are players here.
+  engagements: Engagement[]
+  // Attacks on you and how they ended — dodge / block / parry / hit — newest
+  // last (v0.20.2). Never from a replay.
+  strikes: StrikeEvent[]
+  // Moments worth a flourish on the Tableau (v0.20.2): a new rank, for now.
+  // Newest last; never from a replay.
+  moments: SceneMoment[]
+  // The spell you are preparing ('' or 'None' when nothing) — a glow while it builds.
+  spell: string
+  // When combat last happened (ms): a combat-stream line or a balance reading,
+  // either side's swing. 0 = never. Wakes the gauges without a roundtime.
+  pulseAt: number
+  // The room's creatures by id with their live flags (dead, disengaged,
+  // sleeping, prone, …), from DR's <crtrStatus> tags. null = this connection
+  // hasn't sent any (fall back to the name-matched cast).
+  roster: CreatureStatus[] | null
+  // Your last turn to face something, from the game's reply (v0.20.2). The id
+  // is known when a FACE #id command caused it; otherwise only the name.
+  face: FaceTurn | null
+  // Players seen WALKING OUT of this room (or logging off), by lowercased name,
+  // with when. A duel with them is over: the game sends no closing line when
+  // someone simply leaves. A player who HIDES is not here (no direction is
+  // seen), so their "?" stays. Cleared on a room change and when they return.
+  walkedOut?: Readonly<Record<string, number>>
 }
+export interface FaceTurn {
+  targetId: string | null
+  targetName: string
+  /** Your old target, now beside or behind you. */
+  prev: { name: string; relation: string; range: CombatRange | null } | null
+  at: number
+}
+
+/** A moment the Tableau celebrates (v0.20.2). */
+export interface SceneMoment { id: number; at: number; kind: 'rank'; text: string }
 
 // ── Spell Monitor state (Experience #3, v0.19.5) ───────────────────────────
 // Source: DR's own `percWindow` stream (aliased to `spells` at the parser —
@@ -780,6 +817,86 @@ export interface SpellSourceLine {
 /** Whole real minutes one roisan is worth, in ms (1 roisan = 1 real minute —
  *  elanthianTime.ts is the platform-wide reference; never hardcode 60_000). */
 const ROISAN_MS = ROISAN_SECONDS * 1000
+
+// ── Group (v0.20.2) ─────────────────────────────────────────────────────────
+// DR's GROUP list, from the `group` stream: a clear, then
+//   Members of your group:
+//     Sekmeht: Healthy.
+//     You (Leader): Healthy.
+//   There are 2 members in your group.
+// (both the leader's and a follower's shape are in captures — Frostbite's
+// mock.xml has "  You: Healthy." / "  Kiborkieyt (Leader): Healthy.").
+// A member is an indented single-word name and a colon, the rule Lich's own
+// drparser uses (GroupMembers, drparser.rb:25); the status after the colon is
+// the game's words, kept verbatim. No header line → not a group list (null).
+export interface GroupMember { name: string; status: string; leader: boolean }
+export interface GroupState { members: GroupMember[]; youLead: boolean; youStatus: string | null }
+
+const GROUP_MEMBER_RE = /^\s*(\w+)( \(Leader\))?: (.+?)\.?\s*$/
+
+export function parseGroupLines(texts: readonly string[]): GroupState | null {
+  // Only the lines UNDER the last header, up to the footer (bug check): the
+  // member rule alone took any "Word: text" line in the stream for a member —
+  // "Note: you are hidden." became a member called Note, flagged near death.
+  // The last header, so a list appended after another reads as the newer one.
+  let start = -1
+  texts.forEach((t, i) => { if (t.trim().startsWith('Members of your group')) start = i })
+  if (start < 0) return null
+  const members: GroupMember[] = []
+  let youLead = false
+  let youStatus: string | null = null
+  for (const t of texts.slice(start + 1)) {
+    if (!t.trim()) continue
+    const m = GROUP_MEMBER_RE.exec(t)
+    if (!m) break   // the footer ("There are 2 members…") or anything else ends the list
+    const leader = !!m[2]
+    if (m[1] === 'You') { youLead = leader; youStatus = m[3]; continue }
+    if (!members.some(x => x.name === m[1])) members.push({ name: m[1], status: m[3], leader })
+  }
+  return { members, youLead, youStatus }
+}
+
+// A group member's HEALTH from the status word (v0.20.2, Sekmeht: "understanding
+// your group members' health is important"). The word GROUP prints is the same
+// one your own combat status leads with ("[You're battered, …]"), and each is a
+// 10% step of the health bar. The ladder is DR's Vitality table (Sekmeht,
+// 2026-10-01); bruised through badly hurt were also cross-checked against real
+// logs where textsubs.lic had appended the percentage (`[You're battered (78%),
+// …]`). The table lists terribly wounded as "10%-9%", an evident typo for 10–19
+// (the only gap between smashed up and near death). Invigorated is OVER full,
+// so it is as quiet as healthy. A word not in the table is treated as under 40%
+// and flagged, rather than guessed at.
+export interface GroupHealth { lo: number; hi: number; known: boolean }
+const GROUP_HEALTH_BANDS: Readonly<Record<string, readonly [number, number]>> = {
+  'bruised': [90, 99], 'hurt': [80, 89], 'battered': [70, 79],
+  'beat up': [60, 69], 'very beat up': [50, 59], 'badly hurt': [40, 49],
+  'very badly hurt': [30, 39], 'smashed up': [20, 29], 'terribly wounded': [10, 19],
+  'near death': [1, 9], "in death's grasp": [0, 0],
+}
+/** The health band a group status word stands for; null when healthy. */
+export function groupHealthOf(status: string): GroupHealth | null {
+  const w = status.trim().replace(/\.$/, '').toLowerCase()
+  if (!w || w === 'healthy' || w === 'invigorated') return null
+  // hasOwnProperty, not a bare lookup: a word like "constructor" walks the prototype.
+  const has = (k: string) => Object.prototype.hasOwnProperty.call(GROUP_HEALTH_BANDS, k)
+  let band = has(w) ? GROUP_HEALTH_BANDS[w] : null
+  // A status that STARTS with a health word and adds something ("battered,
+  // stunned") reads as that word — the longest match, so "very beat up" is not
+  // taken for "beat up". Only a word we cannot place at all falls to < 40%.
+  if (!band) {
+    if (/^(?:healthy|invigorated)\b/.test(w)) return null
+    const lead = Object.keys(GROUP_HEALTH_BANDS)
+      .filter(k => w.startsWith(k) && !/[a-z]/.test(w.charAt(k.length)))
+      .sort((a, b) => b.length - a.length)[0]
+    if (lead) band = GROUP_HEALTH_BANDS[lead]
+  }
+  return band ? { lo: band[0], hi: band[1], known: true } : { lo: 0, hi: 39, known: false }
+}
+
+/** True when a group status is nothing to call out ("Healthy"). */
+export function groupStatusIsQuiet(status: string): boolean {
+  return /^healthy$/i.test(status.trim())
+}
 
 /**
  * Turn one percWindow block into `SpellState`, or return null when the reading
@@ -1231,6 +1348,9 @@ export interface ExperienceProps {
   // across DR's redundant repaints. Absent until the first block arrives,
   // which is what drives the component's empty state.
   spells?: SpellState
+  // v0.20.2 (Tableau): your group, from DR's `group` stream (GROUP, and DR's
+  // own refreshes on a change). Identity changes only when the list does.
+  group?: GroupState
   // FEED LIVENESS, carried by REF on purpose (see SpellPulse). The value inside
   // changes on every repaint; the ref object never does, so passing it breaks
   // no memo and costs the other Experiences nothing. A component reading it
@@ -1254,6 +1374,8 @@ export interface ExperienceOptionDef {
   // the `hidden` map only stores explicit choices, so the default is respected when
   // the key is absent (see `optionShown` / `defaultHiddenMap`).
   defaultHidden?: boolean
+  /** A heading the ⚙ shows above this option when it starts a new section. */
+  section?: string
 }
 
 // Is an option's layer currently SHOWN? Respects `defaultHidden` when the user
@@ -1311,25 +1433,36 @@ export const EXPERIENCES: ExperienceDef[] = [
     id: 'tableau',
     label: 'Living Tableau',
     kind: 'scene',
-    desc: 'Your room as a living scene — everyone present becomes an avatar in their contact colors, with speech bubbles, choreographed arrivals and departures, and a combat cockpit when you fight.',
+    desc: 'Your room as a living scene — everyone present as an avatar in their contact colours, standing in a backdrop for the place and time of day, with speech bubbles and choreographed arrivals and departures. In a fight it becomes a battlefield: who faces whom from your assess, your group beside you, and your character visibly dodging, blocking and taking hits.',
     component: TableauExperience,
     defaultRect: { x: 0.22, y: 0.08, w: 0.52, h: 0.58 },
     chrome: 'standard',
     badge: 'Beta',
+    // Grouped into sections for the ⚙ (v0.20.2). Combat layers auto-reveal while
+    // combat is live (G1, DESIGN §32.1).
     options: [
-      { id: 'speech',    label: 'Speech bubbles', desc: 'Says and OOC as comic bubbles by each speaker.' },
-      { id: 'yells',     label: 'Yells',          desc: 'Yelled speech (bigger, louder bubbles).' },
-      { id: 'whispers',  label: 'Whispers',       desc: 'Whispers as dotted, private bubbles.' },
-      { id: 'thoughts',  label: 'Thoughts',       desc: 'Gweth/telepathy as wisps drifting at the edges.' },
-      { id: 'emotes',    label: 'Emotes',         desc: 'Action captions under the acting figure.' },
-      { id: 'creatures', label: 'Creatures',      desc: 'Creature figures lining the back of the scene.' },
-      { id: 'moves',     label: 'Arrivals & departures', desc: 'Walk-ins from their direction and fading ghosts on the way out.' },
-      // Combat HUD facet (G1, DESIGN §32.1) — layers auto-reveal while combat is
-      // live (a roundtime/cast/aim timer or a wound condition is active).
-      { id: 'readiness', label: 'Readiness ring',  desc: 'Roundtime sweeps as a ring hugging your figure (with thin cast/aim arcs) so you can see when you can act.' },
-      { id: 'threat',    label: 'Threat markers',  desc: 'In the ASSESS view, creatures at melee range flare as engaged (actively attacking you). Harmless bystanders are never flagged.' },
-      { id: 'danger',    label: 'Danger pulse',    desc: 'Your figure pulses in alarm when you are stunned, webbed, bleeding, poisoned or diseased.' },
-      { id: 'position',  label: 'Combat gauges',   desc: 'A readout under your figure with balance and position meters (foe ↔ even ↔ you) and the closest incoming threat\'s range.' },
+      { id: 'scenery',   label: 'Scenery',         desc: 'A backdrop drawn from the room description: the sky tinted by the time of day, what is on the horizon and in front of it (peaks, trees, rooftops, walls, ruins, water, a road), the walls of a room indoors or the roof of a cave, and the ground beneath everyone.', section: 'Scene' },
+      { id: 'weather',   label: 'Weather',          desc: 'Rain, snow and clouds over the scene from your last weather reading (glance at the sky, or WEATHER), while you are outside and it is under half an hour old.', section: 'Scene' },
+      { id: 'creatures', label: 'Creatures',      desc: 'Creature figures lining the back of the scene. One that dies stays where it fell, greyed with a skull, until its body decays or is skinned. Off also turns off the creature side of the combat view (a fight with a player still shows).', section: 'Scene' },
+      { id: 'moves',     label: 'Arrivals & departures', desc: 'Walk-ins from the direction they came, and fading figures walking out the way they left.', section: 'Scene' },
+      { id: 'speech',    label: 'Speech bubbles', desc: 'Says, asks and OOC as comic bubbles by each speaker.', section: 'People' },
+      { id: 'yells',     label: 'Yells',          desc: 'Yelled speech, in bubbles with a heavy red edge.', section: 'People' },
+      { id: 'whispers',  label: 'Whispers',       desc: 'Whispers as dashed, italic bubbles.', section: 'People' },
+      { id: 'thoughts',  label: 'Thoughts',       desc: 'Telepathy (gweth and thoughtnet) in a small log in the bottom-left corner, newest at the bottom. Thoughts to you are marked.', section: 'People' },
+      { id: 'emotes',    label: 'Emotes',         desc: 'Action captions under the acting figure.', section: 'People' },
+      { id: 'poses',     label: 'Emote poses',      desc: 'An emote moves the figure as well as captioning it: a bow dips, a wave wiggles, a laugh bounces, a jump hops.', section: 'People' },
+      { id: 'group',     label: 'Your group',      desc: 'Your group, from the GROUP list, stands in a row with you along the bottom: members here nearest you, members elsewhere faded at the ends. The leader, anyone hurt (with a small health meter), and how many are on a member are marked under them.', section: 'People' },
+      { id: 'hands',     label: 'Your hands',       desc: 'What you are holding, on one line under your figure: one item centred, two side by side with the left hand on the left. A long name keeps its last word (the noun) and cuts the rest short; hover for all of it. The line keeps its place when a hand is empty, so drawing or stowing something never moves your figure.', section: 'Your character', defaultHidden: true },
+      { id: 'conditions', label: 'Your conditions', desc: 'Your conditions as words under your figure, in the icon bar colours: bleeding, stunned, poisoned, hidden, joined and the rest, danger first. They keep one line, so one coming or going never moves your figure; past three, a +N names the rest.', section: 'Your character' },
+      { id: 'moments',   label: 'Moments',          desc: 'Flourishes for things worth seeing: a gold burst when you gain a rank, and a glow while you prepare a spell (with its name).', section: 'Your character' },
+      { id: 'danger',    label: 'Danger pulse',    desc: 'Your figure pulses in alarm when you are stunned, webbed, bleeding, poisoned or diseased.', section: 'Your character' },
+      { id: 'battle',    label: 'Combat view',     desc: 'During a fight, the scene rearranges to show it: everyone in a fight stands where your last assess puts them (facing, behind, flanking, at their range), your group beside you, other fights in their own groups, and everyone else steps aside to the left. It starts when you ASSESS or another player engages you, and returns to the social view 30 seconds after your last assess, unless something is still on you. Off by default: a fight with another player still takes centre stage without it.', section: 'Combat', defaultHidden: true },
+      { id: 'duel',      label: 'Player combat',   desc: 'When you and another player engage, you and they take centre stage, everyone else steps aside to the left, and a line joins you showing the range. It ends when an assess no longer lists them, or when they walk out.', section: 'Combat' },
+      { id: 'mesh',      label: 'Fight lines',     desc: 'After an assess, faint lines join everyone in the room to whatever they are fighting, with arrows for who faces whom: yours in the accent colour, your group in green, an outsider fighting your group in red, anyone else in grey. Solid at melee, dashed further out.', section: 'Combat' },
+      { id: 'threat',    label: 'Threat markers',  desc: 'After an assess, a creature at melee range with you glows red. Creatures that are not on you are never marked.', section: 'Combat' },
+      { id: 'readiness', label: 'Readiness rings',  desc: 'Your roundtime, cast and aim timers as rings round your figure, so you can see when you can act. They show for any roundtime, crafting included.', section: 'Combat' },
+      { id: 'position',  label: 'Combat gauges',   desc: 'Balance, position (foe ↔ even ↔ you) and range (the closest of what you face and what is on you) along the bottom of the scene. They wake when a fight does (a blow either way, or another player engaging you) and fade about ten seconds after it goes quiet.', section: 'Combat' },
+      { id: 'reactions', label: 'Combat reactions', desc: 'When something attacks you, your figure shows it: a word floats up (Dodge!, Block!, Parry!, or the hit and where it landed) with a quick flash, and the attacker flashes too when it is the only one of its kind here.', section: 'Combat' },
     ],
     textEquivalent: 'The main window and Room panel: "Also here:" players, "You also see" creatures, and the comms streams carry everything the scene shows; the vitals/timer bar and icon bar carry the combat state (roundtime, cast, aim, stance, hands and conditions).',
   },

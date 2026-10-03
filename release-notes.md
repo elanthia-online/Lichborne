@@ -1,62 +1,72 @@
-## v0.20.1
+## v0.20.2
 
-Three ideas from our testers this week: make room names (and any other kind of game text) look how you want, make the compass easier to see, and talk to people straight from the Living Tableau.
+The Living Tableau learns to show a fight. Most of this release came from Sekmeht hunting with two characters side by side, raw game feed open, sending "here's what it actually says" from both sides of every fight. Plus a hunt for the screen "quiver" some of you have seen for a long time, and several causes fixed.
 
-### Text styles — make room names stand out
+### The Living Tableau shows your fights
 
-**Settings → Text styles** lets you give each kind of game text its own look: **room names**, **room descriptions**, **speech**, **whispers**, **thoughts**, **bold text** (creatures, deaths), and **the commands you type**. For each one you can pick:
+Run `ASSESS` and the scene becomes a **battlefield** laid out the way the fight really stands: you low in the middle, what's in front of you above you, flankers at your sides, and anything behind you below you. Your group's fights sit beside yours, and other people's fights sit above. Anyone not fighting steps aside to a quiet column on the left.
 
-- a **font** (any font installed on your computer),
-- a **size**, as a percentage of your game font, so it still grows and shrinks with your Font size setting,
-- **bold** or not, **italic** or upright, **small caps** or **all capitals**,
-- a **text effect** — the same ones highlights use: glow, shimmer, rainbow, gold, fire, frost, neon, pulse, wave, bounce. Room descriptions offer only the calm ones (glow, pulse, neon), because a moving effect across whole paragraphs is heavy on your computer.
+- **Lines join each fighter to what it's fighting**: solid at melee, dashed further out, with **arrows** for who faces whom, in front / flanking / behind colours.
+- **A crosshair marks each person's target**, in that person's own colour. Two people on one creature show a + and an ×.
+- **A creature fighting someone else** gets a small badge in that person's colour.
+- **The cockpit wakes on the first blow**, in either direction, with no roundtime needed, and stays while the fight goes on.
+- **Words float off you** when you dodge, block, parry or get hit ("Parry!", "Light hit · chest"). It recognises the defence itself, so it works whatever weapon or shield you carry.
+- **Not sure what a line or colour means?** Click the **?** beside the room title for a key to everything on screen.
 
-Shimmer, rainbow, gold and frost bring their own pale colours, so on a light theme the row warns you they'll be hard to read.
+The battlefield is off to start: switch it on with ⚙ **Combat view**.
 
-Each row shows a live preview of the real thing. Anything you leave on **Default** looks exactly as it does today. Styles apply everywhere that text appears — the game window, your stream panels, the Room panel and the Overview — and they're per character, so each one can have its own look. Tables like `exp` and `inv` keep their normal font so their columns stay lined up.
+### Fighting other players
 
-One thing to know: the game only marks the **"Name says,"** part of speech as speech, not the quote itself, so a speech style changes the attribution rather than the words.
+A player who closes on you takes centre stage, joined by a line showing the range and who's closing (it marches toward whoever is being closed on). Retreating steps you back one range at a time; the fight only ends when an assess shows no one. If they hide, a **?** keeps their place; right-click to **Search** or **Assess**. Right-click anyone you're fighting to **Face** them.
 
-*Suggested by subkermorianranger ("so it can be fancy like Saga").*
+### Your group
 
-### Compass options
+Group members stand beside you, the leader marked, with right-click for the group commands (make leader, retreat, leave, add, join). When someone is hurt, a small **health meter** appears under them, using the game's own words — bruised, hurt, battered, beat up, very beat up, badly hurt, and on down — drawn in your health bar's colours.
 
-The compass that lights up the exits over your game text now has settings, under **Settings → Layout**:
+### Creatures die where they stand
 
-- **Show or hide** it.
-- **Size:** small, medium (the original) or large — the whole compass scales together.
-- **Corner:** any of the four.
-- **Backing:** a subtle or solid plate behind it in your theme's colours, so it's easy to see over a wall of text.
-- **Unavailable exits:** a slider for how faint the directions you can't take are.
-- **Click to walk:** click an arrow to go that way. Unlit arrows work too — some spells hide a room's exits, and if you know the way you can still try it. It's off unless you turn it on, and the gaps between arrows still let clicks through to the text underneath.
+The game tells each client exactly which creature died, so the Tableau no longer guesses. A creature you kill **stays where it fell, greyed with a skull**, until its body decays or is skinned. One that's unconscious or knocked down says so instead. A creature that walks in shows up straight away. Clicking a creature to face it moves your crosshair as soon as the game confirms, and "The rock troll closes to melee range on you!" moves the troll, without waiting for your next assess.
 
-Nothing changes until you touch a setting. You can also use `/compass` — for example `/compass size large`, `/compass corner tl`, `/compass backing subtle` or `/compass dim 25`.
+### More life in the scene
 
-*Suggested by Q, TheUndistinguishedGentlegnome.*
+- A **gold burst** when you gain a rank, and a **glow with the spell's name** while you prepare one.
+- People **act out their emotes**: a bow dips, a wave wiggles, a laugh bounces.
+- **The place is drawn behind everyone, from the room's description.** Peaks or hills on the horizon; pines, palms, rooftops, castle walls, ruins, standing stones, a farm or gravestones in front of them; a waterfall, surf, a river, a lake or a road nearer still. Indoors you see a temple, a shop, a home or a hall, and caves have stalactites. A sky follows the time of day, with **rain or snow** when your last look at the sky says so.
+- **Your hands** can show under your figure (off by default — switch it on in ⚙): one line, left hand on the left and right on the right, a single item centred, and a long name keeps the word that matters ("…stonebow").
+- **Your conditions** (hidden, stunned, joined…) sit on their own line under you, so nothing jumps when one comes or goes. Switch them off with ⚙ **Conditions**.
+- The ⚙ list is now grouped: Scene, People, Your character, Combat.
 
-### Talk to someone from the Living Tableau
+### Connecting another character while you play
 
-**Right-click anyone in the Living Tableau** for a menu:
+With a character already open, **Connect** from the **+** window now logs the next one in **behind you**, the way a team's other members do. The window closes straight away, a dashed tab shows it connecting (click it for the details, or to cancel), and it arrives as a tab without pulling you away from the one you're playing. A toast tells you when it's in; click it to go there.
 
-- **Say to Agan…** puts `say @Agan ` in your command bar.
-- **Whisper to Agan…** puts `whisper Agan ` there.
-- **Contact card**, for people on your contact list (this used to be a plain click).
+Reconnecting a dropped tab works the same way now: it comes back in place and leaves you where you are.
 
-Nothing is sent until you press Enter — just type your message. If you'd already typed something, it becomes the message, and if there's already a say or whisper line in the bar, only the name changes, so you can pick the wrong person and fix it with another right-click. Emotes stay where you put them (`say @Agan /happy hi`).
+### A steadier screen
 
-From the keyboard: Tab to a person and press Enter to open the same menu.
+Several things could make the whole window briefly "quiver" or redraw. These are fixed:
 
-*Suggested by subkermorianranger.*
+- **Connecting your first character redrew the window in a different font** a moment after it appeared. Lichborne now starts in the font you last played with, and applies a character's font before it draws anything.
+- **The row of character tabs could change the height of the bar above your game text.** A tab grew when its health % first appeared, and a full tab row made a scrollbar appear. Tabs now keep their width, and the tab row scrolls with a thin bar drawn over the tabs that takes no space. Use the mouse wheel to scroll sideways.
+- **With two windows open on different themes,** changing a setting in one repainted the other in the wrong theme. It doesn't any more.
 
-### A tidier update notice
+### Fixed
 
-When a new version is out, you'll now see a small **Update** pill in the top bar (or on the launcher) instead of a bar across the top of the window, so nothing on screen moves when an update turns up. Click it for a card that says what's happening in plain words, shows which version you're on, and links to **What's new** on GitHub. The download's progress shows in the pill and in the card's button, and you can keep playing while it runs.
+- The roundtime ring could spin or flicker before draining.
+- The Tableau redrew far more often than it needed to during any roundtime.
+- A fight that had ended could stay drawn in a quiet room.
+- The balance gauge called the three worst balance states "balanced". They are imbalanced or unbalanced.
+- The range gauge showed what you were facing rather than the nearest thing on you.
+- After GO PATH, "(Roundtime: 30 seconds.)" appeared as a person called "Roundtime:".
+- Italic text with a gradient effect (Rainbow, Shimmer…) lost the top of its last letter.
+- The Tableau's combat gauges stayed up while crafting. Only fighting wakes them now.
+- In a chatty room the Tableau redrew itself every second. It now redraws only when something on it changes.
+- Bleeding or poisoned, your avatar's warning pulse kept the graphics busy every frame, even with the window minimized.
+- The moving dashes between two players closing on each other no longer redraw the scene every frame.
+- The scroll handle under a long row of character tabs no longer drags on a right-click or gets stuck, and clicking a tab's bottom edge beneath it selects the tab.
+- Typing a colour name with a Japanese or Chinese input method no longer saves the half-converted text.
+- **Linux:** if an update can't be installed (for example, the AppImage is in a folder you can't write to), the update notice now says so and why, instead of staying on "Ready to install".
+- **Linux:** after an update, the new version now opens only once the old one has fully closed, so nothing you changed just before restarting is lost.
+- **Linux:** a character window opened by Team Login that was last maximized should no longer jump in front of the one you're playing.
 
-- **Restart & install now asks first** if you have characters connected, and says how many will be disconnected. It used to restart straight away.
-- **A download that fails now says so**, with the reason and a **Try again** button. It used to sit on "Downloading…" forever.
-- **Later** hides the pill until the next launch; **Help → Check for updates** brings it back.
-
-### Fixes
-
-- Right-clicking inside an open menu in a floating window no longer opens a second menu on top of it.
-- **Space** now chooses the highlighted item in a right-click menu, instead of typing a space into the command bar.
+*Thanks to **Sekmeht** for an enormous amount of captured game text, from both sides of every fight.*

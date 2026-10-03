@@ -62,7 +62,7 @@ interface Props {
   updatePill?: React.ReactNode
   // …and the team's not-yet-connected characters as placeholder tabs.
   pendingTabs?: PendingTab[]
-  onPendingClick?: () => void
+  onPendingClick?: (key: string) => void
 }
 
 function dispatchSessionAction(action: string) {

@@ -736,6 +736,9 @@ export default function ColorField({
                   autoFocus
                   onChange={e => { setSaveName(e.target.value); setSaveError(null) }}
                   onKeyDown={e => {
+                    // B501: Enter/Esc that commit or cancel an input-method
+                    // composition (Japanese, Chinese…) are not ours.
+                    if (e.nativeEvent.isComposing || e.keyCode === 229) return
                     if (e.key === 'Enter') { e.preventDefault(); saveAsColor() }
                     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancelSave() }
                   }}

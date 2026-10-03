@@ -444,15 +444,24 @@ export function TeamLoginPanel({ run, activeId, windowCharacterCount, openIds, c
 // Mounted when a connect starts and unmounted when it ends (App renders it
 // keyed on the character), so `since` is this attempt's start: the tile ignores
 // a previous attempt's last step (TileStep filters on it).
-export function SoloConnectPanel({ character, onCancel }: {
+export function SoloConnectPanel({ character, onCancel, onHide, startedAt }: {
   character: LauncherCharacter
   onCancel: () => void
+  // A login running in the BACKGROUND (v0.20.2): the panel was opened from its
+  // placeholder tab, so ✕ and Esc only put it away again and the login carries
+  // on. Cancel stays its own button.
+  onHide?: () => void
+  // When the login really began, so the stall counter is right for a panel
+  // opened part-way through.
+  startedAt?: number
 }) {
-  const [since] = useState(() => Date.now())
+  const [since] = useState(() => startedAt ?? Date.now())
   const panelRef = useRef<HTMLDivElement>(null)
-  // Esc = Cancel (B341), as the old card did. A mounted dialog, so it sits on
-  // top of the Esc stack — above the + window it may have been opened from.
-  useEscapeClose(onCancel)
+  const dismiss = onHide ?? onCancel
+  // Esc = Cancel (B341), as the old card did — or Hide for a background login.
+  // A mounted dialog, so it sits on top of the Esc stack, above the + window
+  // it may have been opened from.
+  useEscapeClose(dismiss)
   useEffect(() => { panelRef.current?.focus() }, [])
   const member: TeamMember = { pick: character, status: 'connecting', startedAt: since }
   return (
@@ -468,7 +477,8 @@ export function SoloConnectPanel({ character, onCancel }: {
         <div className="ui-modal-head tlr-head">
           <span id="tlr-solo-title" className="ui-modal-title tlr-title">Logging in</span>
           <span className="tlr-head-count" />
-          <button type="button" className="ui-close" onClick={onCancel} title="Cancel" aria-label="Cancel">✕</button>
+          <button type="button" className="ui-close" onClick={dismiss}
+            title={onHide ? 'Close — the login carries on' : 'Cancel'} aria-label={onHide ? 'Close' : 'Cancel'}>✕</button>
         </div>
         <div className="tlr-grid" style={{ '--tlr-cols': 1, '--tlr-cols-narrow': 1 } as React.CSSProperties}>
           <Tile
@@ -486,7 +496,9 @@ export function SoloConnectPanel({ character, onCancel }: {
         <div className="ui-modal-foot tlr-foot">
           <div className="tlr-foot-text">
             <div className="tlr-status">Connecting {character.name}…</div>
-            <div className="tlr-hint">Your tab opens as soon as the game lets you in.</div>
+            <div className="tlr-hint">{onHide
+              ? 'Its tab opens behind the one you are on, so you can keep playing.'
+              : 'Your tab opens as soon as the game lets you in.'}</div>
           </div>
           <button type="button" className="ui-btn" onClick={onCancel}
             title="Stop this login — nothing is added. One already under way finishes in the background first">Cancel</button>

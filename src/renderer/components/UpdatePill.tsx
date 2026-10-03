@@ -31,7 +31,7 @@ interface Props {
   percent: number | null
   /** The release page on GitHub; null if main didn't supply one. */
   notesUrl: string | null
-  /** Why the download failed. */
+  /** Why the download failed, or (in the ready phase) why the install did (B499). */
   error: string | null
   onDownload: () => void
   onInstall: () => void
@@ -61,7 +61,7 @@ function hintLine(phase: UpdatePhase, error: string | null): string {
   switch (phase) {
     case 'available':   return 'Downloads in the background — you can keep playing.'
     case 'downloading': return 'You can keep playing. You choose when to restart.'
-    case 'ready':       return 'Lichborne closes, installs the update and opens again.'
+    case 'ready':       return error ? `Couldn't install. Reason: ${error}` : 'Lichborne closes, installs the update and opens again.'
     case 'failed':      return error ? `Reason: ${error}` : 'Check your connection and try again.'
   }
 }
@@ -69,7 +69,8 @@ function hintLine(phase: UpdatePhase, error: string | null): string {
 // No live percent in the tooltip: a native tooltip whose text changes while
 // you hover it blinks out and waits the hover delay again (pitfall #145). The
 // percent lives in the pill's bar and the card.
-function pillTitle(phase: UpdatePhase, version: string): string {
+function pillTitle(phase: UpdatePhase, version: string, error: string | null): string {
+  if (phase === 'ready' && error) return `${version} didn't install — click to see why`
   switch (phase) {
     case 'available':   return `Lichborne ${version} is available — click for details`
     case 'downloading': return `Downloading ${version} — click to see progress`
@@ -103,13 +104,17 @@ export default function UpdatePill({ phase, version, percent, notesUrl, error, o
   }, [open])
 
   const downloading = phase === 'downloading'
+  // B499: a failed install stays in the ready phase but reads as a failure.
+  const installFailed = phase === 'ready' && !!error
+  const glyph = installFailed ? '!' : GLYPH[phase]
   // The bar shows the real percent once main reports one; before that it
   // sweeps (indeterminate) so a slow start doesn't read as stuck.
   const barStyle = percent != null ? { transform: `scaleX(${percent / 100})` } : undefined
 
   return (
     <div
-      className={`upd-wrap upd-wrap--${phase}`}
+      // A failed install wears the failed tone (and stops the ready breathing).
+      className={`upd-wrap upd-wrap--${installFailed ? 'failed' : phase}`}
       ref={ref}
       // Space on the pill or a card button: press it ourselves. Left alone, the
       // type-anywhere handler (F60) moves a printable key on a plain button into
@@ -125,11 +130,11 @@ export default function UpdatePill({ phase, version, percent, notesUrl, error, o
         type="button"
         className="upd-pill"
         onClick={() => setOpen(o => !o)}
-        title={pillTitle(phase, version)}
+        title={pillTitle(phase, version, error)}
         aria-expanded={open}
         aria-controls={open ? cardId : undefined}
       >
-        <span className="upd-glyph" aria-hidden="true">{GLYPH[phase]}</span>
+        <span className="upd-glyph" aria-hidden="true">{glyph}</span>
         <span className="upd-label">Update {version}</span>
         {downloading && (
           <span className={`upd-pill-bar${percent == null ? ' upd-bar--indeterminate' : ''}`} aria-hidden="true">
@@ -141,9 +146,9 @@ export default function UpdatePill({ phase, version, percent, notesUrl, error, o
       {open && (
         <div className="upd-card" id={cardId} role="dialog" aria-label="Lichborne update">
           <div className="upd-head">
-            <span className="upd-badge" aria-hidden="true">{GLYPH[phase]}</span>
+            <span className="upd-badge" aria-hidden="true">{glyph}</span>
             <div className="upd-head-text">
-              <div className="upd-title">{TITLE[phase]}</div>
+              <div className="upd-title">{installFailed ? 'Install failed' : TITLE[phase]}</div>
               <div className="upd-version">
                 Lichborne {version}
                 {current && current !== version && <span className="upd-current"> · you have {current}</span>}
@@ -163,7 +168,7 @@ export default function UpdatePill({ phase, version, percent, notesUrl, error, o
 
           {/* Two lines reserved and clamped, so a long error can't grow the
               card; the full message is in the tooltip. */}
-          <div className="upd-hint" title={phase === 'failed' && error ? error : undefined}>
+          <div className="upd-hint" title={(phase === 'failed' || installFailed) && error ? error : undefined}>
             {hintLine(phase, error)}
           </div>
 
@@ -186,7 +191,7 @@ export default function UpdatePill({ phase, version, percent, notesUrl, error, o
               <span className="upd-btn-label">
                 {phase === 'available' ? 'Download'
                   : phase === 'downloading' ? (percent == null ? 'Starting…' : `Downloading ${percent}%`)
-                  : phase === 'ready' ? 'Restart & install'
+                  : phase === 'ready' ? (installFailed ? 'Try again' : 'Restart & install')
                   : 'Try again'}
               </span>
             </button>

@@ -52,6 +52,21 @@ export const ATTENTION_DEFS: Record<AttentionFlag, AttentionDef> = {
   'mind-lock':  { severity:  20, label: 'Mind locked', cls: 'lock',        desc: 'One or more skills are saturated and can learn no more.' },
 }
 
+/** What each condition chip MEANS, for hover text — one wording shared by the
+ *  Icon Bar and the Living Tableau's chips under your figure (v0.20.2) so the two
+ *  cannot drift. Keyed by the lowercase indicator id (pitfall #15). */
+export const CONDITION_TITLES: Record<string, string> = {
+  bleeding: ATTENTION_DEFS.bleeding.desc,
+  stunned: ATTENTION_DEFS.stunned.desc,
+  dead: ATTENTION_DEFS.dead.desc,
+  webbed: ATTENTION_DEFS.webbed.desc,
+  poisoned: 'Poisoned — an ongoing condition that stays until it is cured.',
+  diseased: 'Diseased — an ongoing condition that stays until it is cured.',
+  hidden: 'Hidden — you are concealed from others in the room.',
+  invisible: 'Invisible — other characters cannot see you.',
+  joined: 'Joined — you are following someone in a group. The game marks only the FOLLOWER, so a group leader never shows this chip.',
+}
+
 /** Severity-descending. Frozen so a caller cannot sort it in place. */
 export const ATTENTION_ORDER: readonly AttentionFlag[] = Object.freeze(
   (Object.keys(ATTENTION_DEFS) as AttentionFlag[])

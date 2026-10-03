@@ -441,6 +441,13 @@ export function applySettingsToDOM(s: AppSettings): void {
   }
 }
 
+// The character whose display settings the window last wore (v0.20.2). Boot
+// starts in them instead of the defaults, so the first character to connect
+// usually changes nothing — before, every launch re-fonted the whole window at
+// that moment (Cascadia/normal → the character's own), a visible jump.
+export const LAST_DISPLAY_CHARACTER_KEY = 'lichborne.lastDisplayCharacter'
 export function initSettings(): void {
-  applySettingsToDOM(loadSettings())
+  let last: string | null = null
+  try { last = localStorage.getItem(LAST_DISPLAY_CHARACTER_KEY) } catch { /* boot uses defaults */ }
+  applySettingsToDOM(loadSettings(last ?? undefined))
 }

@@ -1978,6 +1978,9 @@ experience"*). One panel now covers the whole run
   on `ready-to-show` (3s backstop) — and `session:move-window({ quiet })`
   returns whether the move happened, which is what `inOwnWindow` records.
   Unverified edge: a window last saved MAXIMIZED may still activate on restore.
+  On Linux (B504, v0.20.2) such a window is maximized only after
+  `showInactive()`, since maximizing a hidden window also shows it; Windows
+  and macOS keep the original order pending a tester (BUGS.md follow-ups).
 - **Guards:** one run at a time (`teamRunBusy` also gates Reconnect Last and the
   keep/switch chooser); Retry is enabled once the run is done; a ready member
   whose tab you closed reads "Tab closed" and can't be chosen; the panel
@@ -2104,6 +2107,19 @@ polish standard #11 for the generalised rules.
 
 
 [BulkConnectPicker.tsx](src/renderer/components/BulkConnectPicker.tsx) + `runBulkConnect` in App.tsx. Surfaces only when ≥2 accounts have at least one connectable (non-hidden) character. Picker lists each account with a dropdown of its non-hidden characters; defaults to a favorited character if any, else first alphabetical. Already-connected accounts are disabled. Confirm → sequential connect (one character at a time — DR's account-slot rule forbids parallel within the same account; sequential is also simpler for error isolation across different accounts). Progress overlay during the run; per-character errors don't abort; final summary modal lists what succeeded and what failed.
+
+### 13.6.6 Connecting a character while you play (F134, v0.20.2)
+
+Sekmeht: *"that should run in the background similar to like when you connect a team and choose the first character while everyone else logs in in the background. Instead that login window captures the attention for a while."* A connect from the + window used to show the single-login panel over everything for the whole login, up to 30 seconds with Lich, while you were trying to play another character.
+
+- **When it applies.** `handleCardConnect` routes to `startBackgroundConnect` whenever the window already has a session (`sessionsRef.current.length > 0`), after the same-account conflict check. The first character of a session keeps the panel: there is nothing to play behind it.
+- **What you see.** The + window closes at once. The login shows as a dashed placeholder tab, the same `PendingTab` a team's waiting members use (keys are prefixed `bg:` so `onPendingClick(key)` can tell them apart). Clicking it opens `SoloConnectPanel` with `onHide`: ✕ and Esc put it away again and the login carries on; Cancel stops it. `startedAt` keeps the stall counter honest for a panel opened part-way.
+- **How it lands.** `runConnect(c, { quiet, background, cancelRef, throwOnFail })` → `handleConnected(info, { quiet, activateIfIdle })` → `addSession(info, { activate })`, where `activate` is true only if the tab you're on isn't connected (the account-conflict path: you just logged its account out to make room). It is not marked foreground, so main's "is in the game" notice becomes the clickable toast that takes you there.
+- **Several at once.** Each run carries its own cancel flag (main queues Lich launches), held in `bgConnects` with a ref mirror. A second login on an account already logging in is refused with a toast, since DR allows one character per account.
+- **Cancel** removes the placeholder at once. Within the 1.5s grace nothing has been sent; after it the login finishes and is torn down on arrival, which is said in a toast, and the cancelled run is marked foreground so its "is in the game" notice doesn't fire.
+- **Failures** are toasts with the real error (`throwOnFail` makes `runConnectBody` throw instead of reporting, so the conflict path's one retry can actually run). No saved password still opens the account wizard, which needs you.
+- **A tab's Reconnect** (B496) uses the same quiet landing without the placeholder (the tab exists): it comes back in place and focus stays where you are.
+- **Attach tiles** still use the panel; an attach is a local connection and is over in a moment.
 
 ### 13.6.5 Per-Shard Tabs (CharacterId)
 
@@ -3363,6 +3379,10 @@ Powered by `electron-updater`. Only runs when the app is packaged (`app.isPackag
 **Main → renderer:** `update-available(version, notesUrl)` — the notes link is the release page on the feed that answered the check (`updateFeedInFlight`, see §18.4.1); `UPDATE_PROGRESS` (whole percents); `update-downloaded`; `UPDATE_ERROR` when `downloadUpdate()` rejects (B480). A re-check never moves the state back from downloading or ready (B482).
 
 **Install asks first when characters are connected (B481).** Main's `install-update` sets `quitAlreadyConfirmed`, so the multi-character close confirmation stands down for an install. The renderer therefore confirms BEFORE sending it, through `confirmAction`, whenever the roster has anyone connected — naming how many, and that attach sessions need re-attaching afterwards.
+
+**A failed install is said on the pill (B499, v0.20.2).** Main sets `installRequested` in `install-update`; electron-updater does not quit when an install throws (it calls `dispatchError`), so an `error` while that flag is set goes out as `UPDATE_ERROR(message, 'install')`. The renderer keeps the phase at **ready** (the download is still staged) and the pill reads **Install failed** with the reason and a **Try again** button. The close confirmation is put back.
+
+**Linux relaunch waits for the old copy (B500, v0.20.2).** electron-updater's AppImage `doInstall` starts the new AppImage from inside `quitAndInstall()`, before the app has begun to quit, so it booted while our shutdown was still saving profiles on the same userData (Windows' NSIS installer waits for the old process; the AppImage path doesn't). On Linux `autoRunAppAfterInstall` is off, and `runAppShutdown` ends with `relaunchAppImage`: a detached `/bin/sh` that waits for our pid to exit (capped at 30s) and then execs `$APPIMAGE` (or the renamed file from `appimage-filename-updated`) with our own arguments. It runs from disk, not from our squashfs mount, which disappears when we exit. A `--no-sandbox` is not lost either way: electron-builder's AppRun adds it when user namespaces are unavailable.
 
 **Later** hides the pill until the next launch; a finished download shows it again, and Help → Check for updates brings it back.
 
@@ -10624,3 +10644,142 @@ A plain left-click does nothing; the cursor is the context-menu cursor and the t
 **What's already typed is kept** ([sayTo.ts](src/renderer/utils/sayTo.ts), `directedLine`, harnessed): an empty bar gets the bare prefix; a say line (any of the three verbs, an emote and a target in either order) or a whisper line gives up its message and its target is replaced; a say line keeps its verb and emote; a whisper drops the emote; anything else becomes the message. `/setemote` and `/help` are SAY's own sub-commands, not emotes.
 
 **Adding an option** is one `CtxItem` in the menu block at the end of `TableauExperience`. A verb that types into the command bar goes through `onDirect` and `directedLine`; one that sends straight away goes through `onCommand`. No slash command — the menu is the surface.
+
+
+---
+
+## 51. The Living Tableau in combat, and a screen that holds still (v0.20.2)
+
+v0.20.2 grew the Living Tableau ([TableauExperience.tsx](src/renderer/components/experiences/TableauExperience.tsx)) from a social scene with a combat facet into a working view of a fight: who is fighting whom, where they stand, how your group is doing, and what just died. It came from a run of Sekmeht's requests and a lot of captured XML from his two characters, Agan and Sekmeht, hunting together. The same release chased the long-standing "screen quiver" and found several causes.
+
+Everything here stays inside the Tableau's own guardrails: it **reads** the game (assess, the combat stream, the group stream, the room list) and never sends anything on its own. Every send is a click or a menu pick by the player: face, assess, look, group verbs.
+
+### 51.1 Two views: Social and Combat
+
+- **Social** is the Tableau as it was: the conversation circle, the arc of seats, your group in a row beside you.
+- **Combat** turns on while an assess is fresh or a player is engaged with you (⚙ **Combat view**, `hidden.battle`). It is **off to start** (`defaultHidden`), so the out-of-the-box Tableau is the social scene with the cockpit, creature marks and fight lines. The scene becomes a **battlefield** laid out from the game's own relations.
+- **The solver** ([battlefield.ts](src/renderer/battlefield.ts), pure, harnessed) turns assess relations into positions:
+  - each relation is a spring read relative to the target's heading (facing = in front, flanking = to a side, behind = behind), at a distance from its range (melee / pole / missile);
+  - connected pieces of the relation graph become clusters: **yours** (centre), **your group's** (beside you on your baseline, nearest first), **everyone else's** (a band above);
+  - a warm start from the previous solve keeps flank sides from mirror-flipping between assesses;
+  - the result is rotated so you face up;
+  - a narrated duel (no assess yet) is an extra edge, and group members with no fight are team nodes on your baseline;
+  - creatures fighting only creatures are left to the creature row, and a solve with nothing to place returns null (so a creatures-only fight never benches anyone).
+- **Mapping to the stage** then converts solver units to stage percentages and runs a pixel overlap pass over estimated figure boxes, so nobody stands on anybody at any zoom.
+- **The bench.** Players not fighting move to a dimmed "Also here" column at the left edge; hovering one brings it back. Your group never sits there.
+
+### 51.2 Player combat (duels)
+
+- A **duel** is another player engaged with you ([`computeDuels`](src/renderer/components/experiences/TableauExperience.tsx)), from two sources, newer winning:
+  - the **assess** (they face or advance on you, or they are your target);
+  - the game's **range narration**, parsed verbatim from two-sided captures ([combatExtract.ts](src/shared/combatExtract.ts) `parseEngagementLine`): "You begin to advance on X", "X closes to pole weapon range on you!", "You retreat back to pole range", "X retreats from you", the stealthy "You notice X as he stealthily closes…".
+- **Retreating steps one band back** (melee → pole → missile) and never ends a fight. Only an **empty assess** ends it, or the player leaving the room.
+- **Leaving the room** is a scene departure with a direction, or a logoff. GameWindow records it as `walkedOut[name]` (recorded during a replay too, stamped with the event's own time); `computeDuels` ends a duel whose engagement is older than that (`leftSince`). Their arrival, or your own room change, clears the record.
+- **A room change clears the room's fight in the batch that carries it** (`noteRoomChange`: engagements, facing, walk-outs and the assess, pitfall #166), so an ambush that arrives with the room survives. A change is the title's TEXT changing or the nav id changing, never the number inside the title: for a display_lichid player the same room's title arrives twice, first with the game's number and then with Lich's, which had read every LOOK as a move. Records are kept up to `ENGAGE_TTL_MS` (10 minutes).
+- **The line between you** is coloured by range (grey missile, amber pole, solid red melee), with dashes marching toward whoever is being closed on. **Arrowheads** show who faces whom: one at their end when you face them, one at yours when they face you (`Duel.mine` / `Duel.theirs`). When your target is fighting someone else, the range and the closing come from *your* line, not theirs. The march is **stepped** (`steps(6)`, B502): `stroke-dashoffset` can't run on the compositor, so a linear march repainted the line layer every frame for as long as anyone was closing.
+- **A player you or your group face wears a crosshair** in the facer's colour, on the same rules as the duel (the Player combat layer and the 10-minute record).
+- **Out of sight**: a duelist seen as a player who then hides stays as a dashed "?" with a faint line. Right-click offers Search and Assess.
+- **Right-click a duelist**: Face (by id, after an assess) and Assess the fight.
+
+### 51.3 Your group
+
+- Parsed from the **`group` stream** ([experiences.ts](src/renderer/experiences.ts) `parseGroupLines`). Only the lines between the **last** "Members of your group" header and its footer count, so a stray "Note: …" line can't become a member.
+- **Read before mutes and substitutes.** GameWindow keeps its own copy of the raw group text from each batch, so a user rule on the header can't break the roster. A clear arriving alone holds the last list for 400ms rather than blinking it out.
+- **The row**: members beside you, a Leader chip, members in another room faded at the ends. Right-click offers the group verbs from GROUP HELP (make leader, retreat, leave, refresh, add, join), as one deliberate send each.
+- **Health**: a hurt member shows a short meter in your own health bar's colours (`healthBand`), filled to the bottom of the GROUP word's 10% band with the band hatched. The ladder is DR's Vitality table, cross-checked against logs (Knowledge.md). A word not in the table reads as under 40% and is flagged.
+- **"N on them"**: how many creatures and players are on a member, from the assess.
+
+### 51.4 Fight lines, crosshairs and the key
+
+- **Fight lines** (⚙ **Fight lines**, `computeFightLinks`) join every fighting pair after an assess:
+  - one line per pair, with an arrowhead for each side that faces the other, coloured by relation (orange in front, blue flanking, red behind);
+  - kinds: **you**, **group** (green), **hostile** (an outsider on a group member, red) and **other** (grey);
+  - solid at melee, dashed further apart.
+- **Lines meet a creature at a fixed pin**: under its chips from below, over its icon from above, at its side from the side. A rAF measuring loop places them and keeps running for 750ms after each render so lines follow gliding figures.
+- **Crosshairs** replace the "your target" chip: one per facer, in that person's own Tableau colour, a second one turned 45°. The number badge sits in front.
+- **A creature on someone else** gets a compact chip with a who-badge in their colour instead of "flanking Sekmeht" spelled out.
+- **The key** (the "?" beside the room title) opens with a short intro (Social, and Combat view off to start), then People / Talk / On you / Creatures / Fight lines / A player fighting you. Esc closes it from inside or from the "?" button. It explains every line, arrow, ring, chip and colour. Its swatches reuse the scene's own classes, so it can't drift from what is drawn. It lives in the scene rather than the stage, so it keeps the normal font size in a small panel and sits above speech bubbles.
+
+### 51.5 Creatures by id: DR's `<crtrStatus>` roster
+
+- **The feed.** After every `room objs` refresh, DR sends one `<crtrStatus exist="ID" …/>` per creature, in the same order as the bold names, each carrying the creature's live flags: `dead`, `disengaged`, `hostile`, `sleeping`, `prone`, `stunned`, `webbed`, and the rest of Lich's `CRTR_*_FLAGS`. A flag absent means off. Facts and citations: Knowledge.md.
+- **The parser** ([StormFrontParser.ts](src/main/parser/StormFrontParser.ts)) turns a refresh into one `creature-roster` event at the next prompt (`flushRoster`):
+  - names pair by position only when the counts match (Lich's rule);
+  - a room change emits an empty roster **in stream order**, before the new room's list;
+  - a lone tag batch without a room list is dropped;
+  - nothing is emitted until the connection has sent the tag at all (`crtrSeen`), so a connection without it keeps the old behaviour;
+  - the roster is sticky state, snapshotted for replay.
+- **On walking into a room** the tags arrive with the room (verified from Sekmeht's capture: the room list comes twice, the second followed by the tags, then Lich re-sends the title with its room number added, which the parser treats as the same room). `look` refreshes nothing.
+- **Trusted only when it agrees** with the room's creature list (same count of living plus dead). Otherwise the Tableau falls back to the name-based display, so the stage is never emptier than the room list says. This came from Sekmeht walking into rooms and seeing no creatures until an assess.
+- **The corrected assess.** [`correctAssess`](src/renderer/components/experiences/TableauExperience.tsx) (pure, harnessed) keeps the last assess current until the next one:
+  1. it drops creatures the roster no longer lists;
+  2. it applies **range lines** newer than the assess (a player exactly by name; a creature, being anonymous, by moving the same-named one not already at that range);
+  3. it applies your last **turn to face**, newer than the assess. The game's reply has no id, so GameWindow remembers a `FACE #id` for five seconds. The id counts only when the reply names the same kind of creature; otherwise the name must match exactly one living creature. Your old target takes the place the reply names ("…on your flank at melee").
+
+  The Tableau wraps its `combat` prop in this once, so every reader sees the corrected list.
+- **Corpses in place.** A dead creature keeps the position it had a moment before (`corpsePosRef`, frozen after render, never during it). It greys, shrinks a little, its name struck through, a skull on it, with no lines, crosshair or chips. It stays until DR stops listing it (decayed, skinned). The living re-lay out around it. The small **Dead** list in the corner holds only corpses with no place on stage.
+- **States**: living creatures show the roster's state words: unconscious, down, stunned, webbed, held, dazed. An unconscious one is never drawn as a corpse.
+- **Arrivals since your assess** appear at once, with a dashed edge and no relation chips.
+- **The arena is held past its 30 seconds** while a roster creature is still engaged with you (no `disengaged`, not asleep, not dead), bounded by `ENGAGE_TTL_MS`. A corpse does NOT hold it (Sekmeht): a kill that ended the fight used to keep the combat view up for as long as the body lay there, up to ten minutes.
+- **Without an assess**, the row follows the room list's own order, each creature keeping its slot.
+
+### 51.6 Reactions, moments and the place
+
+- **Strikes on you** ([combatExtract.ts](src/shared/combatExtract.ts) `parseStrikeLine`, verbatim from captures): dodge, evade, block and parry (matched by the defence's shape rather than the gear, so any weapon or shield works, plus the stomp you deflect or step away from) and hits with their severity and body part. A word floats off your figure, and the attacker flashes when it's unambiguous. Never from a replay.
+- **The gauges wake on any blow in either direction**: a combat-stream line or a balance/position reading sets a pulse (at most once a second), with no roundtime of your own needed. **Only fighting wakes them** (`combatLive = duels.size > 0 || pulseLive`), never a roundtime or a condition: a crafting script's back-to-back roundtimes held them up in a quiet town for hours (B495). An 8-second hold carries them between blows, then they fade over 3.5s. The rings still show your roundtime and the avatar still pulses for a wound.
+- **Moments**: a gold burst for a new rank; a violet glow while you prepare a spell, with its name under you.
+- **Poses**: an emote's verb plays a one-shot movement (bow dips, wave wiggles, laugh bounces).
+- **The place** — a layered scene read from the room's DESCRIPTION, with the title adding weight (Sekmeht: *"descriptions are what players see"*). Two files, split on purpose:
+  - **[tableauScene.ts](src/renderer/components/experiences/tableauScene.ts) decides; it is pure and harnessed.** `sceneOf(title, desc)` returns a `SceneSpec` of LAYERS, because a room is usually a mixture (a road through a forest, a river under peaks), not one category:
+    - `enclosure`: outdoor, indoor or cave. Indoor and cave replace everything else.
+    - `far` (the horizon): peaks, hills, dunes, the sea, a distant skyline.
+    - `mid` (what stands nearer): pines, broadleaf trees, palms, buildings, castle walls, ruins, a shrine, a farm, gravestones, reeds.
+    - `near`: a waterfall, surf, a river, a lake, lava, or a road; plus `bridge`.
+    - `ground`: the tint under the figures (grass, forest, sand, snow, stone, swamp, water, lava, dirt, floor, cave).
+    - indoors, an `interior`: temple, shop, home or hall.
+  - **How it scores:** each feature has weighted word patterns; each pattern group counts at most two matches, and a title match counts three times. Misleading phrases are stripped first ("waves of heat", "a sea of faces", "an icy stare", "sea-green", "keep watch"). A sentence about the distance ("peaks rise in the distance") feeds only the far layer, at half weight. Title-only features (`indoorT`, `townT`, `fortT`, `caveT`, `fallsT`) ignore the description, where those words are asides ("the shop's front door"). "Falls" is title-only because in prose it is nearly always the verb ("the ground falls away"); surf needs the sea to be HERE (a score of 5), not mentioned; indoors needs a ceiling, furniture or an indoor title, and must beat the outdoor evidence.
+  - **Tuned against the whole Lich map DB** (18,950 rooms) with `tmp-v0202-harness/scene-db.ts` (the distribution, or real rooms per layer with their descriptions) and reviewed visually with `gallery.tsx` (six real rooms per kind, drawn by the real component and stylesheet, on a light and a dark theme). Last distribution: 11,873 outdoor / 5,384 indoor / 1,688 cave. **Re-run both after any change to a pattern** — a word that reads well in one room is often a figure of speech in fifty others.
+  - **Cost:** tens of microseconds per room, about 60µs on a cold pass over the whole DB, run once per room change (a `useMemo` on title + description). Crossing the world is a few thousand rooms, i.e. well under a second of CPU in total.
+  - **[tableauBackdrop.tsx](src/renderer/components/experiences/tableauBackdrop.tsx) draws:** a 400×40 horizon SVG painted far → mid → near (stars first at night), and a 400×100 ground SVG under the figures for a road narrowing to the vanishing point, a winding river, crop furrows, swamp puddles, lava cracks or floorboards. Shapes come from a generator seeded by the title, so a room always looks the same and two rooms of a kind differ. Static: no animation, memoized, the busiest case (a shop wall) about 160 shapes.
+  - **The horizon height follows the stage's WIDTH** (`--tb-band: min(10cqw, 20cqh)`): the skyline keeps its drawn proportions and is capped at a fifth of the height so a wide, short panel tab keeps room for the figures. The backdrop is the size container, so the gradient that uses `--tb-band` is painted on its `::before` (pitfall #172).
+  - **Theme-safe by construction:** silhouettes are 15% / 8% (far) mixes of the scene text over transparent, ground tints a fixed hue at 8–12%. Checked on Classic Light, where silhouettes had been too faint at the old 11% / 6%.
+  - a sky band from the server clock (`exactSunPhase`), none indoors or in caves;
+  - weather particles from your last WEATHER reading, outdoors, for 30 minutes.
+- **Your hands** (opt-in, ⚙ **Your hands**): one fixed line, 12em wide, under you. Two items sit side by side with L on the left; one item is centred (`tableau-hands--one`). A long name is split into the words before its last space (`tableau-hand-adj`, which shrinks with "…") and the last word (`tableau-hand-noun`, which doesn't), because in DR the noun is the last word ("forester's … stonebow"). Hover shows the whole name.
+- **Conditions** (⚙ **Conditions**, on): their own line under you. A placeholder chip keeps its height when you have none, at most three show plus a "+N" whose tooltip lists the rest, and the line centres safely so the first chip and the "+N" both stay visible when it overflows. Hover text comes from `CONDITION_TITLES` (attention.ts), shared with the Icon Bar.
+- **Neither line changes height**, so drawing a weapon or a condition coming and going never moves your figure (Sekmeht: the old two-row chips bobbed the avatar).
+- **The ⚙ list** is grouped under Scene / People / Your character / Combat (`ExperienceOptionDef.section`, rendered in both hosts). Out of the box every layer is on except **Combat view** and **Your hands**. Choices are stored per character, in the `hidden` map of that character's Experience instance (`scopedKey(character, 'experiences')`).
+- Every animation is gated for epilepsy-safe, and the meaning stays.
+
+### 51.7 A screen that holds still (the quiver)
+
+Sekmeht has seen, for many versions, the whole screen "quiver" for a moment. A temporary console logger (`layoutDiag.ts`, removed before release) and two review passes found these causes, all fixed:
+
+- **The first connect re-fonted the window.** Boot applied the default settings; the character's own font and weight arrived in a plain effect, AFTER the first paint, so the new game screen drew once in the wrong font and then re-flowed. The settings now apply in a **layout effect** (before paint), and boot starts in the **last displayed character's** settings (`LAST_DISPLAY_CHARACTER_KEY`), so the first connect usually changes nothing.
+- **Tabs changed width mid-login.** The health % on a character tab rendered only once the first health reading arrived; now its slot is always reserved.
+- **The tab strip's scrollbar grew the app bar.** It took 5px the moment the tabs overflowed, and the strip is the tallest thing in the bar, so every line of text below moved. The native scrollbar is hidden. [useOverlayScrollX](src/renderer/hooks/useOverlayScrollX.ts) draws a thin thumb **over** the tabs' bottom edge and fades the clipped edges with a CSS mask; the wheel scrolls sideways and the thumb drags. Nothing in it takes layout space. **The thumb is transparent to plain clicks (B503):** only a primary-button press drags, nothing scrolls until the pointer has moved 3px, a drag ends on `lostpointercapture` or a move with the button up, and a press that never moved, or a right-click, is re-dispatched to the tab under it (`elementsFromPoint`), because its grab area lies over the tabs' bottom edge.
+- **A settings tweak in one window repainted another window in this window's theme.** Re-applying the theme for a settings change re-saved `lichborne.theme`, which fired a storage event in every other window. A settings-only repaint now passes `applyTheme(theme, { persist: false })`. A real theme change, or a window taking over the document, still saves, so per-character themes on tab switch work as before.
+- **Font family/weight changes and leaving the Overview** now re-pin the story window (`stickToBottom(true)` deps).
+- **Inside the Tableau** (found by the bug checks):
+  - the readiness rings own the 10 Hz timer clock (`TimedRings`); the whole scene used to re-render ten times a second during any roundtime;
+  - conversation gravity moves in 5% steps, so talkers' slide transitions aren't re-armed every render (pitfall #160);
+  - one `nextDeadline` wake-up covers everything that ages: the arena's 30s, a duel's 10 minutes, moments, the sky's minute and the weather;
+  - speech wakes the scene only when something on it changes (B497): a bubble or wisp expiring (14s), a talker's pull stepping (every 6s, the 5% steps), a promoted seat ending (2 minutes). It used to re-render once a second for two minutes after anyone spoke;
+  - the danger pulse fades a ring on `::after` with `opacity` (compositor) instead of animating `box-shadow` (a repaint every frame for as long as a wound lasts), and the minimize pause now covers pseudo-elements (B498, pitfall #173);
+  - the indicator map and the creature roster keep their identity when the game re-sends them unchanged, so they don't re-render every Experience.
+
+  **Measured (perf pass):** one render of a crowded scene is 0.47ms (social, 20 players, 12 speaking) and 0.64ms (combat view with assess and strikes), production React, `tmp-v0202-harness/perf.tsx`. The cost that matters is how often it redraws, and the remaining wake-ups are each tied to something visibly changing.
+
+A font change still settles over a couple of frames (the text list re-measures its rows asynchronously); the point of the fixes is that it now happens rarely, never on a timer or in a bounce.
+
+### 51.8 No slash command (decided)
+
+The Tableau's surface is its window: the ⚙ layers, the right-click menus and the key. Nothing here is an in-play verb a player would type, so per §34.6 and Principle #11 there is no `/tableau` command. Revisit only if a tester asks for one.
+
+### 51.9 Known limits
+
+- **The game's automatic turn after a kill** ("You turn to face a rock troll.") carries no id. With several creatures of that name, the crosshair waits for the next assess rather than guessing.
+- **`disengaged` only refreshes with the room list** (kills, arrivals, loot drops), not continuously.
+- **On green-accent themes** (Empath, Necromancer, Terminal, Ranger), your fight lines and your group's are near the same colour. They differ in which figure they attach to; a stronger cue is a design call.
+- **The battlefield can mirror** depending on the order the assess lists creatures. The warm start hides this between solves but not on a cold start.
+- **A corpse needs a place to keep.** A creature that dies without ever having been drawn (dead before you looked, or past the row's cap) goes to the Dead list instead.

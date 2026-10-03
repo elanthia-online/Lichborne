@@ -217,7 +217,11 @@ const emoteCaption: SceneCapturer = {
     if (ctx.stream !== 'main') return null
     // Sekmeht's rule: the character's NAME, then ANYTHING up to the closing
     // paren — so the inner match is unrestricted (`.*`), not [^()]*.
-    const m = line.match(/^\((?<inner>(?:You|[A-Z][\w']*)\b.*)\)$/)
+    // The name must be followed by a SPACE and a lowercase verb (v0.20.2): the
+    // game puts its own notices in parentheses too — "(Roundtime: 30 seconds.)"
+    // after GO PATH matched the old `Name\b.*` shape and drew a speaker called
+    // "Roundtime:" on the Tableau (Sekmeht). An emote is always "Name verbs".
+    const m = line.match(/^\((?<inner>(?:You|[A-Z][\w']*)\s+[a-z].*)\)$/)
     if (!m?.groups) return null
     const inner = m.groups.inner
     return { type: 'scene-emote', actor: inner.split(/\s+/)[0], text: inner }

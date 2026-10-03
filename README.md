@@ -30,7 +30,7 @@ It isn't a replacement for Lich — Lich still owns your scripts, maps, and auto
 - **Panels that float or dock.** Keep the tidy docked layout, or switch to Windowed Panels and drag everything where you want it — windows snap to each other, then lock so nothing moves by accident.
 - **Your session can outlive the client.** Start Lich headless and Lichborne will *attach* to that already-logged-in session, so closing the window doesn't log you out — reopen later, recover from a crash, or pick the same character up from another machine. ([how](Lichborne-User-Guide.md#3b-or-attach-to-a-lich-thats-already-running))
 - **Bring your old config with you.** The import wizard reads Genie, Frostbite, and Wrayth configs: highlights with their colours, macros, name lists, gags, substitutions, and colour presets. It shows you exactly what it will import before it does.
-- **Graphical Experiences.** Optional views that float over your layout — or dock into a panel: a Living Tableau that draws the room and everyone in it (right-click someone to say or whisper to them), a Moons view that puts Elanthia's sky — phases, weather, sunrise — in front of you, and a Spell Monitor showing everything currently on you as live countdowns. All beta, and all cost nothing until you open them.
+- **Graphical Experiences.** Optional views that float over your layout — or dock into a panel: a Living Tableau that draws the room and everyone in it, and turns into a battlefield when you fight (right-click someone to say or whisper to them), a Moons view that puts Elanthia's sky — phases, weather, sunrise — in front of you, and a Spell Monitor showing everything currently on you as live countdowns. All beta, and all cost nothing until you open them.
 - **Configure it without a mouse.** Type `/` in the command bar and a palette lists every client command. `/highlight add "goblin" red` while you're hunting, `/mute add "swirling fog"` when the spam starts, `/help` when you forget.
 - **AI is optional and stays out of the way.** Bring your own Anthropic key and Catch Me Up will summarise what you missed. It's off unless you turn it on, it never sends commands to the game, and your credentials are scrubbed before anything leaves your machine — details in [AINOTICE.md](AINOTICE.md).
 
@@ -76,7 +76,7 @@ And if you already run Lich, Lichborne sits alongside it. Same install, same pat
 | `Esc` | Clear the command line |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom in / out / reset |
 
-Plain `Home` and `End` move your cursor in the command box, where it usually is — hold `Ctrl` to scroll the game text instead. On macOS the `Cmd` versions work too. Macro keys (F1–F12 and Ctrl/Alt combos) are yours to bind in the Automations panel.
+Plain `Home` and `End` move your cursor in the command box, where it usually is — hold `Ctrl` to scroll the game text instead. On macOS the `Cmd` versions work too, and zoom is `Cmd` only (`Cmd+=` / `Cmd+-` / `Cmd+0`). Macro keys (F1–F12 and Ctrl/Alt combos) are yours to bind in the Automations panel.
 
 ---
 
