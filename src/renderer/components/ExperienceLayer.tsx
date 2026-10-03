@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import FloatingWindow from './FloatingWindow'
 import { VIEW_CONTROLS } from './PanelFrame'
 import { experienceById, optionShown, type ExperienceInstance } from '../experiences'
@@ -201,15 +201,21 @@ export default function ExperienceLayer({ instances, onInstancesChange, renderCo
             {optionsFor === inst.id && def.options && (
               <div className="exp-inst-options" ref={optionsRef}>
                 <div className="exp-inst-options-title">Show in this scene</div>
-                {def.options.map(opt => (
-                  <label key={opt.id} className="exp-inst-option" title={opt.desc}>
-                    <input
-                      type="checkbox"
-                      checked={optionShown(inst.hidden, opt)}
-                      onChange={e => setOption(inst.id, opt.id, !e.target.checked)}
-                    />
-                    <span>{opt.label}</span>
-                  </label>
+                {def.options.map((opt, i) => (
+                  <Fragment key={opt.id}>
+                    {/* A heading where a new section starts (v0.20.2). */}
+                    {opt.section && opt.section !== def.options![i - 1]?.section && (
+                      <div className="exp-inst-options-section">{opt.section}</div>
+                    )}
+                    <label className="exp-inst-option" title={opt.desc}>
+                      <input
+                        type="checkbox"
+                        checked={optionShown(inst.hidden, opt)}
+                        onChange={e => setOption(inst.id, opt.id, !e.target.checked)}
+                      />
+                      <span>{opt.label}</span>
+                    </label>
+                  </Fragment>
                 ))}
               </div>
             )}

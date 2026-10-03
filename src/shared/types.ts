@@ -374,6 +374,7 @@ export type GameEvent =
   | SceneEmoteEvent
   | SceneLogonEvent
   | CharacterGuildEvent
+  | CreatureRosterEvent
 
 export interface StreamTextEvent {
   type: 'stream-text'
@@ -595,6 +596,21 @@ export interface SceneCreature {
   // guys"), so deadCount says how many of them are corpses.
   count?: number
   deadCount?: number
+}
+
+// The room's creatures BY ID (v0.20.2): DR follows every `room objs` refresh
+// with one <crtrStatus exist="ID" …/> per creature, in the order the bold names
+// appear, carrying that creature's live flags (dead, disengaged, hostile,
+// sleeping, prone, stunned, webbed, …; a flag absent = off). The vocabulary is
+// Lich's (lib/common/creature/creature_base.rb, CRTR_*_FLAGS). `name` is the
+// bold room-list name paired BY POSITION, and only when the two counts match
+// (Lich's own all-or-nothing rule, xmlparser.rb); null otherwise. A complete
+// snapshot each time — an id missing from it has left the room (decayed,
+// skinned, walked off). STICKY state, snapshotted for replay.
+export interface CreatureStatus { id: string; name: string | null; flags: string[] }
+export interface CreatureRosterEvent {
+  type: 'creature-roster'
+  creatures: CreatureStatus[]
 }
 
 // The full current cast. STICKY state (snapshotted for window-handoff replay,

@@ -426,6 +426,17 @@ select.hp-input { cursor: pointer; }
   background-size: var(--fx-bg-size, 200% auto);
   background-position-x: var(--fx-bg-x, 0%);
   background-position-y: center;
+  /* Italic overhang (v0.20.1). background-clip: text only paints INSIDE the
+     element's box, and an italic glyph leans past its own advance width — so
+     the top of the last character (a ')' after an italic room name) fell
+     outside the box, got no background, and vanished, because the fill colour
+     is transparent. Extra padding on the end widens the painted area over the
+     overhang; the equal negative margin gives the space back, so layout and
+     wrapping are unchanged. Right side only: that is where italic leans, and
+     padding on the start would shift the background origin that B444's split
+     geometry measures from. */
+  padding-inline-end: 0.25em;
+  margin-inline-end: -0.25em;
 }
 
 /* Shimmer — a light band sweeps across the text's own colour. */

@@ -37,12 +37,12 @@
 // bottom of the render; `useGroups()` comes from the per-session provider App
 // wraps around this component.
 
-import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { backdropHandlers } from "../utils/backdropClose"
 import { useEscapeClose, anyDialogOpen } from '../hooks/useEscapeClose'
 import { pressable } from '../utils/pressable'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
-import type { GameEvent, StreamTextEvent, TextLine, LineStyleHint, RoomState, TextSegment, InjuryState, FireLogEntry, SessionLogRecord, SimuCoinStatus } from '../../shared/types'
+import type { GameEvent, StreamTextEvent, TextLine, LineStyleHint, RoomState, TextSegment, InjuryState, FireLogEntry, SessionLogRecord, SimuCoinStatus, CreatureStatus } from '../../shared/types'
 import { normalizeStreamId } from '../../shared/streamAliases'
 import { redactForAI } from '../../shared/redact'
 import { TextLineRow } from './TextLineRow'
@@ -79,8 +79,8 @@ import WindowLayer from './WindowLayer'
 import ExperienceLayer from './ExperienceLayer'
 import ExperienceShelf from './ExperienceShelf'
 import { SORT_MODES, type SortMode } from '../expParse'
-import { EXPERIENCES, experienceById, defaultHiddenMap, loadExperiences, saveExperiences, deriveSpellState, parseMoonLine, mergeMoonReport, parseTimeLine, SUN_RISE_RE, SUN_SET_RE, WEATHER_GLANCE_RE, type ExperienceInstance, type SceneCast, type SceneSpeechItem, type SceneMoveItem, type MoonsState, type WeatherInfo, type CalendarInfo, type SpellState, type SpellPulse, emptySpellPulse, recordSpellPulse, SPELL_ENDED_TTL_MS } from '../experiences'
-import { parseCombatPosition, parseCombatBalance, parseCombatRange, parseAssessLine, type CombatRange, type AssessEntity } from '../../shared/combatExtract'
+import { EXPERIENCES, experienceById, defaultHiddenMap, loadExperiences, saveExperiences, deriveSpellState, parseGroupLines, type GroupState, parseMoonLine, mergeMoonReport, parseTimeLine, SUN_RISE_RE, SUN_SET_RE, WEATHER_GLANCE_RE, type ExperienceInstance, type SceneCast, type SceneSpeechItem, type SceneMoveItem, type MoonsState, type WeatherInfo, type CalendarInfo, type SpellState, type SceneMoment, type SpellPulse, emptySpellPulse, recordSpellPulse, SPELL_ENDED_TTL_MS, type FaceTurn } from '../experiences'
+import { parseCombatPosition, parseCombatBalance, parseCombatRange, parseAssessLine, RANGE_ORDER, parseFaceReply, mayBeEngagementLine, parseEngagementLine, applyEngagement, stepOutRange, balanceFromAssessStatus, mayBeStrikeLine, parseStrikeLine, type CombatRange, type AssessEntity, type Engagement, type EngagementEvent, type StrikeEvent } from '../../shared/combatExtract'
 import { guildToFocusOption } from '../focusTemplates'
 import { showToast } from '../toasts'
 import { nanoid } from 'nanoid'
@@ -100,7 +100,7 @@ import ModeSwitcher from './ModeSwitcher'
 import { useGroups } from './GroupsContext'
 import { isRuleActive } from '../groups'
 import { loadMyThemes, saveMyThemes, type CustomTheme } from '../myThemes'
-import { loadSettings, saveSettings, applySettingsToDOM, DEFAULT_SETTINGS, type AppSettings } from '../settings'
+import { loadSettings, saveSettings, applySettingsToDOM, DEFAULT_SETTINGS, LAST_DISPLAY_CHARACTER_KEY, type AppSettings } from '../settings'
 import { loadSessionLogSettings } from '../sessionLogSettings'
 import { THEMES, applyTheme, applyCustomTheme, registerThemeAppliedHook } from '../themes'
 import { exportCharacterProfile, scheduleProfileSave, scheduleSharedProfileSave } from '../profile'
@@ -636,6 +636,17 @@ const TimerDisplay = memo(function TimerDisplay({ rtExpires, ctExpires, aimExpir
   </>)
 })
 
+// Same creatures, same names, same states, in the same order.
+function sameRoster(a: readonly CreatureStatus[], b: readonly CreatureStatus[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i], y = b[i]
+    if (x.id !== y.id || x.name !== y.name || x.flags.length !== y.flags.length) return false
+    for (let j = 0; j < x.flags.length; j++) if (x.flags[j] !== y.flags[j]) return false
+  }
+  return true
+}
+
 export default function GameWindow({
   session, onDisconnect, isActive = true, simucoin,
   viewMode = 'session', overviewHost, overviewIndex = 0, onOpenInSession,
@@ -686,6 +697,23 @@ export default function GameWindow({
       // The persistent weather/calendar STATE is intentionally kept (same char).
       silentSyncRef.current = { time: false, weather: false, at: 0 }
       awaitingWeatherRef.current = false
+      // The Tableau's strikes and moments belong to the old connection — and so
+      // does the fight (bug check): the engagements and the assess snapshot are
+      // kept for minutes now (a duel's ENGAGE_TTL_MS), so dropping mid-spar and
+      // reconnecting in the same room otherwise kept an ended duel on screen.
+      setStrikes([])
+      setMoments([])
+      setEngagements([])
+      setAssessCast([])
+      setAssessAt(0)
+      setCreatureRoster(null)
+      setFaceTurn(null)
+      setWalkedOut(prev => (Object.keys(prev).length > 0 ? {} : prev))
+      streamRoomRef.current = { title: null, navId: null }
+      pendingFaceRef.current = null
+      setCombatRange(null)
+      assessAccumRef.current = []
+      assessOpenRef.current = false
       // Drop the Spell Monitor's delta baseline for the same reason. The
       // "ended" signal is a DIFF against the previous block, so carrying the
       // old session's list across a reconnect makes the first new block read
@@ -993,41 +1021,72 @@ export default function GameWindow({
   // range on you"). Shown only while combat is live, so a value that goes stale
   // after a fight never lingers on screen (combatExtract, corpus-mined).
   const [combatRange, setCombatRange] = useState<CombatRange | null>(null)
+  // v0.20.2: engagements — who you are closing with or who is closing on you,
+  // from the game's own range narration (combatExtract). This is what keeps a
+  // fight with another PLAYER live on the Tableau between assesses.
+  const [engagements, setEngagements] = useState<Engagement[]>([])
+  // Attacks on you and how they ended (v0.20.2) — the Tableau shows your
+  // character dodging, blocking, parrying or taking the hit. The last few only.
+  const [strikes, setStrikes] = useState<StrikeEvent[]>([])
+  const strikeIdRef = useRef(0)
+  // Moments the Tableau celebrates (v0.20.2) — a new rank, for now.
+  const [moments, setMoments] = useState<SceneMoment[]>([])
+  // When combat last HAPPENED (v0.20.2, Sekmeht): any combat-stream line or
+  // balance/position reading — every exchange, attacking or being attacked,
+  // ends in "[You're … balanced …]". The Tableau's gauges wake on it, so they
+  // come up on the first swing either way and stay up while blows keep landing,
+  // with no roundtime of your own needed.
+  const [combatPulseAt, setCombatPulseAt] = useState(0)
+  // The room's creatures by id (v0.20.2, DR's <crtrStatus>), and your last turn
+  // to face one. A FACE #id you send is remembered for a few seconds so the
+  // game's id-less "You turn to face …" reply can be tied to that creature.
+  const [creatureRoster, setCreatureRoster] = useState<CreatureStatus[] | null>(null)
+  const [faceTurn, setFaceTurn] = useState<FaceTurn | null>(null)
+  // Players seen walking out (or logging off), for the Tableau's duels.
+  const [walkedOut, setWalkedOut] = useState<Record<string, number>>({})
+  // The room as the STREAM last said it, so a room change is seen in the batch
+  // that carries it, in order — not a frame later in an effect, after that
+  // batch's own engagements had already landed (pitfall #166). Only two things
+  // count: the title's TEXT, and the <nav> number (the game's own, sent on every
+  // arrival — it is what catches a walk between two rooms of the same name).
+  // NEVER the title's number: with Lich's display_lichid the same room's title
+  // comes as "[X] (2212242)" and then "[X - 9477] (2212242)", Lich's id and the
+  // game's (Sekmeht's capture), so comparing it read one room as two (bug check).
+  const streamRoomRef = useRef<{ title: string | null; navId: number | null }>({ title: null, navId: null })
+  const pendingFaceRef = useRef<{ id: string | null; at: number } | null>(null)
+  const noteSentRef = useRef((cmd: string) => {
+    const m = /^\s*face\s+(?:#(\d+)|\S.*)$/i.exec(cmd)
+    if (m) pendingFaceRef.current = { id: m[1] ?? null, at: Date.now() }
+  })
   // ASSESS — the per-creature tactical snapshot (facing/flank/behind + range +
   // id) parsed from the `assess` stream. `assessAccumRef` accumulates one block
   // (reset on clear-stream 'assess'); the state mirrors the latest full snapshot
   // for the Tableau. `assessAt` stamps it for staleness (assess is on-demand /
   // script-driven, so it must age out after a fight — combatExtract).
   const assessAccumRef = useRef<AssessEntity[]>([])
+  // True from an assess block's <clearStream> until the prompt that ends it.
+  // An assess that reaches its prompt with NOTHING listed is the game saying
+  // there is no engaged combat here any more (Sekmeht) — the other side left,
+  // went out of sight, or the fight is over. Waiting for the prompt is what
+  // tells that apart from a block merely split across two batches.
+  const assessOpenRef = useRef(false)
   const [assessCast, setAssessCast] = useState<AssessEntity[]>([])
   const [assessAt, setAssessAt] = useState(0)
-  // Clear the assess snapshot when the ROOM changes (Sekmeht 2026-07-18: after
-  // fleeing to a new room the Tableau kept showing the OLD room's creatures).
-  // Assess is an on-demand snapshot with NO room binding, so it outlives a move;
-  // the arena's name-mismatch fallback then surfaces the stale creatures when
-  // the new room happens to have creatures of its own. Dropping it on any room
-  // change (title OR id — a nav-only teleport changes id without a new title,
-  // pitfall #46) makes the new room re-assess fresh; an empty new room falls
-  // back to the now-cleared live cast. A false clear (e.g. the id flag toggling
-  // in-place) is harmless — you just re-assess.
-  const assessRoomRef = useRef<string | null>(null)
-  useEffect(() => {
-    const key = `${roomState.title ?? ''}|${roomState.roomId ?? ''}`
-    if (assessRoomRef.current === null) { assessRoomRef.current = key; return }
-    if (key !== assessRoomRef.current) {
-      assessRoomRef.current = key
-      if (assessAccumRef.current.length > 0) assessAccumRef.current = []
-      setAssessCast(prev => (prev.length > 0 ? [] : prev))
-    }
-  }, [roomState.title, roomState.roomId])
+  // The assess snapshot belongs to its ROOM (Sekmeht 2026-07-18: after fleeing
+  // to a new room the Tableau kept showing the OLD room's creatures). It is
+  // cleared with the engagements, facing and walk-outs IN THE BATCH that carries
+  // the room change (noteRoomChange, streamRoomRef). It used to be cleared by an
+  // effect on the rendered title + room number, which (a) ran a frame late and
+  // (b) read a LOOK as a move for display_lichid players, whose room number
+  // flips between Lich's id and the game's within one room (bug check).
   // Combat state for the G1 Combat HUD facet (Tableau) — memoized so the fresh
   // object doesn't defeat the memo'd Experience components on every GameWindow
   // re-render (pitfall #82c). Only re-issues when a combat value actually
   // changes; the timers then tick INSIDE the Tableau via useTimers, no prop
   // churn. rtExpires/ctExpires/aimExpires are stable epoch-ms expiries.
   const experienceCombat = useMemo(
-    () => ({ rtExpires, ctExpires, aimExpires, stance, leftHand, rightHand, position: combatPosition, balance: combatBalance, range: combatRange, assess: assessCast, assessAt }),
-    [rtExpires, ctExpires, aimExpires, stance, leftHand, rightHand, combatPosition, combatBalance, combatRange, assessCast, assessAt],
+    () => ({ rtExpires, ctExpires, aimExpires, stance, leftHand, rightHand, position: combatPosition, balance: combatBalance, range: combatRange, assess: assessCast, assessAt, engagements, strikes, moments, spell, pulseAt: combatPulseAt, roster: creatureRoster, face: faceTurn, walkedOut }),
+    [rtExpires, ctExpires, aimExpires, stance, leftHand, rightHand, combatPosition, combatBalance, combatRange, assessCast, assessAt, engagements, strikes, moments, spell, combatPulseAt, creatureRoster, faceTurn, walkedOut],
   )
   const [exits, setExits]           = useState<string[]>([])
   const [newLineCount, setNewLineCount] = useState(0)
@@ -1290,6 +1349,29 @@ export default function GameWindow({
   // that choice is that a write triggers no render — the reader supplies its
   // own clock.
   const spellPulseRef = useRef<SpellPulse>(emptySpellPulse())
+  // Group (v0.20.2): the `group` stream mirrors DR's current list (a clear,
+  // then the lines). It is re-sent every so often with nothing changed, so the
+  // parsed result is keyed on its CONTENT: an unchanged repaint keeps the same
+  // object and re-renders nothing (the spell delta gate's reasoning).
+  // Fed from the RAW group text in the batch handler (pre-mute). A clear that
+  // arrives alone (its lines in the next flush) holds the last list for 400ms
+  // instead of blinking it away and back — the Spell Monitor's guard.
+  const groupRawRef = useRef<string[]>([])
+  const groupEmptyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [groupKey, setGroupKey] = useState('')
+  const commitGroupRef = useRef(() => {})
+  commitGroupRef.current = () => {
+    const g = parseGroupLines(groupRawRef.current)
+    if (groupEmptyTimerRef.current) { clearTimeout(groupEmptyTimerRef.current); groupEmptyTimerRef.current = null }
+    if (g) { setGroupKey(JSON.stringify(g)); return }
+    groupEmptyTimerRef.current = setTimeout(() => {
+      groupEmptyTimerRef.current = null
+      if (!parseGroupLines(groupRawRef.current)) setGroupKey('')
+    }, 400)
+  }
+  useEffect(() => () => { if (groupEmptyTimerRef.current) clearTimeout(groupEmptyTimerRef.current) }, [])
+  const groupState = useMemo<GroupState | undefined>(
+    () => (groupKey ? JSON.parse(groupKey) as GroupState : undefined), [groupKey])
   const spellLines = streamLines.spells
   useEffect(() => {
     // FEED LIVENESS is recorded for EVERY arrival — before the delta gate, and
@@ -2783,8 +2865,18 @@ export default function GameWindow({
   // whoever owned the document on entry, so a tab click there cannot re-theme
   // the dashboard. Falls back to `isActive` when App does not supply it.
   const ownsDom = ownsTheme ?? isActive
-  useEffect(() => {
-    if (!ownsDom) return  // only one window writes the document
+  // A LAYOUT effect, so the character's font and weight are in place BEFORE the
+  // screen is drawn (v0.20.2, the "quiver" hunt): as a plain effect the first
+  // frame of a new game window painted in the boot defaults (Cascadia, normal
+  // weight) and then every line re-flowed a frame later in the character's own.
+  // The theme this window last SAVED as the choice while it owned the document.
+  // A settings-only re-run repaints without re-saving (applyTheme's persist).
+  const savedThemeRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    if (!ownsDom) { savedThemeRef.current = null; return }  // only one window writes the document
+    // Remember whose display settings these are, so the next launch starts in
+    // them (initSettings) and the first connect doesn't re-font the window.
+    try { localStorage.setItem(LAST_DISPLAY_CHARACTER_KEY, session.character) } catch { /* storage full or blocked: boot uses defaults */ }
     // B114: register a post-apply hook that re-runs the accessibility
     // overlays (high contrast + color blind) whenever applyTheme /
     // applyCustomTheme is called from anywhere — ThemePicker preview,
@@ -2795,7 +2887,11 @@ export default function GameWindow({
     // GameWindow doesn't apply the wrong character's overlays.
     registerThemeAppliedHook(() => applySettingsToDOM(settings))
     const base = THEMES.find(t => t.id === currentThemeId)
-    if (base) applyTheme(base)
+    // Save the choice only when it CHANGED or this window just took over the
+    // document; a settings tweak only repaints (no cross-window ping-pong).
+    const persist = savedThemeRef.current !== currentThemeId
+    savedThemeRef.current = currentThemeId
+    if (base) applyTheme(base, { persist })
     else {
       const custom = myThemes.find(t => t.id === currentThemeId)
       if (custom) applyCustomTheme(custom.vars)
@@ -2953,7 +3049,43 @@ export default function GameWindow({
       let batchPosition: number | null = null
       let batchBalance: number | null = null
       let batchRange: CombatRange | null = null
+      // v0.20.2: engagement lines seen this batch, applied in order afterwards.
+      // `batchRangeGone` = an EMPTY assess ended the fight and cleared the range.
+      const batchEngage: EngagementEvent[] = []
+      // When each queued engagement happened. Live: now. On a REPLAY (a decouple
+      // or re-home re-sending history), the event's own receive time — stamping
+      // it now restarted an old duel's 10-minute clock (bug check).
+      const batchEngageAt: number[] = []
+      let curEvtAt = 0
+      const queueEngage = (ev: EngagementEvent) => {
+        batchEngage.push(ev)
+        batchEngageAt.push(batch.replay && curEvtAt > 0 ? curEvtAt : Date.now())
+      }
+      const batchStrikes: Omit<StrikeEvent, 'id' | 'at'>[] = []
+      const batchMoments: Omit<SceneMoment, 'id' | 'at'>[] = []
+      let batchRangeGone = false
+      // A room change seen in this batch: what came before it belonged to the
+      // old room. Engagements queued before it are dropped; later ones stay.
+      let batchRoomChanged = false
+      // Walk-outs ([name, when]) and returns ([name, 0]) seen this batch.
+      const batchWalk: [string, number][] = []
+      const noteRoomChange = () => {
+        batchRoomChanged = true
+        batchEngage.length = 0
+        batchEngageAt.length = 0
+        batchWalk.length = 0
+        setFaceTurn(null)
+        // The old room's assess goes too. A new assess later in this batch is
+        // committed after this, so it survives.
+        if (assessAccumRef.current.length > 0) assessAccumRef.current = []
+        setAssessCast(prev => (prev.length > 0 ? [] : prev))
+      }
+      // Step-back retreats seen before this batch set a range of its own: each
+      // moves the gauge one band out from whatever it showed (applied below).
+      let batchRangeSteps = 0
       let batchAssessTouched = false
+      let batchAssessEmpty = false
+      let batchCombatPulse = false
       let newRt: number | null = null
       let newCt: number | null = null
       let newAim: number | null = null
@@ -2967,11 +3099,41 @@ export default function GameWindow({
             const { stream: rawStream, segments, mono, prompt } = evt as StreamTextEvent
             const stream = rawStream
             const lineText = segments.map(s => s.text).join('')
+            curEvtAt = (evt as StreamTextEvent).timestamp || 0
             const mkLine = () => ({ id: lineId++, segments, timestamp: Date.now(), ...(mono ? { mono } : {}), ...(prompt ? { prompt: true } : {}) })
             // A prompt closes a server turn; the parser has already emitted that
             // turn's roundtime (it anchors RT on the <prompt> tag), so this is
             // when RT-waiting trigger commands can judge the RT correctly.
             if (prompt) notePromptRef.current()
+            // The prompt that closes an assess block. Empty ⇒ combat is over:
+            // queue a disengage IN ORDER with this batch's other engagement
+            // lines, and clear the snapshot and the range below.
+            if (prompt && assessOpenRef.current) {
+              assessOpenRef.current = false
+              if (assessAccumRef.current.length === 0) {
+                batchAssessEmpty = true
+                queueEngage({ kind: 'disengage' })
+                batchRange = null; batchRangeGone = true
+              } else {
+                // A listed assess is the game's own statement of everyone's range:
+                // re-sync each player's engagement record to it (in order with
+                // this batch's narration). The gauge is the NEAREST of your own
+                // line and everything on you (bug check): your line alone showed
+                // pole while a jackal flanked you at melee.
+                let nearest: CombatRange | null = null
+                const closer = (r: CombatRange) => { if (!nearest || RANGE_ORDER.indexOf(r) < RANGE_ORDER.indexOf(nearest)) nearest = r }
+                for (const e of assessAccumRef.current) {
+                  if (e.self) {
+                    if (e.target && e.targetId?.startsWith('-')) queueEngage({ kind: 'sync', name: e.target, range: e.range })
+                    closer(e.range)
+                  } else if (e.target && /^you$/i.test(e.target)) {
+                    if (e.pc) queueEngage({ kind: 'sync', name: e.name, range: e.range })
+                    closer(e.range)
+                  }
+                }
+                if (nearest) { batchRange = nearest; batchRangeGone = false }
+              }
+            }
             // Sky info (Moons Tier 2): the ⟳ sends TIME + WEATHER RAW (no echo), so
             // ONLY that click's reply block must be CONSUMED — never shown, logged,
             // or fed to triggers. Capture happens either way; `suppressSync` fires
@@ -3029,6 +3191,8 @@ export default function GameWindow({
             // `combat` stream (falling back to main only when it's unwatched) —
             // so parse per-line REGARDLESS of stream, not just in the main
             // branch. Cheap substring pre-gates (pitfall #82a) before each regex.
+            // A combat-stream line is combat happening (v0.20.2) — never from a replay.
+            if (stream === 'combat' && lineText.trim() && !replayingRef.current) batchCombatPulse = true
             if (stream !== 'raw') {
               if (lineText.includes('balanc')) {
                 const p = parseCombatPosition(lineText)
@@ -3039,6 +3203,44 @@ export default function GameWindow({
               if (lineText.includes('range on you')) {
                 const r = parseCombatRange(lineText)
                 if (r) batchRange = r
+              }
+              // Engagement (v0.20.2): your own advance/close/retreat lines and
+              // another player's on you. The RNG gauge follows your side of it
+              // too — it used to move only when something closed on YOU.
+              // Strikes on you (v0.20.2). Never from a replay: it would play
+              // old attacks as if they were happening now.
+              // A new rank (v0.20.2): the game's own message, the wording the
+              // session-log digest already counts ("You've gained a new rank in
+              // Arcana."). Never from a replay.
+              // Turning to face (v0.20.2): tie the id-less reply to a FACE #id
+              // sent in the last few seconds; otherwise keep just the name.
+              if (!replayingRef.current && lineText.startsWith('You turn to face ')) {
+                const fr = parseFaceReply(lineText)
+                if (fr) {
+                  const pf = pendingFaceRef.current
+                  const id = pf && pf.id && Date.now() - pf.at < 5000 ? pf.id : null
+                  pendingFaceRef.current = null
+                  setFaceTurn({ targetId: id, targetName: fr.target, prev: fr.prev, at: Date.now() })
+                }
+              }
+              if (!replayingRef.current && lineText.includes('gained a new rank')) {
+                const rk = /^You['’]ve gained a new rank in (.+?)\.?$/.exec(lineText.trim())
+                if (rk) batchMoments.push({ kind: 'rank', text: rk[1].replace(/^your\s+/i, '') })
+              }
+              if (!replayingRef.current && mayBeStrikeLine(lineText)) {
+                const st = parseStrikeLine(lineText)
+                if (st) batchStrikes.push(st)
+              }
+              if (mayBeEngagementLine(lineText)) {
+                const ev = parseEngagementLine(lineText)
+                if (ev) {
+                  queueEngage(ev)
+                  if (ev.kind === 'range' || (ev.kind === 'retreat' && ev.range)) { batchRange = ev.range; batchRangeGone = false }
+                  else if (ev.kind === 'retreat') {
+                    if (batchRange) batchRange = stepOutRange(batchRange)
+                    else batchRangeSteps++
+                  }
+                }
               }
             }
             if (stream === 'main') {
@@ -3200,7 +3402,9 @@ export default function GameWindow({
           case 'room-exits-text':
             roomUpdates.exitsText = evt.text
             break
-          case 'room-title':
+          case 'room-title': {
+            if (evt.title !== streamRoomRef.current.title) noteRoomChange()
+            streamRoomRef.current = { ...streamRoomRef.current, title: evt.title }
             roomUpdates.title = evt.title
             roomUpdates.roomId = evt.roomId
             triggerCtxRef.current.roomTitle = evt.title
@@ -3209,6 +3413,7 @@ export default function GameWindow({
             processVariableChangeRef.current('roomname', evt.title)
             if (evt.roomId != null) processVariableChangeRef.current('roomid', String(evt.roomId))
             break
+          }
           case 'server-clock':
             // DR's own clock, as an offset from ours. Rare by construction (see
             // the parser) — first sight plus real drift.
@@ -3223,6 +3428,10 @@ export default function GameWindow({
             // wipe the only data we have. Lich Map's lichDb.get(roomId)
             // path picks up the fresh id and the indicator tracks
             // correctly even when title hasn't refreshed.
+            // A different id is a different room (a nav-only teleport). An id
+            // appearing where there was none is the same room getting its number.
+            if (streamRoomRef.current.navId != null && evt.roomId !== streamRoomRef.current.navId) noteRoomChange()
+            streamRoomRef.current = { ...streamRoomRef.current, navId: evt.roomId }
             roomUpdates.roomId = evt.roomId
             triggerCtxRef.current.roomId = evt.roomId
             processVariableChangeRef.current('roomid', String(evt.roomId))
@@ -3251,7 +3460,7 @@ export default function GameWindow({
           case 'clear-stream':
             // A fresh ASSESS starts with clearStream 'assess' — reset the
             // accumulator so a new snapshot replaces the old (not appends).
-            if (evt.stream.toLowerCase() === 'assess') { assessAccumRef.current = []; batchAssessTouched = true }
+            if (evt.stream.toLowerCase() === 'assess') { assessAccumRef.current = []; batchAssessTouched = true; batchAssessEmpty = false; assessOpenRef.current = true }
             if (evt.stream === 'room')           roomUpdates.desc      = ''
             if (evt.stream === 'room-objects')   roomUpdates.objects   = []
             if (evt.stream === 'room-players')   roomUpdates.players   = []
@@ -3292,6 +3501,12 @@ export default function GameWindow({
           case 'scene-cast':
             setSceneCast({ players: evt.players, creatures: evt.creatures })
             break
+          // Sticky room state like the cast, so a replay rebuilds it too.
+          case 'creature-roster':
+            // Kept when unchanged: the game re-sends the whole list on every room
+            // refresh, which during a fight is most lines (perf pass, v0.20.2).
+            setCreatureRoster(prev => (prev && sameRoster(prev, evt.creatures) ? prev : evt.creatures))
+            break
           case 'scene-arrive':
           case 'scene-depart':
             // Choreography feed — LIVE-ONLY like bubbles (pitfall #60a): a
@@ -3306,6 +3521,17 @@ export default function GameWindow({
                 ts: Date.now(),
               }
               setSceneMoves(prev => [...prev.slice(-9), item])
+            }
+            {
+              // Walked out (a direction seen) or logged off ends a duel with
+              // them; coming back clears it. STATE, not choreography, so a
+              // replay rebuilds it too (bug check), at the replayed time like
+              // the engagements. Applied after the loop, in order with any room
+              // change in this batch.
+              const who = evt.name.toLowerCase()
+              const at = batch.replay && curEvtAt > 0 ? curEvtAt : Date.now()
+              if (evt.type === 'scene-depart' && (evt.direction || evt.reason === 'logoff')) batchWalk.push([who, at])
+              else if (evt.type === 'scene-arrive') batchWalk.push([who, 0])
             }
             break
           case 'character-guild': {
@@ -3444,14 +3670,66 @@ export default function GameWindow({
       // reply that never completes.)
       if (batchPosition !== null) setCombatPosition(batchPosition)
       if (batchBalance !== null) setCombatBalance(batchBalance)
+      // At most once a second (bug check): a fresh value every combat batch gave
+      // experienceCombat a new identity each time and re-rendered every open
+      // Experience — Moons and the Spell Monitor too. The Tableau's 2.5s pulse
+      // window doesn't need finer than that; an unchanged value bails out.
+      if ((batchCombatPulse || batchBalance !== null || batchPosition !== null) && !batch.replay) {
+        const t = Date.now()
+        setCombatPulseAt(prev => (t - prev < 1000 ? prev : t))
+      }
       if (batchRange) setCombatRange(batchRange)
+      else if (batchRangeGone) setCombatRange(null)
+      else if (batchRangeSteps > 0) {
+        const n = batchRangeSteps
+        setCombatRange(prev => { let r = prev; for (let i = 0; i < n && r; i++) r = stepOutRange(r); return r })
+      }
+      if (batchMoments.length > 0) {
+        const at = Date.now()
+        const fresh = batchMoments.map(m => ({ ...m, id: ++strikeIdRef.current, at }))
+        setMoments(prev => [...prev, ...fresh].slice(-4))
+      }
+      if (batchStrikes.length > 0) {
+        const at = Date.now()
+        const fresh = batchStrikes.map(st => ({ ...st, id: ++strikeIdRef.current, at }))
+        setStrikes(prev => [...prev, ...fresh].slice(-6))
+      }
+      if (batchEngage.length > 0 || batchRoomChanged) {
+        const at = Date.now()
+        setEngagements(prev => batchEngage.reduce((list, ev, i) => applyEngagement(list, ev, Math.min(at, batchEngageAt[i] || at)), batchRoomChanged ? [] : prev))
+      }
+      if (batchRoomChanged || batchWalk.length > 0) {
+        // Same object when nothing changed: a fresh one would re-render
+        // every open Experience for an ordinary arrival (pitfall #82c).
+        setWalkedOut(prev => {
+          let next: Record<string, number> = batchRoomChanged ? {} : prev
+          let changed = batchRoomChanged && Object.keys(prev).length > 0
+          for (const [who, at] of batchWalk) {
+            if (at > 0) { if (next === prev) next = { ...prev }; next[who] = at; changed = true }
+            else if (who in next) { if (next === prev) next = { ...prev }; delete next[who]; changed = true }
+          }
+          return changed ? next : prev
+        })
+      }
       // Only snapshot a NON-EMPTY accumulator: DR emits <clearStream id='assess'/>
       // then the lines, and at 16ms coalescing they almost always land in one batch
       // — but a block straddling a flush boundary would apply the post-clear empty
       // accum and flicker the arena blank for a frame. A completed assess always has
       // ≥1 entity (the self line), so guarding on length never suppresses a real
       // update; a genuinely-empty assess (left combat) ages out via the 30s TTL.
-      if (batchAssessTouched && assessAccumRef.current.length > 0) { setAssessCast(assessAccumRef.current.slice()); setAssessAt(Date.now()) }
+      if (batchAssessTouched && assessAccumRef.current.length > 0) {
+        setAssessCast(assessAccumRef.current.slice()); setAssessAt(Date.now())
+        // Your own assess line states your balance ("You (solidly balanced) are
+        // facing …"). Before any attack it's the only balance reading there is,
+        // so the BAL gauge would otherwise sit empty for a whole approach.
+        const selfLine = assessAccumRef.current.find(e => e.self)
+        const b = selfLine ? balanceFromAssessStatus(selfLine.status) : null
+        if (b !== null) setCombatBalance(b)
+      }
+      // A COMPLETED assess that listed nobody (see assessOpenRef): the fight is
+      // over, so drop the old snapshot instead of letting it linger (it would
+      // otherwise keep a player duel on the Tableau after it ended).
+      else if (batchAssessEmpty) setAssessCast(prev => (prev.length > 0 ? [] : prev))
 
       // Text-modification passes (DESIGN.md §31): mute → substitute, applied to
       // the main window AND every stream buffer — GLOBAL by default; a rule with
@@ -3460,6 +3738,16 @@ export default function GameWindow({
       // style the result). Display-only — the Session Log captured the raw line
       // per-event upstream, so this can never silently lose history. Mutates the
       // buffers in place so the commit blocks below are unchanged.
+      // The GROUP list, read from the game's own text BEFORE mutes and
+      // substitutes run (bug check): a mute on "Members of your group" or a
+      // substitute on a status word would otherwise silently break the roster.
+      // Mirrors the stream: a clear empties it, lines append.
+      if (clearedStreams.has('group') || newStream.group) {
+        if (clearedStreams.has('group')) groupRawRef.current = []
+        for (const l of newStream.group ?? []) groupRawRef.current.push(l.segments.map(s => s.text).join(''))
+        if (groupRawRef.current.length > 60) groupRawRef.current = groupRawRef.current.slice(-60)
+        commitGroupRef.current()
+      }
       if (activeMutesRef.current.length > 0 || activeSubsRef.current.length > 0) {
         // Analytics (v0.14.4): tally each mute/sub that acts. Rides the existing
         // match loop — only built when tracking is on.
@@ -3683,7 +3971,10 @@ export default function GameWindow({
       if (Object.keys(expUpdates).length > 0)     setExpSkills(prev => ({ ...prev, ...expUpdates }))
       if (Object.keys(vitalUpdates).length > 0)   setVitals(prev => ({ ...prev, ...vitalUpdates }))
       if (Object.keys(labelUpdates).length > 0)   setVitalLabels(prev => ({ ...prev, ...labelUpdates }))
-      if (Object.keys(indicatorUpdates).length > 0) setIndicators(prev => ({ ...prev, ...indicatorUpdates }))
+      // Identity-preserving: DR re-sends indicator tags that did not change, and
+      // a fresh object re-rendered every Experience for nothing (perf pass, v0.20.2).
+      if (Object.keys(indicatorUpdates).length > 0) setIndicators(prev =>
+        Object.entries(indicatorUpdates).some(([k, v]) => prev[k] !== v) ? { ...prev, ...indicatorUpdates } : prev)
       if (newRt !== null)     setRtExpires(newRt)
       if (newCt !== null)     setCtExpires(newCt)
       if (newAim !== null)    setAimExpires(newAim)
@@ -3903,7 +4194,10 @@ export default function GameWindow({
   // and converges across the multi-frame re-measure. reindex pulls the last row
   // into range first since the font change may have shifted it off-screen.
   // v0.20.1: text styles reshape rows the same way (a bigger room name).
-  useEffect(() => { stickToBottom(true) }, [settings.fontSize, settings.lineHeight, settings.largePrint, settings.textStyles]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Also the font FAMILY and WEIGHT (they change glyph widths, so wrapping and
+  // row heights), and taking over the document (leaving the Overview re-fonts
+  // this window without changing isActive) — bug check, v0.20.2.
+  useEffect(() => { stickToBottom(true) }, [settings.fontSize, settings.lineHeight, settings.largePrint, settings.textStyles, settings.fontFamily, settings.textWeight, ownsDom]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-snap when this tab becomes ACTIVE again (pitfall #24). An inactive tab
   // is display:none → its scroller + every Virtuoso row measure 0×0; on the
@@ -4389,6 +4683,7 @@ export default function GameWindow({
       // one it was typed at (guards the stale lastMainLineRef the appendEcho merge
       // leaves — the merged line is no longer a bare prompt).
       lastMainLineRef.current = null
+      noteSentRef.current(cmd)
       window.api.sendCommand(sessionIdRef.current,cmd)
       logToSession([{ ts: Date.now(), stream: 'cmd', text: `>${cmd}` }])
     }
@@ -5119,15 +5414,17 @@ export default function GameWindow({
         if (resolved.passThrough) {
           const delay = resolved.delayMs > 0 ? resolved.commands.length * resolved.delayMs : 0
           if (delay > 0) {
-            const h = setTimeout(() => window.api.sendCommand(sessionIdRef.current, part), delay)
+            const h = setTimeout(() => { noteSentRef.current(part); window.api.sendCommand(sessionIdRef.current, part) }, delay)
             macroTimersRef.current.add(h)
           } else {
+            noteSentRef.current(part)
             window.api.sendCommand(sessionIdRef.current, part)
           }
         }
       } else {
         setLines(prev => appendEcho(prev, part))
         lastMainLineRef.current = null
+        noteSentRef.current(part)
         window.api.sendCommand(sessionIdRef.current, part)
         logToSession([{ ts: Date.now(), stream: 'cmd', text: `>${part}` }])
       }
@@ -5252,6 +5549,7 @@ export default function GameWindow({
     // a reconnect-in-place (pitfall #69 — new sessionId, no remount), dropping
     // the command in main's getSession while the echo above still paints.
     // sessionIdRef is synced every render, so it's always the live id.
+    noteSentRef.current(cmd)
     window.api.sendCommand(sessionIdRef.current, cmd)
     // Session Log: record the echo like dispatchUserText/sendCommandSequence do,
     // so map walks / exit clicks / in-text links / trigger commands appear in the
@@ -5723,6 +6021,7 @@ export default function GameWindow({
         onSyncSky={syncSky}
         spells={spellsState}
         spellsPulse={spellPulseRef}
+        group={groupState}
       />
     )
   }

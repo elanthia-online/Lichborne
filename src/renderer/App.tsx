@@ -111,6 +111,28 @@ declare global {
 // (it used to sit on "Downloading update…" forever).
 type UpdateState = 'idle' | 'available' | 'downloading' | 'ready' | 'failed'
 
+// A character logging in behind the tab you are on (startBackgroundConnect).
+interface BgConnect {
+  key: string
+  c: LauncherCharacter
+  cancel: { current: boolean }
+  startedAt: number
+  // Set by Cancel: suppresses the "is in the game" notice of a login that was
+  // already under way and lands anyway (it is torn down at once).
+  release?: () => void
+}
+
+// runConnect's options. `quiet`: no focus change, no dialog touched, failures
+// as toasts (a tab's Reconnect). `background`: a Connect made while another
+// character is open — quiet, with its own Cancel flag (`cancelRef`).
+interface ConnectOpts {
+  quiet?: boolean
+  background?: boolean
+  cancelRef?: { current: boolean }
+  // Throw the login error instead of reporting it, so the caller can retry.
+  throwOnFail?: boolean
+}
+
 // Attach mode: last successful attach, for prefilling the modal.
 // Deliberately GLOBAL (not per-character scoped) — it answers "what did I
 // attach to most recently", which is the right default when the modal opens
@@ -558,6 +580,18 @@ function AppShell() {
   const [attachKnown, setAttachKnown] = useState<Record<string, { host: string; port: number }>>({})
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingCancelledRef = useRef(false)
+  // A character connected while another is already open logs in in the
+  // BACKGROUND (v0.20.2, Sekmeht: the login panel used to take over the window
+  // while you were playing). Each one shows as a placeholder tab, the way a
+  // team's waiting members do, and lands without taking focus. Several can run
+  // at once (main queues Lich launches), so each carries its own cancel flag
+  // rather than sharing pendingCancelledRef. State for render, mirrored in a
+  // ref for the async code; written only through setBg.
+  const [bgConnects, setBgConnects] = useState<BgConnect[]>([])
+  const bgConnectsRef = useRef<BgConnect[]>([])
+  const setBg = (next: BgConnect[]) => { bgConnectsRef.current = next; setBgConnects(next) }
+  // The background login whose panel is open (its placeholder tab was clicked).
+  const [bgShown, setBgShown] = useState<string | null>(null)
 
   // v0.8.0: when the user picks a character whose account already has another
   // character connected, we show a confirmation modal instead of flat-out
@@ -1107,9 +1141,11 @@ function AppShell() {
     const unsubProgress = window.api.onUpdateProgress((percent) => setUpdatePercent(percent))
     // A failed download comes back into view even if the pill was put away:
     // the player started it, so they should hear it didn't finish.
-    const unsubError = window.api.onUpdateError((message) => {
+    // B499: an INSTALL failure keeps the pill on "ready" (the download is still
+    // staged, so Restart & install can be tried again) and shows why.
+    const unsubError = window.api.onUpdateError((message, stage) => {
       setUpdateError(message)
-      setUpdateState('failed')
+      setUpdateState(stage === 'install' ? 'ready' : 'failed')
       setUpdateDismissed(false)
     })
     const unsubLog = window.api.onUpdaterLog((msg) => {
@@ -1155,6 +1191,7 @@ function AppShell() {
       })
       if (!ok) return
     }
+    setUpdateError(null)
     window.api.installUpdate()
   }
 
@@ -1183,8 +1220,18 @@ function AppShell() {
   // `quiet`: a team login's background connect. The tab is added without
   // taking focus (you may already be playing another character), and no
   // dialog is closed — the player may have opened one since the run began.
-  function handleConnected(info: SessionInfo, opts?: { quiet?: boolean }): CharacterId {
-    if (opts?.quiet) return addSession(info, { activate: false })
+  //
+  // `activateIfIdle`: a background login. It stays behind the tab you are on,
+  // unless that tab is not connected (you just logged its account out to make
+  // room for this one), in which case there is nothing to protect and you are
+  // taken to the character you asked for.
+  function handleConnected(info: SessionInfo, opts?: { quiet?: boolean; activateIfIdle?: boolean }): CharacterId {
+    if (opts?.quiet) {
+      const act = activeIdRef.current
+      const cur = act ? sessionsRef.current.find(s => s.characterId === act) : undefined
+      const idle = !!opts.activateIfIdle && (!cur || !cur.status.connected)
+      return addSession(info, { activate: idle })
+    }
     const id = addSession(info)
     setShowAdd(false)
     setShowWizard(false)
@@ -1242,6 +1289,12 @@ function AppShell() {
       return
     }
 
+    // Someone is already open: log this one in behind them.
+    if (sessionsRef.current.length > 0) {
+      void startBackgroundConnect(c)
+      return
+    }
+
     setConnectError('')
     pendingCancelledRef.current = false
     setPendingConnect(c)
@@ -1277,6 +1330,13 @@ function AppShell() {
       // button's behaviour.
       setPendingConflict(null)
       setConflictBusy(false)
+      // Another tab is open (the one just logged out, at least), so the new
+      // login runs in the background. It still takes you there when it lands,
+      // because the tab you were on is no longer connected (handleConnected).
+      if (sessionsRef.current.length > 0) {
+        void startBackgroundConnect(incoming, true)
+        return
+      }
       try {
         await runConnect(incoming)
       } catch (err1) {
@@ -1322,6 +1382,67 @@ function AppShell() {
     setPendingConnect(null)
   }
 
+  // A Connect while another character is open (see bgConnects). The + window
+  // closes at once and the login runs behind the tab you are on. The same 1.5s
+  // grace as the panel's, so a mis-click can be cancelled from the placeholder
+  // tab before anything is sent. `retryOnce`: the account-conflict path, whose
+  // first attempt can lose a race with DR releasing the account slot.
+  async function startBackgroundConnect(c: LauncherCharacter, retryOnce = false) {
+    const key = `bg:${c.account}|${c.name}`.toLowerCase()
+    setShowAdd(false)
+    if (bgConnectsRef.current.some(b => b.key === key)) return
+    // One character per account (DR's rule): a second login on an account
+    // already logging in would only fail with "invalid login key".
+    const sameAccount = bgConnectsRef.current.find(b => b.c.account.toLowerCase() === c.account.toLowerCase())
+    if (sameAccount) {
+      showToast({ title: `${c.name} was not connected`, message: `${sameAccount.c.name} is already logging in on account ${c.account}, and DragonRealms allows one character per account.` })
+      return
+    }
+    const cancel = { current: false }
+    const entry: BgConnect = { key, c, cancel, startedAt: Date.now() }
+    setConnectError('')
+    setBg([...bgConnectsRef.current, entry])
+    const opts: ConnectOpts = { quiet: true, background: true, cancelRef: cancel, throwOnFail: true }
+    try {
+      await new Promise(r => setTimeout(r, 1500))
+      if (cancel.current) return
+      try {
+        await runConnect(c, opts)
+      } catch (err1) {
+        if (!retryOnce || cancel.current) throw err1
+        await new Promise(r => setTimeout(r, 2000))
+        if (cancel.current) return
+        await runConnect(c, opts)
+      }
+    } catch (err) {
+      if (!cancel.current) showToast({ title: `${c.name} could not connect`, message: err instanceof Error ? err.message : String(err) })
+    } finally {
+      entry.release?.()
+      // Only this attempt's entry: a cancelled one may already be gone and a
+      // new attempt for the same character may have taken its key.
+      setBg(bgConnectsRef.current.filter(b => b.cancel !== cancel))
+      setBgShown(cur => (cur === key && !bgConnectsRef.current.some(b => b.key === key) ? null : cur))
+    }
+  }
+
+  function cancelBackgroundConnect(key: string) {
+    const b = bgConnectsRef.current.find(x => x.key === key)
+    setBgShown(null)
+    if (!b) return
+    b.cancel.current = true
+    b.release = markForeground(b.c.name)
+    setBg(bgConnectsRef.current.filter(x => x !== b))
+    // Within the grace window nothing has been sent. A login already under way
+    // has to finish (it is torn down when it lands), so the account stays busy
+    // until then — say so, as the panel's Cancel does.
+    if (Date.now() - b.startedAt >= 1500) {
+      showToast({
+        title: 'Cancelling',
+        message: `The login for ${b.c.name} has to finish before that account is free again — nothing will be added.`,
+      })
+    }
+  }
+
   // Characters being connected IN FRONT of the player (a tile's Connect, the
   // tab menu's Reconnect, the attach dialog). Main announces "is in the game"
   // from inside its login handler — before this window has switched to the new
@@ -1336,12 +1457,29 @@ function AppShell() {
     return () => { setTimeout(() => foregroundConnectsRef.current.delete(key), 2000) }
   }
 
-  async function runConnect(c: LauncherCharacter) {
-    const release = markForeground(c.name)
-    try { await runConnectBody(c) } finally { release() }
+  // `quiet`: a tab's Reconnect. The tab already exists, so the reconnected
+  // session lands IN THE BACKGROUND (Sekmeht, 2026-10-02: reconnecting one tab,
+  // switching to another, then being snapped back when it landed): focus stays
+  // where you are, no dialog opens or closes, a failure is a toast, and it
+  // leaves alone the overlay and Cancel of any connect you start meanwhile.
+  //
+  // `background` + `cancelRef`: a Connect made while another character is open
+  // (startBackgroundConnect). Quiet the same way, with its own Cancel, its own
+  // failure wording, and it lands in front only if your current tab is down.
+  async function runConnect(c: LauncherCharacter, opts?: ConnectOpts) {
+    // A quiet reconnect isn't marked foreground: if you have moved to another
+    // tab, its "back in the game" toast is how you hear (it stays quiet while
+    // you are viewing that character).
+    const release = opts?.quiet ? () => {} : markForeground(c.name)
+    try { await runConnectBody(c, opts) } finally { release() }
   }
 
-  async function runConnectBody(c: LauncherCharacter) {
+  async function runConnectBody(c: LauncherCharacter, opts?: ConnectOpts) {
+    const quiet = !!opts?.quiet
+    // The card overlay's Cancel belongs to that connect, never to a reconnect;
+    // a background login has a Cancel of its own.
+    const cancelRef = opts?.cancelRef
+    const cancelled = () => cancelRef ? cancelRef.current : (!quiet && pendingCancelledRef.current)
     // EVERY entry starts uncancelled. `handleCardConnect` resets this before
     // its grace timer, but three other paths reach here — the tab menu's
     // Reconnect, and both attempts of the account-conflict resolve — and none
@@ -1349,7 +1487,7 @@ function AppShell() {
     // next one return instantly and silently: a Reconnect that spun and did
     // nothing, with no error to explain it. Resetting at the top is safe
     // because cancellation during THIS attempt is set after this line runs.
-    pendingCancelledRef.current = false
+    if (!quiet) pendingCancelledRef.current = false
     const adv = loadAdvanced()
     const password = await window.api.loadPassword(c.account)
     if (password === null) {
@@ -1360,8 +1498,8 @@ function AppShell() {
       // an acct") and reported it as a Lich failure, when Lich was never
       // reached. The wizard is prefilled with the account below.
       localStorage.setItem('lichborne.account', c.account)
-      setPendingConnect(null)
-      setShowAdd(false)
+      if (!quiet) setPendingConnect(null)
+      if (!quiet) setShowAdd(false)
       setWizardReason(`Lichborne needs the password for account "${c.account}" to connect ${c.name}. ` + 'It is not saved on this machine — enter it below to continue.')
       setShowWizard(true)
       return
@@ -1402,10 +1540,10 @@ function AppShell() {
     // already landed. Doing it before `handleConnected` is what matters — the
     // tab is never added, so a cancelled connect never flashes a session into
     // existence and out again.
-    if (pendingCancelledRef.current) return
+    if (cancelled()) return
 
     const result = await window.api.login(creds)
-    if (pendingCancelledRef.current) {
+    if (cancelled()) {
       // Landed anyway (it was in flight when Cancel was pressed). Close it out
       // so we don't strand a live connection with no tab attached to it.
       if (result.ok && result.sessionId) {
@@ -1418,8 +1556,12 @@ function AppShell() {
       const friendly = /invalid login key/i.test(raw)
         ? `${raw} — another character on account ${c.account} may already be connected.`
         : raw
-      setConnectError(friendly)
-      setPendingConnect(null)
+      if (opts?.throwOnFail) throw new Error(friendly)
+      if (quiet) showToast({ title: `${c.name} could not reconnect`, message: friendly })
+      else {
+        setConnectError(friendly)
+        setPendingConnect(null)
+      }
       return
     }
 
@@ -1437,19 +1579,19 @@ function AppShell() {
 
     // Last check: the profile import/export above is awaited, so Cancel can
     // land in that window too.
-    if (pendingCancelledRef.current) {
+    if (cancelled()) {
       try { await window.api.disconnectAwait(result.sessionId) } catch (err) { console.error(err) }
       return
     }
 
-    setPendingConnect(null)
+    if (!quiet) setPendingConnect(null)
     handleConnected({
       sessionId: result.sessionId,
       account:   c.account,
       character: c.name,
       game:      c.game,
       useLich:   c.useLich,
-    })
+    }, { quiet, activateIfIdle: opts?.background })
   }
 
   // Attach to an already-running detachable Lich session.
@@ -1966,9 +2108,9 @@ function AppShell() {
     if (s.attach) {
       const { host, port } = s.attach
       setReconnectingIds(prev => new Set(prev).add(id))
-      runAttach(s.character, host, port, { account: s.account, game: s.game })
-        .then(err => { if (err) { setConnectError(err); setShowAdd(true) } })
-        .catch(err => { setConnectError(String(err)); setShowAdd(true) })
+      runAttach(s.character, host, port, { account: s.account, game: s.game }, undefined, undefined, true)
+        .then(err => { if (err) showToast({ title: `${s.character} could not re-attach`, message: err }) })
+        .catch(err => showToast({ title: `${s.character} could not re-attach`, message: String(err) }))
         .finally(() => setReconnectingIds(prev => { const n = new Set(prev); n.delete(id); return n }))
       return
     }
@@ -1977,11 +2119,8 @@ function AppShell() {
       hidden: false, favorite: false,
     }
     setReconnectingIds(prev => new Set(prev).add(id))
-    runConnect(c)
-      .catch(err => {
-        setConnectError(String(err))
-        setShowAdd(true)
-      })
+    runConnect(c, { quiet: true })
+      .catch(err => showToast({ title: `${s.character} could not reconnect`, message: String(err) }))
       .finally(() => setReconnectingIds(prev => { const n = new Set(prev); n.delete(id); return n }))
   }
 
@@ -2053,8 +2192,15 @@ function AppShell() {
             // the tile hasn't caught up, or an old one is being re-logged):
             // don't show a placeholder beside it.
             .filter(m => !sessions.some(s => s.character.toLowerCase() === m.pick.name.toLowerCase()))
-            .map(m => ({ key: `${m.pick.account}|${m.pick.name}`, name: m.pick.name, game: m.pick.game, status: m.status as 'waiting' | 'connecting' | 'failed' }))}
-          onPendingClick={() => { clearTeamPillTimer(); patchTeam({ expanded: true }) }}
+            .map(m => ({ key: `${m.pick.account}|${m.pick.name}`, name: m.pick.name, game: m.pick.game, status: m.status as 'waiting' | 'connecting' | 'failed' }))
+            // A single character logging in behind you (startBackgroundConnect).
+            .concat(bgConnects
+              .filter(b => !sessions.some(s => s.status.connected && s.character.toLowerCase() === b.c.name.toLowerCase()))
+              .map(b => ({ key: b.key, name: b.c.name, game: b.c.game, status: 'connecting' as const })))}
+          onPendingClick={(key) => {
+            if (key.startsWith('bg:')) { setBgShown(key); return }
+            clearTeamPillTimer(); patchTeam({ expanded: true })
+          }}
         />
       )}
 
@@ -2276,6 +2422,21 @@ function AppShell() {
           onCancel={cancelPendingConnect}
         />
       )}
+
+      {/* A background login's panel, opened from its placeholder tab. ✕ / Esc
+          put it away again; Cancel stops the login. */}
+      {(() => {
+        const b = bgShown ? bgConnects.find(x => x.key === bgShown) : undefined
+        return b ? (
+          <SoloConnectPanel
+            key={b.key}
+            character={b.c}
+            startedAt={b.startedAt}
+            onHide={() => setBgShown(null)}
+            onCancel={() => cancelBackgroundConnect(b.key)}
+          />
+        ) : null
+      })()}
 
       {pendingConflict && (
         // B342: backdropHandlers — a drag that ends on the scrim no longer

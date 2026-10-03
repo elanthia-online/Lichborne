@@ -35,6 +35,11 @@
 /* The tabs fill the middle and scroll horizontally when crowded. The app-bar
    provides the row background + border, so neutralize CharacterTabBar's
    standalone chrome (it ships its own bg/border/padding for the old layout). */
+/* The overlay-scrollbar wrapper (v0.20.2) is now the flex item in the bar. */
+.app-bar .character-tabs-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .app-bar .character-tabs {
   flex: 1 1 auto;
   min-width: 0;

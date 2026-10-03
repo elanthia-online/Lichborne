@@ -15,7 +15,8 @@
 // furthest expiry, self-clearing one tick past it) — don't add per-tab timers
 // or high-frequency state here.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useOverlayScrollX } from '../hooks/useOverlayScrollX'
 import { useSessions, type CharacterId, type SessionRecord } from '../SessionsContext'
 import { useRoster } from '../RosterContext'
 import ContextMenu from './ContextMenu'
@@ -39,8 +40,10 @@ interface Props {
   // waiting their turn, connecting, or failed. Shown as placeholder tabs so the
   // whole team is visible where the tabs are, and a stalled or failed login is
   // in plain sight instead of silently missing. Clicking one opens the panel.
+  // A single character connecting in the background (v0.20.2) shows the same
+  // way; the click names the tab so App can tell the two apart.
   pendingTabs?: PendingTab[]
-  onPendingClick?: () => void
+  onPendingClick?: (key: string) => void
 }
 
 export interface PendingTab {
@@ -71,6 +74,15 @@ export default function CharacterTabBar({ onAdd, onClose, onReconnect, reconnect
   // never re-render this strip.
   const viewMode = useViewMode()
   const overviewTarget = useOverviewTarget()
+  // An OVERLAY scrollbar (v0.20.2): the native one took 5px of height the
+  // moment the tabs overflowed, and this strip is the tallest thing in the app
+  // bar — so the bar grew and every line of game text below re-flowed. The
+  // native bar is hidden; a thin thumb over the tabs' bottom edge and a fade at
+  // each clipped edge say there's more, and the wheel scrolls sideways.
+  const stripRef = useRef<HTMLDivElement>(null)
+  const { state: scrollX, dragging, thumbHandlers, revealActive } = useOverlayScrollX(stripRef)
+  // Keep the selected tab in view when it changes (or when tabs come and go).
+  useEffect(() => { revealActive('.character-tab--active') }, [activeId, sessions.length, revealActive])
   const isHighlighted = (s: SessionRecord) =>
     viewMode !== 'overview' ? s.characterId === activeId
       : overviewTarget === null ? s.status.connected
@@ -127,7 +139,13 @@ export default function CharacterTabBar({ onAdd, onClose, onReconnect, reconnect
     // In the Overview, "All characters" highlights EVERY connected tab, so the
     // tablist is genuinely multi-select there — several tabs carry
     // aria-selected="true", which is only valid with aria-multiselectable.
-    <div className="character-tabs" role="tablist" aria-multiselectable={viewMode === 'overview' ? true : undefined}>
+    <div className="character-tabs-wrap">
+    <div
+      ref={stripRef}
+      className={`character-tabs${scrollX.overflow && !scrollX.atStart ? ' character-tabs--fade-l' : ''}${scrollX.overflow && !scrollX.atEnd ? ' character-tabs--fade-r' : ''}`}
+      role="tablist"
+      aria-multiselectable={viewMode === 'overview' ? true : undefined}
+    >
       {sessions.map(s => (
         <CharacterTab
           key={s.characterId}
@@ -148,14 +166,24 @@ export default function CharacterTabBar({ onAdd, onClose, onReconnect, reconnect
         <ContextMenu x={ctx.x} y={ctx.y} onClose={() => setCtx(null)} items={menuItems} />
       )}
     </div>
+    {scrollX.overflow && (
+      <div
+        className={`character-tabs-thumb${dragging ? ' character-tabs-thumb--drag' : ''}`}
+        style={{ left: scrollX.left, width: scrollX.width }}
+        aria-hidden="true"
+        {...thumbHandlers}
+      />
+    )}
+    </div>
   )
 }
 
 // A team member still on its way in. Same silhouette as a real tab (it
 // becomes one), but greyed, with a status glyph and — while connecting — a
 // thin moving bar along the bottom. Not a real tab: it can't be selected or
-// closed; clicking it opens the Team Login panel, where the detail is.
-function PendingCharacterTab({ tab, onClick }: { tab: PendingTab; onClick?: () => void }) {
+// closed; clicking it opens the panel with the detail (Team Login's, or the
+// single-login panel for a character connecting in the background).
+function PendingCharacterTab({ tab, onClick }: { tab: PendingTab; onClick?: (key: string) => void }) {
   const title = tab.status === 'connecting' ? `${tab.name} is connecting. Click for details.`
     : tab.status === 'waiting' ? `${tab.name} connects after the characters before it. Click for details.`
     : `${tab.name} didn't connect. Click to see why, or to retry.`
@@ -164,7 +192,7 @@ function PendingCharacterTab({ tab, onClick }: { tab: PendingTab; onClick?: () =
     <button
       type="button"
       className={`character-tab character-tab--pending character-tab--pending-${tab.status}`}
-      onClick={onClick}
+      onClick={() => onClick?.(tab.key)}
       title={title}
       aria-label={title}
     >
@@ -260,11 +288,20 @@ function CharacterTab({
         </span>
         <span className="character-tab-game">{session.game}</span>
       </span>
-      {healthPct != null && (
-        <span className={`character-tab-health ${healthClassName(healthPct)}`} title={`Health ${healthPct}%`}>
-          {healthPct}%
-        </span>
-      )}
+      {/* ALWAYS rendered, hidden until the first health reading (v0.20.2, the
+          "quiver" hunt): conditionally rendered, the tab grew 4ch partway
+          through every login, which could tip the strip into overflow — its 5px
+          scrollbar then grew the app bar and re-flowed every line of text below
+          (pitfall #138's class; the status glyph's slot was reserved for the same
+          reason, B70). */}
+      <span
+        className={`character-tab-health${healthPct != null ? ` ${healthClassName(healthPct)}` : ''}`}
+        title={healthPct != null ? `Health ${healthPct}%` : undefined}
+        style={healthPct == null ? { visibility: 'hidden' } : undefined}
+        aria-hidden={healthPct == null ? true : undefined}
+      >
+        {healthPct != null ? `${healthPct}%` : '100%'}
+      </span>
       <span
         className={`character-tab-glyph${icon ? '' : ' character-tab-glyph--empty'}`}
         title={icon?.title ?? ''}

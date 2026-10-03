@@ -254,8 +254,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on(CH.UPDATE_PROGRESS, listener)
     return () => ipcRenderer.removeListener(CH.UPDATE_PROGRESS, listener)
   },
-  onUpdateError: (cb: (message: string) => void) => {
-    const listener = (_e: Electron.IpcRendererEvent, message: string) => cb(message)
+  // `stage` is 'install' when the restart-and-install itself failed (B499);
+  // absent for a failed download.
+  onUpdateError: (cb: (message: string, stage?: 'install') => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, message: string, stage?: 'install') => cb(message, stage)
     ipcRenderer.on(CH.UPDATE_ERROR, listener)
     return () => ipcRenderer.removeListener(CH.UPDATE_ERROR, listener)
   },

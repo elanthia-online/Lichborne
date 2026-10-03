@@ -2175,7 +2175,11 @@ export function registerThemeAppliedHook(fn: (() => void) | null): void {
   postApplyHook = fn
 }
 
-export function applyTheme(theme: Theme): void {
+// `persist: false` repaints without re-saving the choice (v0.20.2): a settings
+// tweak re-applies the theme's colours (turning high contrast OFF needs them),
+// and re-saving `lichborne.theme` there fired a storage event that made every
+// OTHER window adopt this window's theme — and back again on its next tweak.
+export function applyTheme(theme: Theme, opts?: { persist?: boolean }): void {
   // MAP_STRUCTURAL_CASCADE applied LAST so a built-in theme's pinned --map-*
   // literals can't override the cascade (Binu's map-doesn't-follow-theme bug).
   const base: ThemeVars = theme.id === 'dark' ? darkBase : { ...darkBase, ...theme.vars }
@@ -2183,7 +2187,7 @@ export function applyTheme(theme: Theme): void {
   for (const [key, value] of Object.entries(vars)) {
     document.documentElement.style.setProperty(key, value)
   }
-  localStorage.setItem('lichborne.theme', theme.id)
+  if (opts?.persist !== false) localStorage.setItem('lichborne.theme', theme.id)
   postApplyHook?.()
 }
 

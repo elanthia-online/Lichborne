@@ -3,7 +3,7 @@
 > Internal reference document. Captures what we've learned about **Lich5 internals, the DragonRealms protocol, and the live installation** — the verified facts we mirror or depend on, so they aren't re-derived. Each fact cites its source `file:line`.
 > Sources: Lich5 source tree (`C:\temp\lich-dev\lich-5`, live install `C:\Ruby4Lich5`), the DR `drinfomon` scripts, and captured game XML.
 > This is the LICH/DR *fact* layer — how Lich and DR actually behave. Lichborne's own implementation (how we consume these facts) lives in CLAUDE.md and DESIGN.md; each Lichborne pitfall that came from a Lich/DR fact points back here.
-> Updated: 2026-08-16 (added the Lich 5.20.0 entry and the **Lich `id` vs game `uid`** number-space reference in §17; verified against Lich 5.20.0).
+> Updated: 2026-10-02 (added DR's <crtrStatus> creature feed, the Vitality ladder, and the facing / range / defence line shapes).
 
 ---
 
@@ -867,6 +867,15 @@ Measured on a real DR map (18,779 rooms, 2026-08-16):
 
 **The `- NNNN` dash slot is genuinely ambiguous** and cannot be disambiguated from the text: DR's native room-number display puts the GAME number there, while Lich's `display_lichid` puts its OWN id in the same position. Any consumer must be prepared for either — which is why trying both indexes is the correct design rather than a workaround.
 
+### Room prose in `map-*.json` (measured 2026-10-02)
+
+Measured on `map-1790653415.json` (18,950 rooms), for the Tableau's scene classifier:
+
+- **`title`** is an ARRAY of `[[…]]`-wrapped strings. Nearly every room has one; 11 have more than one.
+- **`description`** is an ARRAY too. 18,945 rooms have one, and **1,313 carry more than one version**. Which one the game shows at a given moment is not recorded here. In play the Tableau classifies the description the game actually sent; only the tuning harness reads `description[0]`.
+- **`location`** (the area name, e.g. "Horse Clan") is present on 14,769 rooms.
+- **Room prose is full of scene words used figuratively**, and that is the main thing a word-based reader has to handle. Of 144 prose uses of "falls", most are the verb ("the ground falls away", "light falls on", "accidental falls") rather than a waterfall; "sea" appears in colours ("sea-green") and crowds ("a sea of faces"); "keep" is mostly "keep watch". A real waterfall almost always says so in the room's TITLE.
+
 ### The `--saga` frontend — DECISION: do NOT adopt
 
 Saga is a **sibling front-end, NOT a new XML dialect**. In Lich's capability registry (`lib/common/front-end.rb`), `saga = stormfront's exact caps + one extra: sentinel`. The `sentinel` cap makes Lich prefix **every** downstream line with `\x1f` (0x1F) — a whole-stream "came through Lich" marker for Saga's detachable/cloud-profile-sync architecture, NOT a per-line Lich-vs-game discriminator. Adopting saga would give Lichborne the SAME content it already gets as stormfront, plus a sentinel byte to strip from every line (and re-audit every `^`-anchored parser rule against). Zero functional gain. Revisit only if a future Lich feature becomes saga/`sentinel`-GATED (nothing is today), or if Saga ever ships local config files worth importing (today it's cloud-only).
@@ -1064,6 +1073,162 @@ parses the same as `'@Agan hi`. The help's "interchangeable" suggests it does.
 
 Lichborne use: the Living Tableau's right-click Say to… / Whisper to…
 (`directedLine` in `src/renderer/utils/sayTo.ts`, DESIGN §50.3).
+
+## DR protocol — `<crtrStatus>`, the id-keyed creature feed (v0.20.2)
+
+Verified against Agan's and Sekmeht's raw captures (2026-10-02) and Lich's own
+handling (lich-5 `f8ea1f20`, added in #1485, 2026-08-02, shipped in Lich 5.20).
+
+**The shape.** Right after every `<component id='room objs'>` refresh, DR sends
+one self-closing tag per creature in the room:
+
+```
+<component id='room objs'>You also see <pushBold/>a rock troll<popBold/> which appears dead,
+  <pushBold/>a rock troll<popBold/>, a sharp pine sapling, <pushBold/>a rock troll<popBold/> that is sleeping,
+  <pushBold/>a black-backed jackal<popBold/> and some junk.</component>
+<crtrStatus exist="138802997" hostile="1" disengaged="1" dead="1" sleeping="1"/>
+<crtrStatus exist="138815260" hostile="1"/>
+<crtrStatus exist="138830744" hostile="1" sleeping="1" prone="1"/>
+<crtrStatus exist="138836619" hostile="1" disengaged="1"/>
+<prompt time="1790924675">R&gt;</prompt>
+```
+
+- `exist` is the creature's id: the same id assess shows in `look #ID`.
+- **Every tag is a full snapshot** of that creature's flags; an absent flag is
+  off. Another `room players` component can sit between the tags and the prompt.
+- **The tags come in the same order as the bold names** in the room list. Lich
+  pairs them by position at the next prompt, **only when the counts match
+  exactly** (all or nothing), and backfills names authoritatively from assess
+  (`lib/common/xmlparser.rb:70-76`, `:481-512`, `:675-688`).
+- **A refresh is a complete roster.** A creature missing from the next batch has
+  left: decayed ("The rock troll dissolves into a pile of chalk."), skinned, or
+  walked off. Lich rebuilds its room roster from each batch (`clear_room` on the
+  room objs component, `:457-464`).
+- Lich's code allows for a later **lone** batch of tags with no room-list refresh
+  before it (`:678`); none has been seen in a capture.
+
+**The flags** (Lich's vocabulary, `lib/common/creature/creature_base.rb:104-147`):
+
+| Kind | Flags |
+|---|---|
+| Classification | `hostile`, `disengaged`, `dead`, `sympathetic`, `ascended`, `inferior`, `AscensionBoss`, `MiniBoss`, `challenging`, `rider`, `mount` |
+| Transient status | `immobile`, `webbed`, `sleeping`, `disoriented`, `stunned`, `rooted`, `calmed`, `kneeling`, `prone`, `sitting`, `flying`, `hovering`, `hidden` |
+
+What the captures show about them:
+
+- **`dead="1"` names exactly which creature died**, by id, in the same batch as
+  the kill message ("A rock troll collapses with a heavy thud."). Whirlwind
+  killing three at once marks each. Dead creatures also carry `disengaged` and
+  `sleeping`.
+- **`disengaged` means not engaged with YOU.** Trolls fighting Sekmeht carry it
+  in Agan's feed; the ones on Agan don't. A creature arriving starts
+  `disengaged` and loses it at the next refresh after it closes on you. It only
+  updates when the room list does (kills, arrivals, loot drops).
+- **Unconscious is not dead.** A troll hit by Mental Blast ("collapses as if
+  dead") is `sleeping prone` with no `dead`, listed as "that is sleeping". A
+  troll with a mangled leg is `prone` alone ("that is lying down").
+- **On walking into a room** (Sekmeht's capture, 2026-10-02) the room list
+  arrives TWICE: once with the room's other components, then again after the
+  room text, this time followed by the tags. Then, before the prompt, Lich
+  re-sends the room title with its own room number added
+  (`[Whistling Wood, Barrows - 9477] (2212242)`), the same room under a
+  decorated title.
+- **`look` sends neither** the room-list component nor any tags, only the room
+  text. A roster refresh comes from the game, not from looking.
+
+## DR game text — the Vitality ladder (health words) (v0.20.2)
+
+The word GROUP shows for each member, and the word your own combat status leads
+with (`[You're battered, badly balanced …]`), is a 10% step of the health bar.
+Sekmeht's table:
+
+| Health | Word |
+|---|---|
+| over 100% | invigorated |
+| 100% | (none; GROUP says Healthy) |
+| 90–99% | bruised |
+| 80–89% | hurt |
+| 70–79% | battered |
+| 60–69% | beat up |
+| 50–59% | very beat up |
+| 40–49% | badly hurt |
+| 30–39% | very badly hurt |
+| 20–29% | smashed up |
+| 10–19% | terribly wounded (the source table reads "10%-9%", an evident typo) |
+| 1–9% | near death |
+| under 1% | in death's grasp |
+
+**Cross-checked against real logs** where textsubs.lic appends a percentage to
+the status line: bruised 90–99, hurt 80–89, battered 70–79, beat up 60–69 and
+badly hurt 40–49 all landed inside their bands. GROUP prints the same words,
+capitalised ("Beat up.", "Very beat up."), and both views agree at the same
+moment (Agan "Beat up" in his own list and in Sekmeht's).
+
+The GROUP list itself:
+
+```
+Members of your group:
+  Sekmeht: Healthy.
+  You (Leader): Very beat up.
+There are 2 members in your group.
+```
+
+It rides the `group` stream (a clear, then the lines). A member line is an
+indented single word and a colon (Lich's `GroupMembers`, drparser.rb:25), and
+the count line closes the list.
+
+## DR game text — facing, range and defence lines (v0.20.2)
+
+Verbatim from captures (Agan and Sekmeht, 2026-09-29 to 2026-10-02).
+
+**Turning to face** (by FACE, or on its own after a kill). The reply never
+carries an id; the `FACE #ID` that caused it does.
+
+```
+You turn to face a rock troll.
+You turn to face a rock troll, leaving the rock troll on your flank at melee!
+You turn to face a rock troll, leaving the black-backed jackal on your flank at missile range!
+You are too closely engaged and will have to retreat first.
+```
+
+**Range narration** (both sides of a fight; creatures use the same wording):
+
+```
+You begin to advance on Sekmeht.          Agan begins to advance on you!
+You close to pole weapon range on X.      X closes to pole weapon range on you!
+You close to melee range on X.            X closes to melee range on you!
+You are already advancing on X.           The X is still a distance away from you and is closing steadily.
+You are already at melee with X.          X stops you from advancing any farther!
+You retreat back to pole range.           Sekmeht retreats from you.
+You retreat from combat.                  You notice Sekmeht as he stealthily closes to melee range on you.
+```
+
+Retreat is one band per command (melee → pole → missile) and never ends the
+fight; only an assess that lists no one does.
+
+**Defending.** The defence is recognisable by its shape, whatever the gear:
+
+```
+* A black-backed jackal bites at you.  You block solidly with a small demonscale shield sealed with protective wax.
+* A golden jackal claws at you.  You dodge.
+* A rock troll feints high at you.  You evade.
+* Awkwardly, an ice archon chops an icy sword at you.  You counter some of the sword with a flame-bladed zweihander …
+  (a parry: knock aside / counter / fend off / turn aside / beat off / deflect /
+   slap away / repulse, then some / most / little of the …)
+An ice archon attempts to stomp on your left leg, and you raise your weapon to deflect part of the foot …
+An ice archon attempts to stomp on your right hand, but you manage to get out of the way in time.
+… <pushBold/>The claw lands a good hit (2/23) that scratches you …<popBold/>
+```
+
+**Balance words** run from the worst: completely **im**balanced, hopelessly
+**un**balanced, extremely **im**balanced, very badly balanced, badly balanced,
+somewhat off balance, off balance, slightly off balance, solidly, nimbly,
+adeptly, incredibly balanced (Lich's `DR_BALANCE_VALUES` order; the
+im/un forms seen in logs).
+
+**Emotes vs notices.** A player's emote is `(Name verbs …)`. The game's own
+notices also use parentheses, e.g. `(Roundtime: 30 seconds.)` after GO PATH, so
+"a capitalised word in parentheses" is not enough to mean an emote.
 
 ## DR stream inventory — routing decisions grounded in the sibling clients (v0.19.3 sweep)
 

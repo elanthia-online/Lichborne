@@ -333,6 +333,10 @@ button:not(:disabled):active {
    visible or not. If a future timer-driven transition appears, fix it the same
    way rather than trying to pause it here; `transition-property: none` under
    this selector would visibly snap state on minimize/restore. */
-:root[data-window-hidden='true'] * {
+/* Pseudo-elements too: `*` does not match ::before / ::after, so an animation
+   drawn on one (the Tableau's danger pulse) ran on while minimized (v0.20.2). */
+:root[data-window-hidden='true'] *,
+:root[data-window-hidden='true'] *::before,
+:root[data-window-hidden='true'] *::after {
   animation-play-state: paused !important;
 }

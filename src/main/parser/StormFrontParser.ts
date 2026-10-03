@@ -267,6 +267,36 @@ export class StormFrontParser {
   // same title doesn't wipe just-populated sub-stream data.
   private lastRoomTitle = ''
 
+  // The creature ROSTER (v0.20.2): a `room objs` refresh opens a pending
+  // roster with its bold names in order; each <crtrStatus> that follows adds an
+  // id + flags; the next <prompt> emits it. `crtrSeen` = this connection has
+  // ever sent the tag — until it has, a room list without one says nothing
+  // (an older server, or a front-end path that strips it), so no roster is
+  // emitted and the renderer keeps its name-based fallback.
+  private crtrSeen = false
+  private rosterPending: { names: string[] | null; list: { id: string; flags: string[] }[] } | null = null
+
+  // Emit the pending creature roster (at the <prompt> that closes its refresh).
+  // Names pair by position only when the counts match (Lich's rule). A list
+  // with creatures but no tags is inconsistent and is dropped rather than read
+  // as "everyone left".
+  private flushRoster() {
+    const p = this.rosterPending
+    if (!p) return
+    this.rosterPending = null
+    if (!this.crtrSeen) return
+    // Only a room-list refresh is a COMPLETE snapshot. A lone batch of tags with
+    // no room objs before it (Lich allows for one, xmlparser.rb) would read as
+    // "everyone else left" and empty the arena; it's dropped instead.
+    if (p.names === null) return
+    if (p.list.length === 0 && (p.names?.length ?? 0) > 0) return
+    const pair = !!p.names && p.names.length === p.list.length
+    this.emit({
+      type: 'creature-roster',
+      creatures: p.list.map((c, i) => ({ id: c.id, name: pair ? p.names![i] : null, flags: c.flags })),
+    })
+  }
+
   // Call when a new connection is established to clear carry-over state
   reset() {
     this.boldDepth     = 0
@@ -290,6 +320,8 @@ export class StormFrontParser {
     this.lastPromptText    = ''
     this.lastEmitWasPrompt = false
     this.lastRoomTitle     = ''
+    this.crtrSeen          = false
+    this.rosterPending     = null
     this.rtExpires     = 0
     this.lastPromptTime = 0
     // Cleared with the rest of the per-session state (pitfall #4) so a new login
@@ -760,6 +792,12 @@ export class StormFrontParser {
                 this.emit({ type: 'clear-stream', stream: 'room-creatures' })
                 this.emit({ type: 'clear-stream', stream: 'room-extra' })
                 this.emit({ type: 'clear-stream', stream: 'room-exits' })
+                // The old room's creatures are gone too (bug check): cleared HERE,
+                // in stream order, ahead of the new room's own list. Clearing it
+                // in the renderer on room change ran a frame AFTER the new
+                // roster had arrived in the same batch, and wiped it.
+                this.rosterPending = null
+                if (this.crtrSeen) this.emit({ type: 'creature-roster', creatures: [] })
               }
               this.emit({
                 type: 'room-title',
@@ -910,7 +948,21 @@ export class StormFrontParser {
         }
         break
 
+      case 'crtrstatus': {
+        // Self-closing and complete: an id plus a full snapshot of flags.
+        const id = attrs.exist
+        if (!id) break
+        this.crtrSeen = true
+        const flags = Object.keys(attrs)
+          .filter(k => k !== 'exist' && attrs[k] && attrs[k] !== '0')
+          .map(k => k.toLowerCase())
+        if (!this.rosterPending) this.rosterPending = { names: null, list: [] }
+        this.rosterPending.list.push({ id, flags })
+        break
+      }
+
       case 'prompt': {
+        this.flushRoster()
         // The prompt carries the SERVER's current time — anchor any pending
         // RT/CT to it: duration = end − serverNow, expressed as a LOCAL-clock
         // expiry (Date.now() + durationMs) so the renderer's countdown is
@@ -1090,6 +1142,14 @@ export class StormFrontParser {
           this.emit({ type: 'room-exits-text', text })
         } else {
           const stream = COMPONENT_STREAM[id]
+          // A creature-list refresh opens the roster its <crtrStatus> tags fill.
+          // The bold spans are the creatures, in the same order as the tags.
+          if (id === 'room objs') {
+            this.rosterPending = {
+              names: capturedSegments.filter(sg => sg.bold).map(sg => sg.text.trim()).filter(Boolean),
+              list: [],
+            }
+          }
           if (stream) {
             this.emit({ type: 'clear-stream', stream })
             if (text) {

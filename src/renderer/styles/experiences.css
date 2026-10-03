@@ -129,6 +129,18 @@
   overscroll-behavior: contain;
 }
 
+/* A section heading in the ⚙ list (v0.20.2): muted, with a hairline above. */
+.exp-inst-options-section {
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px solid color-mix(in srgb, var(--text-muted) 30%, transparent);
+  color: var(--text-dim);
+  font-size: 0.8em;
+  line-height: 1;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
 .exp-inst-options-title {
   color: var(--text-dim);
   font-size: 0.9em;
@@ -608,8 +620,19 @@
 /* Focus-the-speaker (§32.2): while anyone holds the floor, idle figures
    soften; the speaker brightens via the accent ring below. The self figure
    never dims (you always read yourself). */
-.tableau-scene--focus .tableau-figure:not(.tableau-figure--speaking):not(.tableau-figure--self) {
+/* Not the away/lost (they keep their own fade) and not a figure under the
+   pointer or focus (bug check): at this specificity the dim beat the bench's
+   and away's hover rules, so hovering a benched player didn't bring it back. */
+.tableau-scene--focus .tableau-figure:not(.tableau-figure--speaking):not(.tableau-figure--self):not(.tableau-figure--away):not(.tableau-figure--lost):not(:hover):not(:focus-visible) {
   opacity: 0.62;
+}
+/* Your group (v0.20.2): a green ring, in the social row and on the
+   battlefield alike — the same green as their fight lines, so "one of mine"
+   reads at a glance. After the contact ring (it wins), before speaking (a
+   talker still shows that). */
+.tableau-figure--group .tableau-avatar {
+  outline: 2px solid color-mix(in srgb, #3fae5a 70%, var(--text-primary));
+  outline-offset: 1px;
 }
 .tableau-figure--speaking .tableau-avatar {
   outline: 2px solid var(--accent);
@@ -734,17 +757,6 @@
    together. */
 .tableau-scene--large .tableau-figure:not(.tableau-figure--self) {
   font-size: 0.84em;
-}
-
-.tableau-empty {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 45%;
-  text-align: center;
-  color: var(--experience-scene-muted);
-  font-style: italic;
-  font-size: 0.85em;
 }
 
 /* ── Weather & Moons (Experience #2, v0.15.1) ───────────────────────────────
@@ -1364,7 +1376,7 @@
 .tableau-cr-ready {
   stroke-width: 4;
   stroke-linecap: round;
-  transition: stroke-dashoffset 0.12s linear;
+  transition: stroke-dashoffset 0.09s linear;  /* under the 0.1s tick, so each step finishes (pitfall #160) */
 }
 /* Match the command-bar timer colours (theme vars): RT orange, CT blue, Aim green. */
 .tableau-cr-ready--rt  { stroke: var(--rt-end, #d05828); }
@@ -1378,11 +1390,21 @@
     0 0 0 2px color-mix(in srgb, #e0403a 70%, transparent),
     0 0 0.8em color-mix(in srgb, #e0403a 45%, transparent);
 }
-.tableau-avatar--danger-anim { animation: tableau-avatar-danger 1.1s ease-in-out infinite; }
-@keyframes tableau-avatar-danger {
-  0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb, #e0403a 50%, transparent), 0 0 0.6em color-mix(in srgb, #e0403a 34%, transparent); }
-  50%      { box-shadow: 0 0 0 3px color-mix(in srgb, #e0403a 88%, transparent), 0 0 1.2em color-mix(in srgb, #e0403a 60%, transparent); }
+/* The pulse fades a brighter ring IN and OUT over the static one. It animates
+   OPACITY on a pseudo-element, never box-shadow: a box-shadow keyframe repaints
+   the avatar every frame for as long as you bleed or are poisoned (minutes),
+   while opacity runs on the compositor (perf pass, v0.20.2). */
+.tableau-avatar--danger-anim::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #e0403a 88%, transparent), 0 0 1.2em color-mix(in srgb, #e0403a 60%, transparent);
+  pointer-events: none;
+  opacity: 0;
+  animation: tableau-avatar-danger 1.1s ease-in-out infinite;
 }
+@keyframes tableau-avatar-danger { 50% { opacity: 1; } }
 
 /* Threat markers — a live creature figure while combat is live. */
 .tableau-figure--threat .tableau-avatar--creature {
@@ -1495,6 +1517,10 @@
 .tableau-range-pip--on[data-r="melee"]   { background: #d64b4b; }
 .tableau-range-pip--on[data-r="pole"]     { background: #e0992e; }
 .tableau-range-pip--on[data-r="missile"]  { background: #d8c53a; }
+/* A row the game hasn't reported yet (v0.20.2): the row keeps its place so the
+   panel doesn't change shape mid-fight, shown muted with no needle. */
+.tableau-gauge--unknown .tableau-gauge-track { filter: grayscale(0.85); opacity: 0.35; }
+.tableau-gauge--unknown .tableau-gauge-label { opacity: 0.6; }
 
 /* ── Assess arena (combat facet, B) — id'd creatures placed by relation to you,
    each tagged with relation + range; your target ringed gold, melee = engaged
@@ -1538,6 +1564,34 @@
 .tableau-assess-rel--front  { background: #e0992e; }  /* in front of you */
 .tableau-assess-rel--flank  { background: #4a90d9; }  /* to your side */
 .tableau-assess-rel--behind { background: #d64b4b; }  /* behind you (danger) */
+/* A creature fighting someone else in your group/room (v0.20.2): present but not
+   on you, so it recedes and never wears the threat colours. */
+.tableau-assess--elsewhere { opacity: 0.6; }
+.tableau-assess--elsewhere .tableau-assess-rel {
+  background: transparent;
+  color: var(--text-secondary);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-muted) 60%, transparent);
+}
+/* "vs rock troll" under a player fighting a creature (v0.20.2). */
+.tableau-ally-fight {
+  display: flex;
+  align-items: center;
+  gap: 0.25em;
+  font-size: 0.58em;
+  line-height: 1;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  max-width: 11em;
+}
+.tableau-ally-fight-vs { overflow: hidden; text-overflow: ellipsis; }
+/* Fighting the very creature you are (same look-id from both assesses). */
+.tableau-ally-fight-same {
+  padding: 0.1em 0.3em;
+  border-radius: 0.3em;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--accent) 55%, var(--text-primary));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
+}
 .tableau-assess-rng {
   width: 1.25em;
   height: 1.25em;
@@ -1553,7 +1607,7 @@
 .tableau-assess-rng--missile { background: #d8c53a; }
 /* Your current target (the drake you're facing) — gold ring. */
 .tableau-assess--target .tableau-avatar--creature {
-  box-shadow: 0 0 0 2px #d8c53a, 0 0 0.6em color-mix(in srgb, #d8c53a 55%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, #d8c53a 70%, var(--text-primary)), 0 0 0.6em color-mix(in srgb, #d8c53a 55%, transparent);
 }
 /* Engaged (melee range = attacking you) — red glow, unless it's your target. */
 .tableau-assess--engaged:not(.tableau-assess--target) .tableau-avatar--creature {
@@ -1562,6 +1616,251 @@
 /* Reeling (stunned / imbalanced) — vulnerable; dimmed and tilted. */
 .tableau-assess--reeling .tableau-avatar--creature { opacity: 0.7; transform: rotate(-6deg); }
 .tableau-assess--clickable:hover .tableau-avatar--creature { filter: brightness(1.12); }
+
+/* ── Player combat (v0.20.2) ────────────────────────────────────────────────
+   A tether from you to each player engaged with you, coloured by range, plus a
+   readout on their figure. Every colour is a theme var or a mix over one, so it
+   holds on light themes (Principle #4); the range CHIPS reuse the arena's. The
+   SVG spans the stage in 0–100 units with preserveAspectRatio="none", so the
+   stroke is kept a constant width with non-scaling-stroke. */
+/* Fight lines (v0.20.2): who is fighting what, faint and under the figures.
+   Colour = whose fight; dash = range (solid at melee). */
+.tableau-mesh {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.tableau-mesh-line {
+  --mesh: color-mix(in srgb, var(--text-muted) 60%, transparent);
+  stroke: var(--mesh);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 5 5;
+  opacity: 0.7;
+}
+.tableau-mesh-line--melee { stroke-dasharray: none; }
+.tableau-mesh-line--you   { --mesh: color-mix(in srgb, var(--accent) 70%, var(--text-primary)); opacity: 0.85; }
+.tableau-mesh-line--group { --mesh: color-mix(in srgb, #3fae5a 75%, var(--text-primary)); }
+/* The line from someone to the creature they are FACING: heavier, so "which
+   one am I / is Agan facing" reads at a glance. */
+.tableau-mesh-line--faced { stroke-width: 2.6; opacity: 1; }
+/* Who is facing a creature (v0.20.2): a crosshair over its icon — accent for
+   you, green for your group. It sits over the icon, so it costs no space. */
+.tableau-crosshair {
+  position: absolute;
+  inset: -0.45em;
+  width: calc(100% + 0.9em);
+  height: calc(100% + 0.9em);
+  pointer-events: none;
+  fill: none;
+  stroke: color-mix(in srgb, #3fae5a 85%, var(--text-primary));
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  overflow: visible;
+}
+.tableau-crosshair--you { stroke: color-mix(in srgb, var(--accent) 70%, var(--text-primary)); stroke-width: 1.9; }
+/* The Dead list (v0.20.2): corpses until they decay, top-right of the stage. */
+.tableau-dead {
+  position: absolute;
+  top: 0.4em;
+  right: 0.6em;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2em;
+  max-width: 40%;
+  font-size: 0.62em;
+  line-height: 1.1;
+  color: var(--experience-scene-muted);
+}
+.tableau-dead-label {
+  font-size: 0.9em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.tableau-dead-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  max-width: 100%;
+  white-space: nowrap;
+}
+.tableau-dead-name { overflow: hidden; text-overflow: ellipsis; }
+.tableau-dead-n { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.tableau-grave { width: 0.9em; height: 1.1em; flex: none; }
+
+/* An outsider fighting a member of your group. */
+.tableau-mesh-line--hostile { --mesh: color-mix(in srgb, #d64b4b 80%, var(--text-primary)); opacity: 0.85; }
+/* Who faces whom: arrowheads in the creature relation chips' colours. */
+.tableau-mesh-arrow--front  { fill: #e0992e; }
+.tableau-mesh-arrow--flank  { fill: #4a90d9; }
+.tableau-mesh-arrow--behind { fill: #d64b4b; }
+
+.tableau-tethers {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.tableau-tether {
+  --tether: color-mix(in srgb, var(--text-muted) 70%, transparent);
+  stroke: var(--tether);
+  stroke-width: 2;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 7 5;
+}
+.tableau-tether--pole  { --tether: color-mix(in srgb, var(--color-warning) 80%, var(--text-primary)); }
+/* Melee is solid and heavier: nothing left to close. */
+.tableau-tether--melee { --tether: color-mix(in srgb, var(--color-danger) 85%, var(--text-primary)); stroke-width: 3; stroke-dasharray: none; }
+/* Someone is advancing: the dashes march from the one closing toward the one
+   being closed on. Motion only — the colour and the label carry the meaning,
+   so epilepsy-safe keeps both and just stills it (UX #9b).
+   STEPPED, not linear (B502): stroke-dashoffset is paint-only, so a linear
+   march repainted the scene's line layer every frame for as long as anyone
+   was closing, which can be minutes in a standoff (pitfall #173), and costs
+   most on a Linux machine drawing without a GPU. Six 4px steps per cycle read
+   as the same marching dashes and repaint about 7 times a second. */
+.tableau-tether--closing { animation: tableau-tether-march 0.9s steps(6, end) infinite; }
+.tableau-tether--inbound { animation-direction: reverse; }
+@keyframes tableau-tether-march { to { stroke-dashoffset: -24; } }
+:root[data-epilepsy-safe='true'] .tableau-tether--closing { animation: none; }
+
+.tableau-tether-label {
+  position: absolute;
+  /* Above the figures: the label is the one thing on the line that must stay
+     readable, and a bystander can still end up near it. */
+  z-index: 4;
+  transform: translate(-50%, -50%);
+  padding: 0.15em 0.45em;
+  border-radius: 999px;
+  font-size: 0.62em;
+  line-height: 1;
+  font-weight: var(--ui-bold-weight);
+  white-space: nowrap;
+  pointer-events: auto;
+  background: var(--bg-app);
+  border: 1px solid var(--tether-c);
+  color: color-mix(in srgb, var(--tether-c) 55%, var(--text-primary));
+  --tether-c: var(--text-muted);
+}
+.tableau-tether-label--pole  { --tether-c: var(--color-warning); }
+.tableau-tether-label--melee { --tether-c: var(--color-danger); }
+
+/* A duelist out of sight (hidden, invisible or gone): a faint, sparse dotted
+   line to a dashed "?" where they were. Quiet but present — the cue to search
+   for them, not an alarm. Never animated. */
+.tableau-tether--lost {
+  --tether: color-mix(in srgb, var(--text-muted) 55%, transparent);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 6;
+  animation: none;
+}
+.tableau-tether-label--lost { --tether-c: var(--text-muted); border-style: dashed; }
+/* The duel bench (v0.20.2): everyone not in the fight, set aside down the left
+   edge and dimmed so the fight holds the eye. Hovering or focusing one brings
+   it back to full strength. */
+.tableau-figure--bench {
+  opacity: 0.62;
+  transition: left 400ms ease, top 400ms ease, opacity 300ms ease;
+}
+.tableau-figure--bench:hover,
+.tableau-figure--bench:focus-visible { opacity: 1; }
+.tableau-bench-label {
+  position: absolute;
+  /* Its left is the bench column's CENTRE (the figures are centred too). */
+  transform: translateX(-50%);
+  text-align: center;
+  font-size: 0.58em;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--experience-scene-muted);
+  pointer-events: auto;
+  cursor: default;
+}
+
+/* Your group's row (v0.20.2): your people beside you along the bottom. A member
+   who is somewhere else is faded with a dashed edge; leader and health show as
+   small chips (nothing for a healthy follower). */
+.tableau-figure--away { opacity: 0.5; }
+.tableau-figure--away:hover { opacity: 0.9; }
+.tableau-avatar--away { border-style: dashed; filter: saturate(0.5); }
+.tableau-group-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.2em;
+  max-width: 18em;
+  font-size: 0.55em;
+  line-height: 1;
+}
+.tableau-group-chip {
+  padding: 0.15em 0.4em;
+  border-radius: 0.3em;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text-secondary);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-muted) 55%, transparent);
+}
+.tableau-group-chip--lead {
+  color: color-mix(in srgb, var(--accent) 55%, var(--text-primary));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+/* How many are on a group member, from the last assess. */
+.tableau-group-chip--focus {
+  color: color-mix(in srgb, #d64b4b 65%, var(--text-primary));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #d64b4b 55%, transparent);
+}
+
+.tableau-figure--lost { opacity: 0.8; }
+.tableau-avatar--lost {
+  background: transparent;
+  border: 2px dashed color-mix(in srgb, var(--text-muted) 75%, transparent);
+  color: var(--text-secondary);
+  font-weight: var(--ui-bold-weight);
+}
+.tableau-figure--lost .tableau-name { color: var(--text-secondary); font-style: italic; }
+
+/* The duelist: a range-coloured ring on their avatar (gold when they're your
+   target, like the arena), and their balance under the chips. The ring sits
+   OUTSIDE a gap (3–5px), clear of the 1–3px outline contacts and speakers
+   already wear — an outline paints over a box-shadow, so a ring at the avatar's
+   edge would vanish under it. */
+.tableau-figure--duel { z-index: 2; }
+.tableau-figure--duel .tableau-avatar { --duel-ring: color-mix(in srgb, var(--text-muted) 75%, transparent); box-shadow: 0 0 0 3px var(--bg-app), 0 0 0 5px var(--duel-ring); }
+.tableau-duel--pole .tableau-avatar  { --duel-ring: var(--color-warning); }
+.tableau-duel--melee .tableau-avatar {
+  --duel-ring: var(--color-danger);
+  box-shadow: 0 0 0 3px var(--bg-app), 0 0 0 5px var(--duel-ring), 0 0 0.8em color-mix(in srgb, var(--color-danger) 45%, transparent);
+}
+.tableau-duel--target .tableau-avatar { --duel-ring: color-mix(in srgb, #d8c53a 70%, var(--text-primary)); }
+.tableau-duel-status {
+  margin-top: 0.1em;
+  font-size: 0.6em;
+  line-height: 1.1;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+/* States from their assess ("hidden", "stunned", …), one chip each, wrapping
+   onto a second row rather than clipping. */
+.tableau-duel-tags { flex-wrap: wrap; max-width: 10em; }
+.tableau-duel-flag {
+  padding: 0.1em 0.35em;
+  border-radius: 0.3em;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border: 1px dashed color-mix(in srgb, var(--text-muted) 70%, transparent);
+}
 
 /* ── Spell Monitor (Experience #3) ──────────────────────────────────────────
    Every colour is a theme var or a color-mix over one (Principle #4), and the
@@ -1996,3 +2295,649 @@
 .sm-badge--m { --sm-badge-hue: var(--spell-badge-m); }
 .sm-badge--r { --sm-badge-hue: var(--spell-badge-r); }
 .sm-badge--s { --sm-badge-hue: var(--spell-badge-s); }
+
+/* ── Living Tableau: the place (v0.20.2) ─────────────────────────────────────
+   A static backdrop — no animation, ever (it must cost nothing per frame).
+   Every colour tints rather than paints: a low-percentage mix over the
+   theme's scene text, or a fixed hue mixed toward transparent, so names keep
+   their contrast on light and dark themes. */
+.tableau-backdrop {
+  --tb-sky: transparent;
+  --tb-ground: color-mix(in srgb, var(--experience-scene-text) 5%, transparent);
+  /* The horizon line. The skyline is drawn at its natural shape, so its
+     height follows the stage's WIDTH (a 10:1 strip) — capped at a fifth of
+     the height, so a wide, short panel tab keeps room for the figures. */
+  --tb-band: min(10cqw, 20cqh);
+  container-type: size;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+/* Painted on a pseudo-element because container units resolve against the
+   nearest container ABOVE the element that uses them: on the backdrop itself
+   --tb-band would measure the viewport. */
+.tableau-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to bottom, var(--tb-sky) 0%, var(--tb-sky) calc(var(--tb-band) - 4px), transparent var(--tb-band)),
+    linear-gradient(to bottom, transparent var(--tb-band), color-mix(in srgb, var(--tb-ground) 35%, transparent) calc(var(--tb-band) + 6px), var(--tb-ground) 100%);
+}
+.tableau-sky--day   { --tb-sky: color-mix(in srgb, #6fa8ff 16%, transparent); }
+.tableau-sky--dawn  { --tb-sky: color-mix(in srgb, #ffb070 18%, transparent); }
+.tableau-sky--dusk  { --tb-sky: color-mix(in srgb, #ff7f60 16%, transparent); }
+.tableau-sky--night { --tb-sky: color-mix(in srgb, #3b4bb0 20%, transparent); }
+/* The ground's tint, from what the room is standing on. */
+.tableau-ground--grass  { --tb-ground: color-mix(in srgb, #5c9a4a 8%, transparent); }
+.tableau-ground--forest { --tb-ground: color-mix(in srgb, #3f8a4a 9%, transparent); }
+.tableau-ground--sand   { --tb-ground: color-mix(in srgb, #c9a35a 11%, transparent); }
+.tableau-ground--snow   { --tb-ground: color-mix(in srgb, #b8cce0 12%, transparent); }
+.tableau-ground--stone  { --tb-ground: color-mix(in srgb, #8a8478 9%, transparent); }
+.tableau-ground--swamp  { --tb-ground: color-mix(in srgb, #5a7a4a 10%, transparent); }
+.tableau-ground--lava   { --tb-ground: color-mix(in srgb, #b8502a 9%, transparent); }
+.tableau-ground--dirt   { --tb-ground: color-mix(in srgb, #8a6a4a 8%, transparent); }
+.tableau-ground--floor  { --tb-ground: color-mix(in srgb, #9a7a5a 8%, transparent); }
+.tableau-ground--cave   { --tb-ground: color-mix(in srgb, #6a5a4a 10%, transparent); }
+/* Roads, rivers, furrows and floorboards under the figures. Fainter than the
+   skyline: this is what everyone stands on. */
+.tableau-groundart {
+  position: absolute;
+  left: 0;
+  top: var(--tb-band);
+  width: 100%;
+  height: calc(100% - var(--tb-band));
+}
+/* The skyline sits on the horizon line. */
+.tableau-horizon {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: var(--tb-band);
+  overflow: visible;
+}
+.tb-sil       { fill: color-mix(in srgb, var(--experience-scene-text) 15%, transparent); }
+.tb-sil--far  { fill: color-mix(in srgb, var(--experience-scene-text) 8%, transparent); }
+.tb-line {
+  fill: none;
+  stroke: color-mix(in srgb, var(--experience-scene-text) 12%, transparent);
+  stroke-width: 0.8;
+  vector-effect: non-scaling-stroke;
+}
+.tb-line--faint { stroke: color-mix(in srgb, var(--experience-scene-text) 8%, transparent); }
+.tb-line--bold  { stroke-width: 2; }
+.tb-water  { fill: color-mix(in srgb, #4a7aaa 10%, transparent); }
+.tb-star   { fill: color-mix(in srgb, var(--experience-scene-text) 45%, transparent); }
+.tb-wall   { fill: color-mix(in srgb, var(--experience-scene-text) 4%, transparent); }
+.tb-window { fill: color-mix(in srgb, #ffd27a 12%, transparent); }
+.tb-glass  { fill: color-mix(in srgb, #8ab4ff 12%, transparent); }
+.tb-flame  { fill: color-mix(in srgb, #ffb347 40%, transparent); }
+.tb-hearth { fill: color-mix(in srgb, #ff8a3a 14%, transparent); }
+.tb-falls  { fill: color-mix(in srgb, #9fd0ff 16%, transparent); }
+.tb-mist   { fill: color-mix(in srgb, var(--experience-scene-text) 7%, transparent); }
+.tb-lava   { fill: color-mix(in srgb, #ff5a1f 14%, transparent); }
+.tb-road   { fill: color-mix(in srgb, var(--experience-scene-text) 4%, transparent); }
+.tb-trunk  { stroke-width: 1.6; }
+.tb-dash   { stroke-dasharray: 4 6; }
+.tb-frond  { stroke-width: 1.2; }
+.tb-foam   { stroke: color-mix(in srgb, var(--experience-scene-text) 18%, transparent); }
+.tb-crack  { stroke: color-mix(in srgb, #ff6a2a 15%, transparent); stroke-width: 1.2; }
+
+/* A ground shadow under every figure, so people stand ON the scene. */
+.tableau-figure .tableau-avatar::before {
+  content: '';
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: -0.32em;
+  height: 0.36em;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--experience-scene-text) 16%, transparent);
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* ── Strikes on you (v0.20.2) ────────────────────────────────────────────────
+   One-shot, keyed per strike, so each plays once and is gone — nothing here
+   repeats or re-arms (pitfall #160). Epilepsy-safe keeps the words, still,
+   and drops the flashes. */
+.tableau-react {
+  position: absolute;
+  inset: -0.25em;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: tableau-react-ring 0.5s ease-out forwards;
+}
+.tableau-react--dodge { border: 2px solid color-mix(in srgb, #4a90d9 80%, transparent); animation-name: tableau-react-dodge; }
+.tableau-react--block {
+  border: 3px solid color-mix(in srgb, #9fb4c8 85%, transparent);
+  border-bottom-color: transparent;
+  border-left-color: transparent;
+  animation-name: tableau-react-block;
+}
+.tableau-react--parry { box-shadow: 0 0 0 2px #e0b84a, 0 0 0.8em color-mix(in srgb, #e0b84a 70%, transparent); }
+.tableau-react--hit {
+  background: radial-gradient(circle, color-mix(in srgb, #e0403a 55%, transparent) 0%, transparent 70%);
+  box-shadow: 0 0 0 2px #e0403a;
+  animation-name: tableau-react-hit;
+}
+@keyframes tableau-react-ring  { from { opacity: 1; transform: scale(0.9); } to { opacity: 0; transform: scale(1.45); } }
+@keyframes tableau-react-dodge { from { opacity: 1; transform: translateX(0) scale(1); } to { opacity: 0; transform: translateX(0.9em) scale(1.25); } }
+@keyframes tableau-react-block { from { opacity: 1; transform: rotate(-30deg) scale(1); } to { opacity: 0; transform: rotate(10deg) scale(1.3); } }
+@keyframes tableau-react-hit {
+  0%   { opacity: 1; transform: scale(1) translateX(0); }
+  20%  { transform: scale(1.1) translateX(-0.12em); }
+  40%  { transform: scale(1.1) translateX(0.12em); }
+  100% { opacity: 0; transform: scale(1.5); }
+}
+/* The words, floating up off your figure, newest lowest. */
+.tableau-pops {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.tableau-pop {
+  position: absolute;
+  left: 0;
+  bottom: calc(var(--pop-row, 0) * 1.1em);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-weight: 800;
+  font-size: 0.78em;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 3px var(--bg-app), 0 0 2px var(--bg-app), 0 0 1px var(--bg-app);
+  animation: tableau-pop-rise 1.6s ease-out forwards;
+}
+.tableau-pop--dodge { color: color-mix(in srgb, #4a90d9 75%, var(--text-primary)); }
+.tableau-pop--block { color: color-mix(in srgb, #7f9bb5 70%, var(--text-primary)); }
+.tableau-pop--parry { color: color-mix(in srgb, #d4a62e 75%, var(--text-primary)); }
+.tableau-pop--hit   { color: color-mix(in srgb, #e0403a 80%, var(--text-primary)); }
+@keyframes tableau-pop-rise {
+  0%   { opacity: 0; transform: translate(-50%, 0.4em) scale(0.7); }
+  12%  { opacity: 1; transform: translate(-50%, 0) scale(1.15); }
+  25%  { transform: translate(-50%, 0) scale(1); }
+  75%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -1.4em); }
+}
+/* The attacker, when it is the only one of its kind on stage. */
+.tableau-attack-flash {
+  position: absolute;
+  inset: -0.2em;
+  border-radius: 0.45em;
+  pointer-events: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #ff8a3a 85%, transparent), 0 0 0.7em color-mix(in srgb, #ff8a3a 60%, transparent);
+  animation: tableau-react-ring 0.55s ease-out forwards;
+}
+:root[data-epilepsy-safe='true'] .tableau-react,
+:root[data-epilepsy-safe='true'] .tableau-attack-flash { display: none; }
+:root[data-epilepsy-safe='true'] .tableau-pop { animation: none; }
+
+/* Night darkens the ground a little, the scene's own light falling with it. */
+.tableau-sky--night { background-color: color-mix(in srgb, #0a1030 10%, transparent); }
+
+/* ── Moments (v0.20.2) ───────────────────────────────────────────────────── */
+/* A spell building: a soft glow behind your figure while you prepare, and its
+   name under you. Static — the cast ring already shows the progress. */
+.tableau-spellglow {
+  position: absolute;
+  inset: -0.7em;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle, color-mix(in srgb, #9a6ae0 38%, transparent) 0%, transparent 68%);
+}
+/* The spell's name, as a small PILL so it reads over the readiness ring, the
+   backdrop and anything else under it (Sekmeht: the bare text sat on the bottom
+   of the ring and blurred into it). Frosted from the theme's own background,
+   a faint violet hairline, a soft glow on the letters. */
+.tableau-spell-caption {
+  position: absolute;
+  top: calc(100% + 0.2em);
+  left: 50%;
+  z-index: 4;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 0.6em;
+  line-height: 1;
+  font-style: italic;
+  font-weight: 600;
+  padding: 0.18em 0.55em 0.22em;
+  border-radius: 0.8em;
+  color: color-mix(in srgb, #9a6ae0 55%, var(--text-primary));
+  background: color-mix(in srgb, var(--bg-app) 82%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #9a6ae0 45%, transparent), 0 1px 4px rgba(0, 0, 0, 0.35);
+  text-shadow: 0 0 6px color-mix(in srgb, #9a6ae0 45%, transparent);
+}
+/* A new rank: a gold burst round you, and the words. */
+.tableau-burst {
+  position: absolute;
+  inset: -0.6em;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #e8c04a 85%, transparent), 0 0 1.2em color-mix(in srgb, #e8c04a 70%, transparent);
+  animation: tableau-burst 1.4s ease-out forwards;
+}
+@keyframes tableau-burst {
+  0%   { opacity: 0; transform: scale(0.6) rotate(0deg); }
+  20%  { opacity: 1; transform: scale(1.1) rotate(20deg); }
+  100% { opacity: 0; transform: scale(1.8) rotate(60deg); }
+}
+.tableau-pop--rank { color: color-mix(in srgb, #d4a62e 80%, var(--text-primary)); }
+
+/* ── Emotes as poses (v0.20.2): one-shot, keyed per emote. ───────────────── */
+.tableau-pose { display: inline-flex; position: relative; animation-duration: 0.9s; animation-timing-function: ease-out; animation-fill-mode: both; }
+.tableau-pose--dip    { animation-name: tableau-pose-dip; }
+.tableau-pose--wave   { animation-name: tableau-pose-wave; }
+.tableau-pose--bounce { animation-name: tableau-pose-bounce; }
+.tableau-pose--hop    { animation-name: tableau-pose-hop; }
+.tableau-pose--spin   { animation-name: tableau-pose-spin; }
+.tableau-pose--shrug  { animation-name: tableau-pose-shrug; }
+.tableau-pose--droop  { animation-name: tableau-pose-droop; }
+.tableau-pose--shake  { animation-name: tableau-pose-shake; }
+.tableau-pose--pulse  { animation-name: tableau-pose-pulse; }
+@keyframes tableau-pose-dip    { 0%, 100% { transform: none; } 40% { transform: translateY(0.35em) scaleY(0.88); } }
+@keyframes tableau-pose-wave   { 0%, 100% { transform: none; } 20% { transform: rotate(-12deg); } 40% { transform: rotate(10deg); } 60% { transform: rotate(-8deg); } 80% { transform: rotate(5deg); } }
+@keyframes tableau-pose-bounce { 0%, 100% { transform: none; } 20%, 60% { transform: translateY(-0.25em); } 40%, 80% { transform: translateY(0); } }
+@keyframes tableau-pose-hop    { 0%, 100% { transform: none; } 35% { transform: translateY(-0.7em); } 60% { transform: translateY(0) scaleY(0.92); } }
+@keyframes tableau-pose-spin   { 0% { transform: rotate(0); } 100% { transform: rotate(360deg); } }
+@keyframes tableau-pose-shrug  { 0%, 100% { transform: none; } 40% { transform: scaleY(0.88) scaleX(1.08); } }
+@keyframes tableau-pose-droop  { 0%, 100% { transform: none; } 50% { transform: translateY(0.25em) rotate(-6deg); } }
+@keyframes tableau-pose-shake  { 0%, 100% { transform: none; } 15%, 45%, 75% { transform: translateX(-0.12em); } 30%, 60%, 90% { transform: translateX(0.12em); } }
+@keyframes tableau-pose-pulse  { 0%, 100% { transform: none; } 40% { transform: scale(1.15); } }
+
+/* What's in your hands, among your status chips. */
+/* Your hands: ONE fixed line, left hand on the left, right on the right, each
+   meeting at the middle under you and cut with "…" when long (the full name is
+   in the tooltip). Two equal columns, so neither item's length moves the other,
+   and an empty hand keeps its place invisibly — the row never changes height,
+   so drawing or stowing something can't bob your figure (Sekmeht). */
+.tableau-hands {
+  /* A FIXED width (the status area's own 12em cap): sized to its content
+     the row shrank to the shortest name and cut both to a few letters. */
+  flex: 0 0 auto;
+  width: 12em;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25em;
+  min-width: 0;
+}
+/* Your conditions: always one line high (an invisible placeholder holds it
+   when nothing is active), never wrapping, so one coming or going can't move
+   your figure. Past three, a "+N" chip names the rest in its tooltip. */
+.tableau-conditions {
+  flex: 0 0 auto;
+  width: 12em;
+  display: flex;
+  /* SAFE centre: when the chips overflow, start-align instead of clipping both
+     ends, so the first chip and the "+N" (the only way to the rest) both show. */
+  justify-content: safe center;
+  gap: 0.25em;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+/* Long condition words give way (cut with "…") before the "+N" does. */
+.tableau-conditions .tableau-self-chip { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tableau-conditions .tableau-self-chip--more { flex: none; }
+.tableau-self-chip--placeholder { visibility: hidden; }
+.tableau-self-chip--more {
+  color: var(--text-secondary);
+  border-color: color-mix(in srgb, var(--text-muted) 55%, transparent);
+  cursor: default;
+}
+/* Holding one thing (the usual case): that chip alone, centred. */
+.tableau-hands--one { grid-template-columns: 1fr; }
+.tableau-hands--one .tableau-hand-chip { justify-self: center; }
+.tableau-hand-chip {
+  display: inline-flex;
+  align-items: baseline;
+  color: var(--text-secondary);
+  border-color: color-mix(in srgb, var(--text-muted) 55%, transparent);
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.tableau-hand-chip--left  { justify-self: end; }
+.tableau-hand-chip--right { justify-self: start; }
+.tableau-hand-chip--empty { visibility: hidden; }
+.tableau-hand-chip b { flex: none; margin-right: 0.3em; }
+/* The describing words give way first ("forest…"), keeping at least the "…"
+   so you can tell there is more; the noun (the last word) never shrinks. */
+.tableau-hand-adj {
+  flex: 0 1 auto;
+  min-width: 1.1em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Room below the letters (g, y, p) without making the chip taller: the
+     clip box is otherwise exactly one line high and cut their tails. */
+  padding-bottom: 0.2em;
+  margin-bottom: -0.2em;
+}
+.tableau-hand-noun { flex: none; margin-left: 0.3em; }
+.tableau-hand-chip b + .tableau-hand-noun { margin-left: 0; }
+.tableau-hand-chip b { color: var(--text-muted); font-weight: 700; }
+
+/* ── Weather on the scene (v0.20.2) ──────────────────────────────────────── */
+.tableau-weather {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  /* The particles fall the layer's own height (cqh). */
+  container-type: size;
+}
+/* The same height as the backdrop's horizon band (--tb-band, which lives on
+   the sibling backdrop and so can't be inherited here). */
+.tableau-clouds { position: absolute; left: 0; top: 0; width: 100%; height: min(10cqw, 20cqh); }
+.tw-cloud ellipse { fill: color-mix(in srgb, var(--experience-scene-text) 8%, transparent); }
+.tw-drop, .tw-flake {
+  position: absolute;
+  top: -6%;
+  animation-name: tableau-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.tw-drop {
+  width: 1px;
+  height: 0.9em;
+  background: color-mix(in srgb, #7fa8d8 45%, transparent);
+  transform: rotate(10deg);
+}
+.tw-flake {
+  width: 0.28em;
+  height: 0.28em;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--experience-scene-text) 35%, transparent);
+  animation-name: tableau-drift;
+}
+@keyframes tableau-fall  { from { transform: translateY(0) rotate(10deg); } to { transform: translateY(110cqh) rotate(10deg); } }
+@keyframes tableau-drift { 0% { transform: translate(0, 0); } 50% { transform: translate(0.6em, 55cqh); } 100% { transform: translate(-0.2em, 110cqh); } }
+
+:root[data-epilepsy-safe='true'] .tableau-weather .tw-drop,
+:root[data-epilepsy-safe='true'] .tableau-weather .tw-flake,
+:root[data-epilepsy-safe='true'] .tableau-burst,
+:root[data-epilepsy-safe='true'] .tableau-pose { animation: none; }
+
+/* ── The key (v0.20.2): what the scene's lines and colours mean ───────────── */
+.tableau-key-btn {
+  flex: 0 0 auto;
+  width: 1.5em;
+  height: 1.5em;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 55%, transparent);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.8em;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.tableau-key-btn:hover, .tableau-key-btn:focus-visible { opacity: 1; border-color: var(--accent); }
+.tableau-key-btn--on { opacity: 1; color: var(--accent); border-color: var(--accent); }
+.tableau-key {
+  position: absolute;
+  /* Below the header (4em) so it never covers a floating window's ✕, and over
+     every stage child — speech bubbles reach z 40 (bug check). */
+  top: 4.4em;
+  right: 0.5em;
+  z-index: 50;
+  width: min(26em, calc(100% - 1em));
+  max-height: calc(100% - 4.8em);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.5em 0.7em 0.7em;
+  border-radius: 0.6em;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle, color-mix(in srgb, var(--text-muted) 35%, transparent));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  color: var(--text-secondary);
+  font-size: 0.72em;
+  line-height: 1.3;
+  text-align: left;
+}
+.tableau-key-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.3em;
+  color: var(--text-primary);
+  font-weight: 700;
+}
+.tableau-key-close {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  padding: 0 0.2em;
+}
+.tableau-key-close:hover { color: var(--text-primary); }
+.tableau-key-section {
+  margin-top: 0.6em;
+  padding-top: 0.35em;
+  border-top: 1px solid color-mix(in srgb, var(--text-muted) 30%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.tableau-key-row {
+  display: grid;
+  grid-template-columns: 3.4em 1fr;
+  align-items: center;
+  gap: 0.5em;
+  margin-top: 0.3em;
+}
+.tableau-key-row b { color: var(--text-primary); font-weight: 700; }
+.tableau-key-sw { display: flex; align-items: center; justify-content: center; }
+.tableau-key-swatch { width: 3.2em; height: 1em; overflow: visible; }
+.tableau-key-swatch--sq { width: 1.5em; height: 1.5em; }
+.tableau-key-swatch .tableau-tether { animation: none; }
+.tableau-key-glyph { color: var(--text-primary); font-weight: 700; }
+.tableau-key-dot { width: 1.1em; height: 1.1em; border-radius: 30%; background: color-mix(in srgb, var(--text-muted) 35%, transparent); }
+.tableau-key-dot--gold  { box-shadow: 0 0 0 2px color-mix(in srgb, #d8c53a 70%, var(--text-primary)); }
+.tableau-key-dot--red   { box-shadow: 0 0 0 2px color-mix(in srgb, #e0403a 70%, transparent), 0 0 0.5em color-mix(in srgb, #e0403a 45%, transparent); }
+.tableau-key-dot--green { border-radius: 50%; outline: 2px solid color-mix(in srgb, #3fae5a 70%, var(--text-primary)); outline-offset: 1px; }
+.tableau-key-dot--faded { border-radius: 50%; opacity: 0.5; border: 1px dashed var(--text-muted); }
+/* Social swatches (v0.20.2 key review). Small stand-ins that borrow the
+   scene's own colour recipes; the stage classes themselves are positioned
+   and animated, so they can't be reused as-is. */
+.tableau-key-intro { margin: 0.2em 0 0; color: var(--text-secondary); }
+.tableau-key-intro b { color: var(--text-primary); }
+.tableau-key-star { color: var(--accent); }
+.tableau-key-fig {
+  width: 1.2em;
+  height: 1.2em;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 45%, var(--bg-raised));
+  border: 2px solid color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+/* Each reads as its stage figure does: hidden = dashed and faded, dead =
+   greyed and dashed, just left = faint with a trail toward the exit. */
+.tableau-key-fig--unseen { opacity: 0.6; border-style: dashed; filter: saturate(0.55); }
+.tableau-key-fig--dead   { opacity: 0.6; border-style: dashed; filter: grayscale(1); }
+.tableau-key-fig--ghost  {
+  opacity: 0.45;
+  transform: translateX(0.3em) scale(0.85);
+  box-shadow: -0.45em 0 0 -0.15em color-mix(in srgb, var(--accent) 30%, transparent), -0.85em 0 0 -0.3em color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.tableau-key-bubble {
+  padding: 0.05em 0.45em;
+  border-radius: 0.6em;
+  background: var(--bg-raised);
+  color: var(--text-primary);
+  border: 1px solid var(--experience-chip-border, color-mix(in srgb, var(--text-muted) 55%, transparent));
+  font-size: 0.85em;
+  line-height: 1.2;
+}
+.tableau-key-bubble--yell {
+  font-weight: 700;
+  border-width: 2px;
+  border-color: color-mix(in srgb, var(--color-danger, #c0392b) 55%, var(--experience-chip-border, var(--text-muted)));
+}
+.tableau-key-bubble--whisper { border-style: dashed; font-style: italic; color: var(--text-secondary); }
+.tableau-key-caption { font-style: italic; font-size: 0.85em; color: var(--text-secondary); }
+.tableau-key-wisp {
+  padding: 0 0.5em;
+  border-radius: 1em;
+  border: 1px dashed var(--experience-chip-border, color-mix(in srgb, var(--text-muted) 55%, transparent));
+  font-style: italic;
+  line-height: 1.2;
+  color: var(--text-secondary);
+}
+.tableau-key-pop { font-size: 0.85em; color: color-mix(in srgb, #d4a62e 75%, var(--text-primary)); }
+.tableau-key-dot--spell { border-radius: 50%; box-shadow: 0 0 0.5em 0.15em color-mix(in srgb, #9a6ae0 55%, transparent); }
+.tableau-key-dot--new { outline: 1px dashed color-mix(in srgb, var(--text-muted) 70%, transparent); outline-offset: 2px; }
+.tableau-key-rings { position: relative; width: 1.6em; height: 1.6em; }
+.tableau-key-rings i { position: absolute; border-radius: 50%; border: 2px solid; }
+.tableau-key-rings .r { inset: 0.45em; border-color: var(--rt-end, #d05828); }
+.tableau-key-rings .c { inset: 0.22em; border-color: var(--ct-end, #3878c8); }
+.tableau-key-rings .a { inset: 0; border-color: var(--aim-end, #2ea043); }
+
+/* Whose crosshair (v0.20.2): the stroke is the person's own colour, set
+   inline, haloed in the theme's text colour so a dark avatar colour (a navy,
+   a deep red) still reads on a dark scene, and a pale one on a light scene.
+   A second facer's is turned 45°, so the two read as + and ×. */
+.tableau-crosshair { filter: drop-shadow(0 0 1.2px color-mix(in srgb, var(--text-primary) 65%, transparent)); }
+.tableau-crosshair--alt { transform: rotate(45deg); }
+/* The tiny who-badge in a creature's chip when it is on someone else. */
+.tableau-who {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5em;
+  height: 1.2em;
+  margin-right: 0.3em;
+  padding: 0 0.15em;
+  border-radius: 0.3em;
+  font-size: 0.85em;
+  font-weight: 800;
+  line-height: 1;
+}
+.tableau-key-skull .tableau-grave { width: 1.3em; height: 1.3em; color: var(--text-secondary); }
+.tableau-key-who { display: inline-flex; align-items: center; font-size: 0.85em; color: var(--text-secondary); }
+/* The target number sits IN FRONT of the crosshair (Sekmeht): both are
+   positioned inside the creature's icon, so an explicit order — the crosshair
+   over the icon, the number over both. */
+.tableau-crosshair { z-index: 1; }
+.tableau-assess-num { z-index: 2; }
+
+/* A group member's health (v0.20.2): a short meter in the health bar's own
+   colours (the .vital-fill--health-* gradients), filled to the bottom of the
+   game word's 10% band, with the band itself shaded beyond. The word follows. */
+.tableau-group-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  white-space: nowrap;
+}
+.tableau-group-health-bar {
+  position: relative;
+  display: inline-block;
+  width: 4em;
+  height: 0.55em;
+  border-radius: 0.3em;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 22%, transparent);
+}
+.tableau-group-health-bar .vital-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  height: auto;
+  border-radius: 0;
+  transition: none;
+}
+.tableau-group-health-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--text-primary) 45%, transparent) 0 1px, transparent 1px 3px);
+}
+.tableau-group-health--low,
+.tableau-group-health--crit {
+  color: color-mix(in srgb, #e0603a 70%, var(--text-primary));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #e0603a 60%, transparent);
+}
+.tableau-group-health--crit { font-weight: 700; }
+
+/* The room title with the "?" beside it (bug check: it used to sit in the
+   window's ✕ corner). The title still ellipsizes; the button never shrinks. */
+.tableau-room-title-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.4em;
+  min-width: 0;
+}
+.tableau-room-title-row .tableau-room-title { min-width: 0; }
+
+/* A corpse where it fell (v0.20.2, Sekmeht): DR's roster says exactly which
+   creature died, so it stays in its own place — greyed, set back, a skull in
+   place of its number — until DR stops listing it (decayed, skinned). The
+   figure is the same element as when it lived, so it fades to this state
+   rather than jumping. */
+.tableau-assess--corpse .tableau-avatar--creature {
+  filter: grayscale(1) brightness(0.72);
+  transform: scale(0.84);
+  box-shadow: none;
+  transition: filter 600ms ease, transform 600ms ease;
+}
+.tableau-assess--corpse .tableau-name {
+  opacity: 0.55;
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+}
+.tableau-corpse-skull {
+  position: absolute;
+  right: -0.25em;
+  top: -0.3em;
+  width: 1.2em;
+  height: 1.2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-muted) 60%, transparent);
+  animation: tableau-skull-in 500ms ease-out;
+}
+.tableau-corpse-skull .tableau-grave { width: 0.8em; height: 0.85em; }
+@keyframes tableau-skull-in {
+  0%   { opacity: 0; transform: scale(0.4); }
+  70%  { opacity: 1; transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+:root[data-epilepsy-safe='true'] .tableau-corpse-skull { animation: none; }
+:root[data-epilepsy-safe='true'] .tableau-assess--corpse .tableau-avatar--creature { transition: none; }
+
+/* A living creature's state from the roster (unconscious, stunned, down…),
+   a quiet outlined word beside its range. */
+.tableau-assess-state {
+  padding: 0.1em 0.35em;
+  border-radius: 0.3em;
+  white-space: nowrap;
+  font-style: italic;
+  color: var(--experience-scene-text, var(--text-secondary));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-muted) 60%, transparent);
+}
+/* Here since your last assess: no relation yet, so no chips and a dashed edge. */
+.tableau-assess--unassessed .tableau-avatar--creature {
+  outline: 1px dashed color-mix(in srgb, var(--text-muted) 70%, transparent);
+  outline-offset: 2px;
+}

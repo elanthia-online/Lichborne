@@ -70,6 +70,38 @@ A few ideas shape everything:
 
 ## What's New in the Latest Version
 
+**v0.20.2**
+
+- **The Living Tableau shows your fights.** Run `ASSESS` and the scene turns
+  into a battlefield laid out the way the fight really stands: who is in front
+  of you, beside you or behind, your group's fights beside yours, and other
+  people's fights above. Lines join each fighter to what it's fighting, with
+  arrows showing who faces whom, and a crosshair marks each person's target in
+  their own colour. A **?** beside the room title explains every line, arrow
+  and colour.
+- **Fights with other players.** A player who closes on you takes centre
+  stage, joined to you by a line that shows the range and who is closing;
+  everyone else steps aside to a column on the left.
+- **Your group, and how hurt they are.** Group members stand beside you, the
+  leader marked, with a small health meter when someone is hurt.
+- **Creatures die where they stand.** A creature you kill stays in its place,
+  greyed with a skull, until its body decays or is skinned. Unconscious or
+  downed creatures say so, and newcomers appear at once.
+- **More life in the scene.** Words float off you when you dodge, block, parry
+  or get hit; a gold burst when you gain a rank; a glow while you prepare a
+  spell; people act out their emotes; and the place itself is drawn behind
+  everyone from the room's description (peaks, forests, rooftops, ruins,
+  rivers, a shop or a temple inside), with rain and snow when the weather
+  turns.
+- **Add a character without stopping.** With someone already open, a new
+  character logs in behind you and arrives as a tab, like a team's other
+  members.
+- **A steadier screen.** Fixed several causes of the whole screen briefly
+  "quivering": connecting a character no longer redraws the window in a
+  different font, and the row of character tabs can no longer change the
+  height of the bar above your game text (it now scrolls with a thin overlay
+  bar instead).
+
 **v0.20.1**
 
 - **Text styles.** Give room names — or speech, thoughts, whispers, bold text,
@@ -86,38 +118,8 @@ A few ideas shape everything:
 - **A tidier update notice.** New versions show as a small **Update** pill in
   the top bar instead of a bar across the window. Click it to see what's new,
   download, and restart when you're ready — it asks first if characters are
-  connected.
-
-**v0.20.0**
-
-- **Triggers wait for your roundtime.** A trigger's command now waits until
-  you're out of roundtime before it sends, instead of firing into a roundtime
-  the game throws it away in. Out of roundtime, it sends at once, like before.
-  It's on for every trigger; untick **Wait for roundtime** on a command to
-  send it immediately. `$rt` and `$ct` now count down live, and a trigger can
-  act when roundtime ends.
-- **A redesigned Team Login.** Every character on the team gets a tile showing
-  how its login is going. Pick one that's ready and press **Play** (or
-  double-click it) to start playing while the rest keep connecting behind you.
-- **Toasts about your other characters.** When another character comes into
-  the game, drops, or reconnects, a small notice appears in the window you're
-  using — click it to go there. Each character has its own coloured badge,
-  and if several drop at once you get one toast naming them all. Triggers can
-  pop one up too, with the new **Toast** action.
-- **Give each character a colour.** On the launcher, **Edit profile** now has
-  a **Color**. It marks that character everywhere — their tab, toasts, Team
-  Login tile, Overview card and Living Tableau figure. Pick one of your named
-  colours and it stays linked.
-- **A clearer trigger editor**, with an explanation on every field and a
-  proper **$** menu for inserting variables — which shows what each one holds
-  right now, like your health or what's in your hands.
-- **Moving a rule between This Character and All Characters is safer.** The
-  editor follows the rule to where it went, and a move that would clash with a
-  different rule is refused rather than losing one of them. Transfer lists any
-  rules it skipped for the same reason.
-- **Fixed:** a team login that could hang forever on one character; trigger
-  echoes to the Game window that never appeared; and Genie triggers that
-  imported `#send 2 look` as the command "2 look".
+  connected. (Windows and Linux. A Mac doesn't update itself: **Help → Check
+  for Updates** points you to the download page.)
 
 ## On the Horizon (Roadmap)
 
@@ -235,7 +237,8 @@ This tells DragonRealms to include your full status (hidden, stunned, roundtime,
 - **One app, every character.** Each character is a tab. Switch with `Ctrl+Tab` or `Ctrl+1–9`.
 - **Quick Send** (`Ctrl+Shift+Enter`) fires a command at *another* character without leaving the one you're on.
 - **Pop a character into its own window** — right-click its tab, use the **Window** menu, or tick "open each in its own window" when bulk-connecting. It's still one app, so Quick Send and Lich coordination keep working. (You can also launch the app more than once to keep two teams fully separate.)
-- **Dropped?** The button at the right end of the top bar turns into **Reconnect** — one click logs that character back in, in the same tab, with its scrollback intact.
+- **Add a character while you play.** With someone already open, **Connect** from the **+** window logs the next character in **behind you**: a dashed tab shows it connecting (click it for details or to cancel), and it arrives as a tab without pulling you away. A toast says when it's in.
+- **Dropped?** The button at the right end of the top bar turns into **Reconnect** — one click logs that character back in, in the same tab, with its scrollback intact. Reconnecting a tab you aren't looking at leaves you where you are.
 - **Right-click any tab** for quick actions — Reconnect a dropped character, Disconnect, or move it between windows (only the choices that apply are shown).
 - **Windows remember where you left them** — size, position, and whether they were maximized, for the main window and for any character you've moved into its own window. If a window's monitor isn't connected any more, it opens on your main screen instead.
 - **⟲ Reconnect Last** on the launcher brings your whole crew back in one click. If an account already has a different character on, Lichborne asks which you want rather than bouncing anyone.
@@ -451,7 +454,7 @@ Client commands **never reach the game** — a typo gets a hint instead of leaki
 - Open the **Experiences** button for a shelf of them. Each opens as a **floating window** you can move, resize, and snap like any other.
 - Prefer a tidy layout? **Host an Experience as a regular panel tab** instead — every panel's **+** menu lists Experiences below a separator, marked with an **[e]** badge. Tuck the sky in next to your Thoughts tab and save the screen space.
 - Each Experience **costs nothing until you open it**, respects your **theme** and **epilepsy-safe** setting, and always treats the game text as the source of truth.
-- Hover an Experience for its own controls: **A− / A+** sizes all its text, and **⚙ "Show in this scene"** ticks exactly which layers you want to see. Your choices are remembered **per window**.
+- Hover an Experience for its own controls: **A− / A+** sizes all its text, and **⚙ "Show in this scene"** ticks exactly which layers you want to see. Your choices are remembered **per character**.
 
 There are three Experiences today, all **[Beta]**:
 
@@ -463,8 +466,15 @@ Your room, rendered as a living scene.
 - **Speech blooms as comic bubbles** — whispers dotted and private, emotes as action captions. **Telepathic thoughts collect in a quiet log in the bottom-left corner** (newest at the bottom, older ones fading up) so they never cover the scene.
 - **Arrivals slide in** from the direction they came; **departures walk out** as fading ghosts. Hiders and the invisible show as shadows; the dead lie greyed until a resurrection stands them up.
 - **The seating tells the story** — talkers gather toward the middle (you included), pairs in conversation drift together, and a crowd spreads into an amphitheater.
-- **Creatures stand as their own figures** in the game's monsterbold color (four blademasters are four monsters).
-- **When you fight, it becomes a combat cockpit** (Beta, and it costs nothing until a fight): three **readiness rings** wrap your avatar (roundtime, cast, aim — each its own color), your avatar **pulses** when you're stunned or bleeding, and a small panel reads your **balance** and **position** as red→yellow→green gauges. Run **`ASSESS`** and the creatures arrange by where they actually stand — *facing you*, *flanking*, or *behind* — with your target **ringed in gold**, the ones in melee glowing, and any that are reeling shown off-balance. **Click a creature to turn and face it.** The ones you fell stay as marked corpses until they decay.
+- **Creatures stand as their own figures** in the game's monsterbold color (four blademasters are four monsters). One that's unconscious or knocked down says so; one you kill **stays where it fell, greyed with a skull**, until its body decays or is skinned.
+- **The place is drawn behind everyone**, read from the room's description: what's on the horizon (peaks, hills, dunes, the sea, a distant town), what stands in front of it (pines, palms, rooftops, castle walls, ruins, standing stones, a farm, gravestones, reeds), and water or a road nearer still. Indoors it's a temple, a shop, a home or a hall; caves get stalactites. The same room always looks the same, and a sky follows the time of day. Turn it off with ⚙ **Scenery**. If your last look at the sky (`WEATHER`, or glancing up) was within half an hour and you're outdoors, **rain and snow fall** over the scene and clouds gather. Clear skies change nothing.
+- **Your group stands beside you**, the leader marked. When someone is hurt, a small **health meter** shows how badly, using the game's own words (bruised, battered, badly hurt…).
+- **When you fight, it can become a battlefield** (off to start: switch it on with ⚙ **Combat view**). Run **`ASSESS`** and everyone moves to where the fight really puts them: you low in the middle facing up, what's in front of you above you, flankers at your sides, your group's fights beside yours and other people's fights above. **Lines** join each fighter to what it's fighting (solid at melee, dashed further out), with **arrows** for who faces whom, and a **crosshair** marks each person's target in their own colour. Anyone not fighting moves to a quiet column on the left. It returns to the social scene about 30 seconds after your last assess, once nothing is still on you. Your target **flashes when it hits you**; words float off you as you **dodge, block, parry or get hit**.
+- **Fighting another player**: they take centre stage, joined to you by a line that shows the range and who's closing. If they hide, a **?** keeps their place; right-click to **Search** or **Assess**. Right-click anyone you're fighting to **Face** them.
+- **The cockpit**: three **readiness rings** wrap your avatar (roundtime, cast, aim), your avatar **pulses** when you're stunned or bleeding, and a small panel reads your **balance**, **position** and **range** as gauges. They wake on the first blow either way and stay while the fight goes on. **Click a creature to turn and face it.**
+- **Under your figure**: your conditions (hidden, stunned, joined…) on one line, and, if you switch on ⚙ **Your hands**, what you're holding on another, left hand on the left. Neither line changes height, so your figure never bobs.
+- **Not sure what something means?** Click the **?** beside the room title for a key to every line, arrow, ring and colour.
+- **Out of the box** every layer is on except **Combat view** and **Your hands**.
 
 #### Moons
 
@@ -670,7 +680,7 @@ Lich is the **recommended** way to play — it unlocks the map, timers, variable
 
 Plain `Home`/`End` edit the command box (where your cursor usually is); hold `Ctrl` to scroll the story window instead. Macro hotkeys (F1–F12, Ctrl/Alt combos) are set up in the Automations panel.
 
-**On a Mac**, the Cmd key also works for the Lichborne chords — `Cmd+1…9`, `Cmd+Tab` isn't available (macOS owns it) but `Ctrl+Tab` works, `Cmd+Shift+Enter`, `Cmd+F` — and the Ctrl versions all keep working. Cmd+C/V/X/A always stay native, and Cmd combos can't be bound as macros (they belong to the OS).
+**On a Mac**, the Cmd key also works for the Lichborne chords — `Cmd+1…9`, `Cmd+Tab` isn't available (macOS owns it) but `Ctrl+Tab` works, `Cmd+Shift+Enter`, `Cmd+F` — and the Ctrl versions all keep working. The exception is zoom, which is Cmd only on a Mac: `Cmd+=` / `Cmd+-` / `Cmd+0`. Cmd+C/V/X/A always stay native, and Cmd combos can't be bound as macros (they belong to the OS).
 
 ---
 

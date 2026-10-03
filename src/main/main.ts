@@ -176,6 +176,8 @@ function snapshotKey(evt: GameEvent): string | null {
     // scene-arrive/depart stay history events (transient edges; future
     // choreography consumers gate on the batch replay flag, pitfall #60a).
     case 'scene-cast':    return 'scene-cast'
+    // v0.20.2: the id-keyed creature roster is sticky room state the same way.
+    case 'creature-roster': return 'creature-roster'
     case 'character-guild': return 'character-guild'
     case 'exits':         return 'exits'
     // v0.14.7: the game's exits SENTENCE ("Obvious exits: none.") is sticky
@@ -608,8 +610,19 @@ function createWindow(opts?: { secondary?: boolean; stateKey?: string; inactive?
   const id = win.webContents.id
   windows.set(id, win)
   if (!opts?.secondary) primaryWindowId = id
+  // B504: a quiet window that was last maximized is maximized only AFTER it
+  // is shown inactive. Maximizing a hidden window also SHOWS it, through the
+  // native show path, which on Linux can activate it and take focus from the
+  // character being played; maximizing a visible window is a resize request.
+  // LINUX ONLY: Windows and macOS keep the original order exactly, and the
+  // Windows question is its own tester follow-up (BUGS.md).
+  const maximizeAfterReveal = process.platform === 'linux' && !!opts?.inactive && bounds.maximized
   if (opts?.inactive) {
-    const reveal = () => { if (!win.isDestroyed() && !win.isVisible()) win.showInactive() }
+    const reveal = () => {
+      if (win.isDestroyed() || win.isVisible()) return
+      win.showInactive()
+      if (maximizeAfterReveal) win.maximize()
+    }
     win.once('ready-to-show', reveal)
     // Backstop: never leave a window invisible if the first paint is slow.
     setTimeout(reveal, 3000)
@@ -617,7 +630,7 @@ function createWindow(opts?: { secondary?: boolean; stateKey?: string; inactive?
   // F109: maximize after construction (the saved rect above is the RESTORE
   // size, so un-maximizing lands where the user left it), then keep the saved
   // state current for as long as this window lives.
-  if (bounds.maximized) win.maximize()
+  if (bounds.maximized && !maximizeAfterReveal) win.maximize()
   // The requested position rides along so windowState can measure B360's
   // Linux/X11 frame-offset creep; absent when Electron centres the window.
   if (stateKey) {
@@ -748,6 +761,35 @@ const confirmingClose = new Set<number>()
 // already answered, and CANCELLING it would silently abandon the install while
 // leaving the update staged. Set it immediately before any such quit.
 let quitAlreadyConfirmed = false
+
+// The player clicked "Restart & install" and electron-updater has not yet
+// reported a failure. Its 'error' handler reads this to route an install error
+// to the pill instead of the console (B499: on Linux, a refused AppImage swap
+// used to leave the pill on "Ready to install" with nothing said).
+let installRequested = false
+// Linux only (B500): the AppImage to start once THIS process has exited. Set by
+// install-update; launched from the end of runAppShutdown. See relaunchAppImage.
+let relaunchAfterInstall: string | null = null
+
+// B500: start the updated AppImage only after this process has gone. Left to
+// itself, electron-updater starts the new copy from inside quitAndInstall(),
+// before app.quit() is even scheduled, so it would boot while we are still
+// flushing profiles and closing sessions on the same userData (Windows'
+// installer waits for us; the AppImage path doesn't). A detached /bin/sh waits
+// for our pid to exit (capped at 30s), then execs the AppImage with our own
+// arguments, so a --no-sandbox the AppImage's launcher added is kept. It runs
+// from disk, never from our squashfs mount, which goes away when we exit.
+function relaunchAppImage(appImage: string) {
+  try {
+    const script = 'i=0; while kill -0 "$1" 2>/dev/null && [ $i -lt 150 ]; do sleep 0.2; i=$((i+1)); done; shift; exec "$@"'
+    const child = cp.spawn('/bin/sh', ['-c', script, 'sh', String(process.pid), appImage, ...process.argv.slice(1)], {
+      detached: true, stdio: 'ignore', env: process.env,
+    })
+    child.unref()
+  } catch (err) {
+    console.error('[auto-updater] relaunch failed:', err)
+  }
+}
 
 // B353: true from `before-quit` until the quit is resolved. Electron documents
 // `before-quit` as "emitted before the application starts closing its windows",
@@ -995,6 +1037,7 @@ function runAppShutdown() {
     // exit (Zithri, v0.18.2). Quitting here fixes every platform at the source
     // and makes the non-darwin branch a redundant safety net rather than the
     // mechanism.
+    if (relaunchAfterInstall) relaunchAppImage(relaunchAfterInstall)
     app.quit()
   })
 }
@@ -2163,13 +2206,22 @@ ipcMain.on('install-update',     () => {
     return
   }
   quitAlreadyConfirmed = true
+  installRequested = true
+  // B500: an AppImage is restarted by us, after we exit (autoRunAppAfterInstall
+  // is off on Linux — see setupAutoUpdater).
+  if (process.platform === 'linux' && process.env.APPIMAGE) relaunchAfterInstall = process.env.APPIMAGE
   // SELF-HEALING, because this flag disables a safety feature. quitAndInstall()
   // normally tears the app down within a second — so if we are still alive well
   // after it, the install did NOT take (nothing staged, or the OS refused it),
   // and a latched flag would silently let the rest of the session quit without
   // ever confirming. Restoring it is the safe direction: the worst case is one
-  // extra prompt on a quit the user meant anyway.
-  setTimeout(() => { quitAlreadyConfirmed = false }, 10_000)
+  // extra prompt on a quit the user meant anyway. A shutdown already under way
+  // keeps its relaunch.
+  setTimeout(() => {
+    quitAlreadyConfirmed = false
+    installRequested = false
+    if (!appClosing) relaunchAfterInstall = null
+  }, 10_000)
   autoUpdater.quitAndInstall()
 })
 ipcMain.on('check-for-updates',  () => {
@@ -2293,6 +2345,14 @@ function setupAutoUpdater() {
   // above — electron-updater would just emit errors against an unsigned app).
   if (process.platform === 'darwin') return
   autoUpdater.autoDownload = false
+  // B500 (Linux): don't let electron-updater start the new AppImage itself — it
+  // does so before we have quit. relaunchAppImage starts it once we've exited.
+  if (process.platform === 'linux') {
+    autoUpdater.autoRunAppAfterInstall = false
+    // An AppImage whose name carries a version is moved to the new version's
+    // name (B357 keeps ours version-less, but a user may have renamed theirs).
+    autoUpdater.on('appimage-filename-updated', (p) => { if (relaunchAfterInstall) relaunchAfterInstall = p })
+  }
   // Auto-update UI lives in the primary (launcher) window.
   autoUpdater.on('update-available', (info) => {
     // The release page on the repo that answered — tags are `v<version>`
@@ -2316,6 +2376,16 @@ function setupAutoUpdater() {
   autoUpdater.on('error', (err) => {
     const msg = err?.message ?? String(err)
     console.error('[auto-updater] error:', msg)
+    // B499: the install itself failed (on Linux, typically an AppImage in a
+    // folder we can't write). electron-updater does not quit, so say so on the
+    // pill and put the close confirmation back.
+    if (installRequested) {
+      installRequested = false
+      relaunchAfterInstall = null
+      quitAlreadyConfirmed = false
+      primaryWindow()?.webContents.send(CH.UPDATE_ERROR, msg, 'install')
+      return
+    }
     // A non-final feed attempt failing is EXPECTED (see checkForUpdatesDualFeed)
     // — the fallback handles it; only the last feed's failure reaches the user.
     if (updaterProbing) return

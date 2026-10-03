@@ -23,7 +23,7 @@
 // is ALWAYS `exp:<id>` and `experience` is deliberately absent from
 // `ALL_PANEL_TYPES`; the stream id is `conversation`, singular (v0.8.10).
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import ContextMenu from './ContextMenu'
 import type { GameEvent, TextLine, RoomState, InjuryState, FireLogEntry } from '../../shared/types'
@@ -217,7 +217,7 @@ interface Props {
   // ([e]-badged section below a separator). `experienceDefs` is the registry
   // list (id + label); `renderExperienceTab` renders one by id on the shared
   // GameWindow props bag (MUST ride sharedFrameProps — the B193 rule).
-  experienceDefs?: Array<{ id: string; label: string; options?: Array<{ id: string; label: string; desc?: string; defaultHidden?: boolean }> }>
+  experienceDefs?: Array<{ id: string; label: string; options?: Array<{ id: string; label: string; desc?: string; defaultHidden?: boolean; section?: string }> }>
   renderExperienceTab?: (expId: string) => React.ReactNode
   // F55 follow-up: the tab-hosted ⚙ layer popover. Reads/writes the SAME
   // instance `hidden` map the floating Experience window's ⚙ edits (one map
@@ -586,15 +586,20 @@ export default function PanelFrame({
               {expGear && expOptionsOpen && expDef && (
                 <div className="exp-inst-options exp-inst-options--tab" ref={expOptionsRef}>
                   <div className="exp-inst-options-title">Show in this scene</div>
-                  {expDef.options!.map(opt => (
-                    <label key={opt.id} className="exp-inst-option" title={opt.desc}>
-                      <input
-                        type="checkbox"
-                        checked={optionShown(hidden, opt)}
-                        onChange={e => onSetExperienceOption!(expId, opt.id, !e.target.checked)}
-                      />
-                      <span>{opt.label}</span>
-                    </label>
+                  {expDef.options!.map((opt, i) => (
+                    <Fragment key={opt.id}>
+                      {opt.section && opt.section !== expDef.options![i - 1]?.section && (
+                        <div className="exp-inst-options-section">{opt.section}</div>
+                      )}
+                      <label className="exp-inst-option" title={opt.desc}>
+                        <input
+                          type="checkbox"
+                          checked={optionShown(hidden, opt)}
+                          onChange={e => onSetExperienceOption!(expId, opt.id, !e.target.checked)}
+                        />
+                        <span>{opt.label}</span>
+                      </label>
+                    </Fragment>
                   ))}
                 </div>
               )}

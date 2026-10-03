@@ -14,7 +14,7 @@
 // app-level app-bar (top-chrome redesign 2c).
 
 import type { ReactNode } from 'react'
-import { ATTENTION_DEFS } from '../attention'
+import { ATTENTION_DEFS, CONDITION_TITLES } from '../attention'
 import '../styles/iconbar.css'
 
 interface Props {
@@ -86,27 +86,27 @@ export default function IconBar({ stance, indicators, rightHand, leftHand, spell
     : indicators.dead    ? ATTENTION_DEFS.dead.desc
     : ''
   const afflictionDesc = indicators.poisoned
-    ? 'Poisoned — an ongoing condition that stays until it is cured.'
+    ? CONDITION_TITLES.poisoned
     : indicators.diseased
-    ? 'Diseased — an ongoing condition that stays until it is cured.'
+    ? CONDITION_TITLES.diseased
     : ''
 
   const statusBars = [
     { key: 'stance',     text: stance || 'Standing',  cls: stanceCls,       active: true,
       title: `Posture: ${stance || 'Standing'} (standing, sitting, kneeling or prone)` },
     { key: 'invisible',  text: 'Invisible',            cls: 'ind-invisible', active: !!indicators.invisible,
-      title: 'Invisible — other characters cannot see you.' },
+      title: CONDITION_TITLES.invisible },
     { key: 'webbed',     text: 'Webbed',               cls: 'ind-webbed',    active: !!indicators.webbed,
-      title: ATTENTION_DEFS.webbed.desc },
+      title: CONDITION_TITLES.webbed },
     // "Joined", not "Grouped": DR's IconJOINED (and the `J>` statusprompt) marks
     // the FOLLOWER (joined/following via hand-hold), NOT the group LEADER — the
     // leader has members joined to them but isn't "joined" themselves, so they
     // correctly get no chip. "Grouped" implied every group member should light
     // up; "Joined" matches what the game actually signals (Cherisse/Agan).
     { key: 'joined',     text: 'Joined',               cls: 'ind-joined',    active: !!indicators.joined,
-      title: 'Joined — you are following someone in a group. The game marks only the FOLLOWER, so a group leader never shows this chip.' },
+      title: CONDITION_TITLES.joined },
     { key: 'hidden',     text: 'Hidden',               cls: 'ind-hidden',    active: !!indicators.hidden,
-      title: 'Hidden — you are concealed from others in the room.' },
+      title: CONDITION_TITLES.hidden },
     { key: 'combat',     text: combatText ?? '',        cls: combatCls,       active: !!combatText,
       title: `${combatDesc} (This slot shows the most urgent of Bleeding, Unconscious, Stunned and Dead.)` },
     { key: 'affliction', text: afflictionText ?? '',    cls: afflictionCls,   active: !!afflictionText,

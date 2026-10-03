@@ -313,7 +313,7 @@ export default function ColorsPanel() {
                   maxLength={24}
                   placeholder="e.g. Buff drop"
                   onChange={e => setDraft({ ...draft, name: e.target.value })}
-                  onKeyDown={e => { if (e.key === 'Enter') save() }}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) save() }}
                 />
               </div>
               <div className="hp-field">
@@ -338,7 +338,7 @@ export default function ColorsPanel() {
                       const h = t.startsWith('#') ? t : resolveColor(t)
                       if (h && h !== e.target.value) setDraft({ ...draft, hex: h })
                     }}
-                    onKeyDown={e => { if (e.key === 'Enter') save() }}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) save() }}
                   />
                 </div>
                 <div className="ui-hint">
