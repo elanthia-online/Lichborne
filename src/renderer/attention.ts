@@ -65,6 +65,11 @@ export const CONDITION_TITLES: Record<string, string> = {
   hidden: 'Hidden — you are concealed from others in the room.',
   invisible: 'Invisible — other characters cannot see you.',
   joined: 'Joined — you are following someone in a group. The game marks only the FOLLOWER, so a group leader never shows this chip.',
+  // Posture (v0.20.3, the Tableau). From the game's posture indicators, the
+  // same state as the Icon Bar's stance chip. Standing shows no chip.
+  sitting: 'Sitting — you are sitting down. STAND to get up.',
+  kneeling: 'Kneeling — you are on one knee. STAND to get up.',
+  prone: 'Prone — you are lying on the ground. STAND to get up.',
 }
 
 /** Severity-descending. Frozen so a caller cannot sort it in place. */

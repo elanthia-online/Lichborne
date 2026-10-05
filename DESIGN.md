@@ -2120,6 +2120,7 @@ Sekmeht: *"that should run in the background similar to like when you connect a 
 - **Failures** are toasts with the real error (`throwOnFail` makes `runConnectBody` throw instead of reporting, so the conflict path's one retry can actually run). No saved password still opens the account wizard, which needs you.
 - **A tab's Reconnect** (B496) uses the same quiet landing without the placeholder (the tab exists): it comes back in place and focus stays where you are.
 - **Attach tiles** still use the panel; an attach is a local connection and is over in a moment.
+- **B506 (v0.20.3): the placeholder never appeared in v0.20.2** unless a Team Login was running. App built `pendingTabs` as `teamRun?.members.….concat(bgConnects…)`, and optional chaining short-circuits the whole chain, `.concat` included, so with no team run there were no placeholders at all: a + Connect showed nothing until its tab landed. It now starts from `(teamRun?.members ?? [])`.
 
 ### 13.6.5 Per-Shard Tabs (CharacterId)
 
@@ -7614,8 +7615,9 @@ gates** (procedural fallbacks always).
          skew is harmless, but the cost of doing it right is one field.
        - **Ship it as a MODEL, with the provenance the sun already has.** The script states outright that
          phase is model-only — *there is no passive phase broadcast to self-correct against* — and only
-         **4 of the 8** wordings are validated against `observe` (waxing crescent, waxing gibbous, full,
-         waning crescent). Present it the way the sun distinguishes observed from computed; do not
+         **4 of the 8** wordings were validated against `observe` (waxing crescent, waxing gibbous, full,
+         waning crescent) as of moonwatch v4.5.0; v4.5.4 maps 7 of 8, and 8 of 8 for a Moon Mage
+         (Knowledge.md §16). Present it the way the sun distinguishes observed from computed; do not
          present a computed bucket as fact.
        - **`observe <moon>` is the free correction layer.** `MOON_PHASE_LINE_PATTERN` +
          `OBSERVED_PHASE_MAP` decode the game's own wording (*"The black moon Katamba is a growing
@@ -10739,8 +10741,8 @@ Everything here stays inside the Tableau's own guardrails: it **reads** the game
     - indoors, an `interior`: temple, shop, home or hall.
   - **How it scores:** each feature has weighted word patterns; each pattern group counts at most two matches, and a title match counts three times. Misleading phrases are stripped first ("waves of heat", "a sea of faces", "an icy stare", "sea-green", "keep watch"). A sentence about the distance ("peaks rise in the distance") feeds only the far layer, at half weight. Title-only features (`indoorT`, `townT`, `fortT`, `caveT`, `fallsT`) ignore the description, where those words are asides ("the shop's front door"). "Falls" is title-only because in prose it is nearly always the verb ("the ground falls away"); surf needs the sea to be HERE (a score of 5), not mentioned; indoors needs a ceiling, furniture or an indoor title, and must beat the outdoor evidence.
   - **Tuned against the whole Lich map DB** (18,950 rooms) with `tmp-v0202-harness/scene-db.ts` (the distribution, or real rooms per layer with their descriptions) and reviewed visually with `gallery.tsx` (six real rooms per kind, drawn by the real component and stylesheet, on a light and a dark theme). Last distribution: 11,873 outdoor / 5,384 indoor / 1,688 cave. **Re-run both after any change to a pattern** — a word that reads well in one room is often a figure of speech in fifty others.
-  - **Cost:** tens of microseconds per room, about 60µs on a cold pass over the whole DB, run once per room change (a `useMemo` on title + description). Crossing the world is a few thousand rooms, i.e. well under a second of CPU in total.
-  - **[tableauBackdrop.tsx](src/renderer/components/experiences/tableauBackdrop.tsx) draws:** a 400×40 horizon SVG painted far → mid → near (stars first at night), and a 400×100 ground SVG under the figures for a road narrowing to the vanishing point, a winding river, crop furrows, swamp puddles, lava cracks or floorboards. Shapes come from a generator seeded by the title, so a room always looks the same and two rooms of a kind differ. Static: no animation, memoized, the busiest case (a shop wall) about 160 shapes.
+  - **Cost:** about 60µs per room as of v0.20.2, run once per room change (a `useMemo` on title + description). v0.20.3's things, towns and review rules raised it to about 0.3ms (§52.8), still negligible at one call per room change.
+  - **[tableauBackdrop.tsx](src/renderer/components/experiences/tableauBackdrop.tsx) draws:** a 400×40 horizon SVG painted far → mid → near (stars first at night), and a 400×100 ground SVG under the figures for a road narrowing to the vanishing point, a winding river, crop furrows, swamp puddles, lava cracks or floorboards. Shapes come from a generator seeded by the title, so a room always looks the same and two rooms of a kind differ. Static: no animation, memoized, the busiest case (a shop wall) about 160 shapes in v0.20.2 (v0.20.3: mean 47, worst 237, §52.8).
   - **The horizon height follows the stage's WIDTH** (`--tb-band: min(10cqw, 20cqh)`): the skyline keeps its drawn proportions and is capped at a fifth of the height so a wide, short panel tab keeps room for the figures. The backdrop is the size container, so the gradient that uses `--tb-band` is painted on its `::before` (pitfall #172).
   - **Theme-safe by construction:** silhouettes are 15% / 8% (far) mixes of the scene text over transparent, ground tints a fixed hue at 8–12%. Checked on Classic Light, where silhouettes had been too faint at the old 11% / 6%.
   - a sky band from the server clock (`exactSunPhase`), none indoors or in caves;
@@ -10783,3 +10785,154 @@ The Tableau's surface is its window: the ⚙ layers, the right-click menus and t
 - **On green-accent themes** (Empath, Necromancer, Terminal, Ranger), your fight lines and your group's are near the same colour. They differ in which figure they attach to; a stronger cue is a design call.
 - **The battlefield can mirror** depending on the order the assess lists creatures. The warm start hides this between solves but not on a cold start.
 - **A corpse needs a place to keep.** A creature that dies without ever having been drawn (dead before you looked, or past the row's cap) goes to the Dead list instead.
+
+## 52. The Tableau's sense of place, room by room (v0.20.3)
+
+v0.20.2 gave the Living Tableau a layered backdrop read from the room's description (§51.6). v0.20.3 turned it into a picture of *where you are*: each town drawn in its own style, rooms furnished from what their description names, and things standing in the scene. Then every room in the map was read and judged, and the rules were tuned against what the reviewers found. The split from §51.6 holds: [tableauScene.ts](src/renderer/components/experiences/tableauScene.ts) **decides** (pure, harnessed), [tableauBackdrop.tsx](src/renderer/components/experiences/tableauBackdrop.tsx) **draws** (static, memoized, deterministic). A third file, [tableauPlaces.ts](src/renderer/components/experiences/tableauPlaces.ts), knows the towns.
+
+### 52.1 Towns
+
+- **39 towns in 13 building styles** (`PLACES`, `TownStyle`): river (gabled houses, chimneys, a spire: the Crossing, Riverhaven, Therenborough…), harbor (boardwalks on pilings, masts), tiers (Ratha's and Aesry's terraces), floating (Mer'Kresh on platforms over water), sandstone (Muspar'i's domes), crystal (Shard's spires), elven (Leth Deriel's great tree), dwarven (doors carved into a rock face), logs, clan (longhouses and a palisade), tents (Zaldi Taipa), ruins (Throne City, Dirge) and fortress (Ain Ghazal, Hvaral). A town can also set a default horizon (`far`), a lake mist (Aesry) or volcanic country (Dirge, Sicle Grove, Arthelun).
+- **Which town a room is in**, in order:
+  1. its title's place name, through `PLACE_PREFIXES`. That table is GENERATED from the Lich map's `location` field by [tools/gen-place-data.mjs](tools/gen-place-data.mjs) (184 title prefixes, 3,948 rooms), because districts and buildings often never name their town ("[Undershard, …]", "[Crossing Temple, …]"). It is committed rather than read at runtime, so it works without Lich (Principle #2). Re-run the generator when the map grows; its output must stay byte-identical to the committed file.
+  2. a town name at the start of the title (`NAMES`);
+  3. **the last town this character was in** (Sekmeht: walk into a building in Shard and the title stops saying Shard). GameWindow keeps it per character in a memo over `resolvePlace` and passes it to the Experience as `place`. It is dropped as soon as a room reads as open wilderness, so leaving town by an unnamed road doesn't carry Shard's spires to the next village. **While a room's description hasn't arrived yet it is kept**: a room change clears the description, and judging the title alone could read as open country and lose the town for good.
+- `resolvePlace` is **idempotent** (calling it again with its own answer returns the same answer), which is what makes it safe inside a memo that writes a ref (the pitfall #70 hazard).
+- **The description still decides WHAT is drawn**; the town only decides how its buildings look. It fills the horizon only where the description leaves it blank, and adds buildings only when the text names something built (`BUILT`) and nothing natural dominates. A town whose default horizon is the sea doesn't impose it on an inland forest room.
+
+### 52.2 The classifier, reviewed against every room
+
+- **Process.** Reviewers read all 18,945 rooms with prose in 38 chunks (`tmp-v0203-scene/review.ts all`) and reported RECURRING mistakes, not one-offs. Each finding became a general rule, checked by diffing the whole map before and after (`snapall.ts`) and reading the rooms that flipped. On the build before the review they judged 73.5% of rooms correct, 17.8% minor (right enclosure, a layer off) and 8.7% wrong. A validation pass on 500 random rooms, judged more strictly, found 65.4% correct, 29.2% minor and **5.4% wrong**. The wrong rate is the comparable number, since the two passes used different strictness.
+- **The room part of the title decides a lot** (the words after the last comma):
+  - an outdoor word there ("Garden", "Road", any street word) beats a building named earlier in the title;
+  - "outside", "before/behind/beside the…" mean outdoors;
+  - "inside"/"interior" mean indoors;
+  - "beneath the mountain/city/temple" means a cave;
+  - balcony, bridge, gate, wall, terrace, roof and ledge are ambiguous and decide nothing on their own.
+- **A title word must be confirmed by the description** for ruins, dead trees, lava, volcanic, farm, palms, swamp and dunes (`DESC_CONFIRMS`): "[Ruined Keep, Hall]" with no rubble in the text is a hall.
+- **An indoor title alone doesn't beat strong open-air evidence** ("[Lumber Storage]" that is a stacked yard under the sky), and a cave-titled room needs real outdoor evidence beyond a river or an outdoor title word to come out of the cave.
+- **Figures of speech are removed before scoring** (`NOISE`, and `SCENE_NOISE` for the scene only). The families: dry or former water ("the dry riverbed", "where a river once ran"); similes ("like waves", "reminds one of"); "a forest of masts", "a sea of faces", "pools of light"; "beds of…" and "carpets of…"; tree names used as materials ("pine table", "oak walls"); painted or tiled scenes ("a mural depicts the sea"). A distant sentence feeds only the far layer, at half weight, except the sea and dunes, which are seen from afar.
+- **Fallbacks** when the scorer is unsure: `BUILT` (a town street), `SHOP_T`/`SALE`/`LIB_T` (a shop by name or by selling, but not a library or a museum), `DOCK` (water at a dock), and `DIRT`, `SALT`, `ROCKY`, `BARREN` for the ground.
+
+### 52.3 Indoors: walls, light, furnishings, wares
+
+- **Walls**: stone, marble, wood, plaster, canvas, earth or metal. A walls phrase ("walls of polished ironwood", "granite walls") counts 4 and a bare material word 1, with a floor of 3, so "an iron anvil" doesn't make iron walls. A town building without a stated material takes the town's (`WALL_OF_TOWN`).
+- **Light**: orbs (gaethzen), lanterns, candles, torches, a fire or daylight.
+- **Up to three furnishings** in fixed slots (middle, left, right). There are 30 kinds: counter, shelves, racks, cases, tables, benches, bar, hearth, stairs, columns, windows, stained glass, tapestries, rug, chandelier, bed, desk, altar, forge, barrels, books, plants and door, plus seven from the prop round (§52.4). **The rug and the pool lie on the floor** (`ON_FLOOR`) and take no wall slot.
+- **A shop's wares** (weapons, armor, clothing, jewelry, alchemy, food, drink, books, furs, tools, flowers, coin, music, or general) are drawn on its shelves or racks. A shop that names its wares but nowhere to put them gets a holder (racks for weapons, armour, clothing and furs; shelves otherwise; mannequins count as a holder).
+- A room that names no furnishings keeps the picture of its kind (hall, temple, shop, home) on its own walls and in its own light.
+
+### 52.4 Props and paving
+
+- **Up to four props outdoors and in caves** (`PROPS`), placed left of centre, then left, right, and right of centre, so the middle of the stage stays clear for the figures. They are drawn a step stronger than the scenery (`tb-sil--prop`) so a signpost doesn't vanish into the tree line.
+- **A prop must be HERE**: sentences about the distance don't count. The title only supports what the description says: it counts once, and a prop the description never mentions is dropped ("[Southeast Tower, Aumbry]" is a room inside the tower).
+- **A cave keeps only what can stand underground** (`CAVE_PROPS`). Dropped where the scene already shows them: a lone tree in a wood, a pool where there's water, pillars in ruins, stalactites outdoors or in a natural cavern (which draws its own).
+- **Paving** (cobbles, flagstones, mosaic, planks) is drawn on the ground, in perspective.
+- **The prop round (v0.20.3)** added what the reviewers saw undrawn most:
+  - 10 props: hut (362 rooms), pillars (243), pool (162), crates (148), arbor/gazebo (92), obelisk and standing stones (87), nest (50), stalactites (30, in tunnels, mines and ice caves), bell (23) and brazier (17).
+  - 7 fixtures: paintings (218, split from tapestries), statue (172), workbench (140), mannequins (63, split from racks), mirror (63), stage (52) and pool (45).
+  - Obelisks and standing stones used to draw as a tower or a boulder.
+- **Coverage** (`tmp-v0203-scene/coverage.ts`, the things descriptions name against what the scene draws): 41.9% before v0.20.3, 59.7% after the first props, 63.0% after the prop round on the same list of things.
+
+### 52.5 Is it the thing, or a word describing something else?
+
+Sekmeht's question, from room 768 ("cobblestones … flecked with crystals" drew a cluster of crystal spires): is a prop word the thing itself ("a bed of roses"), or describing something else ("rose colored curtains")? `tmp-v0203-scene/modsurvey.ts` answers it for every prop and fixture over the whole map: it finds each mention (`thingMentions`, which sees exactly the text the scorer sees) and looks at the word that follows. A verb, a preposition or punctuation means the thing; another noun means it may be describing that noun. The pairs were read prop by prop. Findings and rules:
+
+- **Most "modifiers" are verbs** ("shelves line", "vines drape", "the counter sits"): the prop is the thing.
+- **A describing compound is never the thing** (`DESCRIBES`, wrapped around every prop and fixture pattern): a word followed by `-like`, `-shaped`, `-colored`, `-hued`, `-tinted`, `-scented`, `-carved`, `-painted`, `-embroidered` and the like, or by " colored/hued/scented" without the hyphen. With a space, "carved" and "shaped" are excluded on purpose: "a statue carved from marble" and "lanterns shaped like stars" are the thing. **`-covered`, `-lined`, `-filled` and `-strewn` ARE the thing** ("vine-covered willows", "book-lined walls", "rubble-strewn"), so they are not in the list.
+- **A material or a part is not the thing**: an oak door or table is not a tree, a tree stump not a tree; log walls, cabins or fences are not logs; wagon tracks, wheels or a cart path are not a cart; a hog skull, horse droppings or the Horse Clan are not livestock; a bird feeder, bird nests or Gull Circle are not birds. **The bird exclusions apply only after a singular bird word**, so "birds nest in the branches" and "pigeons circle over the fountain" still draw birds. Bone as a building material is still bones (a giant skeleton's "bone spires").
+- **Crystals**: crystals that are part of a surface ("flecked with", "set into its surface", "mixed with crushed shells"), hanging decorations (fence crystals, a chandelier's, wind chimes) and crystals of ice or frost don't count, nor does Shard's skyline named from elsewhere. A lone "crystal" counts only as the thing ("around the crystal"), never as a material ("a crystal unicorn"). **In a cave, crystals in the walls are the cave's own**, so the surface rule doesn't apply there.
+- **Stalls**: "the X stand" counts only when X isn't a plural noun, so "the trees stand straight" is not a market stand.
+- **A noise rule removes the misleading word, never the thing next to it.** "a bed of roses", "flower beds" and "flowerbeds" used to lose their flowers, because the rule that stops a flower bed reading as furniture deleted the whole phrase. Now only "bed" goes.
+
+### 52.6 Corpses lie behind the living (B505)
+
+Dead creatures stacked in list order and often covered the living ones fighting beside them. The stage is now its own stacking context (`isolation: isolate`), with layers from back to front: scenery (z -3), weather (-2), corpses (-1), then everything else in DOM order (fight lines, living figures, bubbles, gauges); your figure and duelists keep their raised layers. Verified with a real layout probe: at an overlap the living creature is on top, and a corpse alone still paints above the scenery.
+
+### 52.7 The Overview card: one row for the stream and the stats
+
+The card's stream picker ("showing [Game window]") and its session stats (up, idle, lines, rooms…) share one row (`.ov-card-meta`) that wraps on a narrow tile. The compact size tier hides the row when there is no picker, and the micro tier hides it entirely.
+
+### 52.8 Cost and budget
+
+- **Classifying**: 293µs per room on average, about 1ms at worst, once per room change (a `useMemo` on title, description and town). Working out the town costs about 0.2ms more, for every connected character, since it must be known before a Tableau opens.
+- **Drawing**: mean 47 shapes, worst 237 (Aesry's courtyard terraces), measured over every room. Static and memoized: the Tableau's own re-renders don't redraw it.
+- **Checked over every room in every sky** (94,770 renders): no invalid value in the markup, no exception, and the same picture each time.
+
+### 52.9 No slash command (decided)
+
+Scenery is drawn from the room, with the ⚙ **Scenery** layer to turn it off. There is nothing to type, so per §34.6 and Principle #11 there is no command.
+
+### 52.10 Known limits
+
+- Some wall materials aren't recognised (brickwork, paneling, metal sheets).
+- A shop whose title doesn't say "shop" and whose text doesn't sell is drawn as a hall.
+- A negated thing can still be drawn ("not even birds").
+- A few trees can turn a meadow's ground to forest.
+- Things the drawing has no vocabulary for: water in caves, a ship's deck, cliff walls.
+- "Nest" is matched only in its clearest forms, catching about a third of the rooms that mention one.
+- Words are matched, not understood: a new figure of speech will slip through until someone sees it. Find it with `hits.ts` or `modsurvey.ts`, fix the general rule, and diff the whole map.
+
+### 52.11 Moonskin and each moon's next full (Moons)
+
+Vellinous asked for the Rakash Moonskin times that Mahtra's DRMoonWatch site shows; Mahtra (Destahd) pointed us at [the code](https://github.com/MahtraDR/DRMoonWatch).
+
+- **What it is.** Rakash take their moonskin form while **Katamba is full** (Knowledge.md §16): from the minute the phase index becomes 4 until the minute it leaves 4. It is a pure function of time, and Lichborne already had the phase math (F64a, `moonPhase`), so nothing new is needed from the game, Lich or moonwatch. DRMoonWatch has no license, so the algorithm is re-derived from our own constants rather than copied.
+- **The math** ([experiences.ts](src/renderer/experiences.ts)):
+  - `nextPhaseChange(moon, serverMs, target, leaving)` steps `moonPhase`'s exact integer math minute by minute (a phase can only change on a minute, so this is exact, unlike `secondsToNext`'s averaged rate);
+  - `moonskinWindow(serverMs)` returns the window in progress or the next one, `{ active, start, end }` in server time;
+  - `nextFullAt(moon, serverMs)`.
+
+  Harness: `tmp-moon-harness/moonskin.ts` (20 cases) reproduces Elanthipedia's 2012 table to the minute, the edges (the start minute is in, the end minute is out), DRMoonWatch's 2026 window, and agreement with `moonPhase`.
+- **Cost:** a scan is up to ~14,000 steps. Moonskin and three next-fulls take about 0.6ms together, so `skyCalendar` recomputes them once per server minute in a module-level cache. It is not a hook, because MoonsExperience returns early before its hooks (the Rules-of-Hooks crash Moons has hit before).
+- **Display:**
+  - The footer gains a **moonskin** segment beside the date: "Mon 12:55 AM · in 21h 5m · lasts 28h 11m", or "now · ends 9:06 AM, in 18h 44m". Times are computed on the server clock and shown on yours. The segment's hover gives the full dates and says it is computed.
+  - Each moon's hover adds **Next full** as a date, and **Katamba's hover adds the Moonskin window** ("Moonskin: now, until …" or "Moonskin: <start> to <end> (28h 11m)"; Sekmeht). Both come from the shared `phaseLines`, so the scene disc and the pill cell say the same thing. The ⚙ **Moonskin** switch hides it there as well.
+  - Hover text uses only fixed clock times, never a ticking "in …" (pitfall #145).
+  - Countdowns round UP (`spanLabel`), so the last half-minute reads "1m", never "0m" while the window hasn't started or ended.
+  - **Clock direction:** an event at server time T shows at local T − offset. `tmp-moon-harness/render.tsx` (11 cases, the real component) checks it: with the server an hour ahead, the same window shows an hour earlier on your clock. The same harness covers the footer, Katamba's hover, ⚙ Moonskin and ⚙ Calendar on and off.
+- **Shown to everyone**, not only Rakash (Sekmeht: you may need to know when OTHER Rakash change). It has its own ⚙ layer, **Moonskin** (on), independent of **Calendar**, so either can show without the other.
+- **No slash command** (§34.6: the window and ⚙ are the surface).
+- **Limit:** the Moons scene draws only once moonwatch's feed has arrived, so a player without Lich doesn't see Moonskin yet, even though it needs no feed. Showing the scene's phase-only parts (phases, Moonskin, next fulls) before the feed arrives is the natural follow-up, together with an uncalibrated rise/set from DRMoonWatch's three epochs, which we don't hold.
+
+### 52.12 Your posture, and a round of window and Tableau fixes
+
+**Your posture as a chip (F135, Sekmeht).**
+- Sitting, Kneeling or Prone shows as a chip on your conditions line.
+- Data source: `combat.stance`, which the game's posture indicators set. The Icon Bar's stance chip reads the same value, so the Tableau already received it but drew nothing.
+- Colours: the Icon Bar's own themed `--stance-*` values.
+- Order on the line: danger conditions, then posture, then hidden/invisible/joined. It shares the line's three-chip limit and "+N".
+- Hidden when: you're Standing (quiet by default), or you're dead (lying down is implied).
+- Hover text: from `CONDITION_TITLES` ("Sitting — you are sitting down. STAND to get up.").
+- Follows the ⚙ **Your conditions** switch; the "?" key and the ⚙ text say so.
+- **Checked during a fight with everything firing**, in a live render on both themes and a small panel: the chip line never meets the combat gauges, because the app lifts your figure clear of them. Seven render scenarios cover it in `tmp-v0202-harness/tableau-render.tsx`.
+
+**Hidden fades you, not your conditions (B508).** Hidden and invisible used to fade the whole figure, so "Bleeding" went faint exactly when you were hidden. Only the avatar and your name fade now.
+
+**Creature tags over your avatar (B509).**
+- **Cause:** the battlefield's pixel relaxation treated you as one 6.2×6.6em box. A live measurement shows your figure is 12em wide and 7.3–8.5em tall, with the avatar at its top.
+- **Model now:** two fixed boxes.
+  - Avatar + name: 5.76em tall from the figure's top, 6.2em wide, plus 0.6em for the readiness rings.
+  - Status lines: 0.5em gap, then 1.0em conditions and 1.2em hands, 12em wide.
+- **Loop rules:** fixed boxes never push each other, and are never written back (their centres aren't your position).
+- **If your figure changes shape, re-measure it:** `tmp-v0202-harness/chips-live.tsx` prints the parts in em.
+
+**Floating bar windows (B507, Qij).**
+- A rect is a fraction of the game area, but a bar's height comes from the font, so a smaller screen clipped the bars top and bottom.
+- `FloatingWindow` measures a chrome window's bar for drawing only (never persisted, pitfall #93; a 0 reading from a hidden tab is ignored, #83).
+- It draws the window at least bar + 2px border tall, moves it up rather than past the bottom, and floors resizing at the bar.
+- Stored rects are unchanged; "Fit bars to content" still writes exactly the bar height.
+- **The bar windows show their name only on hover**: the focused command bar's name sat over the top of the input while you typed. It stays visible while you rename (a bug the bug check caught).
+
+**A readable title bar (B510, Sekmeht).**
+- The strip's font was 0.5em, a 6px name. That size was chosen when the header was a flow row that pushed content down; since v0.18.1 it is an overlay, so it can open up without moving anything.
+- Pointing at the strip itself, or renaming (`fl-titlebar--open`), opens it to `max(10px, 0.8em)` text in a 2em bar, with full-strength buttons. A hovered ✕ still lights: a later rule at equal specificity.
+- Hovering the window body doesn't open it, so a mouse resting over game text never covers its top line.
+
+**Decided against (recorded so they aren't re-proposed without a fresh ask):**
+- Shrinking or abbreviating long full-vitals labels at large fonts in narrow windows: "Concentration 77%" can spill past its bar. Compact vitals already avoid it (Sekmeht: leave it).
+- Computing moon rise and set natively to drop moonwatch.lic: researched 2026-10-04 and passed on for now.
+  - Findings: the moons are a pure function of time plus three published start times; moonwatch v4.x is that formula plus a learned per-character offset, and no longer crowd-sources.
+  - The Moons waiting screen still says "crowd-sourced", which is out of date.
+
+**No slash command** for any of these: they're display behaviour (Principle #11).

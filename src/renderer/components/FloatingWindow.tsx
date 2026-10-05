@@ -71,20 +71,48 @@ export default function FloatingWindow({ win, container, focused, onFocus, onCha
   const [renaming, setRenaming] = useState(false)
   const [draft, setDraft] = useState(win.title ?? '')
 
-  // px geometry derived from the fractional rect × current container size.
-  const px = {
-    left:   win.rect.x * container.w,
-    top:    win.rect.y * container.h,
-    width:  win.rect.w * container.w,
-    height: win.rect.h * container.h,
-  }
-
   // Chrome strips (command / vitals / icon) keep their conversion size but are
   // user-resizable in BOTH axes like panels. Height stays explicit/deterministic
   // — never `height: undefined` auto-height, which measured 0-tall on first
   // paint and shoved the layout (pitfall #74). The bar is centered in the body
   // (CSS), so growing/shrinking pads/clips symmetrically.
   const isChrome = win.kind === 'command' || win.kind === 'vitals' || win.kind === 'icon'
+
+  // The chrome bar's own height, measured for DRAWING ONLY (B507, Qij). A rect
+  // is stored as a FRACTION of the game area, but a bar's height comes from the
+  // font, so on a smaller screen (a laptop) or a shorter Lichborne window the
+  // stored fraction gives fewer pixels than the bar needs, and the bar was cut
+  // top and bottom: chopped vitals, a crunched command line. The window is now
+  // never DRAWN shorter than its bar. Nothing measured is saved (pitfall #93):
+  // the rect only changes when you drag or resize. A 0 reading is ignored, so a
+  // hidden character tab (display:none, 0×0) keeps the last real one (#83).
+  const [barH, setBarH] = useState(0)
+  useEffect(() => {
+    if (!isChrome) return
+    const bar = rootRef.current?.querySelector('.fl-body > *') as HTMLElement | null
+    if (!bar) return
+    const ro = new ResizeObserver(() => {
+      const h = bar.offsetHeight
+      if (h > 0) setBarH(prev => (prev === h ? prev : h))
+    })
+    ro.observe(bar)
+    return () => ro.disconnect()
+  }, [isChrome])
+  // The window's own 1px border, top and bottom (box-sizing: border-box).
+  const chromeFloorH = isChrome && barH > 0 ? barH + 2 : 0
+
+  // px geometry derived from the fractional rect × current container size —
+  // with a chrome window drawn at least as tall as its bar, kept on screen by
+  // moving it UP when it would run past the bottom (a docked command bar).
+  const rawTop = win.rect.y * container.h
+  const rawH = win.rect.h * container.h
+  const drawH = Math.max(rawH, chromeFloorH)
+  const px = {
+    left:   win.rect.x * container.w,
+    top:    drawH > rawH ? Math.max(0, Math.min(rawTop, container.h - drawH)) : rawTop,
+    width:  win.rect.w * container.w,
+    height: drawH,
+  }
 
   // Show/position the shared snap guide lines (imperative — no re-render).
   function setGuides(gx: number | null, gy: number | null) {
@@ -151,7 +179,9 @@ export default function FloatingWindow({ win, container, focused, onFocus, onCha
     // a size the user already has. Without this, touching a fitted window
     // snapped it back up to the floor (Sekmeht).
     const floorW = Math.min(min.w, start.width)
-    const floorH = Math.min(min.h, start.height)
+    // …but never below the chrome bar itself: a bar window shorter than its bar
+    // only clips it (B507).
+    const floorH = Math.max(Math.min(min.h, start.height), chromeFloorH)
     const el = rootRef.current
     const targets = getSnapTargets(win.id)
     function onMove(ev: MouseEvent) {
@@ -328,7 +358,9 @@ export default function FloatingWindow({ win, container, focused, onFocus, onCha
           affordances — they come back with the header when you unlock.) */}
       {!locked && (win.showTitle ? (
         <div
-          className="fl-titlebar"
+          // --open: stays a full-size, readable bar while renaming (the strip
+          // also opens while you point at it — free-layout.css).
+          className={`fl-titlebar${renaming ? ' fl-titlebar--open' : ''}`}
           onMouseDown={beginDrag}
           onDoubleClick={() => { setDraft(win.title ?? ''); setRenaming(true) }}
         >

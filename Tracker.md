@@ -6,6 +6,74 @@
 
 ---
 
+## v0.20.3 — The Tableau's sense of place: towns in their own style, furnished rooms, a prop round · every room reviewed · corpses behind the living · Moonskin in Moons · your posture in the Tableau · floating bars that never clip
+
+Sekmeht's request to make the Tableau's backdrop show where you actually are, then "just run through all of the rooms", then "is it the thing, or part of another thing?". DESIGN §52.
+
+- **Towns (tableauPlaces.ts).** 39 towns in 13 building styles (river, harbor, tiers, floating, sandstone, crystal, elven, dwarven, logs, clan, tents, ruins, fortress), with default horizons, Aesry's mist and volcanic country. The town comes from the title, from a GENERATED prefix table (`placeData.ts` by `tools/gen-place-data.mjs`, from the map's `location` field: 184 prefixes, 3,948 rooms), or from the last town this character was in (GameWindow's `resolvePlace` memo, passed to the Experience as `place`). It is dropped on open wilderness and kept while a room's description hasn't arrived.
+- **What a room contains (`sceneThings`).** Indoors: wall material, light, up to three furnishings in fixed slots, and a shop's wares on its shelves or racks. Outdoors and in caves: up to four props, which must be HERE and be described, not just named in the title. Paving on the ground. New terrain (jungle, savannah, dead trees, moor, ash), kinds of cave (natural, tunnel, mine, sewer, ice), haze, a volcano, snow on the peaks.
+- **Every room reviewed.** Reviewers read all 18,945 rooms (38 chunks) and reported recurring mistakes; each became a general rule, checked by diffing the whole map. Rule families:
+  - the title's room part: outdoor and street words beat a named building; "outside/behind/before"; ambiguous words (balcony, bridge, gate…) decide nothing;
+  - title words confirmed by the description (ruins, lava, farm, swamp…);
+  - an indoor title alone doesn't beat strong open-air evidence;
+  - figures of speech (dry water, similes, "beds of", tree materials, painted scenes);
+  - fallbacks for the ground and for a town street.
+
+  Wrong rate 8.7% → 5.4% (the 500-room validation pass was judged more strictly).
+- **Prop round (Sekmeht: "did you also scan for more props?").** 10 props (hut, pillars, pool, crates, arbor, obelisk, nest, stalactites, bell, brazier) and 7 fixtures (paintings, statue, workbench, mannequins, mirror, stage, a sunken pool drawn on the floor). Obelisks and standing stones no longer draw as a tower or a boulder. Each was checked by reading real hits for false matches ("loom" the verb, "shadows pool", "Mirror Lake", "Viper's Nest", bluebells, "center stage", "Bower Gate", a fire ring of stones), then eyeballed on dark and light themes; pools got a deeper water colour (`.tb-pool`). Coverage 41.9% (before v0.20.3) → 59.7% → 63.0%.
+- **"Is it the thing, or a word describing something else?" (Sekmeht, room 768's "cobblestones flecked with crystals").**
+  - `tmp-v0203-scene/modsurvey.ts` checks every prop and fixture mention across the map by the word that follows it.
+  - The rules it produced:
+    - `DESCRIBES` around every pattern ("-like", "-shaped", "-colored", "-carved"…; "-covered/-lined/-filled" stay the thing);
+    - material/part lookaheads (oak door, tree stump, log walls, wagon tracks, hog skull, bird feeder, Gull Circle; bird rules only after a singular bird word);
+    - crystals (surface, decoration, material, ice; caves exempt);
+    - stalls ("the trees stand").
+- **The Overview card's stream picker and stats share one row** (`.ov-card-meta`, Sekmeht).
+- **Moonskin in Moons (Vellinous; Mahtra/Destahd pointed at DRMoonWatch).** Rakash change while Katamba is full, so it is pure phase math. New in experiences.ts:
+  - `nextPhaseChange`: an exact minute step over `moonPhase`'s integer math;
+  - `moonskinWindow` and `nextFullAt`.
+
+  Display:
+  - a **moonskin** segment in the footer, with times on your clock and its own ⚙ layer (on, shown to everyone per Sekmeht);
+  - **Next full** in each moon's hover, and the Moonskin window in Katamba's (Sekmeht);
+  - recomputed once a minute in a module cache (0.6ms), not a hook.
+
+  `tmp-moon-harness/moonskin.ts` 20/20: Elanthipedia's 2012 table to the minute, the edges, DRMoonWatch's 2026 window. `render.tsx` 11/11: the real component's footer and Katamba's hover, with ⚙ on/off and Calendar on/off, and the clock direction (server an hour ahead → shown an hour earlier). **Bug check (2026-10-04):**
+  - countdowns now round up ("1m", never "0m", in the last half-minute);
+  - no hook after the component's early return;
+  - an invalid clock returns null rather than looping;
+  - every scan is capped at 25 days against a longest phase cycle of ~10 days (Yavash);
+  - `escscan.js` now skips comment lines, which had raised a false alarm.
+
+  It also found a long-standing doc error, now corrected: the User Guide and CLAUDE.md said Moons still gives a day/night sky without moonwatch, but the whole scene waits for the moonwatch feed. The repo has no license, so it is re-derived, not copied. Knowledge.md §16 corrected: moonwatch v4.5.4 maps 7 of 8 observe wordings (8 of 8 for Moon Mages), and a new moon rises unannounced. DESIGN §52.11.
+- **B505:** dead creatures were drawn over the living. The stage now isolates its layers: scenery, weather, corpses, then everything else.
+- **B506:** + Connect while playing showed nothing until the tab landed (v0.20.2 bug: an optional chain swallowed the placeholder tabs).
+- **Your posture in the Tableau (F135, Sekmeht).** A Sitting / Kneeling / Prone chip on your conditions line, in the Icon Bar's stance colours. From `combat.stance`, which the Tableau already received but never drew. Standing and dead show none. Placed after the danger conditions. It was checked in a live fight with everything firing: the chip line never meets the gauges. 7 render scenarios. (Bleeding and stunned already had chips.)
+- **B508:** hidden/invisible faded your whole figure, chips included. Now only the avatar and name fade.
+- **B509:** a creature in front of you had its tags over your avatar. Measured live: you are 12em wide and 7.3–8.5em tall, with the avatar at the top, against the layout's 6.2×6.6em guess. You are now two fixed boxes (avatar + rings, and the status lines). No overlap in any scenario.
+- **B507 (Qij):** floating vitals and command bars were clipped on smaller screens, because the rect is a fraction of the area and the bar height comes from the font. Reproduced at fonts 12–18, matching every detail of the report. The window is now drawn at least as tall as its bar (measured for drawing, never saved), moves up rather than off-screen, and can't be resized below it. Follow-up: the bar windows show their name only on hover (the focused command bar's name sat over the input).
+- **B510 (Sekmeht):** the window title bar was unreadable (a 6px name). Pointing at the strip, or renaming, now opens it to a readable bar (at least 10px, a 14×20 close target) without moving anything. It stays slim otherwise.
+- **Decided against:**
+  - abbreviating long full-vitals labels at large fonts;
+  - computing moon rise and set natively to drop moonwatch.lic (researched, passed on for now). The research is recorded in DESIGN §52.12.
+- **Bug check (2026-10-04, this round).** It found one in-release bug: renaming a bar window hid its rename box once the pointer left. It is fixed and verified with a real double-click.
+
+  Verified:
+  - both type checks;
+  - the escape scan;
+  - every Tableau render scenario and 232/232 in the main Tableau harness;
+  - live Electron checks: B507 0px clipped in 8/8, the chip line clear of the gauges in 10/10, no creature-tag overlap, and the title bar and hover states measured on both themes.
+- **Bug checks (three passes).** In-release fixes:
+  - a room change could forget the town when the description arrived in a later batch;
+  - "a bed of roses", "flower beds" and "flowerbeds" lost their flowers (17 rooms; pitfall #176);
+  - six compound rules never fired because `\b` in a quoted string is a backspace (pitfall #175; `escscan.js` now checks for it);
+  - the first bird rule removed birds from "pigeons circle" and "birds nest in the branches";
+  - a giant skeleton lost its bones;
+  - "the trees stand" drew a market stall;
+  - a misplaced doc comment, and the survey helper's duplicated "here" step merged into one function.
+- **Checks:** both type-check configs clean. `tmp-v0203-scene/run.ts` passes 70/70 (39 scenery + 31 "thing or describing word", §M). Every room renders cleanly in every sky (94,770 renders, `nan.tsx`). Shape budget: mean 47, worst 237. Classifying costs 293µs per room change (1ms worst). The corpse layering was verified in an Electron layout probe with the real stylesheet. `placeData.ts` is byte-identical to a fresh generator run.
+- **No slash command by design** (DESIGN §52.9). **No profile-shape change**: `place` is runtime state, and the new ⚙ text is a description change only.
+
 ## v0.20.2 — The Living Tableau in combat · creatures by id (corpses where they fall) · a screen that holds still
 
 Sekmeht's Tableau review ("it's FUN! a cornerstone"), then creative freedom and a run of captured XML from his two characters (Agan and Sekmeht) hunting together. DESIGN §51.

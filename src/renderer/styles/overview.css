@@ -360,6 +360,8 @@
  */
 @container ovcard (max-width: 21em) {
   .ov-card-stats { display: none; }
+  /* With the stats gone and no picker, the shared row would be an empty divider. */
+  .ov-card-meta:not(:has(.ov-card-streampick)) { display: none; }
   .ov-card-here { display: none; }
   .ov-card-cond { display: none; }
 }
@@ -376,6 +378,7 @@
      it. Any future alternative content for that slot needs the same line. */
   .ov-card-exp { display: none; }
   .ov-card-streampick { display: none; }
+  .ov-card-meta { display: none; }
   .ov-card-room { display: none; }
   .ov-card-game { display: none; }
   .ov-card-mode { display: none; }
@@ -705,14 +708,24 @@
  * 0.5em the label of one chip sat as close to the value of the previous one as
  * to its own, and the row scanned as one run-on string (Sekmeht's screenshot:
  * "UP 47m IDLE 21s LPM 2 RANKS 6 ROOMS 564 LOCKED 1"). */
+/* v0.20.3: the stream picker and the stats share one row (Sekmeht); the divider
+   above them belongs to the row now, not the stats. */
+.ov-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.9em;
+  row-gap: 0.35em;
+  line-height: 1;
+  padding-top: 0.4em;
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
 .ov-card-stats {
   display: flex;
   flex-wrap: wrap;
   column-gap: 0.9em;
   row-gap: 0.3em;
   line-height: 1;
-  padding-top: 0.4em;
-  border-top: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 .ov-stat { display: inline-flex; align-items: baseline; gap: 0.3em; font-size: 0.75em; line-height: 1; }

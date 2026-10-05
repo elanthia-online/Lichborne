@@ -19,6 +19,7 @@ import type { AppSettings } from './settings'
 import type { Contact, ContactTemplate } from './contacts'
 import type { FloatRect } from './freeLayout'
 import type { DirectedVerb } from './utils/sayTo'
+import type { PlaceKey } from './components/experiences/tableauPlaces'
 import TableauExperience from './components/experiences/TableauExperience'
 import MoonsExperience from './components/experiences/MoonsExperience'
 import SpellMonitorExperience from './components/experiences/SpellMonitorExperience'
@@ -288,6 +289,84 @@ export function moonPhase(moon: string, serverUnixMs: number): MoonPhase | null 
     secondsToNext: Math.round(((45 - (angle % 45)) / rate) * 60),
   }
 }
+
+// ── Phase changes and Moonskin (v0.20.3) ──────────────────────────────────
+//
+// Rakash take their moonskin form while Katamba is FULL (Elanthipedia,
+// "Moonskin"), so the window is exactly Katamba's full phase: from the minute
+// its phase index becomes 4 until the minute it leaves 4. Mahtra's DRMoonWatch
+// (github.com/MahtraDR/DRMoonWatch, by Destahd) shows it the same way, and its
+// full-phase boundaries match Elanthipedia's observed Moonskin table to the
+// minute; so do these (tmp-moon-harness/moonskin.ts, the 2012 windows).
+// Shown to everyone, not only Rakash (Sekmeht: you may need to know when OTHER
+// Rakash change).
+
+/** The phase index at an absolute minute — moonPhase's integer math, exactly. */
+function phaseIndexAtMinute(sidereal: number, min: number): number {
+  const orbital = Math.floor(((min % sidereal) * 360) / sidereal)
+  const doy = Math.floor((min + PHASE_EPOCH_SKEW_ROIS) / 360) % PHASE_DAYS_PER_YEAR
+  const angle = (orbital + Math.floor((doy * 360) / PHASE_DAYS_PER_YEAR)) % 360
+  return Math.floor((angle * 8) / 360) % 8
+}
+
+/**
+ * The first minute (server ms) after `serverUnixMs` at which `moon` ENTERS
+ * phase `target` (or, with `leaving`, is no longer in it). A phase can only
+ * change on a whole minute, so stepping the exact integer math minute by minute
+ * gives the exact answer — `secondsToNext` is an estimate, this is not. A full
+ * cycle is ~14k steps; callers memo it per minute. Null past `maxDays`.
+ */
+export function nextPhaseChange(moon: string, serverUnixMs: number, target: number, leaving = false, maxDays = 25): number | null {
+  const sidereal = SIDEREAL_ROIS[moon]
+  if (!sidereal) return null
+  let min = Math.floor(serverUnixMs / 60_000)
+  const stop = min + maxDays * 1440
+  // Entering: first step past the bucket we are in (if it is already the target).
+  let prevIn = phaseIndexAtMinute(sidereal, min) === target
+  for (min += 1; min <= stop; min++) {
+    const isIn = phaseIndexAtMinute(sidereal, min) === target
+    if (leaving ? !isIn : isIn && !prevIn) return min * 60_000
+    prevIn = isIn
+  }
+  return null
+}
+
+/** The minute (server ms) the CURRENT phase began, scanning back. */
+function phaseStart(moon: string, serverUnixMs: number, maxDays = 25): number | null {
+  const sidereal = SIDEREAL_ROIS[moon]
+  if (!sidereal) return null
+  let min = Math.floor(serverUnixMs / 60_000)
+  const idx = phaseIndexAtMinute(sidereal, min)
+  const stop = min - maxDays * 1440
+  while (min > stop && phaseIndexAtMinute(sidereal, min - 1) === idx) min--
+  return min > stop ? min * 60_000 : null
+}
+
+export interface MoonskinWindow {
+  /** true while Katamba is full now. */
+  active: boolean
+  /** Server ms. The window in progress, or the next one. */
+  start: number
+  end: number
+}
+
+/** The Rakash Moonskin window in progress, or the next one. Server time in and out. */
+export function moonskinWindow(serverUnixMs: number): MoonskinWindow | null {
+  const p = moonPhase('katamba', serverUnixMs)
+  if (!p) return null
+  if (p.index === 4) {
+    const start = phaseStart('katamba', serverUnixMs)
+    const end = nextPhaseChange('katamba', serverUnixMs, 4, true)
+    return start != null && end != null ? { active: true, start, end } : null
+  }
+  const start = nextPhaseChange('katamba', serverUnixMs, 4)
+  if (start == null) return null
+  const end = nextPhaseChange('katamba', start, 4, true)
+  return end != null ? { active: false, start, end } : null
+}
+
+/** When `moon` is next FULL (server ms), or null. */
+export const nextFullAt = (moon: string, serverUnixMs: number): number | null => nextPhaseChange(moon, serverUnixMs, 4)
 
 const MOON_BY_LETTER: Record<string, 'katamba' | 'yavash' | 'xibar'> = { k: 'katamba', y: 'yavash', x: 'xibar' }
 
@@ -1341,6 +1420,11 @@ export interface ExperienceProps {
   weather?: WeatherInfo
   // v0.17.0 (Moons Tier 2): last-observed Elanthian calendar (from TIME).
   calendar?: CalendarInfo
+  // v0.20.3: the town this character is in — named by the room title, or the
+  // last town it named while the room could still be in town. GameWindow keeps
+  // it per character, so a building whose title never names its town keeps
+  // the town's look (tableauPlaces.ts).
+  place?: PlaceKey | null
   // v0.19.5 (Spell Monitor, Experience #3): the parsed percWindow readout —
   // every effect currently on you with an absolute expiry. Derived in
   // GameWindow from `streamLines.spells` and only re-committed on a real
@@ -1441,7 +1525,7 @@ export const EXPERIENCES: ExperienceDef[] = [
     // Grouped into sections for the ⚙ (v0.20.2). Combat layers auto-reveal while
     // combat is live (G1, DESIGN §32.1).
     options: [
-      { id: 'scenery',   label: 'Scenery',         desc: 'A backdrop drawn from the room description: the sky tinted by the time of day, what is on the horizon and in front of it (peaks, trees, rooftops, walls, ruins, water, a road), the walls of a room indoors or the roof of a cave, and the ground beneath everyone.', section: 'Scene' },
+      { id: 'scenery',   label: 'Scenery',         desc: "A backdrop drawn from the room description: the sky by the time of day; what is on the horizon and in front of it (peaks, trees, jungle, rooftops, ruins, water, a road, a volcano), and things standing there (a fountain, a well, stalls, a dock); indoors, the walls, the light and the furnishings, and in a shop what it sells. A town is drawn in its own style (Shard's crystal spires, Muspar'i's domes, Ratha's terraces), and a building that doesn't name its town keeps the look of the last one you were in.", section: 'Scene' },
       { id: 'weather',   label: 'Weather',          desc: 'Rain, snow and clouds over the scene from your last weather reading (glance at the sky, or WEATHER), while you are outside and it is under half an hour old.', section: 'Scene' },
       { id: 'creatures', label: 'Creatures',      desc: 'Creature figures lining the back of the scene. One that dies stays where it fell, greyed with a skull, until its body decays or is skinned. Off also turns off the creature side of the combat view (a fight with a player still shows).', section: 'Scene' },
       { id: 'moves',     label: 'Arrivals & departures', desc: 'Walk-ins from the direction they came, and fading figures walking out the way they left.', section: 'Scene' },
@@ -1453,7 +1537,7 @@ export const EXPERIENCES: ExperienceDef[] = [
       { id: 'poses',     label: 'Emote poses',      desc: 'An emote moves the figure as well as captioning it: a bow dips, a wave wiggles, a laugh bounces, a jump hops.', section: 'People' },
       { id: 'group',     label: 'Your group',      desc: 'Your group, from the GROUP list, stands in a row with you along the bottom: members here nearest you, members elsewhere faded at the ends. The leader, anyone hurt (with a small health meter), and how many are on a member are marked under them.', section: 'People' },
       { id: 'hands',     label: 'Your hands',       desc: 'What you are holding, on one line under your figure: one item centred, two side by side with the left hand on the left. A long name keeps its last word (the noun) and cuts the rest short; hover for all of it. The line keeps its place when a hand is empty, so drawing or stowing something never moves your figure.', section: 'Your character', defaultHidden: true },
-      { id: 'conditions', label: 'Your conditions', desc: 'Your conditions as words under your figure, in the icon bar colours: bleeding, stunned, poisoned, hidden, joined and the rest, danger first. They keep one line, so one coming or going never moves your figure; past three, a +N names the rest.', section: 'Your character' },
+      { id: 'conditions', label: 'Your conditions', desc: 'Your conditions as words under your figure, in the icon bar colours: bleeding, stunned, poisoned, hidden, joined and the rest, danger first, plus whether you are sitting, kneeling or prone. They keep one line, so one coming or going never moves your figure; past three, a +N names the rest.', section: 'Your character' },
       { id: 'moments',   label: 'Moments',          desc: 'Flourishes for things worth seeing: a gold burst when you gain a rank, and a glow while you prepare a spell (with its name).', section: 'Your character' },
       { id: 'danger',    label: 'Danger pulse',    desc: 'Your figure pulses in alarm when you are stunned, webbed, bleeding, poisoned or diseased.', section: 'Your character' },
       { id: 'battle',    label: 'Combat view',     desc: 'During a fight, the scene rearranges to show it: everyone in a fight stands where your last assess puts them (facing, behind, flanking, at their range), your group beside you, other fights in their own groups, and everyone else steps aside to the left. It starts when you ASSESS or another player engages you, and returns to the social view 30 seconds after your last assess, unless something is still on you. Off by default: a fight with another player still takes centre stage without it.', section: 'Combat', defaultHidden: true },
@@ -1499,6 +1583,7 @@ export const EXPERIENCES: ExperienceDef[] = [
       { id: 'weather',    label: 'Weather',            desc: 'The last sky prose you observed (after WEATHER or any sky-glance), shown verbatim. Click ⟳ to check the weather now.' },
       { id: 'weatherfx',  label: 'Weather effects',    desc: 'Live sky animation matching the detected weather — falling snow or rain, drifting clouds, an overcast deck. (The epilepsy-safe accessibility setting also disables these.)' },
       { id: 'calendar',   label: 'Calendar',           desc: 'The Elanthian date, month, year, season and time of day (from the TIME command). Click ⟳ to refresh — it and the weather are checked silently.' },
+      { id: 'moonskin',   label: 'Moonskin',           desc: 'When Rakash next take their moonskin form, and for how long, or when the one in progress ends. It lasts exactly while Katamba is full, and is computed from the moons\' phase (it matches Elanthipedia\'s moonskin table to the minute). It shows in the footer and in Katamba\'s hover; each moon\'s next full is in its hover text.' },
     ],
     textEquivalent: 'The Moons stream panel (moonwatch\'s own window) and `perceive moons`; sunrise/sunset announce themselves in the main window; weather is the WEATHER command / any sky-glance.',
   },

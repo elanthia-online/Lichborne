@@ -70,6 +70,36 @@ A few ideas shape everything:
 
 ## What's New in the Latest Version
 
+**v0.20.3**
+
+- **Towns in their own style.** The Living Tableau draws each town the way it
+  looks: Shard's crystal spires, Muspar'i's sandstone domes, Ratha's terraces
+  over the sea, Mer'Kresh floating on the water, the clans' longhouses. Step
+  into a building whose name doesn't say the town, and it remembers where you
+  are.
+- **Rooms, furnished.** Indoors you see what the room is made of, what lights
+  it, and up to three furnishings it describes (shelves, a bar, a hearth, an
+  altar, paintings, mannequins, a stage…). A shop shows what it sells.
+- **Things in the scene.** Outdoors and in caves, up to four things the room
+  describes stand in front of the scenery: a fountain, a well, stalls, a dock,
+  huts, columns, a pond, standing stones, a campfire, grazing animals… plus
+  jungle, savannah, moorland, volcanoes and kinds of cave.
+- **It reads what the room says.** "Cobblestones flecked with crystals" draws
+  no crystals, "an oak door" is not a tree, and "rose colored curtains" draws
+  no roses, while "a bed of roses" does.
+- **Moonskin in Moons.** The footer shows when Rakash next take their moonskin
+  form and how long it lasts (exactly while Katamba is full), and each moon's
+  hover says when it's next full.
+- **Your posture in the Tableau.** A chip under your figure says when you're
+  sitting, kneeling or prone.
+- **Floating windows that fit.** Vitals and command bars no longer get cut off
+  on a smaller screen; the bar windows show their name only on hover; and
+  pointing at a window's thin top strip opens a readable title bar.
+- **Fixed:** dead creatures no longer cover the living ones in the Tableau; a
+  creature in front of you no longer has its tags over your avatar; your
+  condition chips stay readable while you're hidden; and connecting another
+  character with **+** while you play shows it connecting again.
+
 **v0.20.2**
 
 - **The Living Tableau shows your fights.** Run `ASSESS` and the scene turns
@@ -101,25 +131,6 @@ A few ideas shape everything:
   different font, and the row of character tabs can no longer change the
   height of the bar above your game text (it now scrolls with a thin overlay
   bar instead).
-
-**v0.20.1**
-
-- **Text styles.** Give room names — or speech, thoughts, whispers, bold text,
-  room descriptions and your own commands — their own font, size, bold,
-  italic, capitals and text effect, under **Settings → Text styles**. Make room
-  names big and fancy; leave the rest alone and it looks exactly as before.
-- **Compass options.** Show or hide the compass, make it smaller or larger,
-  move it to any corner, give it a backing so it stands out over busy text,
-  choose how faint the unavailable exits are, and optionally click an arrow to
-  walk. In **Settings → Layout**, or `/compass`.
-- **Talk from the Living Tableau.** Right-click a person for **Say to…** or
-  **Whisper to…** — it types `say @Name ` or `whisper Name ` into your command
-  bar for you to finish. Contacts also get their card there.
-- **A tidier update notice.** New versions show as a small **Update** pill in
-  the top bar instead of a bar across the window. Click it to see what's new,
-  download, and restart when you're ready — it asks first if characters are
-  connected. (Windows and Linux. A Mac doesn't update itself: **Help → Check
-  for Updates** points you to the download page.)
 
 ## On the Horizon (Roadmap)
 
@@ -345,7 +356,7 @@ there; and Lichborne always starts in Session view.
 Lichborne shows the game plus side "panels" (streams like Thoughts, Combat, Room, Experience, Maps…).
 
 - **Static Panels** (default) — panels sit docked in tidy zones.
-- **Windowed Panels** — flip this in the **Layout** manager (**Layout** on the top bar → *Layout Manager*) and your *whole* layout floats: main text, input bar, vitals, status icons, and every panel become independent windows you can drag, resize, and **snap together** (they click flush to each other and the screen edges, with guide lines). Add as many panel windows as you like, hide a window's title bar for a compact look, and **lock** the layout when it's just right — locking hides every window's drag handle and border chrome, so a locked layout reads like the docked one. The drag handle sits *over* your content rather than taking a slice of it, so what you arrange is exactly what you get once locked. If the vitals / status / command bars look taller than their contents, **Fit bars to content** in the Panels manager snaps them down in one click.
+- **Windowed Panels** — flip this in the **Layout** manager (**Layout** on the top bar → *Layout Manager*) and your *whole* layout floats: main text, input bar, vitals, status icons, and every panel become independent windows you can drag, resize, and **snap together** (they click flush to each other and the screen edges, with guide lines). Add as many panel windows as you like, hide a window's title bar for a compact look, and **lock** the layout when it's just right — locking hides every window's drag handle and border chrome, so a locked layout reads like the docked one. The drag handle sits *over* your content rather than taking a slice of it, so what you arrange is exactly what you get once locked. **Point at that thin strip and it opens into a readable title bar** with the window's name and its collapse (⌃) and close (✕) buttons; double-click the name to rename the window. The vitals, input and status windows show their strip only when you hover them, so it never covers the line you're typing in. A bar window is never drawn shorter than its bar, so the bars don't get cut off on a smaller screen. If the vitals / status / command bars look taller than their contents, **Fit bars to content** in the Panels manager snaps them down in one click.
 
 Either way, **drag a stream tab along its bar to reorder it**, and add streams with a panel's **+** button. Your layout is per-character and saved across launches. *(Windowed Panels is where Lichborne is heading — see [Roadmap](#on-the-horizon-roadmap).)*
 
@@ -467,12 +478,12 @@ Your room, rendered as a living scene.
 - **Arrivals slide in** from the direction they came; **departures walk out** as fading ghosts. Hiders and the invisible show as shadows; the dead lie greyed until a resurrection stands them up.
 - **The seating tells the story** — talkers gather toward the middle (you included), pairs in conversation drift together, and a crowd spreads into an amphitheater.
 - **Creatures stand as their own figures** in the game's monsterbold color (four blademasters are four monsters). One that's unconscious or knocked down says so; one you kill **stays where it fell, greyed with a skull**, until its body decays or is skinned.
-- **The place is drawn behind everyone**, read from the room's description: what's on the horizon (peaks, hills, dunes, the sea, a distant town), what stands in front of it (pines, palms, rooftops, castle walls, ruins, standing stones, a farm, gravestones, reeds), and water or a road nearer still. Indoors it's a temple, a shop, a home or a hall; caves get stalactites. The same room always looks the same, and a sky follows the time of day. Turn it off with ⚙ **Scenery**. If your last look at the sky (`WEATHER`, or glancing up) was within half an hour and you're outdoors, **rain and snow fall** over the scene and clouds gather. Clear skies change nothing.
+- **The place is drawn behind everyone**, read from the room's description: what's on the horizon (peaks, hills, dunes, the sea, a distant town), what stands in front of it (pines, palms, jungle, rooftops, castle walls, ruins, a farm, gravestones, reeds), and water or a road nearer still. **Towns have their own look** (Shard's crystal spires, Muspar'i's domes, Ratha's terraces, Mer'Kresh on the water, the clans' longhouses), and a building whose name doesn't say the town keeps the look of the one you're in. **Indoors** you see the walls' material, the light, up to three furnishings the room describes, and in a shop what it sells. **Outdoors and in caves** up to four things the room describes stand in the scene: a fountain, a well, stalls, huts, a pond, standing stones, a campfire, grazing animals and more. Only things the room is actually talking about are drawn: "cobblestones flecked with crystals" draws no crystals, and "an oak door" is not a tree. Caves are drawn by kind (cavern, tunnel, mine, sewer, ice). The same room always looks the same, and a sky follows the time of day. Turn it off with ⚙ **Scenery**. If your last look at the sky (`WEATHER`, or glancing up) was within half an hour and you're outdoors, **rain and snow fall** over the scene and clouds gather. Clear skies change nothing.
 - **Your group stands beside you**, the leader marked. When someone is hurt, a small **health meter** shows how badly, using the game's own words (bruised, battered, badly hurt…).
 - **When you fight, it can become a battlefield** (off to start: switch it on with ⚙ **Combat view**). Run **`ASSESS`** and everyone moves to where the fight really puts them: you low in the middle facing up, what's in front of you above you, flankers at your sides, your group's fights beside yours and other people's fights above. **Lines** join each fighter to what it's fighting (solid at melee, dashed further out), with **arrows** for who faces whom, and a **crosshair** marks each person's target in their own colour. Anyone not fighting moves to a quiet column on the left. It returns to the social scene about 30 seconds after your last assess, once nothing is still on you. Your target **flashes when it hits you**; words float off you as you **dodge, block, parry or get hit**.
 - **Fighting another player**: they take centre stage, joined to you by a line that shows the range and who's closing. If they hide, a **?** keeps their place; right-click to **Search** or **Assess**. Right-click anyone you're fighting to **Face** them.
 - **The cockpit**: three **readiness rings** wrap your avatar (roundtime, cast, aim), your avatar **pulses** when you're stunned or bleeding, and a small panel reads your **balance**, **position** and **range** as gauges. They wake on the first blow either way and stay while the fight goes on. **Click a creature to turn and face it.**
-- **Under your figure**: your conditions (hidden, stunned, joined…) on one line, and, if you switch on ⚙ **Your hands**, what you're holding on another, left hand on the left. Neither line changes height, so your figure never bobs.
+- **Under your figure**: your conditions (bleeding, stunned, hidden, joined…) on one line, including whether you're **sitting, kneeling or prone** (in your icon bar's colours), and, if you switch on ⚙ **Your hands**, what you're holding on another, left hand on the left. Neither line changes height, so your figure never bobs. When you're hidden or invisible your figure fades, but these words stay readable.
 - **Not sure what something means?** Click the **?** beside the room title for a key to every line, arrow, ring and colour.
 - **Out of the box** every layer is on except **Combat view** and **Your hands**.
 
@@ -483,8 +494,8 @@ Elanthia's night sky and world, alive.
 - The **three moons** — sooty **Katamba**, ruby **Yavash**, ice-blue **Xibar** — and the **sun** arc across a living sky, positioned by how long each has left, then travel a shallow path underground back to where they'll rise (nothing ever just blinks out).
 - The **whole sky lives**: bright at midday, warm glows at sunrise and sunset, deepening night with **stars that fade in** through twilight and multiply toward midnight, the odd **shooting star**, seasonal **aurora** and **fireflies**, and a mountain silhouette on the horizon. Each **moon is lit from the sun's direction** so you watch it wax and wane in its own colors.
 - Below the horizon, a little **wilderness** — distant forest, foreground trees, a winding stream and a **lake that mirrors the sun and moons** — that **dresses itself by season** (snow and ice in winter, blossoms in spring, lush summer, falling leaves in autumn) and casts **sun-following shadows**.
-- **Header and footer strips** read the sky at a glance: day/night with the sun's countdown, the next moon, and the current **weather** up top; the **Elanthian date** below. **Hover any body for its lore** and its next rise/set time, with live "sets in 88m" countdowns throughout. A single **⟳** silently refreshes the weather and date (it sends `WEATHER`/`TIME` behind the scenes — nothing clutters your game window).
-- **Powered by the community `moonwatch` script** — run `;moonwatch window` on a Lich character to feed it the moons. Even without it, you still get a day/night sky from public sun data.
+- **Header and footer strips** read the sky at a glance: day/night with the sun's countdown, the next moon, and the current **weather** up top; the **Elanthian date** and **Moonskin** below. **Moonskin** says when Rakash next take their moonskin form and how long it lasts ("Mon 12:55 AM · in 21h · lasts 28h 11m"), or when the one in progress ends. It lasts exactly while Katamba is full and is shown to everyone, in the footer and in Katamba's hover; turn it off with ⚙ **Moonskin**. Each moon's hover also says when it's next full. **Hover any body for its lore** and its next rise/set time, with live "sets in 88m" countdowns throughout. A single **⟳** silently refreshes the weather and date (it sends `WEATHER`/`TIME` behind the scenes — nothing clutters your game window).
+- **Powered by the community `moonwatch` script** — run `;moonwatch window` on a Lich character to feed it the moons. Until that feed arrives, Moons shows a short "Waiting for moon data…" note instead of the sky, so without Lich there is no Moons view yet (phases and Moonskin are computed by Lichborne itself, but they appear inside that view).
 
 #### Spell Monitor
 
@@ -649,7 +660,7 @@ Lich is the **recommended** way to play — it unlocks the map, timers, variable
 | Living Tableau Experience | ✅ | ✅ (reads game text) |
 | AI — Catch Me Up | ✅ | ✅ (reads your log) |
 | Import wizard · Transfer | ✅ | ✅ |
-| Moons Experience | ✅ (with `;moonwatch`) | ⚠️ day/night only |
+| Moons Experience | ✅ (with `;moonwatch`) | ❌ waits for the moonwatch feed |
 | Spell Monitor Experience | ✅ | ✅ |
 | Lich Map · Genie Maps | ✅ | ❌ (needs Lich map data) |
 | Variables · Scripts · Profiles (Lich Dashboard) | ✅ | ❌ (Lich only) |
@@ -735,7 +746,7 @@ Notes: `edit` on any rule jumps straight to it in the editor; your real mode/gro
 
 **What still works direct.** Everything that's about *display and configuration* is native to Lichborne and needs no Lich: themes, panels, the full automation suite (highlights/triggers/macros/aliases/mutes/substitutes), groups & modes, contacts, the room window, vitals, RT/CT/aim timers, the experience panel, session logs, slash commands, the Living Tableau, and even Catch Me Up (it reads your session log, not Lich). Lichborne's native automation is deliberately the **fallback** that makes a no-Lich connection viable — it's finite and GUI-configured by design, not a scripting engine (that's Lich's job).
 
-**What degrades or needs Lich.** The **maps** need Lich's map files. The **Moons** Experience is powered by the community `moonwatch` script (Lich) — without it you still get a day/night sky from public sun data, but not the moons. **Variables, scripts, profiles**, spell timers, and `go2` walking are Lich features by nature. More broadly: **any feature that draws on Lich scripts, Lich's `drinfomon` game-state modules, or DRStat variables can lose functionality on a direct connection** (and may be affected if the underlying script or a future Lich version changes). Lichborne degrades gracefully wherever it can — falling back to what the raw game stream provides, or hiding a piece rather than breaking — but if something depends on script- or Lich-supplied data, count on it being a Lich feature.
+**What degrades or needs Lich.** The **maps** need Lich's map files. The **Moons** Experience is powered by the community `moonwatch` script (Lich); without it, Moons waits for that feed and shows no sky. **Variables, scripts, profiles**, spell timers, and `go2` walking are Lich features by nature. More broadly: **any feature that draws on Lich scripts, Lich's `drinfomon` game-state modules, or DRStat variables can lose functionality on a direct connection** (and may be affected if the underlying script or a future Lich version changes). Lichborne degrades gracefully wherever it can — falling back to what the raw game stream provides, or hiding a piece rather than breaking — but if something depends on script- or Lich-supplied data, count on it being a Lich feature.
 
 **The bottom line:** you can absolutely play direct, and it's a good experience — you'll just be missing the map and the script-powered extras. Most players run Lich.
 

@@ -79,6 +79,7 @@ import WindowLayer from './WindowLayer'
 import ExperienceLayer from './ExperienceLayer'
 import ExperienceShelf from './ExperienceShelf'
 import { SORT_MODES, type SortMode } from '../expParse'
+import { resolvePlace, type PlaceKey } from './experiences/tableauPlaces'
 import { EXPERIENCES, experienceById, defaultHiddenMap, loadExperiences, saveExperiences, deriveSpellState, parseGroupLines, type GroupState, parseMoonLine, mergeMoonReport, parseTimeLine, SUN_RISE_RE, SUN_SET_RE, WEATHER_GLANCE_RE, type ExperienceInstance, type SceneCast, type SceneSpeechItem, type SceneMoveItem, type MoonsState, type WeatherInfo, type CalendarInfo, type SpellState, type SceneMoment, type SpellPulse, emptySpellPulse, recordSpellPulse, SPELL_ENDED_TTL_MS, type FaceTurn } from '../experiences'
 import { parseCombatPosition, parseCombatBalance, parseCombatRange, parseAssessLine, RANGE_ORDER, parseFaceReply, mayBeEngagementLine, parseEngagementLine, applyEngagement, stepOutRange, balanceFromAssessStatus, mayBeStrikeLine, parseStrikeLine, type CombatRange, type AssessEntity, type Engagement, type EngagementEvent, type StrikeEvent } from '../../shared/combatExtract'
 import { guildToFocusOption } from '../focusTemplates'
@@ -793,6 +794,16 @@ export default function GameWindow({
   }, [])
 
   const [roomState, setRoomState] = useState<RoomState>({ title: '', desc: '', objects: [], players: [], creatures: [], extra: [], exits: [] })
+  // The town this character is in, for the Tableau's scenery (v0.20.3). Kept
+  // here rather than in the Experience because GameWindow sees every room
+  // change, even while no Tableau is open. resolvePlace returns the same answer
+  // when handed its own result, so a StrictMode double run of this memo can't
+  // advance it twice (the pitfall #70 hazard).
+  const placeRef = useRef<PlaceKey | null>(null)
+  const place = useMemo(
+    () => (placeRef.current = resolvePlace(roomState.title ?? '', roomState.desc ?? '', placeRef.current)),
+    [roomState.title, roomState.desc],
+  )
   const [lichMapVersion, setLichMapVersion] = useState(0)
   const [expSkills, setExpSkills]       = useState<Record<string, string>>({})
   const [rankUpSkills, setRankUpSkills] = useState<Set<string>>(new Set())
@@ -6018,6 +6029,7 @@ export default function GameWindow({
         combat={experienceCombat}
         weather={weather ?? undefined}
         calendar={calendar ?? undefined}
+        place={place}
         onSyncSky={syncSky}
         spells={spellsState}
         spellsPulse={spellPulseRef}

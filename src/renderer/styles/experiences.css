@@ -330,6 +330,10 @@
      off the bottom. The header stays at base font (it's in .tableau-scene, not
      here). See the fitScale note in TableauExperience.tsx. */
   font-size: calc(var(--game-font-size, 12px) * var(--tableau-fit, 1));
+  /* Its own stacking context, so the layers below can use negative z-indexes
+     and stay above the stage's own box: scenery (-3), weather (-2), corpses
+     (-1), then everything else in DOM order. */
+  isolation: isolate;
 }
 
 .tableau-room-title {
@@ -434,10 +438,15 @@
 }
 
 /* Your own stealth states mirror how the scene draws hiders/unseen folks. */
-.tableau-figure--self-hidden { opacity: 0.55; }
-.tableau-figure--self-hidden .tableau-avatar { border-style: dashed; filter: saturate(0.6); }
-.tableau-figure--self-invisible { opacity: 0.38; }
-.tableau-figure--self-invisible .tableau-avatar { border-style: dashed; filter: saturate(0.4); }
+/* Hidden / invisible fade YOU — the avatar and your name — not the words about
+   you. The fade used to sit on the whole figure, so "Bleeding" and your other
+   condition chips (and your hands, and the hit words) went faint exactly when
+   you were hidden (B508, v0.20.3). The avatar already has a filter here, so its own
+   stacking context, and its ground shadow, are unchanged. */
+.tableau-figure--self-hidden .tableau-avatar { border-style: dashed; filter: saturate(0.6); opacity: 0.55; }
+.tableau-figure--self-hidden > .tableau-name { opacity: 0.55; }
+.tableau-figure--self-invisible .tableau-avatar { border-style: dashed; filter: saturate(0.4); opacity: 0.38; }
+.tableau-figure--self-invisible > .tableau-name { opacity: 0.38; }
 
 /* Active status chips under your name — the Icon Bar's words in the Icon
    Bar's colors (inline --ind-* vars per chip). */
@@ -525,6 +534,11 @@
 }
 
 .tableau-figure--dead { opacity: 0.45; }
+/* B505: a corpse lies BEHIND everything still standing (Sekmeht): dead creatures used
+   to stack in list order, often on top of the living ones they fell beside.
+   Above the scenery and weather only (the stage isolates these). */
+.tableau-assess--corpse,
+.tableau-figure--dead { z-index: -1; }
 
 /* ── Speech bubbles (X1 — the bubble LAYER, Sekmeht UX pass) ──────────────
    Bubbles render in scene-pixel space OUTSIDE the scaled figure tree (the
@@ -2311,7 +2325,7 @@
   container-type: size;
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: -3;
   pointer-events: none;
 }
 /* Painted on a pseudo-element because container units resolve against the
@@ -2329,6 +2343,9 @@
 .tableau-sky--dawn  { --tb-sky: color-mix(in srgb, #ffb070 18%, transparent); }
 .tableau-sky--dusk  { --tb-sky: color-mix(in srgb, #ff7f60 16%, transparent); }
 .tableau-sky--night { --tb-sky: color-mix(in srgb, #3b4bb0 20%, transparent); }
+/* v0.20.3: volcanic country glows — the sky takes the fire's colour whatever
+   the hour (two classes, so it outranks the time-of-day band). */
+.tableau-backdrop--volcanic:not(.tableau-sky--none) { --tb-sky: color-mix(in srgb, #ff5a2a 15%, transparent); }
 /* The ground's tint, from what the room is standing on. */
 .tableau-ground--grass  { --tb-ground: color-mix(in srgb, #5c9a4a 8%, transparent); }
 .tableau-ground--forest { --tb-ground: color-mix(in srgb, #3f8a4a 9%, transparent); }
@@ -2340,6 +2357,9 @@
 .tableau-ground--dirt   { --tb-ground: color-mix(in srgb, #8a6a4a 8%, transparent); }
 .tableau-ground--floor  { --tb-ground: color-mix(in srgb, #9a7a5a 8%, transparent); }
 .tableau-ground--cave   { --tb-ground: color-mix(in srgb, #6a5a4a 10%, transparent); }
+/* v0.20.3: volcanic ash and moorland heath. */
+.tableau-ground--ash    { --tb-ground: color-mix(in srgb, #6e6a66 11%, transparent); }
+.tableau-ground--moor   { --tb-ground: color-mix(in srgb, #7a5a7a 8%, transparent); }
 /* Roads, rivers, furrows and floorboards under the figures. Fainter than the
    skyline: this is what everyone stands on. */
 .tableau-groundart {
@@ -2360,6 +2380,7 @@
 }
 .tb-sil       { fill: color-mix(in srgb, var(--experience-scene-text) 15%, transparent); }
 .tb-sil--far  { fill: color-mix(in srgb, var(--experience-scene-text) 8%, transparent); }
+.tb-sil--prop { fill: color-mix(in srgb, var(--experience-scene-text) 22%, transparent); }
 .tb-line {
   fill: none;
   stroke: color-mix(in srgb, var(--experience-scene-text) 12%, transparent);
@@ -2369,6 +2390,8 @@
 .tb-line--faint { stroke: color-mix(in srgb, var(--experience-scene-text) 8%, transparent); }
 .tb-line--bold  { stroke-width: 2; }
 .tb-water  { fill: color-mix(in srgb, #4a7aaa 10%, transparent); }
+/* A pool or pond is small, so it needs deeper water than a lake band to read. */
+.tb-pool   { fill: color-mix(in srgb, #4a7aaa 26%, transparent); }
 .tb-star   { fill: color-mix(in srgb, var(--experience-scene-text) 45%, transparent); }
 .tb-wall   { fill: color-mix(in srgb, var(--experience-scene-text) 4%, transparent); }
 .tb-window { fill: color-mix(in srgb, #ffd27a 12%, transparent); }
@@ -2384,6 +2407,25 @@
 .tb-frond  { stroke-width: 1.2; }
 .tb-foam   { stroke: color-mix(in srgb, var(--experience-scene-text) 18%, transparent); }
 .tb-crack  { stroke: color-mix(in srgb, #ff6a2a 15%, transparent); stroke-width: 1.2; }
+/* v0.20.3: snowcaps, volcano smoke, low haze, icicles, a clan banner. Static,
+   and mixed toward transparent like the rest, so they tint on any theme. */
+.tb-snow   { fill: color-mix(in srgb, #e8f0ff 30%, transparent); }
+.tb-smoke  { fill: color-mix(in srgb, var(--experience-scene-text) 9%, transparent); }
+.tb-haze   { fill: color-mix(in srgb, var(--experience-scene-text) 9%, transparent); }
+.tb-ice    { fill: color-mix(in srgb, #bfe0ff 28%, transparent); }
+.tb-banner { fill: color-mix(in srgb, #c0392b 30%, transparent); }
+.tb-crystal { fill: color-mix(in srgb, #a8d8ff 32%, transparent); }
+/* v0.20.3 indoor things and outdoor props. */
+.tb-bloom  { fill: color-mix(in srgb, #e86a9a 30%, transparent); }
+.tb-coin   { fill: color-mix(in srgb, #e0b84a 35%, transparent); }
+.tb-orb    { fill: color-mix(in srgb, #9ad0ff 40%, transparent); }
+.tb-shaft  { fill: color-mix(in srgb, #fff2c4 9%, transparent); }
+.tb-awning { fill: color-mix(in srgb, #c0392b 22%, transparent); }
+.tb-rug    { fill: color-mix(in srgb, #a0402a 9%, transparent); }
+.tb-tapestry { fill: color-mix(in srgb, #9a3a4a 14%, transparent); }
+.tb-canvas { fill: color-mix(in srgb, #c89a5a 14%, transparent); }
+.tb-halo   { fill: color-mix(in srgb, #cfe8ff 12%, transparent); }
+.tb-spray  { fill: none; stroke: color-mix(in srgb, #9fd0ff 30%, transparent); stroke-width: 1; }
 
 /* A ground shadow under every figure, so people stand ON the scene. */
 .tableau-figure .tableau-avatar::before {
@@ -2627,7 +2669,7 @@
 .tableau-weather {
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: -2;
   pointer-events: none;
   overflow: hidden;
   /* The particles fall the layer's own height (cqh). */

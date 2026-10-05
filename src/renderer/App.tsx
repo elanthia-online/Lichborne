@@ -2186,7 +2186,11 @@ function AppShell() {
           // connecting, failed) show as placeholder tabs. A connected one has
           // its real tab; one in its own window lives elsewhere; a skipped one
           // was the player's choice and needs nothing.
-          pendingTabs={teamRun?.members
+          // NOT `teamRun?.members.….concat(bgConnects…)`: optional chaining
+          // short-circuits the WHOLE chain, so with no team run the background
+          // connects vanished too and a + Connect showed nothing until its tab
+          // landed (B506).
+          pendingTabs={(teamRun?.members ?? [])
             .filter(m => m.status === 'waiting' || m.status === 'connecting' || m.status === 'failed')
             // A real tab already here for this character (it just landed and
             // the tile hasn't caught up, or an old one is being re-logged):
