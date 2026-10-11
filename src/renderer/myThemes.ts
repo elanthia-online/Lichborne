@@ -30,8 +30,17 @@ export function loadMyThemes(): CustomTheme[] {
   } catch { return [] }
 }
 
+// v0.20.4: every GameWindow holds its own copy of this list for the Theme
+// Picker, and the picker builds the next list FROM that copy. A copy taken when
+// the tab opened was never refreshed, so saving a theme from a second
+// character's picker wrote back its older list and deleted themes made since.
+// Every save now announces itself; GameWindow reloads its copy on this event
+// (same window) and on a `storage` event for MY_THEMES_KEY (other windows).
+export const MY_THEMES_KEY = STORAGE_KEY
+export const MY_THEMES_CHANGED_EVENT = 'lichborne:my-themes-changed'
 export function saveMyThemes(themes: CustomTheme[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(themes))
+  document.dispatchEvent(new CustomEvent(MY_THEMES_CHANGED_EVENT))
 }
 
 export function createCustomThemeFrom(baseTheme: Theme, name: string): CustomTheme {

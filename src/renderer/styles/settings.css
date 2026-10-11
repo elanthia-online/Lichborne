@@ -230,7 +230,19 @@
   transition: border-color var(--ui-transition), color var(--ui-transition);
 }
 
-.sp-num-btn:hover { border-color: var(--accent-dim); color: var(--accent); }
+.sp-num-btn:hover:not(:disabled) { border-color: var(--accent-dim); color: var(--accent); }
+.sp-num-btn:disabled { opacity: 0.45; cursor: default; }
+
+/* Window zoom readout (v0.20.4): sits where the font row's input sits, at
+   the same width, so the two rows line up. */
+.sp-zoom-value {
+  width: 44px;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.sp-zoom-reset { margin-left: 6px; }
 
 .sp-number-input {
   background: var(--modal-input-bg);
@@ -489,6 +501,16 @@
   color: var(--text-secondary);
   cursor: pointer;
   user-select: none;
+  /* v0.20.4: every row is drawn in its own font, so laying out the whole
+     list means loading and shaping every installed font. With ~430 fonts
+     that cost ~900 ms on EVERY relayout while Settings was open (a zoom
+     change, a font change), measured from a tester trace. content-visibility
+     lets the browser skip rows that are scrolled out of view; a harness
+     measured a zoom change going from 420–520 ms to under 50 ms. The `auto`
+     intrinsic size remembers each row's real height once it has been shown,
+     so the scrollbar settles and scrollIntoView still lands. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1.9em;   /* ~ a real row: 0.8rem text + 8px padding */
 }
 
 /* Excludes the active font instead of re-declaring its colour under its own

@@ -452,7 +452,8 @@ function GroupTags({ member, focus }: { member: GroupMember; focus?: string[] })
 }
 
 // A small SKULL for the dead (v0.20.2, Sekmeht — was a gravestone): the Dead
-// list and the mark that rises where a creature falls. Drawn in the text
+// list, the mark that rises where a creature falls, and (v0.20.4, Sekmeht —
+// was a ✕) the avatar of your own dead figure and of a dead creature. Drawn in the text
 // colour, not the emoji, which can arrive as a full-colour picture on some
 // systems (pitfall #125).
 function Skull() {
@@ -825,7 +826,7 @@ const DIR_VECTOR: Record<string, [number, number]> = {
 // Tableau only needs to when its own inputs change (cast/speech/moves are
 // state objects with stable identities between changes). The default export
 // wraps this at the bottom of the file.
-function TableauExperience({ character, characterId, roomState, sceneCast, speech: rawSpeech, moves: rawMoves, indicators, contacts, contactTemplates, settings, isActive, onOpenContact, onCommand, onDirect, hidden, combat: combatIn, group, serverClockOffsetMs, weather, place }: ExperienceProps) {
+function TableauExperience({ character, characterId, roomState, sceneCast, speech: rawSpeech, moves: rawMoves, indicators, contacts, contactTemplates, settings, isActive, onOpenContact, onCommand, onDirect, guild, hidden, combat: combatIn, group, serverClockOffsetMs, weather, place }: ExperienceProps) {
   // The assess picture kept current between assesses (correctAssess, above):
   // every reader below — duels, fight lines, the battlefield, crosshairs — sees
   // the corrected list without knowing it was corrected.
@@ -2686,7 +2687,7 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
                 title={`${c.name}${c.total > 1 ? ` #${c.ord}` : ''}${c.dead ? ' (dead)' : ''}`}
               >
                 <div className="tableau-avatar tableau-avatar--creature">
-                  {c.dead ? '✕' : initials(c.name)}
+                  {c.dead ? <Skull /> : initials(c.name)}
                   {attackFlash.has(`cr-${c.name}-${c.ord}`) && <span key={`atk-${attackFlash.get(`cr-${c.name}-${c.ord}`)}`} className="tableau-attack-flash" aria-hidden="true" />}
                 </div>
                 <div className="tableau-name">{c.name}</div>
@@ -2995,12 +2996,16 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
           + (indicators.dead ? ' tableau-figure--player-dead' : '')
           + (indicators.hidden ? ' tableau-figure--self-hidden' : '')
           + (indicators.invisible ? ' tableau-figure--self-invisible' : '')
+        // By id first: two of your characters can share a name, and this
+        // figure is THIS session's, whose tab and card look up by id.
+        // monogramStyle picks readable ink — a picked colour can be pale.
+        const selfInk = monogramStyle(character,
+          characterColor(charColors, { characterId }) ?? avatarColor(character, contacts, contactTemplates, myColors, ownNames).color)
         const avatarStyle = {
-          // By id first: two of your characters can share a name, and this
-          // figure is THIS session's, whose tab and card look up by id.
-          // monogramStyle picks readable ink — a picked colour can be pale.
-          ...monogramStyle(character,
-            characterColor(charColors, { characterId }) ?? avatarColor(character, contacts, contactTemplates, myColors, ownNames).color),
+          ...selfInk,
+          // Dark ink on a pale fill has no halo, so the dead skull drops its
+          // shadow too (it stands in for the halo an SVG doesn't get).
+          ...(selfInk.textShadow === 'none' ? { '--skull-halo': 'none' } : {}),
           ...(ringKey ? { '--self-ring': `var(--ind-${ringKey}-color)`, '--self-glow': `var(--ind-${ringKey}-glow)` } : {}),
         } as React.CSSProperties
         return (
@@ -3021,7 +3026,7 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
                 data-fig="self"
                 title={danger ? 'In danger' : undefined}
               >
-                {indicators.dead ? '✕' : initials(character)}
+                {indicators.dead ? <Skull /> : initials(character)}
               </div>
               )
               return selfPose ? <span key={`pose-${selfBubble!.id}`} className={`tableau-pose tableau-pose--${selfPose}`}>{selfAvatar}</span> : selfAvatar
@@ -3171,6 +3176,15 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
         const m = figMenu
         const items: CtxItem[] = []
         const lostDuel = duels.get(m.name.toLowerCase())?.lost === true
+        // Touch (v0.20.4, Sekmeht): an EMPATH touches someone to start healing
+        // them, so it leads the menu, above a divider — and only for an empath,
+        // and only for someone actually in the room. Sent, like Look. The guild
+        // is what the game said on your own `info` sheet, else Edit Profile's
+        // Guild; until either is known the item doesn't appear.
+        if (onCommand && /^empaths?$/i.test((guild ?? '').trim()) && playerKeys.has(m.name.toLowerCase())) {
+          items.push({ label: `Touch ${m.name}`, onClick: () => onCommand(`touch ${m.name}`) })
+          items.push({ label: null })
+        }
         if (onDirect && !lostDuel) {
           items.push({ label: `Say to ${m.name}…`, onClick: () => onDirect('say', m.name) })
           items.push({ label: `Whisper to ${m.name}…`, onClick: () => onDirect('whisper', m.name) })

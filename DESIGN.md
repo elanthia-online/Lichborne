@@ -848,7 +848,7 @@ Font settings work at two levels: **global defaults** and **per-panel overrides*
 
 **Global defaults** (Settings → Display & Accessibility):
 - Font family: any font installed on the user's system, selected via a scrollable inline picker with live filter. The current selection is shown above the list; typing in the filter box narrows it instantly. The selected font is highlighted and auto-scrolled into view when the panel opens. **Each entry in the picker list renders in its own face** (v0.7.1, F15) — the inline `style={{ fontFamily: "'<name>'" }}` overrides the picker's monospace inheritance for the label only, so the picker doubles as a visual preview. A **Monospace** filter chip narrows the list to monospace fonts only, detected at enumeration time via a canvas width test (`i` vs `W`).
-- Font enumeration uses the **Local Font Access API** (`window.queryLocalFonts()`), available in Electron 21+ / Chromium 103+. The main process grants the `local-fonts` permission via `setPermissionRequestHandler` + `setPermissionCheckHandler` before the window loads. Results are deduplicated by family name and sorted alphabetically.
+- Font enumeration uses the **Local Font Access API** (`window.queryLocalFonts()`), available in Electron 21+ / Chromium 103+. The main process grants the `local-fonts` permission via `setPermissionRequestHandler` + `setPermissionCheckHandler` before the window loads. Results are deduplicated by family name and sorted alphabetically. **Two performance rules (B515, v0.20.4, §53.4):** the rows carry `content-visibility: auto` so only the visible ones are laid out in their own face, and the scan (with its canvas monospace test) runs once per window session. Chromium enumerates installed fonts once per process, so a font installed after launch appears only after a restart, and no in-app rescan can change that.
 - Stored value is usually the raw font family name (e.g. `"Cascadia Code"`). Three truly-retired preset keys (`terminal`, `sansserif`, `serif`) still transparently migrate to their font names the first time Settings is opened. The active default key `'cascadia'` is **not** migrated (v0.7.1, B94) — it intentionally stays as a key so `applySettingsToDOM` keeps resolving it to the full fallback chain `'Cascadia Code' → 'Fira Code' → 'Consolas' → monospace`. Migrating it would collapse the fallback to `'Cascadia Code', monospace` and cause a Cascadia-less Win10 user's font to visibly flip from Consolas to generic monospace the moment Settings opened.
 - `applySettingsToDOM` ([settings.ts](src/renderer/settings.ts)) resolves the stored value via `FONT_FAMILIES[fontFamily]` first (key match → full chain) and falls through to `'FontName', monospace` for an explicit font name.
 - Default font: **Cascadia Code (key: `cascadia`), 12px, Compact (1.2) line height** (v0.7.1, B93). Cascadia Code ships with weights 200/300/350/400/500/600/700 — critically, real `500` and `600` faces — so the codebase's intermediate-weight emphasis (hands HUD, status bars, panel tabs, character tabs, vitals, game `<bold>`) actually renders at its intended weight instead of falling back to full bold 700 on a two-weight font like Consolas. The previous default (`'Consolas'` literal name) collapsed every `font-weight: 600` declaration to 700 and read as "everything is too bold." Players who explicitly chose Consolas (or any other font) keep their choice through profile load — only fresh installs / unset characters get the new default.
@@ -3412,7 +3412,7 @@ The repository is being **transferred** (GitHub "Transfer ownership", not a fork
 2. **Phase 2 (transfer day):** transfer the repo on GitHub. Releases/issues/stars move; redirects arm. No release needed that day. Do NOT pre-create the org repo (a partial repo with some releases would answer the check with stale data — the transfer moves everything atomically).
 3. **Phase 3 (first org release):** flip the hardcoded owner strings (checklist below), cut the release from the org via Actions. Dual-feed installs get it from the new feed; older installs via the redirect.
 
-**Phase-3 cut-over checklist (every hardcoded `SekmehtDR`):** `package.json` `build.publish.owner` · `build/app-update.yml` `owner` · `publish.mjs` `owner` · the local-run fallback literals in `.github/scripts/release-prepare.mjs` + `release-verify.mjs` (the Actions path self-corrects via `GITHUB_REPOSITORY`) · main.ts Help-menu links (GitHub Repository / Report a Bug) · `credits.ts` `REPO_URL` + `AI_NOTICE_URL` · `AboutModal.tsx` displayed link text · README (3 links) · Lichborne-User-Guide (2 links) · this file's §18.2 table · release-notes.md. Keep `UPDATE_FEEDS` itself unchanged — it already names both homes, and the legacy entry stays as belt-and-braces.
+**Phase-3 cut-over checklist (every hardcoded `SekmehtDR`):** `package.json` `build.publish.owner` · `build/app-update.yml` `owner` · `publish.mjs` `owner` · the local-run fallback literals in `.github/scripts/release-prepare.mjs` + `release-verify.mjs` (the Actions path self-corrects via `GITHUB_REPOSITORY`) · main.ts Help-menu links (GitHub Repository / Report a Bug) · ~~`credits.ts` `REPO_URL` + `AI_NOTICE_URL` · `AboutModal.tsx` displayed link text~~ (done early in v0.20.4 at Sekmeht's ask; Help → About now points at `elanthia-online/Lichborne`) · README (3 links) · Lichborne-User-Guide (2 links) · this file's §18.2 table · release-notes.md. Keep `UPDATE_FEEDS` itself unchanged — it already names both homes, and the legacy entry stays as belt-and-braces.
 
 **Org-side pre-flight for Phase 3:** the release workflow's `GITHUB_TOKEN` must be able to create releases — check org **Settings → Actions → Workflow permissions** is "Read and write" (many orgs default to read-only, which 403s the draft pre-create in `release-prepare.mjs`).
 
@@ -4399,7 +4399,7 @@ export const characterMigrations: Record<number, (data: any) => any> = { /* empt
 3. On disconnect (clean or dropped) → immediate final character write regardless of debounce state.
 4. On window close (graceful shutdown) → main fires `window.__flushProfileSaves` in the renderer via `executeJavaScript`; the renderer runs every pending timer immediately and `await`s all writes. Main then runs `backupAllProfiles()` which copies each `{Character}.yaml` and `_shared.yaml` to `.yaml.bak` in the same directory. Single rolling backup per file from the last clean shutdown.
 
-**Atomic write:** `writeCharacterProfile` / `writeSharedProfile` write to `{path}.tmp` and then rename in place (after removing the existing target on Windows). The corruption window collapses to a single rename syscall.
+**Atomic write:** `writeCharacterProfile` / `writeSharedProfile` go through `writeFileAtomic` ([atomicWrite.ts](src/main/atomicWrite.ts)): write `{path}.tmp`, `fsync`, rename over the target (retried while antivirus holds it, then a copy as a last resort). The target is never deleted first, so a crash leaves the old file or the new one. Before v0.20.4 the target WAS deleted first, which opened a window with no file at all (B517, §53.7).
 
 **Character profile debounce triggers** (`scheduleProfileSave` in `GameWindow` and panels):
 - Settings panel `onChange`
@@ -4446,7 +4446,7 @@ This means adding a new game server (e.g. Briarmoon Cove) requires only a new en
 | `src/renderer/characterScope.ts` | `scopedKey(character, suffix)` and `normalizeCharacter(name)` — single source of truth for the `lichborne.{character}.{suffix}` namespace |
 | `src/renderer/profile-types.ts` | `SharedProfile`, `CharacterProfile` (v2) |
 | `src/renderer/hooks/useProfileSaver.ts` | `useProfileSaver()` — returns a stable `saveProfile()` callback bound to the current character's session info; called at every per-character `setItem` site |
-| `src/main/profiles.ts` | Main YAML file I/O — `readSharedProfile`, `writeSharedProfile`, `readCharacterProfile`, `writeCharacterProfile`, `listCharacterProfiles`, `backupAllProfiles`. `atomicWriteFile` is the internal `.tmp`-then-rename helper |
+| `src/main/profiles.ts` | Main YAML file I/O — `readSharedProfile`, `writeSharedProfile`, `readCharacterProfile`, `writeCharacterProfile`, `listCharacterProfiles`, `backupAllProfiles`. `atomicWriteFile` refuses to write over a damaged or locked file, then calls `writeFileAtomic` (atomicWrite.ts) |
 | `src/renderer/profile.ts` | Renderer-side logic — `buildSharedProfile`, `buildCharacterProfile` (scans `lichborne.{char}.*`), `exportSharedProfile`, `exportCharacterProfile`, `importSharedProfile`, `importCharacterProfile` (v2 only as of v0.6.1), `clearCharacterLocalStorage`, `scheduleProfileSave` (per-character `Map`), `scheduleSharedProfileSave`, `flushPendingProfileSaves` |
 | `src/main/main.ts` | IPC handlers: `profile:read-shared`, `profile:write-shared`, `profile:read-character`, `profile:write-character`, `profile:list`. Window-close handler invokes `window.__flushProfileSaves` then `backupAllProfiles` |
 | `src/main/preload.ts` | IPC bridge — exposes profile API to renderer |
@@ -9015,7 +9015,7 @@ The tab and its six children also moved `rem` → `em`, each converted to render
 
 **Verified rather than eyeballed:** the chip was computed against all 21 built-in themes (composited over `--bg-raised`, the harder end of the bar gradient) — label contrast ≥ 6.17:1 everywhere, accent hairline perceptible everywhere, Barbarian the faintest (fill 1.05, hairline 1.14) because its accent sits close to the bar in luminance. That is inherent to the recipe, so the Automations tabs are equally subtle there; it is consistency, not a regression. Geometry was swept at font sizes 8→24: labels scale 9.06→27.19px, nothing clips the strip (`overflow-y: hidden`), and the active/inactive tabs keep identical heights and a shared baseline.
 
-**Rejected: the folder attachment.** An attach-to-the-edge look was built and measured landing exactly (active tab bottom = bar bottom, unclipped, shared baseline) — then reverted. The strip is `overflow-x: auto` with a 5px scrollbar; as soon as enough characters are open to overflow, that scrollbar claims the strip's bottom edge and lifts every tab off the border. The attachment would break precisely when a player has the most tabs open, which is the worst failure timing. Don't re-attempt without solving the overflow case first.
+**The folder attachment: rejected in v0.18.0, shipped in v0.20.4.** An attach-to-the-edge look was built and measured landing exactly (active tab bottom = bar bottom, unclipped, shared baseline), then reverted. The strip was `overflow-x: auto` with a 5px scrollbar; as soon as enough characters were open to overflow, that scrollbar claimed the strip's bottom edge and lifted every tab off the border, the worst possible timing. v0.20.2 hid that scrollbar behind an overlay thumb that takes no space (B486), which removed the objection, and v0.20.4 joined the tabs to the bar's bottom border at Sekmeht's ask (§53.6).
 
 ### 43.7 Shared primitives and the control vocabulary (v0.19.7)
 
@@ -9026,7 +9026,7 @@ The v0.18.0 tokens unified the *surface* of a dialog. The v0.19.7 UI/UX audit (B
 - six different "are you sure?" patterns;
 - no editor that knew whether its draft had been saved.
 
-Four pieces of shared machinery replace them.
+Four pieces of shared machinery replace them. A fifth, the shared number field, joined in v0.20.4 (§53.3).
 
 **1. Control classes: [ui.css](src/renderer/styles/ui.css).**
 - **Controls:** `ui-btn` (plus `--primary`, `--danger` and `--ghost`, each combinable with `--sm`), `ui-close`, `ui-field` (plus `--code`), `ui-tabs` / `ui-tab`, `ui-section-label`, `ui-hint` and `ui-empty`.
@@ -10637,6 +10637,8 @@ Right-clicking a player in the Living Tableau opens a menu:
 - **Whisper to *Name*…** → `whisper Name `.
 - **Contact card** (for a contact, under a divider) — this used to be the left-click; it moved here so a person has one interaction surface (Sekmeht: *"each person in the living tableau only has a right-click option… then we can add more options as time goes"*).
 
+- **Touch *Name*** (v0.20.4, Sekmeht) — at the top, above a divider, for EMPATHS only, and only for someone in the room. Sends `touch Name`, which starts an empath's healing. Unlike Say/Whisper it is SENT (through `onCommand`, echoed and logged like Look), because touching is the whole action. The guild comes in as the new `ExperienceProps.guild`: GameWindow's `characterGuild`, from the character's own `info` sheet (`detectedGuild`, the same line Lich's `DRStats.guild` is parsed from — DRStats itself lives in Lich's memory and isn't readable by a front end) else Edit Profile's Guild field. Unknown guild → no item. No slash command, like the rest of this menu.
+
 A plain left-click does nothing; the cursor is the context-menu cursor and the tooltip says "right-click for options". From the keyboard, Tab reaches a figure and Enter opens the same menu with focus on its first item (`ContextMenu`'s new opt-in `focusFirst`). The menu closes when the Tableau stops being the active character's (it is portaled to `<body>` and would otherwise float over the next character).
 
 **Nothing is sent.** The items only TYPE into the command bar, caret at the end, for the player to finish and press Enter; `GameWindow.directTo` writes `setCommand` + `commandRef`, leaves history browsing, and focuses through `focusCommandInput`.
@@ -10936,3 +10938,137 @@ Vellinous asked for the Rakash Moonskin times that Mahtra's DRMoonWatch site sho
   - The Moons waiting screen still says "crowd-sourced", which is out of date.
 
 **No slash command** for any of these: they're display behaviour (Principle #11).
+
+## 53. Window zoom, game text size, and number fields (v0.20.4)
+
+Sekmeht asked for a bug review of Ctrl+/− "to help unify the experience". It found that the app had four size controls that knew nothing of each other, one of which disagreed with the others about its own range, and that the number boxes throughout the app fought the user while typing. A follow-up report ("a slight delay as the setting is applied, also after clicking between character tabs") was traced to the Settings font picker.
+
+### 53.1 Two systems, now named
+
+- **Window zoom** is Chromium's page zoom: Ctrl+= / Ctrl+− / Ctrl+0 (Cmd on a Mac), driven by the View menu's `zoomIn` / `zoomOut` / `resetZoom` roles plus the B176 hidden aliases (Ctrl+=, Ctrl+Num+, Ctrl+Num−).
+  - It scales the whole window: dialogs, chrome and game text together.
+  - It applies to every Lichborne window and every character (Chromium's same-origin zoom policy).
+  - **Chromium remembers it across restarts** (Sekmeht tested it: the login screen, a reconnected character and a newly added one all came back zoomed). No Lichborne code stores it.
+- **Game text size** is the per-character `settings.fontSize`, plus the per-panel and per-Experience A−/A+ overrides.
+- **What the user sees now:**
+  - Settings → Display has a **Window zoom** row (−, the percent, +, Reset) under **Font size (game text, this character)**, each with a tooltip saying what it scales.
+  - The View menu's **Font** submenu became **Game Text Size** (Larger / Smaller / Reset to Default), and the zoom items are labelled **Window Zoom In / Window Zoom Out / Reset Window Zoom**. A `label` on a role item keeps the role's behaviour and accelerator.
+- **How the zoom row works:**
+  - The preload's `getZoomLevel` reads through `webFrame` (synchronous); `setZoomLevel` sends `set-zoom-level` to main, which calls `webContents.setZoomLevel` on the sender. Setting it through `webFrame` looked right but was TEMPORARY and lost on restart (B516): only a `webContents` zoom is saved by Chromium. Steps are 0.5 levels, matching the menu roles; percent = 1.2^level; the row is clamped to levels −3…5 (about 58–249%).
+  - Nothing tells a page that its zoom changed, but zoom moves `devicePixelRatio`. `useWindowZoom` listens to a `(resolution: Ndppx)` media query re-armed at the current ratio after every change, so the readout follows Ctrl+=, the menu and other windows. Moving the window to a monitor with different scaling also fires it, and re-reading the level then is harmless.
+- **A macro on Ctrl+= or Ctrl+Num± wins over the zoom shortcut.** The renderer's keydown claims the key before the menu accelerator (Sekmeht tested a `smile` macro on Ctrl+=). That is the right priority: a key you bound beats a built-in. Zoom stays reachable through the other keys, the View menu and Settings.
+- **No slash command for window zoom**, by decision (Principle #11): it is a window setting with three standard keys, a menu and a Settings row. Game text size never had one either.
+
+### 53.2 One range for game text size (B512)
+
+Settings clamped the font to 10–24 while View → Font, a panel's A−/A+ and an Experience's A−/A+ allowed 8–24, so at 8 or 9 Settings' − button raised the size to 10. `FONT_SIZE_MIN` / `FONT_SIZE_MAX` / `clampFontSize` in settings.ts are now the only range; `coerceSettings` also clamps a loaded `fontSize`, so a hand-edited profile can't sit outside it. An invalid typed size used to fall back to 14 (the default is 12); with §53.3 it now reverts to the last value instead.
+
+### 53.3 One number field (B514)
+
+Every numeric field committed on each keystroke, so a half-typed value was final: backspacing the font size snapped it to 8, some boxes refused to be cleared, and the log retention box saved 3 and 36 on the way to 365. [NumberField.tsx](src/renderer/components/NumberField.tsx) replaces all twelve:
+
+- The box holds exactly what you type, as a draft.
+- **Enter, blur, ↑/↓ and the spinner commit.** An out-of-range number is clamped at that moment and the box shows the clamped value. A spinner click arrives as a plain `Event` rather than an `InputEvent`, which is how it is told apart from typing.
+- **Esc** restores the value from before editing began (in `live` mode the committed value has already moved, so the component remembers it on focus). Esc is `preventDefault`ed only when there is a draft, so a clean field still lets Esc close its dialog.
+- An empty or invalid draft on blur reverts to the last committed value: never the default, never the minimum.
+- **`live`** also commits while typing, but only a draft that is already a valid, in-range number.
+
+| Field | Mode |
+|---|---|
+| Settings font size, Overview feed lines | live |
+| Overview idle seconds | commit on Enter or blur (live would flag cards idle at 12 on the way to 120) |
+| Macro, alias and trigger-action delay; trigger cooldown (decimals) | live (only the open editor's draft changes; Save still decides) |
+| Theme Editor opacity (decimals) | live |
+| Text styles size (`PercentInput`, the pattern this generalizes) | live |
+| Command-history minimum, Session Log retention and size cap | commit on Enter or blur only |
+
+The Attach port and the character Circle field store text and are unchanged.
+
+**Fixed in the v0.20.4 bug check:**
+- **Enter in an editor that saves on Enter** (the macro, alias and trigger editors' `enterToSave`): that handler runs in the same keydown with the value from before the commit, so a delay typed as 40000 saved the last live value, 4000. When an Enter CHANGES the value, NumberField now stops the event: the first Enter commits (clamped), the next one saves. An Enter that changes nothing passes through and saves as before.
+- **Esc after an Enter** no longer undoes it: a commit becomes the new Esc point.
+- **Parsing:** `Number()` instead of `parseInt`, so "1e3" is 1000 and whole-number fields round (12.7 → 13).
+- **↑/↓ snap to the step grid** like the native spinner (37 with step 50 goes to 50).
+
+**Clamps that changed** (intentional): macro, alias and trigger-action delays are now capped at their 30000 ms attribute (the old code enforced only ≥ 0); trigger cooldown is capped at 3600 s and kept to 2 decimals; Overview feed lines and idle seconds are clamped at entry; an out-of-range text-style size now commits the clamped value instead of reverting.
+
+### 53.4 The font picker was the delay (B515)
+
+Measured from a DevTools trace Sekmeht recorded, then confirmed in a harness (`tmp-zoomperf/`):
+
+- Each slow action spent 850–900 ms in `performLayout`, on a page of only ~4,200 layout objects (about 200 µs per object, where ~1 µs is normal), so one thing was expensive rather than the page being big.
+- The first suspect, the Genie map's ~1,100-child pan group, was ruled out by the harness: a transform change on that much SVG costs under 1 ms.
+- The cause: the Settings font picker draws every installed font in its own face, about 430 of them on that machine. Every relayout while Settings is open loads and shapes all of them, and a zoom change forces one. The harness (197 fonts): 420–520 ms per zoom change with the list, under 50 ms without.
+- **Fix:** `content-visibility: auto; contain-intrinsic-size: auto 1.9em` on `.sp-font-item`, so rows outside the list's scroll view are skipped. Same harness: under 50 ms at every zoom level. The preview is unchanged when you scroll.
+- **Also:** opening Settings spent ~450 ms on the font scan (the canvas monospace test sets `ctx.font` to each family, which loads it). The scan now runs once per window session; a failed scan isn't kept.
+- Tab switching felt faster afterwards as well (Sekmeht): in the trace, Settings was open during the tab switches, so they were relaying out the same list.
+- **Decided against:** a Rescan button. Chromium builds its installed-font list once per process (`content/browser/font_access/font_enumeration_cache.cc`), so only a restart finds a new font.
+
+### 53.5 Zoom-safe measurement (B511, B513)
+
+Two places did arithmetic with fixed pixels that zoom invalidates:
+
+- **The panel tab strip (B511)** reserved a 3px scrollbar track (B312) that stayed 3px while the tabs scaled, leaving a sliver under a hovered tab. It now uses `useOverlayScrollX`, the character tabs' overlay scrolling: no track, a thin thumb over the bottom edge when tabs overflow, edge fades, the wheel scrolls sideways, and the active tab scrolls into view. The shared CSS in character-tabs.css names both strips. **Unlike the character tabs' thumb, the panel thumb is display-only** (`pointer-events: none`): panel tabs are short and are dragged to reorder and to move between windows, and a grabbable thumb with its enlarged hit area covered their lower half, blocking drops, drags and hover there (found by the bug check). The wheel and the auto-reveal do the scrolling.
+- **The Lich Dashboard search highlight (B513)** relied on B249's whole-pixel 21px line height, which is exact only at 100%: at 80%, 90% and 110% the laid-out line height is off Chromium's 1/64px grid and the error accumulates down a long file. `linePitch` measures the content's real height ÷ its line count and uses it when within 0.05px of the computed value.
+
+### 53.6 Character tabs sit on the app bar's border (Sekmeht)
+
+The active character tab stopped 3–4px above the app bar's bottom border, because the bar's 3px bottom padding applied to the tab strip like everything else. Now:
+
+- `.app-bar` has no bottom padding; the tab strip's wrapper stretches to the bottom (`align-self: stretch`) and the strip takes the 3px as TOP padding with its tabs aligned to the bottom.
+- Every other DIRECT child of the bar (the wordmark, the Session/Overview toggle, and `.app-bar-actions`, which holds the buttons and pills) gets a 3px bottom margin (`.app-bar > :not(.character-tabs-wrap)`), so under `align-items: center` it lands exactly where it was. The strip's own **+** (`align-self: center`) is centred in the strip, which now reaches the border, so it sits up to 3px lower than before.
+- Measured old vs new by rendering the real stylesheets (fonts 12 and 18, with and without a taller button in the bar): the bar's height and the other items' positions are identical, and the gap is 0.
+- This was rejected in v0.18.0 (§43.6) only because of the strip's real scrollbar, which v0.20.2 replaced with an overlay.
+
+### 53.7 The persistence sweep (B517–B523)
+
+Sekmeht asked, after B516, for a look at "other bugs for persistence". Three read-only audits (app-wide settings, per-character settings, main-process files) produced about 35 candidates; each serious one was confirmed by reading the code before fixing.
+
+**Fixed in v0.20.4:**
+- **Crash-safe writes** ([atomicWrite.ts](src/main/atomicWrite.ts)): `.tmp` + `fsync` + rename over the target, retried when antivirus holds the file. Used for profiles, `passwords.json` and `ai-keys.json` (B517, B518).
+- **Unreadable files are kept, never overwritten** (B519, B518): main moves a file that doesn't parse to an object aside as `{name}.unreadable-{ts}`, refuses to write over one it couldn't move, and the launcher, a connect or the shared import shows a toast naming the kept file. The connect paths clear a character's working copy only when no profile file existed, so a damaged profile is rebuilt from the working copy rather than blanked. Both savers refuse to overwrite a NEWER `profileVersion`.
+- **Per-character theme** (B520): stored under `lichborne.characterTheme.{name}`, written by the GameWindow and the import, read by the save and by a GameWindow when it mounts. The shared `lichborne.theme` remains the boot fallback and the cross-window paint signal.
+- **Custom-theme list kept current** (B521): `saveMyThemes` dispatches `lichborne:my-themes-changed`; GameWindows reload on it and on the `storage` event.
+- **Shared settings load once per run** (B522): `profile:claim-shared-import` lets only the first window load `_shared.yaml`. Dialog saves use `scheduleSharedProfileSave`; the Analytics toggle schedules one.
+- **Closing a tab saves the character** (B523).
+
+**Corrected in the v0.20.4 bug check** (two independent reviews of the uncommitted changes):
+- **The working copy really is kept now.** The launcher reads every profile at startup, so a damaged file had usually been moved aside BEFORE any connect, and the "did a file exist?" check then said no and cleared the working copy anyway. `characterProfileExists` now also counts a `{name}.yaml.unreadable-*` copy (a leftover `.tmp` does not count; see below).
+- **Locked ≠ damaged.** A file that can't be READ right now (EBUSY/EPERM/EACCES) is left in place and nothing may write over it until a read through the normal read path succeeds (not main's own check at write time — a second bug check found that let an unmerged save through); only a file that reads but won't PARSE is moved aside. Same for the password and AI-key stores (`readJsonStore` returns null for a lock, and the save is skipped).
+- **A blocked file unblocks itself.** A file that couldn't be moved aside is retried on each write, and a deleted one lifts its block; a LOCKED file is unblocked only by a successful normal read, which every save does first (the block used to last the whole session, silently dropping saves). A refused write now throws, so the save fails visibly.
+- **The last-resort write copies over the target instead of deleting it first.** A leftover `.tmp` is never promoted to a profile: the writer no longer deletes the target, so a missing file beside a `.tmp` is one the player deleted or archived, and a truncated YAML can still parse (a second bug check found it brought deleted characters back). Delete and archive remove the `.tmp` too.
+- **Toasts for every read that can move a file aside**, including the saves' own reads (not just the launcher, a connect and the shared import).
+- **Dev-mode boot race:** under StrictMode the second boot run ran Lich discovery and a shared save before the first run's import; both now await one module-level promise.
+- **`/theme` status** reports this character's theme, not the shared key; a cleared character's theme record is removed with it.
+- **The panel tab strip's thumb is display-only** (it blocked drops, drags and hover over the tabs' lower half); see §53.5.
+- **Second bug check:** a file that can't be moved aside is reported once per run, not on every save; damaged or locked files are left out of the rolling backups (copies of a broken file would push the good ones out); a damaged password or AI-key store raises the same toast; Esc no longer undoes a ↑/↓ or spinner step; the Window zoom row steps once from a level outside its range instead of jumping, and re-reads the real level after setting it; the panel thumb's unused drag wiring was removed.
+- **Final check (before packaging):** every read of a profile, `_shared.yaml`, `passwords.json` or `ai-keys.json` goes through `readFileRetrying` ([atomicWrite.ts](src/main/atomicWrite.ts)), which retries for about 300ms while the file is locked. A momentary lock (antivirus scanning a profile just copied in) used to fail the import, and the save right after rebuilt the file's `state` from a working copy that is empty on a fresh machine. Tested against a real exclusive lock: a 150ms lock is ridden out, a 1s lock still fails and blocks the write as before. `NumberField` also treats a non-number `value` as its minimum (an older macro without `delayMs` saved `null` after a ↑/↓).
+- `tmp-persist/` has 21 cases.
+
+**Found and left for later (not fixed in v0.20.4):**
+- A lock that outlasts the ~300ms read retry still loses the connect-time import, and the save after it rebuilds `state` from the working copy (fine on the same machine, empty on a fresh one). Closing it fully needs the renderer to know the import didn't happen and either retry it or hold that character's saves; not built.
+- The launcher's small profile writers (favorite, hidden, notes, attach, the inactive Transfer write) don't check `profileVersion`. They keep the newer file's fields and stamp, but still write it.
+- A theme picked within ~2.5s before a tab's in-place Reconnect can be saved as the old one: the import re-records the YAML's theme and the mounted window doesn't re-record its own.
+- Importing a character's profile still writes the shared `lichborne.theme`, which repaints OTHER windows with that character's theme (pre-existing; B520 fixed what is saved, not this repaint).
+- A Transfer that sets a theme on a character whose tab was closed within the last ~2.5s can be overwritten by that tab's last scheduled save (the remembered theme wins over the file's).
+- A Windows restart or log-off skips every close-time save: Electron emits `session-end` / `query-session-end` there, not the normal quit events, and our only OS-shutdown hook is non-Windows. Needs a small design (what can safely run in that window).
+- Settings → AI writes back a snapshot taken when the panel opened, which can undo consent or `/ai off` changed in another window; the Team Login picker does the same with teams.
+- `/theme` doesn't schedule a profile save (now harmless for the theme itself after B520, but it still waits for the next save).
+- Unverified claims from the audits: the Import Wizard's groups/modes overwritten by the live GroupsProvider; a Transfer into an open but disconnected tab; removing an account while one of its characters is open; window zoom not persisting on a Linux AppImage (Chromium keys it by the page's full file path, which changes per launch there); shutdown hanging behind a frozen window; the last session-log lines dropped at quit; backup rotation able to push out every good copy after a clobber.
+- No single-instance lock: deliberate (CLAUDE.md, multiple instances are not gated), noted here because it lets two processes write the same files.
+
+**No profile-shape change.** The new `lichborne.characterTheme.*` keys are localStorage only; the YAML `theme` field is unchanged.
+
+**No profile-shape change** in any of this: window zoom is Chromium's, and the font range only clamps an existing field.
+
+### 53.8 Smaller changes late in the release
+
+- **A skull for the dead in the Living Tableau (Sekmeht).** Your own figure and a dead creature's avatar showed a ✕ when dead. Both now draw the `Skull` SVG the Dead list and corpse marks already use (§51), in the avatar's own ink through `currentColor`, so it greys with the figure and can't arrive as a colour emoji (pitfall #125). `.tableau-avatar > .tableau-grave` sizes it like the initials it replaces. An SVG gets no `text-shadow`, so a `drop-shadow` filter stands in for the halo, read through `--skull-halo`. The self avatar sets that to `none` exactly when `monogramStyle` drops the halo (dark ink on a pale picked colour); creatures, which never had a halo, turn it off in CSS.
+- **"Edit contact" wears the Connect button's look (Sekmeht).** The contact popover's button was a plain outlined one. It now shares ONE look rule with the launcher's character and team Connect buttons (`.launcher-card-connect, .cpop-edit-btn` in launcher.css: accent fill, halo, weight, hover). Each host keeps only its own size and placement in its own file: the launcher in rem (app chrome), the popover in em so it scales with the game font (pitfall #45b). The two kinds of rule set disjoint properties, so load order can't decide between them (pitfalls #111/#113). launcher.css is always in the bundle (App imports the Launcher statically), so the popover never loses the look.
+- **B524 (Vaddon): the User Guide's setup step said `SET PROMPT STATUS`.** Corrected to `SET STATUSPROMPT`, and the paragraph now says what it is for: the Unconscious marker and `$unconscious`, the only state DR reports nowhere else (Knowledge.md, B426). Vaddon joins the About credits as a contributor; Crobin moves from Testers to Contributors.
+- **Help → About points at the new home.** The repository and AI notice links in the About dialog go to `github.com/elanthia-online/Lichborne`, done early from the §18.4.1 checklist. Every other `SekmehtDR` link is unchanged.
+- **The Discord invite lives only in the app.** README, the User Guide and AINOTICE.md say to download Lichborne and join through **Help → Discord**; the README's direct invite link is gone. The in-app copies (Help → Discord, the About dialog) still follow the per-major-version rotation rule.
+- **README credits** were a second copy of `credits.ts` that had drifted by four promotions and two testers; synced, and CLAUDE.md's credits rule now names it.
+
+**No slash command** for any of these: they are visual and documentation changes that add no capability (the Edit contact button's behaviour is unchanged; `/contact` has add, remove and list).
+

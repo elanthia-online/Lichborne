@@ -31,7 +31,7 @@ import type { HighlightEffect } from './highlights'
 import { applyTextStyles, coerceTextStyles, type TextStyles } from './textStyles'
 
 export interface AppSettings {
-  fontSize: number       // game text size in px, 10–24
+  fontSize: number       // game text size in px, FONT_SIZE_MIN–FONT_SIZE_MAX (8–24)
   fontFamily: string     // legacy preset key OR raw installed font name
   lineHeight: number     // 1.2 / 1.5 / 1.8 / 2.0
   largePrint: boolean
@@ -109,6 +109,16 @@ export interface AppSettings {
 /** The compass options — the slice FloatingCompass and /compass work with. */
 export type CompassOptions = Pick<AppSettings,
   'compassVisible' | 'compassSize' | 'compassCorner' | 'compassBacking' | 'compassDimOpacity' | 'compassClickable'>
+
+// The ONE range for every game-text size control: Settings, View → Game Text
+// Size, a panel's A−/A+ and an Experience's A−/A+. Settings used to clamp to
+// 10 while the other three allowed 8, so at 8 or 9 its − button JUMPED UP to
+// 10 (v0.20.4). Clamp through this, never a local Math.max/min.
+export const FONT_SIZE_MIN = 8
+export const FONT_SIZE_MAX = 24
+export function clampFontSize(n: number): number {
+  return Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, Math.round(n)))
+}
 
 export const DEFAULT_SETTINGS: AppSettings = {
   fontSize: 12,
@@ -239,6 +249,9 @@ export function coerceSettings(s: AppSettings): AppSettings {
   const dim = typeof s.compassDimOpacity === 'number' ? s.compassDimOpacity : NaN
   return {
     ...s,
+    // Every control clamps to this range, so only a hand-edited or damaged
+    // profile can sit outside it; a non-number falls back to the default.
+    fontSize: typeof s.fontSize === 'number' && Number.isFinite(s.fontSize) ? clampFontSize(s.fontSize) : D.fontSize,
     textStyles: coerceTextStyles(s.textStyles),
     compassVisible: typeof s.compassVisible === 'boolean' ? s.compassVisible : D.compassVisible,
     compassSize: COMPASS_SIZES.has(s.compassSize) ? s.compassSize : D.compassSize,

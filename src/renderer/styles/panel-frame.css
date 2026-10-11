@@ -96,12 +96,31 @@
   font-size: var(--game-font-size);
 }
 
+/* B511 (v0.20.4): the wrapper the overlay thumb is positioned in; it takes the
+   list's place as the strip's flex item. */
+.panel-tab-list-wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
 .panel-tab-list {
   display: flex;
   align-items: stretch;
   flex: 1;
   min-width: 0;
-  /* B312: `scroll`, NOT `auto` — the scrollbar must never TOGGLE.
+  position: relative;
+  /* B511 (v0.20.4) SUPERSEDES the B312 note below. The native scrollbar is now
+     HIDDEN and PanelFrame draws an overlay thumb (useOverlayScrollX, the
+     character strip's v0.20.2 approach, pitfall #170). The reserved 3px track
+     B312 introduced sat UNDER the tabs, so a tab's hover/active background
+     stopped short of the strip's bottom border, by more or less depending on
+     the zoom. With no native bar the strip's height still never changes, which
+     was B312's whole point, and the tabs reach the edge. `scrollbar-width:
+     none` voids every ::-webkit-scrollbar rule (B178), so the old 3px rules
+     are gone. History, kept for why the height must never toggle:
+     B312: `scroll`, NOT `auto` — the scrollbar must never TOGGLE.
      This list has content-driven height, so when a horizontal scrollbar
      appears its height is ADDED to the list's height (see (b) below —
      it was Chromium's native ~11px bar, not 3px); the strip is flex-shrink:0
@@ -120,20 +139,11 @@
      always-present empty track is invisible. Same family as pitfall #10
      (character strip) and #67 (reserve the gutter) — note
      `scrollbar-gutter` does NOT apply to a horizontal scrollbar. */
-  overflow-x: scroll;
-  overflow-y: visible;
-  /* B312 (b): `scrollbar-width` / `scrollbar-color` REMOVED — same finding as
-     B178 on the character strip. Modern Chromium implements the standard
-     properties, and setting either DISABLES all ::-webkit-scrollbar styling,
-     so the `height: 3px` rule below was inert and this strip was actually
-     showing Chromium's NATIVE thin bar (~11px). That is what made the height
-     toggle so visible. Dropping both re-enables the themed 3px bar, which is
-     also what makes `scroll` above cost nothing. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
-
-.panel-tab-list::-webkit-scrollbar { height: 3px; }
-.panel-tab-list::-webkit-scrollbar-track { background: var(--bg-sunken); }
-.panel-tab-list::-webkit-scrollbar-thumb { background: var(--bg-btn); border-radius: 2px; }
+.panel-tab-list::-webkit-scrollbar { display: none; }
 
 /* F46: the tab being drag-reordered — ghosted in place with an accent dashed
    outline marking the LANDING SLOT (the live reorder moves this ghost to

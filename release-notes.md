@@ -1,60 +1,44 @@
-## v0.20.3
+## v0.20.4
 
-The Living Tableau now shows *where* you are. Every town has its own look, rooms are furnished from their descriptions, and the things a room mentions stand in the scene. To get there, every room in the game was read and checked against what the Tableau drew, and the rules were tuned on what turned up.
+A smaller release about size and speed: zooming the window and changing your game text are now clearly two different things, number boxes stop fighting you while you type, and Settings no longer slows the whole app down while it's open.
 
-### Towns in their own style
+### Window zoom and game text size
 
-Shard rises in crystal spires, Muspar'i in sandstone domes, Ratha in terraces over the sea, and Mer'Kresh floats on platforms above the water. Leth Deriel sits in its great tree, Hibarnhvidar is carved into the rock, and the clans live in longhouses behind palisades. Thirty-nine towns are drawn in thirteen styles.
+**Ctrl+=** / **Ctrl+−** / **Ctrl+0** (Cmd on a Mac) zoom the *whole window*: menus, dialogs and game text together, in every Lichborne window, and the zoom is remembered when you restart. Your **game text size** is a separate, per-character setting. Both are now easy to find:
 
-Walk into a building whose name doesn't say which town it's in, and the Tableau remembers the town you were just in. Walk out into the wilds and it lets the town go.
+- **Settings → Display** has a new **Window zoom** row, with −, +, the current percent and a Reset, right under Font size.
+- In the **View** menu, *Font* is now **Game Text Size**, and the zoom items say **Window Zoom In / Out / Reset Window Zoom**.
 
-### Rooms, furnished
+If you've bound a macro to Ctrl+= or Ctrl+Num+, your macro still wins; you can zoom with the other keys, the View menu or Settings.
 
-Indoors, the Tableau draws what the room is made of (stone, marble, wood, canvas…), what lights it (glowing orbs, lanterns, candles, torches, a fire, daylight), and up to three furnishings it describes: shelves, a counter, a bar, a hearth, an altar, a forge, a bed, paintings, statues, a workbench or loom, mannequins, a mirror, a stage, a sunken pool on the floor, and more. A shop shows what it sells on its shelves or racks.
+### Number boxes you can type in
 
-### Things in the scene
+Every number field (font size, delays, cooldowns, log retention, theme opacity…) now lets you clear it and type freely. It takes your number when you press Enter, click away or use ↑/↓, and **Esc** puts the old value back. Before, backspacing the font size could snap it straight to 8.
 
-Outdoors and in caves, up to four things the room describes stand in front of the scenery: a fountain, a well, market stalls, a dock with its boats, a campfire, a signpost, banners, grazing animals, huts and cabins, columns, a pond, stacked crates, a garden gazebo, obelisks and standing stones, a hanging bell, a brazier, and more.
+### Faster Settings
 
-There's more terrain too: jungle, savannah, dead woods, moorland, volcanic ash under a smoking cone, and snow on the peaks. Caves are drawn by kind: caverns, tunnels, mines, sewers and ice caves.
+With Settings open, zooming or switching characters could pause for close to a second, because the font list draws every font you have installed in its own style. It now only draws the fonts you can see, and the font list loads instantly after the first time you open Settings.
 
-### It reads what the room *says*
+### Touch, for empaths
 
-A thing is only drawn when the room is talking about the thing itself:
+Right-click a player in the Living Tableau and an empath now sees **Touch** at the top of the menu, which starts healing them. Lichborne knows your guild once you've typed `info` in the game, or from the Guild set in Edit Profile.
 
-- "cobblestones flecked with crystals" draws no crystals;
-- "rose colored curtains" draws no roses, but "a bed of roses" does;
-- "an oak door" is not a tree;
-- "wagon tracks" is not a wagon;
-- a bird feeder is not a bird, but pigeons circling the fountain are.
+### Your settings, kept safe
 
-Distant things ("the lights of the pier far below") stay in the distance.
+A sweep for ways settings could be lost found and fixed several:
 
-Turn the scenery off with ⚙ **Scenery** if you'd rather have a plain stage.
+- **Each character keeps its own theme.** Quitting with several characters open used to save all of them with the theme of the one you were looking at.
+- **Custom themes can't be deleted by accident.** Saving a theme from a second character's Theme Picker could remove themes you'd just made on the first.
+- **Changes stick when you open another window.** Decoupling a character or a Team Login into separate windows could undo a setting changed a moment before, such as your Lich path, AI settings or Automation Analytics.
+- **Closing a character's tab saves it.** Command history and group on/off changes could be lost when you closed a tab.
+- **A damaged profile is kept, not wiped.** If a profile file can't be read, Lichborne now sets it aside, tells you where, and rebuilds from what it has, instead of replacing it with an empty one. The same goes for saved passwords and AI keys, and all of them are now written in a way a crash or power loss can't half-finish.
 
-### Moonskin in Moons
+### Fixes
 
-The Moons view now shows when **Rakash next take their moonskin form**, and how long it lasts, or when the one in progress ends: "moonskin · Mon 12:55 AM · in 21h · lasts 28h 11m". It runs exactly while Katamba is full, and it matches the Elanthipedia moonskin table to the minute. It's shown to everyone, so you can plan around the Rakash you hunt with. Hover Katamba for the moonskin window too, and any moon to see when it's next full. Turn it off with ⚙ **Moonskin**.
-
-### Your posture in the Living Tableau
-
-When you're **sitting, kneeling or prone**, a chip under your figure says so, in the same colours as your icon bar. It sits with your other conditions (after bleeding, stunned and the like), and hovering it tells you how to get up.
-
-### Floating windows that fit
-
-- **Vitals and command bars no longer get cut off** on a smaller screen, such as a laptop, or in a shorter Lichborne window. A bar window is always drawn at least as tall as its bar, and one docked at the bottom moves up rather than off-screen.
-- **The vitals, command and icon windows show their name only when you hover them**, so the name no longer sits over the top of the line you're typing in.
-- **A readable title bar.** Point at a window's thin top strip and it opens into a proper title bar, with the window's name and clear collapse and close buttons, without moving anything. At rest it stays as slim as before.
-
-### The Overview card
-
-The card's stream picker and its session stats now share one row, so the card is a line shorter.
-
-### Fixed
-
-- In the Living Tableau, dead creatures were drawn on top of the living ones fighting beside them. Corpses now lie behind everything still standing.
-- In a fight, a creature right in front of you could have its "facing you" tag drawn over your avatar. It now stands clear.
-- While you were hidden or invisible, your condition chips (Bleeding and the rest) faded along with your figure. Now only your figure fades.
-- Connecting another character with the **+** while you were already playing showed nothing until its tab suddenly appeared. You now see it connecting, in a tab you can click for progress or to cancel.
-
-*Thanks to **Sekmeht** for the idea of reading every room, and for the question that shaped this release: is the word the thing itself, or part of something else? Thanks to **Vellinous** for asking for Moonskin, and to **Mahtra** (Destahd), whose [DRMoonWatch](https://moonwatch.dr.elanthia.online/) and moon research it follows. Thanks to **Qij** for the screenshots of the cut-off bars.*
+- The selected character tab now sits right on the bar's bottom edge instead of floating just above it.
+- Settings' **−** button no longer makes the game text *bigger* when it's already at its smallest sizes; every text-size control now uses the same 8–24 range.
+- Panel tabs reach the bottom of their strip at every zoom level, and when there are more tabs than fit, a thin bar appears along the bottom and the mouse wheel scrolls them sideways.
+- In the Lich Dashboard, the search highlight stays on its line in long files when the window is zoomed.
+- The **Edit contact** button (click a contact's name in the game text) now matches the launcher's Connect button and follows your theme.
+- In the Living Tableau, a dead character (and a dead creature) now shows a skull instead of an ✕.
+- The User Guide's one-time setup now gives the right command, `SET STATUSPROMPT`. Thanks to **Vaddon**, a new contributor, who caught it reading through the docs.

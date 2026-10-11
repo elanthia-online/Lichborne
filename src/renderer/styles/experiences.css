@@ -534,6 +534,16 @@
 }
 
 .tableau-figure--dead { opacity: 0.45; }
+/* A dead avatar shows the skull (v0.20.4, was a ✕), sized like the initials it
+   replaces. It takes the avatar's ink through currentColor, and the drop-shadow
+   stands in for the text halo, which an SVG doesn't get. --skull-halo is set to
+   none where the avatar has no halo (dark ink on a pale picked colour). */
+.tableau-avatar > .tableau-grave {
+  width: 1.35em;
+  height: 1.35em;
+  filter: var(--skull-halo, drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6)));
+}
+.tableau-avatar--creature > .tableau-grave { filter: none; }
 /* B505: a corpse lies BEHIND everything still standing (Sekmeht): dead creatures used
    to stack in list order, often on top of the living ones they fell beside.
    Above the scenery and weather only (the stage isolates these). */

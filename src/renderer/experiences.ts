@@ -1402,6 +1402,11 @@ export interface ExperienceProps {
   // player to finish and send. Nothing is SENT by this; the Tableau's player
   // right-click menu calls it. Rules: utils/sayTo.ts `directedLine`.
   onDirect?: (verb: DirectedVerb, name: string) => void
+  /** v0.20.4: this character's guild as the game named it on its own `info`
+   *  sheet (the line Lich's DRStats.guild is parsed from, which a front end
+   *  can't read directly), else the Guild set in Edit Profile. Null when
+   *  unknown. The Tableau offers guild verbs from it (an empath's Touch). */
+  guild?: string | null
   // v0.14.7: content layers the user toggled OFF via the window's ⚙ popover
   // (option-id → true; see ExperienceDef.options). Absent = show everything.
   hidden?: Record<string, boolean>

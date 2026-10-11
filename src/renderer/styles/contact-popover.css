@@ -136,21 +136,14 @@
   justify-content: flex-end;
 }
 
+/* Its LOOK is the launcher Connect button's (the shared rule in launcher.css,
+   v0.20.4). Only the size lives here, in em so it scales with the game font
+   like the rest of this popover (pitfall #45b); don't restate colours or the
+   border here, or load order decides which file wins. */
 .cpop-edit-btn {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  border-radius: var(--radius-sm);
-  padding: 3px 12px;
-  font-family: inherit;
-  font-size: 1.04em;
-  cursor: pointer;
-  transition: border-color var(--ui-transition), color var(--ui-transition);
-}
-
-.cpop-edit-btn:hover {
-  border-color: var(--accent-dim);
-  color: var(--accent);
+  padding: 0.35em 1.05em;
+  font-size: 0.95em;
+  line-height: 1.2;
 }
 
 /* ── Clickable name in game text ─────────────────────────────────────────── */

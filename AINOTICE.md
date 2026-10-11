@@ -115,5 +115,5 @@ they handle API traffic.
 
 ---
 
-_Questions or concerns about AI data handling? Raise them with the developer (see the
-About dialog for the Discord/GitHub links)._
+_Questions or concerns about AI data handling? Raise them with the developer on Discord (the
+invite is inside Lichborne: **Help → Discord**) or on GitHub._

@@ -139,6 +139,18 @@ interface ConnectOpts {
 // blank. Per-character targets live on the profile (CharacterProfile.attach).
 const ATTACH_LAST_KEY = 'lichborne.attach.last'
 
+// The first window's _shared.yaml load, shared by every caller in this window
+// (v0.20.4). Under React StrictMode the boot effect runs twice; with the claim
+// alone, the second run was told "not first" and went on to Lich discovery and
+// a shared save BEFORE the first run's import had filled localStorage. Both
+// runs now await this one promise.
+let sharedProfileLoad: Promise<void> | null = null
+function loadSharedProfileOnce(): Promise<void> {
+  sharedProfileLoad ??= window.api.claimSharedImport()
+    .then(first => (first ? importSharedProfile() : undefined))
+  return sharedProfileLoad
+}
+
 export default function App() {
   return (
     <RosterProvider>
@@ -980,7 +992,10 @@ function AppShell() {
 
   useEffect(() => {
     let cancelled = false
-    importSharedProfile().then(async () => {
+    // Only the run's first window loads _shared.yaml (see the main handler);
+    // every later window already shares that window's live localStorage.
+    loadSharedProfileOnce()
+      .then(async () => {
       if (cancelled) return
       const adv = loadAdvanced()
       // probeDesktop deliberately NOT passed — the silent startup discovery must
@@ -1570,8 +1585,12 @@ function AppShell() {
     // was wrong because lichPort is global (always the Lich front-end port,
     // not a per-shard port).
     try {
+      // Clear the working copy only when there is NO profile file. A file that
+      // exists but was unreadable (moved aside by main) or is from a newer
+      // version leaves the working copy as the best copy we have (v0.20.4).
+      const existed = await window.api.characterProfileExists(c.name).catch(() => true)
       const loaded = await importCharacterProfile(c.name)
-      if (!loaded) clearCharacterLocalStorage(c.name)
+      if (!loaded && !existed) clearCharacterLocalStorage(c.name)
     } catch (err) { console.error(err) }
     try {
       await exportCharacterProfile(c.account, c.name, c.game, c.useLich)
@@ -1663,8 +1682,12 @@ function AppShell() {
     // Same per-character profile load as runConnect, so an attached tab gets
     // the character's saved layout, highlights, macros and theme.
     try {
+      // Clear the working copy only when there is NO profile file. A file that
+      // exists but was unreadable (moved aside by main) or is from a newer
+      // version leaves the working copy as the best copy we have (v0.20.4).
+      const existed = await window.api.characterProfileExists(character).catch(() => true)
       const loaded = await importCharacterProfile(character)
-      if (!loaded) clearCharacterLocalStorage(character)
+      if (!loaded && !existed) clearCharacterLocalStorage(character)
     } catch (err) { console.error(err) }
 
     // REMEMBER THE TARGET — the reason this feature is usable twice. Saved on
@@ -1911,8 +1934,10 @@ function AppShell() {
       const result = await window.api.login(creds)
       if (!result.ok) return { error: result.error ?? 'Connection failed' }
       try {
+        // Same rule as runConnect: clear only when no profile file exists.
+        const existed = await window.api.characterProfileExists(c.name).catch(() => true)
         const loaded = await importCharacterProfile(c.name)
-        if (!loaded) clearCharacterLocalStorage(c.name)
+        if (!loaded && !existed) clearCharacterLocalStorage(c.name)
       } catch (err) { console.error(err) }
       try {
         await exportCharacterProfile(c.account, c.name, c.game, c.useLich)
@@ -2083,6 +2108,13 @@ function AppShell() {
         window.api.disconnect(target.sessionId)
       }
       window.api.destroySession(target.sessionId)
+      // Save this character before its tab goes (v0.20.4). Closing a tab never
+      // did, and the GameWindow unmounts before the "Disconnected" status that
+      // normally triggers a save, so anything that wrote localStorage without
+      // scheduling a save (command history, /group on|off, group and mode
+      // edits) was reverted from the old YAML at the next connect. The export
+      // reads localStorage, so it doesn't need the tab to stay mounted.
+      exportCharacterProfile(target.account, target.character, target.game, target.useLich).catch(console.error)
     }
     removeSession(id)
   }

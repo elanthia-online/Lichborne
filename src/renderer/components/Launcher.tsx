@@ -32,7 +32,7 @@ import { backdropHandlers } from "../utils/backdropClose"
 import { useEscapeClose } from '../hooks/useEscapeClose'
 import { confirmAction, confirmDelete, confirmDiscard } from '../confirm'
 import type { CharacterProfile } from '../profile-types'
-import { loadLastSessionCharacters, exportSharedProfile } from '../profile'
+import { loadLastSessionCharacters, exportSharedProfile, reportUnreadableProfiles } from '../profile'
 import { loadBulkSets, saveBulkSets, removeBulkSet, upsertBulkSet, BULK_SET_NAME_MAX, BULK_SETS_KEY, BULK_SETS_CHANGED_EVENT } from '../bulkSets'
 import ContextMenu, { type CtxItem } from './ContextMenu'
 import CharacterNotesEditor, { guildLabel } from './CharacterNotesEditor'
@@ -416,6 +416,7 @@ export async function loadCharacterCards(): Promise<LauncherCharacter[]> {
       attach:   p.attach,
     } as LauncherCharacter
   }))
+  void reportUnreadableProfiles()
   return profiles
     .filter((c): c is LauncherCharacter => c !== null)
     .sort((a, b) => a.name.localeCompare(b.name))

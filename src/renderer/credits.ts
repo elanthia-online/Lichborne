@@ -28,18 +28,28 @@ export const CONTRIBUTORS = [
   // kahlen-tech; the PR's own commits are authored 'Claude' (AI-assisted), so
   // the human attribution lives in the merge commit and here.
   'Kahlen',
+  // v0.20.4 (Sekmeht): a documentation review that caught the User Guide's
+  // one-time setup command printed as `SET PROMPT STATUS` instead of
+  // `SET STATUSPROMPT` (B524). One logged item, so the tail.
+  'Vaddon',
+  // Promoted from TESTERS in v0.20.4 (Sekmeht). No item logged in BUGS.md
+  // under this name yet, so the tail of the volume ordering.
+  'Crobin',
 ]
 
 // All still at zero logged reports, so alphabetical is the stable order here —
 // there is no volume to sort by until someone files something.
 export const TESTERS = [
-  'Cirostar', 'Crobin', 'Damiza', 'Tirost', 'Wilhellm',
+  'Cirostar', 'Damiza', 'Tirost', 'Wilhellm',
 ]
 
-export const REPO_URL = 'https://github.com/SekmehtDR/Lichborne'
+// The project's home at the Elanthia-Online org (v0.20.4, Sekmeht). Used only by
+// Help → About. The updater's feeds and the other hardcoded links are a separate
+// cut-over (DESIGN §18.4.1).
+export const REPO_URL = 'https://github.com/elanthia-online/Lichborne'
 // The AI Processing & Privacy notice (AINOTICE.md) — future GitHub location; the
 // file is committed at the repo root, so it resolves once the repo is public.
-export const AI_NOTICE_URL = 'https://github.com/SekmehtDR/Lichborne/blob/main/AINOTICE.md'
+export const AI_NOTICE_URL = 'https://github.com/elanthia-online/Lichborne/blob/main/AINOTICE.md'
 // Discord invite — ALSO hardcoded in main.ts's Help → Discord menu item; keep
 // the two in sync and rotate BOTH per major version (see CLAUDE.md's Discord
 // rotation rule).

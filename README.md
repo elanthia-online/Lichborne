@@ -18,7 +18,7 @@ A front-end for DragonRealms: the window you actually play in. It renders the ga
 
 It isn't a replacement for Lich — Lich still owns your scripts, maps, and automation. Lichborne is the display and configuration layer on top, and it makes what Lich already knows visible. You can also play without Lich entirely; you'll just be doing more by hand.
 
-**Status: alpha.** Actively developed, used daily by a small group of testers. Windows is the mature platform; Linux and macOS builds work but are younger. Come say hello in [Discord](https://discord.gg/ZDkXCeR72J).
+**Status: alpha.** Actively developed, used daily by a small group of testers. Windows is the mature platform; Linux and macOS builds work but are younger. Come say hello on Discord: the invite is inside Lichborne, so [download it](#getting-started) first, then choose **Help → Discord**.
 
 ---
 
@@ -86,7 +86,7 @@ Worth knowing before you install:
 
 - **No code signing yet on any platform.** Windows shows a SmartScreen warning; macOS needs the one-time `xattr -cr` above.
 - **macOS doesn't auto-update** while builds are unsigned — Mac updates are a manual download. Windows and Linux update themselves.
-- **macOS builds are Apple Silicon only.** Ask in Discord if you need Intel.
+- **macOS builds are Apple Silicon only.** Ask on Discord (**Help → Discord** in the app) if you need Intel.
 - **Linux and macOS are beta.** Everything works; they're just younger than the Windows build.
 - **Map tracking depends on what the game sends.** The Lich Map follows room IDs and is the most reliable — more so if you turn on DragonRealms' room-number display. The Genie Map matches on room name and description, so it can lag in areas full of identically-named rooms; a `LOOK` resyncs it.
 
@@ -106,9 +106,9 @@ Built with the DragonRealms community, and shaped by the people who use it.
 
 **Developers** — Sekmeht, Binu
 
-**Contributors** — Rakkor, Illiahanna, Elore, Morress, Legiro, Rhorgul, Thanator, Mahtra, Zithri
+**Contributors** — Rakkor, Illiahanna, Elore, Morress, Legiro, Rhorgul, Thanator, Mahtra, Zithri, Qij, Kahlen, Vaddon, Crobin
 
-**Testers** — Crobin, Damiza, Qij, Tirost
+**Testers** — Cirostar, Damiza, Tirost, Wilhellm
 
 Thanks also to [Thires](https://github.com/Thires/SimuCoins), whose Genie SimuCoins plugin showed how that feature works, and to the Genie maps team, whose hand-curated map data the Genie map view renders.
 

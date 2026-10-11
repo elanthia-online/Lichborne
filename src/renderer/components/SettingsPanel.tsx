@@ -35,15 +35,17 @@ import { pressable } from '../utils/pressable'
 import { confirmAction } from '../confirm'
 import { createPortal } from 'react-dom'
 import type { SessionLogDiskUsage, SimuCoinStatus } from '../../shared/types'
-import { FONT_FAMILIES, FONT_FAMILY_LABELS, DEFAULT_SETTINGS, resolveFontFamily, isFontPreset, type AppSettings } from '../settings'
+import { FONT_FAMILIES, FONT_FAMILY_LABELS, DEFAULT_SETTINGS, FONT_SIZE_MIN, FONT_SIZE_MAX, clampFontSize, resolveFontFamily, isFontPreset, type AppSettings } from '../settings'
 import { HIGHLIGHT_EFFECTS, type HighlightEffect } from '../highlights'
+import { IS_MAC } from '../lichSettings'
+import NumberField from './NumberField'
 // The preview is painted by the SAME builder the app bar uses, so what you
 // pick here is exactly what you get up there (pitfall #127 / B281).
 import { paintBrandMark } from '../utils/brandMark'
 import { type SessionLogSettings, loadSessionLogSettings, saveSessionLogSettings } from '../sessionLogSettings'
 import { type AIConfig, loadAIConfig, saveAIConfig, AI_TEXT_MODELS } from '../aiConfig'
 import { aiSessionUsage } from '../ai/aiClient'
-import { exportSharedProfile, scheduleSharedProfileSave } from '../profile'
+import { scheduleSharedProfileSave } from '../profile'
 import {
   loadSimuCoinConfig, saveSimuCoinConfig, accountConfig, setAccountConfig,
   simucoinStateText, simucoinBalanceText, SIMUCOIN_DISCLOSURE, SIMUCOIN_CHANGED_EVENT, SIMUCOIN_KEY,
@@ -58,6 +60,34 @@ declare global {
   interface Window {
     queryLocalFonts?: () => Promise<{ family: string }[]>
   }
+}
+
+// ── Installed fonts (v0.20.4) ──────────────────────────────────────────────
+// Listing the fonts and testing each for monospace means loading every
+// installed font (setting ctx.font to a family loads it), which took ~450 ms
+// on a machine with ~430 fonts, every time Settings opened. Fonts rarely
+// change mid-session, so the scan runs once per window and is reused; a failed
+// scan is not kept, so the next open tries again.
+interface FontScan { families: string[]; mono: Set<string> }
+let fontScanResult: FontScan | null = null
+let fontScanPromise: Promise<FontScan> | null = null
+function scanFonts(): Promise<FontScan> {
+  if (fontScanPromise) return fontScanPromise
+  const query = window.queryLocalFonts
+  if (!query) return Promise.reject(new Error('queryLocalFonts unavailable'))
+  fontScanPromise = query().then(fonts => {
+    const families = [...new Set(fonts.map(f => f.family))].sort()
+    const ctx = document.createElement('canvas').getContext('2d')!
+    const mono = new Set<string>()
+    for (const family of families) {
+      ctx.font = `16px '${family}'`
+      if (ctx.measureText('i').width === ctx.measureText('W').width) mono.add(family)
+    }
+    fontScanResult = { families, mono }
+    return fontScanResult
+  })
+  fontScanPromise.catch(() => { fontScanPromise = null })
+  return fontScanPromise
 }
 
 // Transparent migration: legacy preset keys stored in settings → actual font name.
@@ -182,6 +212,55 @@ function RadioGroup<T extends string>({ label, value, options, onChange, disable
 // `sec*` section wrappers in the JSX below.
 const SECTION_NAMES = ['Display', 'Text styles', 'Accessibility', 'Layout', 'Overview', 'Behavior', 'Session Log', 'AI', 'SimuCoins', 'Lich Setup'] as const
 
+// ── Window zoom (v0.20.4) ───────────────────────────────────────────────────
+// Chromium's page zoom: the thing Ctrl+=/−/0 change. It scales the WHOLE window
+// (dialogs, chrome and game text alike) and Chromium shares it across every
+// Lichborne window, and it survives a restart (Sekmeht tested it, v0.20.4).
+// The per-character game font is a separate setting.
+// Nothing tells the page when zoom changes, but devicePixelRatio moves with it,
+// so a `resolution` media query re-armed at the current ratio fires on every
+// change — from this control, a keystroke, or another window. (It also fires
+// when the window moves to a monitor with different scaling; re-reading the
+// level then is harmless.)
+const ZOOM_KEY = IS_MAC ? '⌘' : 'Ctrl+'
+const ZOOM_STEP = 0.5   // a level step, matching the menu's zoom roles
+const ZOOM_MIN = -3     // ~58%
+const ZOOM_MAX = 5      // ~249%
+function zoomPercent(level: number): number {
+  return Math.round(Math.pow(1.2, level) * 100)   // Chromium: factor = 1.2^level
+}
+function useWindowZoom(): [number, (level: number) => void] {
+  const [level, setLevel] = useState(() => window.api.getZoomLevel())
+  useEffect(() => {
+    let mq: MediaQueryList | null = null
+    const arm = () => {
+      mq?.removeEventListener('change', onChange)
+      mq = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+      mq.addEventListener('change', onChange)
+    }
+    function onChange() {
+      setLevel(window.api.getZoomLevel())
+      arm()
+    }
+    arm()
+    return () => mq?.removeEventListener('change', onChange)
+  }, [])
+  const set = (next: number) => {
+    // Ctrl+=/− can go past this row's range (main allows −8…9). Clamp only on
+    // the side being moved toward, so − at 358% steps down once instead of
+    // jumping straight to the row's maximum.
+    const cur = window.api.getZoomLevel()
+    const clamped = next < cur ? Math.max(next, Math.min(ZOOM_MIN, cur)) : next > cur ? Math.min(next, Math.max(ZOOM_MAX, cur)) : next
+    // Applied in main (asynchronously): show the requested level now, then
+    // re-read the real one, in case it was refused or snapped (the media query
+    // also catches it, but only when the screen scale actually changes).
+    window.api.setZoomLevel(clamped)
+    setLevel(clamped)
+    setTimeout(() => setLevel(window.api.getZoomLevel()), 150)
+  }
+  return [level, set]
+}
+
 // Row-visibility helper for the global settings filter: empty query shows
 // everything; otherwise a row stays visible when the (lowercased, trimmed)
 // query appears in its section name or any of its label texts / keywords.
@@ -191,6 +270,31 @@ function rowVisible(q: string, section: string, ...labels: string[]): boolean {
   if (!q) return true
   if (section.toLowerCase().includes(q)) return true
   return labels.some(l => l.toLowerCase().includes(q))
+}
+
+// Hoisted to module scope (UX #4) and mounted only while visible, so its
+// listener lives exactly as long as the row does.
+function WindowZoomRow() {
+  const [level, setZoom] = useWindowZoom()
+  const pct = zoomPercent(level)
+  return (
+    <div className="sp-field-row">
+      <span className="sp-field-label">
+        Window zoom <span className="sp-field-hint">(everything, all windows)</span>
+      </span>
+      <div className="sp-number-row"
+        title={`Scales the whole window: dialogs, menus, panels and game text together. It applies to every Lichborne window and every character, and it is remembered when you restart. ${ZOOM_KEY}= and ${ZOOM_KEY}− change it from anywhere, and ${ZOOM_KEY}0 resets it.`}>
+        <button type="button" className="sp-num-btn" aria-label="Zoom out" disabled={level <= ZOOM_MIN}
+          onClick={() => setZoom(level - ZOOM_STEP)}>−</button>
+        <span className="sp-zoom-value" aria-live="polite">{pct}%</span>
+        <button type="button" className="sp-num-btn" aria-label="Zoom in" disabled={level >= ZOOM_MAX}
+          onClick={() => setZoom(level + ZOOM_STEP)}>+</button>
+        <button type="button" className="ui-btn ui-btn--sm sp-zoom-reset" disabled={level === 0}
+          title={level === 0 ? 'Already at 100%' : `Back to 100% (${ZOOM_KEY}0)`}
+          onClick={() => setZoom(0)}>Reset</button>
+      </div>
+    </div>
+  )
 }
 
 export default function SettingsPanel({ settings, character, onChange, layoutMode, onClose, simucoin, jumpToSection }: Props) {
@@ -203,8 +307,8 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
   const searchRef = useRef<HTMLInputElement>(null)
   useEffect(() => { searchRef.current?.focus({ preventScroll: true }) }, [])
   const inWindowed = layoutMode === 'free'
-  const [systemFonts, setSystemFonts] = useState<string[]>([])
-  const [monoFonts,   setMonoFonts]   = useState<Set<string>>(new Set())
+  const [systemFonts, setSystemFonts] = useState<string[]>(() => fontScanResult?.families ?? [])
+  const [monoFonts,   setMonoFonts]   = useState<Set<string>>(() => fontScanResult?.mono ?? new Set())
   const [fontQuery,   setFontQuery]   = useState('')
   const [fontFilter,  setFontFilter]  = useState<'all' | 'mono'>('all')
   const fontListRef = useRef<HTMLDivElement>(null)
@@ -303,8 +407,11 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
       compress:        logCfg.compress,
       maxRawMB:        logCfg.maxRawMB,
     })
-    const t = setTimeout(() => exportSharedProfile().catch(console.error), 1000)
-    return () => clearTimeout(t)
+    // The module-level scheduler, not a local timer: a local timer was cleared
+    // when the dialog closed, so an edit made in the last second before Close
+    // never reached _shared.yaml (v0.20.4). This one survives the unmount and
+    // is flushed at quit.
+    scheduleSharedProfileSave(1000)
   }, [logCfg])
   function setLog<K extends keyof SessionLogSettings>(key: K, value: SessionLogSettings[K]) {
     setLogCfg(c => ({ ...c, [key]: value }))
@@ -385,8 +492,11 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
   }, [])
   useEffect(() => {
     saveAIConfig(aiCfg)
-    const t = setTimeout(() => exportSharedProfile().catch(console.error), 1000)
-    return () => clearTimeout(t)
+    // The module-level scheduler, not a local timer: a local timer was cleared
+    // when the dialog closed, so an edit made in the last second before Close
+    // never reached _shared.yaml (v0.20.4). This one survives the unmount and
+    // is flushed at quit.
+    scheduleSharedProfileSave(1000)
   }, [aiCfg])
   function setAi<K extends keyof AIConfig>(key: K, value: AIConfig[K]) {
     setAiCfg(c => ({ ...c, [key]: value }))
@@ -457,22 +567,16 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
     if (LEGACY_KEYS[settings.fontFamily]) set('fontFamily', LEGACY_KEYS[settings.fontFamily])
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Enumerate installed system fonts and detect monospace via canvas width test
+  // Enumerate installed system fonts and detect monospace (scanFonts, cached
+  // for the session).
   useEffect(() => {
-    window.queryLocalFonts?.()
-      .then(fonts => {
-        const families = [...new Set(fonts.map(f => f.family))].sort()
-        setSystemFonts(families)
-        const canvas = document.createElement('canvas')
-        const ctx = canvas.getContext('2d')!
-        const mono = new Set<string>()
-        for (const family of families) {
-          ctx.font = `16px '${family}'`
-          if (ctx.measureText('i').width === ctx.measureText('W').width) mono.add(family)
-        }
-        setMonoFonts(mono)
-      })
-      .catch(() => {})
+    let live = true
+    scanFonts().then(r => {
+      if (!live) return
+      setSystemFonts(r.families)
+      setMonoFonts(r.mono)
+    }).catch(() => {})
+    return () => { live = false }
   }, [])
 
   // Scroll selected font into view whenever the list loads, filter, or selection changes
@@ -510,11 +614,12 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
 
   const vFontFamily    = vis('Display', 'Font family', 'monospace')
   const vFontSize      = vis('Display', 'Font size', 'game text')
+  const vZoom          = vis('Display', 'Window zoom', 'zoom', 'ctrl', 'scale', 'bigger', 'smaller')
   const vLineHeight    = vis('Display', 'Line height')
   const vTextWeight    = vis('Display', 'Text weight')
   const vPreview       = vis('Display', 'Preview', 'font')
   const vBrandEffect   = vis('Display', 'Wordmark effect', 'lichborne', 'brand', 'logo', 'title', 'app bar', 'rainbow', 'glow')
-  const secDisplay     = vFontFamily || vFontSize || vLineHeight || vTextWeight || vPreview || vBrandEffect
+  const secDisplay     = vFontFamily || vFontSize || vZoom || vLineHeight || vTextWeight || vPreview || vBrandEffect
   // Live wordmark preview for the row below — same builder as the app bar.
   const brandPreview   = paintBrandMark(settings.brandEffect)
 
@@ -741,22 +846,26 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
           {vFontSize && (
           <div className="sp-field-row">
             <label className="sp-field-label" htmlFor="sp-font-size">
-              Font size <span className="sp-field-hint">(game text)</span>
+              Font size <span className="sp-field-hint">(game text, this character)</span>
             </label>
-            <div className="sp-number-row">
-              <button className="sp-num-btn" onClick={() => set('fontSize', Math.max(10, settings.fontSize - 1))}>−</button>
-              <input
-                id="sp-font-size"
-                type="number" min={10} max={24} step={1}
+            <div className="sp-number-row" title="The size of the game text for this character. View → Game Text Size changes the same setting.">
+              <button type="button" className="sp-num-btn" aria-label="Smaller game text" disabled={settings.fontSize <= FONT_SIZE_MIN}
+                onClick={() => set('fontSize', clampFontSize(settings.fontSize - 1))}>−</button>
+              <NumberField
+                id="sp-font-size" live
+                min={FONT_SIZE_MIN} max={FONT_SIZE_MAX}
                 value={settings.fontSize}
-                onChange={e => set('fontSize', Math.max(10, Math.min(24, parseInt(e.target.value) || 14)))}
+                onCommit={n => set('fontSize', n)}
                 className="sp-number-input"
               />
               <span className="sp-number-unit">px</span>
-              <button className="sp-num-btn" onClick={() => set('fontSize', Math.min(24, settings.fontSize + 1))}>+</button>
+              <button type="button" className="sp-num-btn" aria-label="Larger game text" disabled={settings.fontSize >= FONT_SIZE_MAX}
+                onClick={() => set('fontSize', clampFontSize(settings.fontSize + 1))}>+</button>
             </div>
           </div>
           )}
+
+          {vZoom && <WindowZoomRow />}
 
           {vLineHeight && (
           <div className="sp-field-row">
@@ -1083,14 +1192,11 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
                 makes the cards much shorter.
               </div>
             </div>
-            <input
-              type="number" min={0} max={MAX_FEED_LINES}
-              className="sp-number-input"
+            <NumberField
+              live min={0} max={MAX_FEED_LINES}
+              className="sp-number-input" aria-label="Feed lines"
               value={ovOptions.feedLines}
-              onChange={e => {
-                const n = parseInt(e.target.value, 10)
-                if (Number.isFinite(n)) setOv({ feedLines: n })
-              }}
+              onCommit={n => setOv({ feedLines: n })}
             />
           </div>}
 
@@ -1101,14 +1207,12 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
                 Seconds of silence before a character is flagged as idle on its card.
               </div>
             </div>
-            <input
-              type="number" min={10} max={3600}
-              className="sp-number-input"
+            {/* Not live: typing 120 would act on 12 on the way (cards flag idle). */}
+            <NumberField
+              min={10} max={3600}
+              className="sp-number-input" aria-label="Idle after, in seconds"
               value={ovOptions.idleSeconds}
-              onChange={e => {
-                const n = parseInt(e.target.value, 10)
-                if (Number.isFinite(n)) setOv({ idleSeconds: n })
-              }}
+              onCommit={n => setOv({ idleSeconds: n })}
             />
           </div>}
 
@@ -1188,11 +1292,11 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
             </label>
             <div className="sp-number-row">
               <button className="sp-num-btn" onClick={() => setCmdHistMin(cmdHist.minLength - 1)}>−</button>
-              <input
+              <NumberField
                 id="sp-cmdhist-min"
-                type="number" min={0} max={CMD_HISTORY_MIN_MAX} step={1}
+                min={0} max={CMD_HISTORY_MIN_MAX}
                 value={cmdHist.minLength}
-                onChange={e => setCmdHistMin(parseInt(e.target.value) || 0)}
+                onCommit={setCmdHistMin}
                 className="sp-number-input"
               />
               <button className="sp-num-btn" onClick={() => setCmdHistMin(cmdHist.minLength + 1)}>+</button>
@@ -1275,11 +1379,11 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
                     className="sp-num-btn"
                     onClick={() => setLog('retentionDays', Math.max(0, logCfg.retentionDays - 1))}
                   >−</button>
-                  <input
+                  <NumberField
                     id="sp-log-retention"
-                    type="number" min={0} max={3650} step={1}
+                    min={0} max={3650}
                     value={logCfg.retentionDays}
-                    onChange={e => setLog('retentionDays', Math.max(0, Math.min(3650, parseInt(e.target.value) || 0)))}
+                    onCommit={n => setLog('retentionDays', n)}
                     className="sp-number-input"
                   />
                   <span className="sp-number-unit">days</span>
@@ -1301,11 +1405,11 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
                     className="sp-num-btn"
                     onClick={() => setLog('maxRawMB', Math.max(0, logCfg.maxRawMB - 50))}
                   >−</button>
-                  <input
+                  <NumberField
                     id="sp-log-maxraw"
-                    type="number" min={0} max={100000} step={50}
+                    min={0} max={100000} step={50}
                     value={logCfg.maxRawMB}
-                    onChange={e => setLog('maxRawMB', Math.max(0, Math.min(100000, parseInt(e.target.value) || 0)))}
+                    onCommit={n => setLog('maxRawMB', n)}
                     className="sp-number-input"
                   />
                   <span className="sp-number-unit">MB</span>

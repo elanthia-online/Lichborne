@@ -7,7 +7,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 3px 8px;
+  padding: 3px 8px 0;
   background: linear-gradient(180deg, var(--bg-raised), var(--bg-sunken));
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
@@ -39,14 +39,26 @@
 .app-bar .character-tabs-wrap {
   flex: 1 1 auto;
   min-width: 0;
+  /* v0.20.4 (Sekmeht): the tabs sit ON the bar's bottom border instead of
+     floating 3px above it. The bar has no bottom padding any more; the strip
+     stretches to the bottom and takes the 3px as TOP padding, while every
+     other item keeps a 3px bottom margin, so each item's position and the
+     bar's height are exactly what they were (pitfall #170). This was reverted
+     once (2026-07-27) because the strip's real scrollbar sat on its bottom
+     edge and lifted the tabs when they overflowed; since v0.20.2 that
+     scrollbar is an overlay that takes no space, so the join holds with any
+     number of tabs. */
+  align-self: stretch;
 }
+.app-bar > :not(.character-tabs-wrap) { margin-bottom: 3px; }
 .app-bar .character-tabs {
   flex: 1 1 auto;
   min-width: 0;
   background: transparent;
   border-bottom: none;
-  padding: 0;
+  padding: 3px 0 0;
   min-height: 0;
+  align-items: flex-end;
 }
 
 .app-bar-brand {

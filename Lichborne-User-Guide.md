@@ -4,9 +4,9 @@
 
 Welcome! Lichborne is a modern DragonRealms client for Windows, Linux, and macOS. Whether you're brand new or you've been playing since the StormFront days, this guide walks you from **download** to **fully set up** — and then tours everything the client can do. You don't need to read it front to back; jump to what you need using the contents below.
 
-> **Stuck or something looks wrong?** Come say hi on **Discord** — the invite link lives in **Help → About Lichborne** inside the app (which also shows your version and credits). We're a friendly bunch and love a good bug report.
+> **Stuck or something looks wrong?** Come say hi on **Discord**. The invite is inside Lichborne: [download it](#getting-started) first, then choose **Help → Discord**. (**Help → About Lichborne** shows your version, which is handy to mention.) We're a friendly bunch and love a good bug report.
 
-> ℹ️ **Heads up:** this guide was **written with the help of AI**, so it may contain the occasional mistake or a detail that's drifted out of date. If something here doesn't match what you see in the app, trust the app — and please let us know on Discord so we can fix it.
+> ℹ️ **Heads up:** this guide was **written with the help of AI**, so it may contain the occasional mistake or a detail that's drifted out of date. If something here doesn't match what you see in the app, trust the app — and please let us know on Discord (**Help → Discord** in the app) so we can fix it.
 
 ---
 
@@ -70,6 +70,34 @@ A few ideas shape everything:
 
 ## What's New in the Latest Version
 
+**v0.20.4**
+
+- **Window zoom and game text size, named apart.** Ctrl+= / Ctrl+− / Ctrl+0
+  zoom the whole window, in every Lichborne window, and the zoom is
+  remembered when you restart. Your game text size is per character.
+  Settings → Display now has a **Window zoom** row under Font size, and the
+  View menu says **Game Text Size** and **Window Zoom In / Out**.
+- **Number boxes you can type in.** Clear a box and type freely; it takes
+  your number on Enter, when you click away, or with ↑/↓, and Esc puts the
+  old value back.
+- **Faster with Settings open.** Zooming or switching characters with
+  Settings open no longer pauses for close to a second, and the font list
+  loads instantly after the first time.
+- **Touch, for empaths.** Right-click a player in the Living Tableau and an
+  empath gets **Touch** at the top of the menu.
+- **Your settings, kept safe.** Each character keeps its own theme, custom
+  themes can't be deleted by accident, settings stick when you open another
+  window, closing a tab saves that character, and a damaged profile is set
+  aside (with a message saying where) instead of being wiped.
+- **Fixed:** Settings' − no longer makes the text bigger at the smallest
+  sizes; panel tabs reach the bottom of their strip at any zoom, and the
+  mouse wheel scrolls them when they overflow; the Lich Dashboard search
+  highlight stays on its line when zoomed; the selected character tab sits
+  right on the bar's bottom edge; **Edit contact** now matches the
+  launcher's Connect button and follows your theme; a dead character in the
+  Living Tableau shows a skull instead of an ✕; and this guide's setup step
+  now gives the right command, `SET STATUSPROMPT` (thanks, Vaddon).
+
 **v0.20.3**
 
 - **Towns in their own style.** The Living Tableau draws each town the way it
@@ -100,38 +128,6 @@ A few ideas shape everything:
   condition chips stay readable while you're hidden; and connecting another
   character with **+** while you play shows it connecting again.
 
-**v0.20.2**
-
-- **The Living Tableau shows your fights.** Run `ASSESS` and the scene turns
-  into a battlefield laid out the way the fight really stands: who is in front
-  of you, beside you or behind, your group's fights beside yours, and other
-  people's fights above. Lines join each fighter to what it's fighting, with
-  arrows showing who faces whom, and a crosshair marks each person's target in
-  their own colour. A **?** beside the room title explains every line, arrow
-  and colour.
-- **Fights with other players.** A player who closes on you takes centre
-  stage, joined to you by a line that shows the range and who is closing;
-  everyone else steps aside to a column on the left.
-- **Your group, and how hurt they are.** Group members stand beside you, the
-  leader marked, with a small health meter when someone is hurt.
-- **Creatures die where they stand.** A creature you kill stays in its place,
-  greyed with a skull, until its body decays or is skinned. Unconscious or
-  downed creatures say so, and newcomers appear at once.
-- **More life in the scene.** Words float off you when you dodge, block, parry
-  or get hit; a gold burst when you gain a rank; a glow while you prepare a
-  spell; people act out their emotes; and the place itself is drawn behind
-  everyone from the room's description (peaks, forests, rooftops, ruins,
-  rivers, a shop or a temple inside), with rain and snow when the weather
-  turns.
-- **Add a character without stopping.** With someone already open, a new
-  character logs in behind you and arrives as a tab, like a team's other
-  members.
-- **A steadier screen.** Fixed several causes of the whole screen briefly
-  "quivering": connecting a character no longer redraws the window in a
-  different font, and the row of character tabs can no longer change the
-  height of the bar above your game text (it now scrolls with a thin overlay
-  bar instead).
-
 ## On the Horizon (Roadmap)
 
 Lichborne is actively developed. A few things we're heading toward — directional, not promises with dates:
@@ -143,7 +139,7 @@ Lichborne is actively developed. A few things we're heading toward — direction
 - **Windowed Panels becomes the default.** The floating-window layout is the future; the older docked "Static Panels" mode will eventually retire, with an automatic one-time conversion so no layout is ever lost.
 - **More Lichborne Experiences.** The graphical scenes (Living Tableau, Moons, Spell Monitor) are the first of a larger set of "graphics for text players" — richer combat instruments, wound/status visuals, and more.
 - **More AI helpers.** Catch Me Up is the first BYOK ("bring your own key") AI feature. Others are designed and on the way — always optional, always with a working non-AI baseline, and always privacy-first.
-- **A proper Discord community** for feedback and bug reports (link in **Help → About Lichborne**).
+- **A proper Discord community** for feedback and bug reports (join from **Help → Discord** in the app).
 - **Linux and Mac out of beta.** The v0.18.0 platform betas graduate once they've soaked with testers — if you play on either, your reports are what get them there.
 - **Code signing**, to remove the first-install warnings (Windows SmartScreen now; the macOS certificate — which would also enable Mac auto-update — if Mac demand shows).
 
@@ -234,10 +230,10 @@ state refresh on attach, so your vitals would come up blank.*
 Once you're in, run this **once**:
 
 ```
-SET PROMPT STATUS
+SET STATUSPROMPT
 ```
 
-This tells DragonRealms to include your full status (hidden, stunned, roundtime, and so on) with every prompt, which keeps your vitals and timers accurate. If you've used StormFront, you've likely done this already.
+This tells DragonRealms to put your current state (stunned, prone, unconscious and so on) in front of every `>` prompt. Lichborne reads it for the **Unconscious** marker on the icon bar and the `$unconscious` trigger variable, which DragonRealms reports nowhere else. Your vitals and roundtime don't depend on it. If you've used StormFront, you've likely done this already.
 
 *(EXPBRIEF works either way — the Experience panel handles it on or off.)*
 
@@ -362,7 +358,7 @@ Either way, **drag a stream tab along its bar to reorder it**, and add streams w
 
 ### Themes & accessibility
 
-Open the **Theme** picker for a gallery of built-in light and dark themes, or craft your own in the **Theme Editor** (every color is adjustable). **Settings** holds font size, line height, and the accessibility options — high-contrast, color-blind palettes, large print, and an epilepsy-safe mode that calms animations. **Settings → Text styles** gives each kind of game text its own look — a font, size, bold/italic, capitals and a text effect for room names, descriptions, speech, whispers, thoughts, bold text and your own commands (sizes are a percentage of your game font, so they follow it). Room descriptions offer only the calm effects, since a moving effect over whole paragraphs is heavy on your computer, and a row tells you when an effect with its own pale colours would be hard to read on your light theme. Everything you build or pick is yours and travels with [Transfer](#transfer-a-setup-between-your-characters).
+Open the **Theme** picker for a gallery of built-in light and dark themes, or craft your own in the **Theme Editor** (every color is adjustable). **Settings** holds font size, line height, and the accessibility options. Font size is this character's game text; **Window zoom** (also Ctrl+= / Ctrl+− / Ctrl+0) scales the whole window, every window, and is remembered when you restart. The accessibility options are high-contrast, color-blind palettes, large print, and an epilepsy-safe mode that calms animations. **Settings → Text styles** gives each kind of game text its own look — a font, size, bold/italic, capitals and a text effect for room names, descriptions, speech, whispers, thoughts, bold text and your own commands (sizes are a percentage of your game font, so they follow it). Room descriptions offer only the calm effects, since a moving effect over whole paragraphs is heavy on your computer, and a row tells you when an effect with its own pale colours would be hard to read on your light theme. Everything you build or pick is yours and travels with [Transfer](#transfer-a-setup-between-your-characters).
 
 ### Automations: highlights, triggers, macros, aliases
 
@@ -473,7 +469,7 @@ There are three Experiences today, all **[Beta]**:
 
 Your room, rendered as a living scene.
 
-- **Everyone becomes an avatar** in their [Contact](#contacts) colors. Your Contacts wear a ✦. **Right-click anyone** for **Say to…** or **Whisper to…**, which types `say @Name ` or `whisper Name ` into your command bar for you to finish (anything you'd already typed becomes the message), and **Contact card** for your contacts. Your own avatar shows your condition (hidden, bleeding, dead, and the rest).
+- **Everyone becomes an avatar** in their [Contact](#contacts) colors. Your Contacts wear a ✦. **Right-click anyone** for **Say to…** or **Whisper to…**, which types `say @Name ` or `whisper Name ` into your command bar for you to finish (anything you'd already typed becomes the message), and **Contact card** for your contacts. **Empaths** also get **Touch** at the top, which starts healing that person (Lichborne knows your guild once you've typed `info`, or from the Guild in Edit Profile). Your own avatar shows your condition (hidden, bleeding, dead, and the rest).
 - **Speech blooms as comic bubbles** — whispers dotted and private, emotes as action captions. **Telepathic thoughts collect in a quiet log in the bottom-left corner** (newest at the bottom, older ones fading up) so they never cover the scene.
 - **Arrivals slide in** from the direction they came; **departures walk out** as fading ghosts. Hiders and the invisible show as shadows; the dead lie greyed until a resurrection stands them up.
 - **The seating tells the story** — talkers gather toward the middle (you included), pairs in conversation drift together, and a crowd spreads into an amphitheater.
@@ -687,7 +683,7 @@ Lich is the **recommended** way to play — it unlocks the map, timers, variable
 | `Ctrl+Enter` / `Alt+Enter` / `NumpadEnter` | Repeat last / second-to-last / send-or-repeat |
 | `Esc` | Close the dialog on top — only that one. In the command line, clear it (or close the slash palette) |
 | `Tab` / `Shift+Tab` | Move between buttons, tabs, list rows and switches; `Enter` or `Space` uses the one in focus |
-| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom the window in / out / reset |
+| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom the whole window in / out / reset (every window; remembered on restart; also in Settings → Window zoom). A macro you bind to one of these keys takes over that key |
 
 Plain `Home`/`End` edit the command box (where your cursor usually is); hold `Ctrl` to scroll the story window instead. Macro hotkeys (F1–F12, Ctrl/Alt combos) are set up in the Automations panel.
 
@@ -703,8 +699,8 @@ Plain `Home`/`End` edit the command box (where your cursor usually is); hold `Ct
 > so that one line often saves a round-trip.
 
 
-- **Discord** — the friendliest place for questions, bug reports, and chat. The invite link is in **Help → About Lichborne** inside the app.
-- **Help → About Lichborne** — shows your exact version, the credits, and links to the Discord and the project on GitHub. Handy to have open when reporting an issue (mention your version!).
+- **Discord** — the friendliest place for questions, bug reports, and chat. The invite is inside Lichborne, so download it first, then choose **Help → Discord**.
+- **Help → About Lichborne** — shows your exact version, the credits, and links to the project on GitHub and the Discord. Handy to have open when reporting an issue (mention your version!).
 - **GitHub** — [issues and releases](https://github.com/SekmehtDR/Lichborne) live here.
 
 When something looks off, a quick note with **your version number** and **what you were doing** is gold. Thank you!
@@ -812,7 +808,7 @@ Lichborne keeps a clean, dated **plain-text log** of every session — the game 
 
 ## Appendix D — Troubleshooting & known limits
 
-- **Platforms:** Windows x64 (stable), Linux x64 AppImage (beta), macOS Apple Silicon (beta). Linux/Mac are new in v0.18.0 — report anything odd on Discord.
+- **Platforms:** Windows x64 (stable), Linux x64 AppImage (beta), macOS Apple Silicon (beta). Linux/Mac are new in v0.18.0 — report anything odd on Discord (**Help → Discord**).
 - **First-install warnings** — expected on two platforms (no code-signing certs): Windows SmartScreen → **More info → Run anyway**. On macOS the download is quarantined, and Apple Silicon words that as **"Lichborne is damaged and can't be opened"** — it isn't damaged, that's Apple's phrasing for "not notarized". Clear it once with `xattr -cr /Applications/Lichborne.app` (or use **System Settings → Privacy & Security → Open Anyway** if macOS offers that instead).
 - **Mac: no auto-update.** Unsigned builds can't self-update (an Apple rule) — grab new versions from the Releases page. Windows and Linux auto-update normally.
 - **Mac: "Lichborne wants to access your Desktop"?** That's the Lich **Auto-detect** looking for the wiki-standard `~/Desktop/Lich5` install — allow it (or browse to Lich manually).
@@ -821,9 +817,10 @@ Lichborne keeps a clean, dated **plain-text log** of every session — the game 
 - **Map marker stuck?** The Lich Map tracks by room id and is most reliable — turn on DR's room-number display so titles show a number like `[Town Square] (12345)`. The Genie Map matches by room name + description (its data has no ids), so in areas full of identically-named rooms it can briefly lag. A **`LOOK`** resyncs either map.
 - **Hand bar says "Empty" but you're holding something?** The common cause was fixed in v0.13.3. For rare genuine gaps (e.g. spell-summoned items DR doesn't announce), a **`GLANCE`** always resyncs your hands.
 - **Lich won't start after updating Lich?** Recent Lich versions require a newer **Ruby** — check your Ruby version first. And if a very recent Lich shows raw protocol "garbage" instead of the normal game feed, update Lich to its latest patch (a known Lich-side hiccup fixed upstream).
+- **A message says a file "was kept as `….unreadable-…`"?** Lichborne found a settings file it couldn't read (damaged by a crash, or edited by hand) and set it aside in the same folder instead of overwriting it. If it was a character's file, that character leaves the launcher until you add it again (**+ Add account**); when you then connect, its settings come back from the copy Lichborne keeps while you play. If you'd rather restore the old file, fix it (or rename the copy back) while Lichborne is closed. Saved passwords and AI keys work the same way; you may need to enter them again.
 - **Ruby GTK script windows** (e.g. `kill-counter.lic`, `;vars setup`) are supported as of v0.9.1 (Lichborne now launches Lich the way Frostbite/Genie do). For variables specifically, the **Lich Dashboard → Variables** editor does the job in-app with no script window needed.
 
-Still stuck? **Join us on Discord** (link in **Help → About Lichborne**) — we're happy to help.
+Still stuck? **Join us on Discord** (**Help → Discord** in the app) — we're happy to help.
 
 ---
 

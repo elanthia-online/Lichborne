@@ -26,6 +26,7 @@ import {
   type TextStyle, type TextStyles, type TextStyleId, type TextStyleTarget,
 } from '../textStyles'
 import '../styles/text-styles.css'
+import NumberField from './NumberField'
 
 const SIZE_STEP = 10
 
@@ -63,21 +64,14 @@ function styleSummary(s: TextStyle | undefined): string {
   return bits.join(' · ')
 }
 
-/** A percent field that lets you type freely and only commits a value in
- *  range — committing every keystroke would clamp "1" (on the way to "150")
- *  straight up to the minimum. Out-of-range input snaps back on blur. */
+/** The size field: the shared NumberField, live, so a valid size previews as
+ *  you type and "1" on the way to "150" is never clamped (v0.20.4 — this was
+ *  the pattern NumberField was built from). */
 function PercentInput({ value, label, onCommit }: { value: number; label: string; onCommit: (n: number) => void }) {
-  const [draft, setDraft] = useState<string | null>(null)
   return (
-    <input type="number" className="sp-number-input" aria-label={label}
-           min={TEXT_SIZE_MIN} max={TEXT_SIZE_MAX} step={SIZE_STEP}
-           value={draft ?? String(value)}
-           onChange={e => {
-             setDraft(e.target.value)
-             const n = parseInt(e.target.value, 10)
-             if (Number.isFinite(n) && n >= TEXT_SIZE_MIN && n <= TEXT_SIZE_MAX) onCommit(n)
-           }}
-           onBlur={() => setDraft(null)} />
+    <NumberField className="sp-number-input" aria-label={label} live
+                 min={TEXT_SIZE_MIN} max={TEXT_SIZE_MAX} step={SIZE_STEP}
+                 value={value} onCommit={onCommit} />
   )
 }
 

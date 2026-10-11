@@ -27,6 +27,7 @@ import { pressable } from '../utils/pressable'
 import { ResizeDivider } from './ResizeDivider'
 import VarMenu from './VarMenu'
 import InlineConfirm from './InlineConfirm'
+import NumberField from './NumberField'
 import { confirmDelete, confirmDiscard } from '../confirm'
 import { useReportUnsaved, differs } from '../hooks/useUnsaved'
 import {
@@ -606,13 +607,11 @@ export default function MacrosPanel({ onSaved, initialTab, openAliasId, openMacr
                       <div className="ma-settings-row">
                         <div className="ma-delay-row">
                           <span className="ma-settings-label">Delay between commands</span>
-                          <input
-                            className="ma-input ma-delay-input"
-                            type="number"
-                            min={0}
-                            max={30000}
+                          <NumberField
+                            className="ma-input ma-delay-input" live
+                            min={0} max={30000}
                             value={aliasDraft.delayMs}
-                            onChange={e => setAliasDraft({ ...aliasDraft, delayMs: Math.max(0, parseInt(e.target.value) || 0) })}
+                            onCommit={n => setAliasDraft(d => d && { ...d, delayMs: n })}
                           />
                           <span className="ma-delay-unit">ms</span>
                         </div>
@@ -817,13 +816,11 @@ export default function MacrosPanel({ onSaved, initialTab, openAliasId, openMacr
                       <label className="ma-section-label">Settings</label>
                       <div className="ma-delay-row">
                         <span className="ma-settings-label">Delay between commands</span>
-                        <input
-                          className="ma-input ma-delay-input"
-                          type="number"
-                          min={0}
-                          max={30000}
+                        <NumberField
+                          className="ma-input ma-delay-input" live
+                          min={0} max={30000}
                           value={macroDraft.delayMs}
-                          onChange={e => setMacroDraft({ ...macroDraft, delayMs: Math.max(0, parseInt(e.target.value) || 0) })}
+                          onCommit={n => setMacroDraft(d => d && { ...d, delayMs: n })}
                         />
                         <span className="ma-delay-unit">ms</span>
                       </div>

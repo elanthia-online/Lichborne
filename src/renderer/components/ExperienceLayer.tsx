@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import FloatingWindow from './FloatingWindow'
 import { VIEW_CONTROLS } from './PanelFrame'
 import { experienceById, optionShown, type ExperienceInstance } from '../experiences'
+import { clampFontSize, DEFAULT_SETTINGS } from '../settings'
 import type { FloatWindow } from '../freeLayout'
 import '../styles/experiences.css'
 
@@ -137,8 +138,8 @@ export default function ExperienceLayer({ instances, onInstancesChange, renderCo
       // "no override" always grows (a fixed 12 seed would shrink for users
       // running a larger global font).
       const base = i.fontSize
-        ?? (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--game-font-size')) || 12)
-      return { ...i, fontSize: Math.max(8, Math.min(24, base + delta)) }
+        ?? (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--game-font-size')) || DEFAULT_SETTINGS.fontSize)
+      return { ...i, fontSize: clampFontSize(base + delta) }
     }))
   }
 

@@ -3,7 +3,7 @@ import { backdropHandlers } from "../utils/backdropClose"
 import { useEscapeClose } from '../hooks/useEscapeClose'
 import { createPortal } from 'react-dom'
 import { type AdvancedSettings, loadAdvanced, saveAdvanced } from '../lichSettings'
-import { exportSharedProfile } from '../profile'
+import { scheduleSharedProfileSave } from '../profile'
 import LichSetupFields from './LichSetupFields'
 import '../styles/wizard.css'
 import '../styles/login.css'
@@ -29,8 +29,11 @@ export default function LichSetupDialog({ onClose, nested = false }: Props) {
 
   useEffect(() => {
     saveAdvanced(adv)
-    const t = setTimeout(() => exportSharedProfile().catch(console.error), 1000)
-    return () => clearTimeout(t)
+    // The module-level scheduler, not a local timer: a local timer was cleared
+    // when the dialog closed, so an edit made in the last second before Close
+    // never reached _shared.yaml (v0.20.4). This one survives the unmount and
+    // is flushed at quit.
+    scheduleSharedProfileSave(1000)
   }, [adv])
 
   // B341: Esc does what ✕ and Close do.

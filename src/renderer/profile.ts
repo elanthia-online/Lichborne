@@ -37,6 +37,7 @@
 
 import type { SharedProfile, CharacterProfile } from './profile-types'
 import { loadMyThemes, saveMyThemes } from './myThemes'
+import { showToast } from './toasts'
 import { scopedKey, normalizeCharacter, GLOBAL_RULES_SCOPE } from './characterScope'
 import { sharedMigrations, characterMigrations, runMigrations } from './profile-migrations'
 import { loadBulkSets, saveBulkSets } from './bulkSets'
@@ -189,9 +190,62 @@ export function buildCharacterProfile(
   }
 }
 
+// ── Unreadable profiles (v0.20.4) ──────────────────────────────────────────────
+// Main moves a profile it can't parse aside instead of letting a save overwrite
+// it. Without a word, the character would just vanish from the launcher; this
+// says what happened and where the original is. Called after every read that
+// can trigger it (the launcher's list, a connect, the shared import).
+export async function reportUnreadableProfiles(): Promise<void> {
+  const notices = await window.api.takeProfileNotices().catch(() => [])
+  for (const n of notices) {
+    const who = n.file === '_shared.yaml' ? 'Your app-wide settings file'
+      : n.file === 'passwords.json' ? 'Your saved passwords file'
+      : n.file === 'ai-keys.json' ? 'Your saved AI keys file'
+      : `The profile ${n.file}`
+    showToast({
+      kind: 'error',
+      title: 'A profile could not be read',
+      message: n.keptAs
+        ? `${who} was damaged or not valid YAML. The original was kept as ${n.keptAs} in your profiles folder, and timestamped .bak backups are there too.`
+        : `${who} was damaged and could not be moved aside, so Lichborne won't overwrite it. It will keep trying to set it aside, and says so when it does.`,
+      durationMs: 20000,
+    })
+  }
+}
+
+// ── Per-character theme (v0.20.4) ─────────────────────────────────────────────
+// A character's theme used to be saved from the ONE shared `lichborne.theme`
+// key, i.e. whichever character's theme the window was showing. Quitting with
+// several characters open saved every one of them with the active character's
+// theme, and logging a character in behind you did the same to the one you were
+// playing. Each GameWindow now records its own theme here, the profile import
+// records the theme it loaded, and exportCharacterProfile saves THAT; the shared
+// key stays only as the boot fallback and the cross-window paint signal.
+// Kept in localStorage (not module memory) so a decoupled window, which starts
+// with empty module state, still knows each character's theme. The key sits
+// OUTSIDE the `lichborne.{character}.` prefix on purpose: the profile builder
+// sweeps that prefix into `state`, and the theme already has its own field.
+const characterThemeKey = (character: string) => `lichborne.characterTheme.${normalizeCharacter(character)}`
+export function rememberCharacterTheme(character: string, themeId: string): void {
+  try { localStorage.setItem(characterThemeKey(character), themeId) } catch { /* storage full: falls back to the YAML */ }
+}
+export function rememberedCharacterTheme(character: string): string | undefined {
+  try { return localStorage.getItem(characterThemeKey(character)) ?? undefined } catch { return undefined }
+}
+
 // ── Export (localStorage → YAML file) ────────────────────────────────────────
 
 export async function exportSharedProfile(): Promise<void> {
+  // Never overwrite a NEWER app's _shared.yaml (v0.20.4). importSharedProfile
+  // already refuses to read one, but this save used to run regardless, so a
+  // downgrade silently replaced it (Principle #3). An unreadable file is moved
+  // aside by main when read, so this read can only see a parseable one.
+  const existing = await window.api.readSharedProfile().catch(() => null) as { profileVersion?: unknown } | null
+  void reportUnreadableProfiles()   // this read can be the one that moved a damaged file aside
+  if (existing && typeof existing.profileVersion === 'number' && existing.profileVersion > SHARED_PROFILE_VERSION) {
+    console.warn(`[profile] _shared.yaml is version ${existing.profileVersion}, newer than ${SHARED_PROFILE_VERSION}; not overwriting it`)
+    return
+  }
   await window.api.writeSharedProfile(buildSharedProfile())
 }
 
@@ -217,7 +271,17 @@ export async function exportCharacterProfile(
   // useLich, and the launcher-only fields stay whatever the YAML currently
   // says — that's where the launcher's writes land.
   const existing = await window.api.readCharacterProfile(character).catch(() => null) as Partial<CharacterProfile> | null
+  void reportUnreadableProfiles()   // this read can be the one that moved a damaged file aside
+  // Never overwrite a profile written by a NEWER app version (v0.20.4). The
+  // import refuses to read one, and the connect path used to save straight
+  // after, replacing it with an empty older-format profile (Principle #3).
+  if (existing && typeof existing.profileVersion === 'number' && existing.profileVersion > CHARACTER_PROFILE_VERSION) {
+    console.warn(`[profile] ${character}.yaml is version ${existing.profileVersion}, newer than ${CHARACTER_PROFILE_VERSION}; not overwriting it`)
+    return
+  }
   const built = buildCharacterProfile(account, character, game, useLich)
+  // THIS character's theme, not whichever the window is showing (see above).
+  built.theme = rememberedCharacterTheme(character) ?? existing?.theme ?? built.theme
   const merged: CharacterProfile = existing
     ? {
         ...built,
@@ -239,6 +303,7 @@ export async function exportCharacterProfile(
 
 export async function importSharedProfile(): Promise<void> {
   const raw = await window.api.readSharedProfile()
+  void reportUnreadableProfiles()
   if (!raw || typeof raw !== 'object') return
 
   // Version check + migrate. Files predating the version field (no
@@ -356,6 +421,7 @@ export async function importSharedProfile(): Promise<void> {
 
 export async function importCharacterProfile(character: string): Promise<CharacterProfile | null> {
   const raw = await window.api.readCharacterProfile(character)
+  void reportUnreadableProfiles()
   if (!raw || typeof raw !== 'object') return null
 
   // Version check + migrate. Files that already stamp `profileVersion: 2`
@@ -371,8 +437,11 @@ export async function importCharacterProfile(character: string): Promise<Charact
   }
   const data = migrated as Partial<CharacterProfile>
 
-  // Shared boot-fallback theme
-  if (data.theme) localStorage.setItem('lichborne.theme', data.theme)
+  // Shared boot-fallback theme, and this character's own record of it.
+  if (data.theme) {
+    localStorage.setItem('lichborne.theme', data.theme)
+    rememberCharacterTheme(character, data.theme)
+  }
 
   // v2 dynamic state map. Pre-v0.6.0 profiles aren't supported — testers wipe
   // profiles/{Character}.yaml to start fresh.
@@ -398,6 +467,10 @@ export async function importCharacterProfile(character: string): Promise<Charact
 // Dynamic — no hand-maintained list of suffixes.
 
 export function clearCharacterLocalStorage(character: string): void {
+  // The per-character theme record lives outside the prefix (see
+  // characterThemeKey); a character re-created under the same name must not
+  // inherit the old one's theme.
+  try { localStorage.removeItem(characterThemeKey(character)) } catch { /* ignore */ }
   const prefix = `lichborne.${normalizeCharacter(character)}.`
   const toRemove: string[] = []
   for (let i = 0; i < localStorage.length; i++) {

@@ -41,6 +41,7 @@ import ScriptListPanel from './ScriptListPanel'
 import type { ScriptRecord } from '../../shared/types'
 import { AI_STREAM, AI_STREAM_EMPTY, streamLabel } from '../aiConfig'
 import { activateOnKey, pressable } from '../utils/pressable'
+import { useOverlayScrollX } from '../hooks/useOverlayScrollX'
 import '../styles/panel-frame.css'
 
 // v0.8.10 (B134-follow-up): `conversation` (singular) — matches the
@@ -299,6 +300,15 @@ export default function PanelFrame({
     if (dragTabId !== null && !tabs.some(t => t.id === dragTabId)) setDragTabId(null)
   }, [tabs, dragTabId])
   const tabListRef = useRef<HTMLDivElement>(null)
+  // An OVERLAY scrollbar (B511, the character strip's v0.20.2 approach): the
+  // strip used to reserve a native 3px track under the tabs (B312), so a tab's
+  // hover/active background stopped short of the bottom border. Nothing here
+  // takes layout space, so the strip's height still never changes.
+  // The thumb is display-only here (pointer-events: none — panel tabs are
+  // dragged, and a grabbable thumb sat over their lower half), so only the
+  // scroll state and the auto-reveal are used, not the drag handlers.
+  const { state: tabScroll, revealActive: revealTab } = useOverlayScrollX(tabListRef)
+  useEffect(() => { revealTab('.panel-tab--active') }, [activeId, tabs.length, revealTab])
   // F46 polish: FLIP slide animation while dragging. The live reorder swaps
   // DOM order instantly, which made the landing spot hard to track — so on
   // each render we remember every tab's left edge, and when a tab's position
@@ -609,8 +619,9 @@ export default function PanelFrame({
       </div>
 
       <div className="panel-frame-tabs">
+        <div className="panel-tab-list-wrap">
         <div
-          className="panel-tab-list"
+          className={`panel-tab-list${tabScroll.overflow && !tabScroll.atStart ? ' panel-tab-list--fade-l' : ''}${tabScroll.overflow && !tabScroll.atEnd ? ' panel-tab-list--fade-r' : ''}`}
           ref={tabListRef}
           role="tablist"
           onDragOver={reorderTabs ? (e => {
@@ -710,6 +721,14 @@ export default function PanelFrame({
             const items = joinMenuGroups([toggles, [...clear, { label: 'Close', onClick: () => closeTab(tab.id) }]])
             return <ContextMenu x={tabCtxMenu.x} y={tabCtxMenu.y} items={items} onClose={() => setTabCtxMenu(null)} />
           })()}
+        </div>
+        {tabScroll.overflow && (
+          <div
+            className="panel-tab-thumb"
+            style={{ left: tabScroll.left, width: tabScroll.width }}
+            aria-hidden="true"
+          />
+        )}
         </div>
 
         <div className="panel-tab-add-wrap" ref={addWrapRef}>

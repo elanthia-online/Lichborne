@@ -457,6 +457,10 @@ export default function AutomationsPanel({
     const next = !analyticsOn
     setAnalyticsOn(next)
     saveAnalyticsEnabled(next)
+    // App-wide setting (SharedProfile.automationAnalytics): schedule the
+    // _shared.yaml save. It wasn't, so the toggle lived only in localStorage
+    // until something else happened to save (v0.20.4).
+    scheduleSharedProfileSave()
     document.dispatchEvent(new CustomEvent('lichborne:analytics-changed'))
   }
   // A new entry point (e.g. a slash `/mute edit` via Quick Send) can re-aim an
