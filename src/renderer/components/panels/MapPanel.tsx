@@ -28,6 +28,7 @@ import { useCharacter } from '../../CharacterContext'
 import { useProfileSaver } from '../../hooks/useProfileSaver'
 import MapImageView from './MapImageView'
 import GenieMapView, { type GenieMatch } from './GenieMapView'
+import type { GameFamily } from '../../../shared/types'
 import '../../styles/map-panel.css'
 
 interface Props {
@@ -39,6 +40,13 @@ interface Props {
   onSendCommand: (cmd: string) => void
   large?: boolean
   mapAnimations?: boolean   // Settings → Genie Map Animations; gates per-room effects AND the camera glide
+  // GS4 support: Lich Map works for both families (Lich saves per-game map
+  // data — see findLichMapFile's comment in main.ts) but there is no GS4
+  // Genie map data, so the Genie Maps view is gated off and 'image' is
+  // forced regardless of a saved preference (e.g. one copied in via Profile
+  // Transfer from a DR character). Undefined behaves like 'DR' (every
+  // pre-GS4 call site).
+  gameFamily?: GameFamily
 }
 
 const GENIE_DIR_KEY  = 'lichborne.genieMapsDir'
@@ -174,16 +182,21 @@ function primeGenieCache(dir: string, zones: Map<string, GenieZone>): void {
 // B172: memoized — the map re-renders when the room actually changes (its
 // props are room primitives + stable callbacks), not on every GameWindow
 // render (vitals ticks, main-text batches).
-export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits, roomId, lichMapVersion = 0, onSendCommand, large = false, mapAnimations = true }: Props) {
+export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits, roomId, lichMapVersion = 0, onSendCommand, large = false, mapAnimations = true, gameFamily }: Props) {
   const character = useCharacter()
   const saveProfile = useProfileSaver()
+  const isGS4 = gameFamily === 'GS4'
 
   // ── View mode (per-character) ────────────────────────────────────────────────
   // Two views: 'image' (Lich Map — image-tile renderer) and 'genie' (Genie
   // Maps — XML-based community-curated map graph). The Lich Graph view was
   // removed in this rev; old saved 'lich-graph' / 'graph' selections fall
-  // back to 'genie'.
+  // back to 'genie'. GS4 support: there is no GS4 Genie map data, so a GS4
+  // character is FORCED to 'image' regardless of a saved 'genie' preference
+  // (e.g. one that arrived via Profile Transfer's Panel Layout category from
+  // a DR character) — checked first, before the normal saved-value read.
   const [viewMode, setViewMode] = useState<'image' | 'genie'>(() => {
+    if (isGS4) return 'image'
     try {
       const v = localStorage.getItem(scopedKey(character, 'mapViewMode'))
       if (v === 'image' || v === 'genie') return v
@@ -253,7 +266,7 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
     const lichPath = getLichPath()
     if (!lichPath) { setDbStatus('error'); setDbError('no-lich-path'); return }
     setDbStatus('loading')
-    const result = await window.api.findLichMapFile(lichPath)
+    const result = await window.api.findLichMapFile(lichPath, gameFamily)
     if (!result) { setDbStatus('error'); setDbError('no-map-file'); return }
     mapsDirRef.current = result.mapsDir
     try {
@@ -471,11 +484,16 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
               onClick={() => setViewMode('image')}
               title={dbStatus === 'error' ? 'Requires Lich' : 'Lich image-tile view'}
             >Lich Map</button>
-            <button
-              className={`map-btn map-btn--sm${viewMode === 'genie' ? ' map-btn--active' : ''}`}
-              onClick={() => setViewMode('genie')}
-              title="Genie Maps — community-maintained XML map files"
-            >Genie Maps</button>
+            {/* GS4 support: no GS4 Genie map data exists, so this view is
+                DR-only — hidden rather than shown-disabled (UX standard #1,
+                quiet by default: a permanently-inert button teaches nothing). */}
+            {!isGS4 && (
+              <button
+                className={`map-btn map-btn--sm${viewMode === 'genie' ? ' map-btn--active' : ''}`}
+                onClick={() => setViewMode('genie')}
+                title="Genie Maps — community-maintained XML map files"
+              >Genie Maps</button>
+            )}
             <button
               className="map-btn map-btn--sm"
               // force — this is the user explicitly asking for a re-read, so it
@@ -524,7 +542,7 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
             <div className="map-empty">
               <div className="map-empty-icon">🗺</div>
               <div className="map-empty-msg">Lich map database not found</div>
-              <div className="map-empty-sub">Expected map-*.json in Lich's data/DR/ folder</div>
+              <div className="map-empty-sub">Expected map-*.json in Lich's data/{isGS4 ? 'GS…' : 'DR…'} folder</div>
             </div>
           )}
           {dbError && dbError !== 'no-lich-path' && dbError !== 'no-map-file' && (
