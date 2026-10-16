@@ -84,7 +84,7 @@ import type {
   AttachCredentials, GameEvent, GameEventBatch, LoginCredentials, LoginResult,
   ConnectionStatusPayload, RawXmlPayload, ErrorPayload, SessionId,
   RosterEntry, SessionRosterPayload,
-  UserTextPayload, CharacterNotice, RoutedToast,
+  UserTextPayload, LaunchUrlPayload, CharacterNotice, RoutedToast,
 } from '../shared/types'
 import type { MenuAction } from '../shared/menuActions'
 
@@ -333,7 +333,15 @@ function wireSession(s: Session) {
 
     const events = s.parser.parse(line)
     for (const evt of events) {
-      if (evt.type === 'launch-url') shell.openExternal(evt.url)
+      // v0.20.5: forwarded to the owning window instead of opened here, so the
+      // character's link-safety setting (the play.net bounce page, on by
+      // default) applies to a <LaunchURL> exactly as it does to a clicked
+      // link. Main never had that setting, so a LaunchURL used to open its
+      // address directly, without a click or the warning.
+      if (evt.type === 'launch-url') {
+        const payload: LaunchUrlPayload = { sessionId: s.id, url: evt.url }
+        ownerWindow(s)?.webContents.send(CH.LAUNCH_URL, payload)
+      }
       if (evt.type === 'game-exit') s.cleanDisconnect = true
       // B169: disarm Lich's `inventory_boxes_off` downstream hook. Lich installs
       // it BY DEFAULT for stormfront-style front-ends (main.rb:546) and its strip
@@ -2085,7 +2093,17 @@ ipcMain.on('set-zoom-level', (e, level: number) => {
   if (typeof level !== 'number' || !Number.isFinite(level)) return
   e.sender.setZoomLevel(Math.max(-8, Math.min(9, level)))
 })
-ipcMain.on('open-url', (_e, url: string) => shell.openExternal(url))
+// Web addresses only (v0.20.5 bug check). URLs reach here from game text: an
+// `<a href>` in the stream, which any Lich script can write, and <LaunchURL>.
+// shell.openExternal on a `file:` URL RUNS that file, so a link to a program
+// would launch it on one click. Every legitimate caller passes https.
+ipcMain.on('open-url', (_e, url: string) => {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+    console.warn('[open-url] refused a non-web address:', String(url).slice(0, 200))
+    return
+  }
+  shell.openExternal(url)
+})
 
 ipcMain.on('flash-window', (e) => {
   // Flash the window that asked for attention (the one whose tab wants notice).

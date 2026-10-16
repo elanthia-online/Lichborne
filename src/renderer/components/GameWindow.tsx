@@ -48,6 +48,7 @@ import { redactForAI } from '../../shared/redact'
 import { TextLineRow } from './TextLineRow'
 import { ScrollbackSearch } from './ScrollbackSearch'
 import { buildNameRegex } from '../utils/renderWithContacts'
+import { wrapExternalLink } from '../utils/renderSegment'
 import { ContactsContext } from '../ContactsContext'
 import { HighlightsContext, useCompiledHighlights } from '../HighlightsContext'
 import { loadContacts, loadContactTemplates, saveContacts, saveContactTemplates, type Contact } from '../contacts'
@@ -3289,7 +3290,9 @@ export default function GameWindow({
               // Capture the inline room description (preset 'roomdesc') for the
               // map matcher — applied to roomUpdates.desc after the loop so it
               // beats a same-batch clear-stream 'room'. See batchRoomDesc above.
-              const descSegs = segments.filter(s => s.preset === 'roomdesc')
+              // Not from a view of another room (a Moon Mage's Locate): the
+              // parser flags those lines, and their description isn't ours.
+              const descSegs = evt.remoteView ? [] : segments.filter(s => s.preset === 'roomdesc')
               if (descSegs.length > 0) {
                 const d = descSegs.map(s => s.text).join('').trim()
                 if (d) batchRoomDesc = d
@@ -5505,6 +5508,21 @@ export default function GameWindow({
   //
   // `clearInput: false`: the sender owns its own field; this must never reach
   // into this character's command bar and wipe a half-typed line.
+  // A <LaunchURL> from the game or a Lich script (v0.20.5). It opens the
+  // browser without a click, so it must at least honour the link-safety
+  // setting: on (the default), it goes through the play.net bounce page and
+  // its "you are leaving Play.net" warning, the same as a clicked link. Read
+  // through a ref so the once-mounted listener sees the current setting.
+  const webLinkSafetyRef = useRef(settings.webLinkSafety)
+  webLinkSafetyRef.current = settings.webLinkSafety
+  useEffect(() => {
+    const off = window.api.onLaunchUrl(p => {
+      if (p.sessionId !== sessionIdRef.current) return
+      window.api.openUrl(wrapExternalLink(p.url, webLinkSafetyRef.current))
+    })
+    return () => off?.()
+  }, [])
+
   useEffect(() => {
     const off = window.api.onUserText(p => {
       if (p.sessionId !== sessionIdRef.current) return

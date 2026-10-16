@@ -70,63 +70,33 @@ A few ideas shape everything:
 
 ## What's New in the Latest Version
 
-**v0.20.4**
+**v0.20.5**
 
-- **Window zoom and game text size, named apart.** Ctrl+= / Ctrl+− / Ctrl+0
-  zoom the whole window, in every Lichborne window, and the zoom is
-  remembered when you restart. Your game text size is per character.
-  Settings → Display now has a **Window zoom** row under Font size, and the
-  View menu says **Game Text Size** and **Window Zoom In / Out**.
-- **Number boxes you can type in.** Clear a box and type freely; it takes
-  your number on Enter, when you click away, or with ↑/↓, and Esc puts the
-  old value back.
-- **Faster with Settings open.** Zooming or switching characters with
-  Settings open no longer pauses for close to a second, and the font list
-  loads instantly after the first time.
-- **Touch, for empaths.** Right-click a player in the Living Tableau and an
-  empath gets **Touch** at the top of the menu.
-- **Your settings, kept safe.** Each character keeps its own theme, custom
-  themes can't be deleted by accident, settings stick when you open another
-  window, closing a tab saves that character, and a damaged profile is set
-  aside (with a message saying where) instead of being wiped.
-- **Fixed:** Settings' − no longer makes the text bigger at the smallest
-  sizes; panel tabs reach the bottom of their strip at any zoom, and the
-  mouse wheel scrolls them when they overflow; the Lich Dashboard search
-  highlight stays on its line when zoomed; the selected character tab sits
-  right on the bar's bottom edge; **Edit contact** now matches the
-  launcher's Connect button and follows your theme; a dead character in the
-  Living Tableau shows a skull instead of an ✕; and this guide's setup step
-  now gives the right command, `SET STATUSPROMPT` (thanks, Vaddon).
-
-**v0.20.3**
-
-- **Towns in their own style.** The Living Tableau draws each town the way it
-  looks: Shard's crystal spires, Muspar'i's sandstone domes, Ratha's terraces
-  over the sea, Mer'Kresh floating on the water, the clans' longhouses. Step
-  into a building whose name doesn't say the town, and it remembers where you
-  are.
-- **Rooms, furnished.** Indoors you see what the room is made of, what lights
-  it, and up to three furnishings it describes (shelves, a bar, a hearth, an
-  altar, paintings, mannequins, a stage…). A shop shows what it sells.
-- **Things in the scene.** Outdoors and in caves, up to four things the room
-  describes stand in front of the scenery: a fountain, a well, stalls, a dock,
-  huts, columns, a pond, standing stones, a campfire, grazing animals… plus
-  jungle, savannah, moorland, volcanoes and kinds of cave.
-- **It reads what the room says.** "Cobblestones flecked with crystals" draws
-  no crystals, "an oak door" is not a tree, and "rose colored curtains" draws
-  no roses, while "a bed of roses" does.
-- **Moonskin in Moons.** The footer shows when Rakash next take their moonskin
-  form and how long it lasts (exactly while Katamba is full), and each moon's
-  hover says when it's next full.
-- **Your posture in the Tableau.** A chip under your figure says when you're
-  sitting, kneeling or prone.
-- **Floating windows that fit.** Vitals and command bars no longer get cut off
-  on a smaller screen; the bar windows show their name only on hover; and
-  pointing at a window's thin top strip opens a readable title bar.
-- **Fixed:** dead creatures no longer cover the living ones in the Tableau; a
-  creature in front of you no longer has its tags over your avatar; your
-  condition chips stay readable while you're hidden; and connecting another
-  character with **+** while you play shows it connecting again.
+- **The Genie map no longer slides.** It jumps straight to your new room, so
+  running and go2 stay smooth. **Genie Map Animations** now covers only the
+  room effects, and it's off by default for new characters. The ring that
+  marks where you are keeps pulsing on both maps either way.
+- **Links in game text can't launch programs.** Only web addresses open;
+  anything else shows as plain text.
+- **The Living Tableau shows who's fighting you between assesses**, from DR's
+  creature list.
+- **Genie Maps tells you where to get the maps.** With no maps folder set,
+  the Genie Maps view has a **Download the maps ZIP** link (from
+  [github.com/GenieClient/Maps](https://github.com/GenieClient/Maps)):
+  unzip it and pick that folder.
+- **File → Import Profile… opens on the Import tab**, even if Transfer is
+  already open, and the file list there says "Choose a file to import…"
+  (thanks, Vaddon).
+- **A Moon Mage's Locate no longer moves you.** The located room still
+  prints, but your Room panel, Tableau scenery and compass stay on your room.
+- **Game-opened links follow your link-safety setting.** A link the game or
+  a script opens by itself now shows the play.net "leaving" page first, like
+  a link you click, while that setting is on.
+- **Overview "send to" button.** It reads **All · 2 ▾** or a character's
+  name and opens a menu with a tick on the current choice. It is easier to
+  read on darker themes too.
+- **Genie import:** `#flash 3`, `#beep twice`, `#event 5 look` and
+  `#playsystem` triggers now convert (thanks, Legiro).
 
 ## On the Horizon (Roadmap)
 
@@ -315,7 +285,8 @@ rather than a row of zeroes.
 
 Clicking a card selects that character: the input bar aims at it and its tab
 becomes the active one, while you stay in the Overview. Pick **All characters**
-in the bar (or click empty space) to aim at everyone again — every connected
+from the bar's **send to** button (it reads **All · 2 ▾** or the character's
+name) or click empty space to aim at everyone again — every connected
 card and tab lights up, so you can see exactly who a command will reach. **Double-clicking** a
 card (or **Go to … 's game session** in its menu) opens that character
 full-screen. Cards
@@ -408,7 +379,7 @@ Open the **Maps** button for two very different map views. Both track your curre
 
 **Lich Map — native, zero setup.** Lichborne reads Lich's built-in map **artwork** straight out of your Lich installation's `maps` folder — so once your [Lich path is set](#2-set-up-lich-recommended), it just works. It shows the real map image with your current room highlighted, and it's the **most reliable tracker** because it matches by room **id**. Tip: turn on DragonRealms' room-number display (so room titles show a number like `[Town Square] (12345)`) and your marker stays locked on.
 
-**Genie Maps — the community XML maps, from a folder you point it at.** This view renders the community-maintained **Genie XML map files** directly. The first time, point it at the **folder** where those files live (Lichborne remembers it, and caches the parse so every launch after the first is instant). It draws one zone at a time at the hand-curated coordinates the Genie maps team has refined for years, follows you as you walk, and auto-switches zones as you cross boundaries — with a pulsing sonar "you are here" ring that's easy to find.
+**Genie Maps — the community XML maps, from a folder you point it at.** This view renders the community-maintained **Genie XML map files** directly. Download them from [github.com/GenieClient/Maps](https://github.com/GenieClient/Maps) ([direct ZIP](https://github.com/GenieClient/Maps/archive/refs/heads/main.zip), then unzip). The first time, point it at the **folder** where those files live (Lichborne remembers it, and caches the parse so every launch after the first is instant). It draws one zone at a time at the hand-curated coordinates the Genie maps team has refined for years, follows you as you walk, and auto-switches zones as you cross boundaries — with a pulsing sonar "you are here" ring that's easy to find.
 
 **Rooms are color-coded by what they are — and each color has its own tiny animation** so you can recognize a room type at a glance without reading the legend:
 
@@ -420,7 +391,7 @@ Open the **Maps** button for two very different map views. Both track your curre
 - ✦ **Guildmaster / stat-trainer** rooms rise with XP particles
 - 🌀 **Transports** swirl with magical motes
 
-…and more. Arcs between rooms are colored by exit kind (cardinal / climb / door), and floating labels mark landmarks. A **legend (▤)** spells out every color and glyph, and a single **Genie Map Animations** setting turns *all* the motion off (the room effects and the camera glide) if you'd rather it stay perfectly still.
+…and more. Arcs between rooms are colored by exit kind (cardinal / climb / door), and floating labels mark landmarks. A **legend (▤)** spells out every color and glyph. The room effects are controlled by the **Genie Map Animations** setting, which is off by default; turn it on for a livelier map. Either way, the map follows you instantly as you move, and the ring marking where you are keeps pulsing, on this map and the Lich map alike (**Epilepsy safe mode** stops the pulse).
 
 **Getting around, either view:** **left-click** a room to pin its route on the map (study it, no walking); **right-click** to actually walk there — the moves echo in your game window step-by-step. Cross-zone exits are marked **↗** — left-click to peek at the neighbouring zone, right-click to walk to the boundary (the map switches only once you've truly arrived, never racing ahead). Hover any room for its id, exits, category, and a preview of the path you'd take.
 

@@ -68,6 +68,7 @@
 import type { GameEvent, StreamTarget, TextSegment } from '../../shared/types'
 import { STREAM_ID_ALIASES, normalizeStreamId } from '../../shared/streamAliases'
 import { runSceneCapturers } from './sceneCapturers'
+import { TAG_PATTERN, stripTags } from '../../shared/xmlTag'
 
 function decodeEntities(text: string): string {
   return text
@@ -164,6 +165,21 @@ function parseAttrs(inner: string): Record<string, string> {
     attrs[m[1]] = m[2] ?? m[3] ?? ''
   }
   return attrs
+}
+
+/** An inline roomName (`[Name] (84081)`, `[Name - 1234 - (u230007)]`, …) →
+ *  its name, cleaned the way the subtitle's is, and the game's own id after the
+ *  bracket if it carries one. A `(uNNN)` after the bracket is Lich's display_uid
+ *  rewrite — the player's id, not the named room's — so it isn't returned.
+ *  Exported for the parser harness. */
+export function parseInlineRoomName(raw: string): { name: string; gameId?: number } | null {
+  const text = raw.trim()
+  const inner = text.match(/\[([^\]]+)\]/)?.[1]
+  if (!inner) return null
+  const id = text.match(/\]\s*\((\d+)\)/)?.[1]
+  const noUid = inner.replace(/\s*-\s*\(u\d+\)\s*$/, '')
+  const name = noUid.replace(/\s*-\s*\d+\s*$/, '').trim()
+  return { name, ...(id ? { gameId: parseInt(id, 10) } : {}) }
 }
 
 function parseTag(raw: string): ParsedTag {
@@ -267,6 +283,33 @@ export class StormFrontParser {
   // same title doesn't wipe just-populated sub-stream data.
   private lastRoomTitle = ''
 
+  // A view of ANOTHER room on main (v0.20.5, from ProfanityFE #247–#249): a Moon
+  // Mage's Locate prints the located person's room in the same form as a LOOK —
+  // roomName, roomDesc, "Also here:", "Obvious paths:" — with no <nav>, no
+  // subtitle and no room components. Read as ours, it replaced the Room panel's
+  // description, the Tableau's scenery and the map matcher's description input.
+  // `remoteView` flags the view's main lines (StreamTextEvent.remoteView) from
+  // its roomName until the prompt that ends it, and holds back its compass.
+  // `lastNavId` is the game uid of the room we're in (<nav rm>); `movedSincePrompt`
+  // marks a burst that moved us, whose roomName is always our own.
+  private remoteView = false
+  private lastNavId: number | undefined = undefined
+  private movedSincePrompt = false
+  // The NAME of the room we're in, for that check: the subtitle's, or the
+  // roomName that arrived with a move. Kept apart from `lastRoomTitle`, which
+  // gates the B121 clears and must only ever follow the subtitle. A nav-only
+  // move (pitfall #46) sends no subtitle, so without the roomName half a later
+  // LOOK would be compared with the room we left.
+  private ownRoomName = ''
+  // Has this session sent a <nav> tag at all? DR sends one with every arrival,
+  // so in such a session a roomName with no nav in its burst is a LOOK or a view
+  // of another room, never a move. Without nav tags (an older stream) a move can
+  // look exactly like a view, so nothing is called remote (Profanity #248's
+  // guard; the stitched Frostbite fixture, with no nav at all, needs it).
+  private navSeen = false
+  // Set when this line wrote text under the roomName style (see parse()).
+  private roomNameOnLine = false
+
   // The creature ROSTER (v0.20.2): a `room objs` refresh opens a pending
   // roster with its bold names in order; each <crtrStatus> that follows adds an
   // id + flags; the next <prompt> emits it. `crtrSeen` = this connection has
@@ -320,6 +363,11 @@ export class StormFrontParser {
     this.lastPromptText    = ''
     this.lastEmitWasPrompt = false
     this.lastRoomTitle     = ''
+    this.remoteView        = false
+    this.lastNavId         = undefined
+    this.movedSincePrompt  = false
+    this.ownRoomName       = ''
+    this.navSeen           = false
     this.crtrSeen          = false
     this.rosterPending     = null
     this.rtExpires     = 0
@@ -357,7 +405,9 @@ export class StormFrontParser {
     this.events = []
     const isBlankLine = !line.replace(/[\r\n]/g, '').trim()
 
-    const tokenRe = /(<[^>]*>)|([^<]+)/g
+    // A tag ends at the first `>` outside quotes (TAG_PATTERN, ProfanityFE #100).
+    // Built once per parse, like the literal it replaces.
+    const tokenRe = new RegExp(`(${TAG_PATTERN})|([^<]+)`, 'g')
     let m: RegExpExecArray | null
     while ((m = tokenRe.exec(line)) !== null) {
       if (m[1]) {
@@ -370,6 +420,16 @@ export class StormFrontParser {
     }
 
     this.flushSegments()
+
+    // A room name is one line. DR opens `<style id="roomName"/>` on the name's
+    // line but only closes it (`<style id=""/>`) at the start of the next one,
+    // so anything slipped in between wore the room-name style: during a fast
+    // go2 burst, Lich's own `[go2]>climb ledge` echoes did (Sekmeht's
+    // screenshot), and the Locate check would then read them as room names.
+    // Ending the style at the end of the line that carried the name closes that
+    // gap; the next line's `<style id=""/>` then changes nothing.
+    if (this.roomNameOnLine && this.currentPreset === 'roomname') this.currentPreset = undefined
+    this.roomNameOnLine = false
 
     // Glance-text hand re-sync — after the token loop so the suppression check
     // sees any real hand tags this line emitted.
@@ -466,6 +526,7 @@ export class StormFrontParser {
     }
     const cleaned = decodeEntities(value.replace(/\r/g, '').replace(/\n$/, ''))
     if (!cleaned) return
+    if (this.currentPreset === 'roomname' && cleaned.trim()) this.roomNameOnLine = true
     // Skip leading whitespace-only tokens (start of line), but preserve spaces that
     // appear between segments on the same line (e.g. between adjacent <a href> links).
     //
@@ -536,6 +597,13 @@ export class StormFrontParser {
       }
 
       case 'popstream':
+        // An ASSESS block is one entity: Lich parses each pushStream..popStream
+        // on its own (xmlparser.rb), and its spec stores DR's assess as ONE
+        // joined line of blocks. B256's same-stream merge would glue such blocks
+        // into one event, and the leading "You assess your combat situation..."
+        // then sank every creature after it (zero parsed). So an assess block
+        // always ends its own line here. (v0.20.5)
+        if (this.activeStream === 'assess' && this.pendingStream === 'assess') this.flushSegments()
         this.activeStream = this.streamStack.pop() ?? 'main'
         break
 
@@ -799,6 +867,19 @@ export class StormFrontParser {
                 this.rosterPending = null
                 if (this.crtrSeen) this.emit({ type: 'creature-roster', creatures: [] })
               }
+              // A subtitle naming a DIFFERENT room is a move: any view of
+              // another room is over, and this burst's roomName is ours. One
+              // naming the room we're already in is not — and Lich sends exactly
+              // that after ANY room view, a Locate included: with ;display
+              // lichid/uid on, process_room_display (lich-5 games.rb) prepends a
+              // subtitle built from XMLData.room_title (the PLAYER's room) to the
+              // view's prompt line, ahead of the view's own <compass>. Ending the
+              // view there handed the located room's exits to us.
+              if (cleanTitle.toLowerCase() !== this.ownRoomName.toLowerCase()) {
+                this.remoteView = false
+                this.movedSincePrompt = true
+              }
+              this.ownRoomName = cleanTitle
               this.emit({
                 type: 'room-title',
                 title: cleanTitle,
@@ -826,11 +907,17 @@ export class StormFrontParser {
         break
 
       case 'launchurl': {
-        const src = attrs.src ?? ''
-        if (src) {
-          const url = src.startsWith('http') ? src : `https://www.play.net${src}`
-          this.emit({ type: 'launch-url', url })
-        }
+        // A play.net PATH (`/forums/…`) or an explicit http(s) URL, nothing
+        // else (v0.20.5, from ProfanityFE #55). A bare prefix test used to let
+        // any `http…` string through, and gluing a non-path onto the host let
+        // `@evil.example/x` become `https://www.play.net@evil.example/x`, which
+        // a browser reads as a link to evil.example. Opening is decided in the
+        // renderer, which applies the link-safety setting (see main.ts).
+        const src = (attrs.src ?? '').trim()
+        const url = src.startsWith('/') && !src.startsWith('//')
+          ? `https://www.play.net${src}`
+          : /^https?:\/\/[^\s]+$/i.test(src) ? src : ''
+        if (url) this.emit({ type: 'launch-url', url })
         break
       }
 
@@ -865,9 +952,17 @@ export class StormFrontParser {
         // content still update only on real <streamWindow> + <component>
         // emissions — Room panel will still show stale title in the
         // silent-transition case, but the map snaps right.
+        // Every DR arrival sends <nav> (Lich 5.20, #1491), so it also marks the
+        // burst as a move for the Locate check (`remoteView`).
+        this.remoteView = false
+        this.movedSincePrompt = true
+        this.navSeen = true
         if (attrs.rm) {
           const rm = parseInt(attrs.rm, 10)
-          if (!isNaN(rm)) this.emit({ type: 'room-id', roomId: rm })
+          if (!isNaN(rm)) {
+            this.lastNavId = rm
+            this.emit({ type: 'room-id', roomId: rm })
+          }
         }
         break
 
@@ -912,8 +1007,11 @@ export class StormFrontParser {
         break
 
       case 'a':
-        if (!selfClosing && attrs.href) {
-          this.linkHref = attrs.href
+        // Web links only: anything else (file:, javascript:, …) renders as
+        // plain text rather than a clickable link (v0.20.5 bug check; main's
+        // open-url refuses them too).
+        if (!selfClosing && attrs.href && /^https?:\/\//i.test(attrs.href.trim())) {
+          this.linkHref = attrs.href.trim()
         }
         break
 
@@ -1068,7 +1166,9 @@ export class StormFrontParser {
       // inside a pushStream, so the main-stream gate (same one the `Name:`
       // detection uses, line ~232) keeps them out while honouring the real
       // game compass. A genuine exitless room now clears immediately.
-      if (this.compassDirs.length > 0) {
+      if (this.remoteView) {
+        // The exits of a room we're only looking at (Locate) — not ours.
+      } else if (this.compassDirs.length > 0) {
         this.emit({ type: 'exits', directions: this.compassDirs })
       } else if (this.activeStream === 'main' && this.streamStack.length === 0) {
         this.emit({ type: 'exits', directions: [] })
@@ -1198,6 +1298,9 @@ export class StormFrontParser {
         this.colorStack    = []
         this.linkCmd       = undefined
         this.linkCmdIsText = false
+        // A view of another room ends at its prompt, and so does the burst.
+        this.remoteView       = false
+        this.movedSincePrompt = false
         // UNCONSCIOUS comes from the prompt LETTERS, because DR sends no
         // indicator tag for it (see isUnconscious). Only `U` is decoded — the
         // one letter a tester has confirmed; the rest of the alphabet is
@@ -1253,7 +1356,7 @@ export class StormFrontParser {
     if (/<(?:push|pop)stream/i.test(rawLine)) return
     if (this.events.some(e => e.type === 'hand')) return
 
-    const text = decodeEntities(rawLine.replace(/<[^>]*>/g, '')).trim()
+    const text = decodeEntities(stripTags(rawLine)).trim()
 
     if (GLANCE_EMPTY_RE.test(text)) {
       this.emit({ type: 'hand', hand: 'right', item: 'Empty' })
@@ -1283,6 +1386,30 @@ export class StormFrontParser {
     }
   }
 
+  /**
+   * Does an inline roomName name a room OTHER than the one we're in? (Locate;
+   * see `remoteView`.) Mirrors ProfanityFE's rule (RoomAssembler#remote_title?):
+   *   - a burst that moved us (nav or subtitle since the last prompt) → ours;
+ *   - a session that has never sent <nav> → ours (a move can't be told apart);
+   *   - no room known yet (startup, an attach before the first move) → ours, so
+   *     the startup LOOK still describes where we are;
+   *   - the game's own id after the bracket (`] (84081)`, DR's showroomid)
+   *     against the last <nav rm> → different ids, another room;
+   *   - otherwise the NAME against the last subtitle's. Names are cleaned the
+   *     way the subtitle is (Lich's ` - 1234` and ` - (u230007)` decorations
+   *     come off), because Lich's display_uid rewrite drops the game id from a
+   *     roomName and adds the PLAYER'S ids — the same for any room, so only the
+   *     name can tell a located room apart (Profanity #248). A `(uNNN)` after
+   *     the bracket is that rewrite too, so it is not used as the view's id.
+   * Two rooms sharing a name read as ours; that only costs a description.
+   */
+  private isRemoteRoomName(view: { name: string; gameId?: number }): boolean {
+    if (this.movedSincePrompt) return false
+    if (!this.navSeen || !this.ownRoomName) return false
+    if (view.gameId != null && this.lastNavId != null) return view.gameId !== this.lastNavId
+    return view.name.toLowerCase() !== this.ownRoomName.toLowerCase()
+  }
+
   private flushSegments() {
     if (this.pendingSegments.length === 0) return
 
@@ -1305,12 +1432,26 @@ export class StormFrontParser {
           (!s.preset && !s.fg && !s.bg) ? { ...s, preset: defaultPreset } : s)
       : this.pendingSegments
 
+    // An inline roomName on main: ours, or a view of another room (Locate)?
+    if (this.pendingStream === 'main') {
+      const nameSegs = segments.filter(s => s.preset === 'roomname')
+      if (nameSegs.length > 0) {
+        const view = parseInlineRoomName(nameSegs.map(s => s.text).join(''))
+        if (view) {
+          this.remoteView = this.isRemoteRoomName(view)
+          // The roomName a move brings is the name of where we now are.
+          if (!this.remoteView && this.movedSincePrompt && view.name) this.ownRoomName = view.name
+        }
+      }
+    }
+
     const evt: GameEvent = {
       type: 'stream-text',
       stream: this.pendingStream,
       segments,
       timestamp: Date.now(),
       ...(this.monoMode ? { mono: true } : {}),
+      ...(this.remoteView && this.pendingStream === 'main' ? { remoteView: true } : {}),
     }
     this.emit(evt)
     this.pendingSegments = []

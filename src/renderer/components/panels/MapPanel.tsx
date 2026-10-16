@@ -38,7 +38,7 @@ interface Props {
   lichMapVersion?: number
   onSendCommand: (cmd: string) => void
   large?: boolean
-  mapAnimations?: boolean   // Settings → Genie Map Animations; gates per-room effects AND the camera glide
+  mapAnimations?: boolean   // Settings → Genie Map Animations; gates the per-room effects (the camera never glides, v0.20.5)
 }
 
 const GENIE_DIR_KEY  = 'lichborne.genieMapsDir'
@@ -174,7 +174,7 @@ function primeGenieCache(dir: string, zones: Map<string, GenieZone>): void {
 // B172: memoized — the map re-renders when the room actually changes (its
 // props are room primitives + stable callbacks), not on every GameWindow
 // render (vitals ticks, main-text batches).
-export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits, roomId, lichMapVersion = 0, onSendCommand, large = false, mapAnimations = true }: Props) {
+export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits, roomId, lichMapVersion = 0, onSendCommand, large = false, mapAnimations = false }: Props) {
   const character = useCharacter()
   const saveProfile = useProfileSaver()
 

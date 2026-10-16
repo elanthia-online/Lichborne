@@ -2136,7 +2136,7 @@
   overflow: hidden;
   background: color-mix(in srgb, var(--experience-scene-text) 12%, transparent);
 }
-/* A cell with no bar (a permanent or unknown effect) still reserves the bar's
+/* A cell with no bar (an unknown reading; a permanent one shows a full bar) still reserves the bar's
    space, so every cell is the same height whatever it holds. `visibility`
    keeps the box and draws nothing. */
 .sm-bar--none { visibility: hidden; }
@@ -2233,6 +2233,12 @@
 /* Untimed effects read as quieter — they're the least likely thing you're
    watching for, and they sort last (UX #5: hierarchy from muting). */
 .sm-cell--untimed { opacity: 0.72; }
+/* A permanent spell's FULL bar (v0.20.5) is neutral: it never runs down, so it
+   gets no traffic-light colour. Scene text rather than the accent: measured over
+   the 21 built-in themes, with the cell's dimming, a bare accent fill fell to
+   1.3:1 on Barbarian and 2.1 on Commoner and all but vanished, reopening the gap
+   it exists to fill; scene text reads 3:1 or better on all but Thief (2.6). */
+.sm-cell--permanent .sm-bar-fill { background: var(--experience-scene-text); }
 
 /* SPENT — the effect ran out and wants recasting. Deliberately a different
    treatment from `--untimed` above, which is quiet-but-LIVE: this one is

@@ -3936,7 +3936,7 @@ Stubs are boundary rooms duplicated in adjacent zones. The "stub" version has `n
 
 **Why always-center (not margin-snap):** earlier implementation only panned when the indicator approached a 15% safe-margin edge. At fast walk rates each step pushed the indicator just outside the margin and the camera snapped back, producing a visible vibration. Always-centering means each camera delta exactly matches the player's world delta.
 
-**Smooth camera motion.** The pan group is positioned with the CSS `transform` *property* (not the SVG `transform` attribute) so it can be CSS-transitioned. `.genie-pan-smooth` applies `transition: transform 150ms linear`; follow walks and wheel zoom slide between positions instead of snapping. `linear` is deliberate — a follow camera re-targets every walk step, and an ease-out curve resets its velocity profile on each restart, producing a visible accelerate/decelerate pulse. The class is suppressed while `isDragging` so manual drag stays 1:1 with the cursor. It is gated on the **`mapAnimations`** setting (Settings → Genie Map Animations, default on): both the pan group and the indicator only get `.genie-pan-smooth` when `!isDragging && mapAnimations`, gated together so they stay in lockstep — when off, both snap. (v0.6.8–v0.6.11 gated this on a separate `smoothScroll` setting shared with the now-removed story-window smooth scroll; v0.6.12 removed that setting and folded the map glide under `mapAnimations` — one switch for all Genie map motion.)
+**Smooth camera motion — REMOVED in v0.20.5 (§54.5).** The camera and the indicator now move instantly. The two paragraphs below describe the removed glide and are kept for history. The pan group is positioned with the CSS `transform` *property* (not the SVG `transform` attribute) so it can be CSS-transitioned. `.genie-pan-smooth` applies `transition: transform 150ms linear`; follow walks and wheel zoom slide between positions instead of snapping. `linear` is deliberate — a follow camera re-targets every walk step, and an ease-out curve resets its velocity profile on each restart, producing a visible accelerate/decelerate pulse. The class is suppressed while `isDragging` so manual drag stays 1:1 with the cursor. It is gated on the **`mapAnimations`** setting (Settings → Genie Map Animations, default on): both the pan group and the indicator only get `.genie-pan-smooth` when `!isDragging && mapAnimations`, gated together so they stay in lockstep — when off, both snap. (v0.6.8–v0.6.11 gated this on a separate `smoothScroll` setting shared with the now-removed story-window smooth scroll; v0.6.12 removed that setting and folded the map glide under `mapAnimations` — one switch for all Genie map motion.)
 
 **Snap-on-large-delta.** A 150ms transition visibly "races across" the screen on a big jump. `snapTransform` is a render-time delta check (Euclidean > 600px OR scale change > 20% vs `prevTransformRef`, the last *painted* transform, updated in a post-commit `useEffect`). When true, an inline `transition: none` drops the transition for that one update — zone switches, ◆-from-afar, and fit-to-view cut instantly; walk steps and wheel zoom stay smooth.
 
@@ -3956,7 +3956,7 @@ Pre-hoist, all were inline children of each per-node `<g>`, so changing the curr
 
 **Current-room indicator (v0.6.8).** Solid ring radius `INDICATOR_R = NODE_SIZE * 1.3125`. The `<g>` is structured: two **sonar-ping** circles (`genie-here-ping`, a CSS keyframe scaling 0.7→2.7× while fading; the two are staggered half a cycle via `--delayed` so a fresh ring emanates ~every 1s), then a dark backdrop ring, then the bright green ring on top. `non-scaling-stroke` keeps the expanding pings thin as they grow. The pings are exempt from the drag/motion animation-pause via a higher-specificity rule (`.genie-pan-dragging .genie-here-ping` beats `.genie-pan-dragging *`) — the locator is the one thing the user most wants to keep tracking.
 
-**Indicator transition lockstep.** The indicator `<g>` lives inside the pan group and carries its OWN `genie-pan-smooth` transition on a `translate(node.x, node.y)` transform. With only the pan transitioning, the halo sat off-centre for 150ms after each walk step then slid back ("bounce"). Giving both the same matched transition makes the interpolations cancel — `lerp(panA,panB,f) + lerp(roomA,roomB,f) = centre` for all `f` — so the halo stays pinned at screen centre while the map slides beneath it. `indicatorSnap` (a world-distance large-jump check, > 120 units) is ORed with `snapTransform` for the indicator so it also snaps on follow-off teleports where the pan delta is zero.
+**Indicator transition lockstep — moot since v0.20.5 (§54.5): neither the pan group nor the indicator transitions any more, so they cannot fall out of step.** Kept for history: the indicator `<g>` lives inside the pan group and carries its OWN `genie-pan-smooth` transition on a `translate(node.x, node.y)` transform. With only the pan transitioning, the halo sat off-centre for 150ms after each walk step then slid back ("bounce"). Giving both the same matched transition makes the interpolations cancel — `lerp(panA,panB,f) + lerp(roomA,roomB,f) = centre` for all `f` — so the halo stays pinned at screen centre while the map slides beneath it. `indicatorSnap` (a world-distance large-jump check, > 120 units) is ORed with `snapTransform` for the indicator so it also snaps on follow-off teleports where the pan delta is zero.
 
 **Backdrop ring** — single-colour halo dissolved into similarly-coloured adjacent rooms. Translucent dark ring + bright stroke gives unconditional contrast.
 
@@ -4017,7 +4017,7 @@ Inside the SVG `<g transform>` pan/zoom group:
 - **`pointer-events: none` on the pan group breaks click-to-walk.** `isDragging` flips true on mousedown BEFORE click fires, so toggling pointer-events at that point makes the click target the SVG root, not the inner node `<g>`. Hover is gated at the React layer (`dragRef.current` check in `onNodeHoverEnter`) instead.
 - **`will-change: transform`** on the pan group promotes the subtree to its own composited layer so pan/zoom is GPU-translated rather than triggering paint of siblings.
 - **No inline `height: 100%` on the `GenieMapView` outer wrap.** It carries `.map-canvas-wrap` (`flex: 1; min-height: 0`) plus inline `display: flex; flex-direction: column`. An inline `height: 100%` overrides the flex sizing and — evaluated against the parent's *full* height before the parent subtracts its own toolbar — pushes the MapPanel's view-selector toolbar off-screen at narrow window heights. Let CSS flex own the height.
-- **Pan group + indicator must transition in lockstep.** Both carry `.genie-pan-smooth` and share the `snapTransform` flag. If they used different easings or one snapped while the other transitioned, the "you are here" halo would bounce off-centre or slide while the map cut. See §19.16.7.
+- **Pan group + indicator must transition in lockstep** (moot since v0.20.5: the glide was removed, §54.5). Both carry `.genie-pan-smooth` and share the `snapTransform` flag. If they used different easings or one snapped while the other transitioned, the "you are here" halo would bounce off-centre or slide while the map cut. See §19.16.7.
 
 ### 19.17 Per-Color Effect System (v0.6.7)
 
@@ -4134,7 +4134,7 @@ The locator sonar ping is **exempt** from this transient freeze — you still wa
 
 Why: Chrome DevTools profiling showed Layerize ~33% + Recalculate Style ~22% + Paint ~14% during drag, and Layerize ~17% + Recalculate Style ~16% + Layout ~11% during cross-map walking — all attributable to continuously-running animations the user wasn't stationary long enough to appreciate during those scenarios. Pausing frees frame budget for transform updates and React reconciliation.
 
-**Pause permanently (opt-out setting, v0.6.9).** `settings.mapAnimations` (Settings → Genie Map Animations, **default on**) threads to `GenieMapView` as the `mapAnimations` prop. When off, the pan group instead gets a distinct `genie-anim-off` class, which enumerates the animated classes the same way the transient freeze does (v0.18.5 — see the note above) but applied permanently. Unlike the transient class it covers **every** animated class, ping and heartbeat included: "off" stops the sonar ping too. Its list is kept comprehensive even where entries are inert today (most aren't mounted while the setting is off), because `genie-heartbeat` and `genie-aura-fire` already render outside the `showEffects` gate and the next effect to do so would silently escape a list pruned to "what is mounted right now". The two freeze classes are mutually exclusive on the pan group (`!mapAnimations ? 'genie-anim-off' : (isDragging || inMotion) ? 'genie-pan-dragging' : ''`), so there is no specificity duel between the ping-pause and the ping-exemption rules. Effect *elements* stay in the DOM — only paused, not removed — so a cold mount with the setting off freezes them at their 0% keyframe (fade-in effects like motes therefore read as absent rather than static).
+**Pause permanently (opt-out setting, v0.6.9; default OFF since v0.20.5, §54.5).** `settings.mapAnimations` (Settings → Genie Map Animations, **default off** for new characters since v0.20.5; it was on) threads to `GenieMapView` as the `mapAnimations` prop. When off, the pan group instead gets a distinct `genie-anim-off` class, which enumerates the animated classes the same way the transient freeze does (v0.18.5 — see the note above) but applied permanently. Unlike the transient class it covers every animated class **except the sonar ping** (the heartbeat included). Until v0.20.5 it stopped the ping too; it no longer does, because the ping is Lichborne's "you are here" locator, the same `.genie-here-ping` class the Lich map draws, and the Lich map's ping never had an off switch (Sekmeht). Both maps now behave alike, and epilepsy safe mode is the one switch for both (`:root[data-epilepsy-safe='true'] .genie-here-ping` hides the rings; the solid ring and centre dot stay). Its list is kept comprehensive even where entries are inert today (most aren't mounted while the setting is off), because `genie-heartbeat` and `genie-aura-fire` already render outside the `showEffects` gate and the next effect to do so would silently escape a list pruned to "what is mounted right now". The two freeze classes are mutually exclusive on the pan group (`!mapAnimations ? 'genie-anim-off' : (isDragging || inMotion) ? 'genie-pan-dragging' : ''`), so there is no specificity duel between the ping-pause and the ping-exemption rules. Effect *elements* stay in the DOM — only paused, not removed — so a cold mount with the setting off freezes them at their 0% keyframe (fade-in effects like motes therefore read as absent rather than static).
 
 **Why class-based, not pointer-events.** Earlier attempts toggled `pointer-events: none` on the pan group during drag for hit-test savings, but that shifts the click-target off the inner node `<g>` (mousedown sets `isDragging` true *before* `click` fires), silently breaking click-to-walk. The animation-pause class doesn't have this hazard because it only affects animation execution, not event routing.
 
@@ -8042,7 +8042,8 @@ across a full day.
      - **Spent cells:** a spent cell keeps "ended" and its clear-out countdown. Its stale reading
        moves to the tooltip as "last reported as …".
      - **Fixed height:** the slot is capped with an ellipsis, and a barless cell reserves the bar's
-       space (`.sm-bar--none`), so every cell is the same height whatever it holds.
+       space (`.sm-bar--none`), so every cell is the same height whatever it holds. Since v0.20.5
+       only an UNKNOWN reading is barless: a permanent effect shows a full bar (§54.10).
      - **Kept separate on purpose:** DR's own "fading" and our `<1m` countdown still read
        differently. One is the game's word and the other is our clock (the two-stage rule).
    - **(v0.19.6, now feeding the slot) THE NOTE ADDS WHAT THE LABEL DOES NOT SAY** — `spellNoteText`. A first cut rendered the
@@ -11071,4 +11072,110 @@ Sekmeht asked, after B516, for a look at "other bugs for persistence". Three rea
 - **README credits** were a second copy of `credits.ts` that had drifted by four promotions and two testers; synced, and CLAUDE.md's credits rule now names it.
 
 **No slash command** for any of these: they are visual and documentation changes that add no capability (the Edit contact button's behaviour is unchanged; `/contact` has add, remove and list).
+
+## 54. Small fixes from a read-through, and lessons from ProfanityFE (v0.20.5)
+
+Reports from Vaddon (B525–B527) and Legiro (B529), a review of ProfanityFE's last 223 commits (B531–B533), and Sekmeht's go2, Tableau and scrolling reports with the bug and CSS/theme checks that followed (B534–B541).
+
+- **Genie Maps download link.** The "No Genie maps folder set" state links [github.com/GenieClient/Maps](https://github.com/GenieClient/Maps), where the Genie XML maps are maintained, with a **Download the maps ZIP** link straight to `https://github.com/GenieClient/Maps/archive/refs/heads/main.zip`, and says to unzip it and pick the folder with the button beneath. The ZIP link assumes the repo's default branch stays `main`; if GenieClient renames it, the link 404s and the repo link beside it still works. Both open in the system browser through `window.api.openUrl`, never a bare `target="_blank"`: main sets no `setWindowOpenHandler`, so a `_blank` link opens an Electron window inside the app. It used to link `elanthia-online/scripts`, which holds Lich scripts, not these maps.
+- **Transfer opens on the tab you asked for.** `ProfileTransferModal` takes `initialMode: 'export' | 'import'` (default `'export'`), read once into its `mode` state. App keeps `profileTransferMode`: the `profile-import` menu action sets `'import'`; `profile-export` and the launcher's `lichborne:open-profile-transfer` event set `'export'`. Because the prop is read only at mount, choosing Import Profile… while Transfer is already open leaves it on its current tab (the pitfall #153 shape; acceptable for a dialog the user can switch with one click).
+- **Import placeholder** reads "Choose a file to import…".
+
+- **The Overview's "send to" button (B528).** The target picker is a button reading `All · 2 ▾` or the target's name (ellipsized), opening `ContextMenu` upward. `CtxItem` gained an optional `checked` (a fixed tick column, so pick-one rows line up; undefined leaves an ordinary row unchanged) and `ContextMenu` an optional `openUp` (the menu's bottom edge sits at `y`). The All state keeps its accent tint. Picking refocuses the input; Enter/Space open the menu with focus inside (`focusFirst`, keyed per opening).
+- **Genie trigger import (B529, B530).** `#flash`/`#beep`/`#bell` match on the command word. `#event`/`#events N <command>` join the queue forms: `delayMs = N×1000`, no roundtime wait; an event whose action starts with `#` is dropped (only command actions carry a delay). `#playsystem <name>` is a sound by name (the library-sound preset fallback); `#playsystem beep` is Beep. Everything else in Genie's `#` list is backlogged as F136.
+
+### 54.1 Game-opened links follow link safety (B531)
+
+`<LaunchURL src>` opens the browser without a click. The parser emits `launch-url` only for a `/path` (made `https://www.play.net/path`; `//host` is refused) or a whole `http(s)://` URL with no whitespace; anything else (`@host/x`, `javascript:`, `file:`) is dropped. Main does not open it: it sends `LaunchUrlPayload { sessionId, url }` on `IPC.LAUNCH_URL` to `ownerWindow(s)`, and GameWindow (filtering on `sessionIdRef`) opens `wrapExternalLink(url, settings.webLinkSafety)` through `openUrl`. So the setting that governs clicked links governs these too: on (the default), the play.net bounce page warns first. It is deliberately not a GameEvent, because those are buffered for the pitfall #60 replay and would reopen the browser when a character changes window.
+
+### 54.2 A view of another room (B532)
+
+**The room-name style ends with its line (B534).** DR opens `<style id="roomName"/>` on the name's line and closes it with `<style id=""/>` only at the start of the next line, so anything slipped in between wore the room-name style: during a fast go2, Lich's `[go2]>…` echoes did, and the check below could have read them as room names. `text()` sets `roomNameOnLine` when it writes room-name text, and `parse()` clears `currentPreset` at the end of that line.
+
+A Moon Mage's Locate prints another room on main in LOOK form, without `<nav>`, subtitle or components (Knowledge.md, "DR protocol — a view of another room"). The parser decides at each inline roomName on main (`isRemoteRoomName`, after `parseInlineRoomName` cleans the name the way the subtitle is cleaned):
+
+1. a burst that moved us (a `<nav>`, or a subtitle naming a different room, since the last prompt) → ours;
+2. a session that has never sent `<nav>`, or no room known yet → ours;
+3. the game's id after the bracket (`] (84081)`, not `(u…)`) against the last `<nav rm>`;
+4. else the name against ours (`ownRoomName`: the subtitle's, or a move's roomName).
+
+While a view is open, its main lines carry `remoteView: true` and its `<compass>` emits no `exits`. The renderer still shows the lines, and skips their `roomdesc` for `roomState.desc`. A prompt ends the view. A subtitle ends it only when it names a different room, because Lich (`;display lichid/uid`, room-window front-ends) prepends a subtitle for the player's own room to the prompt line of ANY room view (pitfall #186). Two rooms with the same name read as ours (costs only a description). **Known gap:** after login or an Attach and before the first move, rule 2 treats a Locate as ours; Profanity closes this with a LOOK it sends at startup, which Lichborne doesn't send.
+
+### 54.3 Where a tag ends (B533)
+
+`src/shared/xmlTag.ts` holds `TAG_PATTERN` (a tag ends at the first `>` outside a quoted value; an unbalanced quote falls back to the first `>`) and `stripTags`. The tokenizer, the glance-hand check and the scene capturers use it, so all three agree.
+
+### 54.4 ProfanityFE review (2026-10-13)
+
+223 commits since March, mostly work against 15 real session logs. Applied: B531, B532, B533. Already fine in Lichborne: styles end at a prompt (#185), nested popStream (#102), glance empty hands (#142), zero-width highlight loops (#56), the LNet `[A-z]` range (#82), atomic settings writes (#112, #255), duplicate speech (#107, solved here by not falling back for natively-duplicated streams). Not applicable to our architecture: span flushes (#161), Room Number lines (#225). Ideas noted, not built: multi-line mutes that hide a header through the next prompt (#40), a configurable notification stream for script `***STATUS***` lines (#46), and sticky script-pushed timers like their GemStone effects window (#254) for the Spell Monitor.
+
+### 54.5 No camera glide on the Genie map (B537)
+
+Sekmeht reported scrolling that felt clunky and text that jittered now and then. A 19 s DevTools trace taken while Agan ran a 25-rooms/s go2 showed:
+
+- the renderer main thread 26% busy, and highlights about 0.08 ms a line (`tmp-scrollperf/`, his 1,297 real rules over 4,000 real lines);
+- one 297 ms frame (20 dropped) at a Genie zone change, when the camera's layout effect forced the layout of a freshly built zone;
+- the main thread at 45–62% for the length of the run.
+
+`tmp-mapperf/` renders the real `GenieMapView`, real CSS and his real zone cache in an offscreen Electron window. During a 25-rooms/s run, the 150 ms camera glide (`.genie-pan-smooth`, a `transform` transition on the pan group) put 52–67 of ~280 frames over 20 ms; with only the glide turned off, none. The room effects made no difference. The glide animates an SVG group's transform, which Chromium can't hand to the compositor, so each frame of it redraws the whole zone, and while moving every room restarted it.
+
+A run-aware snap (snap when steps arrive within 300 ms) was built first and measured clean, then dropped at Sekmeht's call: a sliding map and a slow map look the same, so the glide made it hard to tell whether the client was lagging. Now:
+
+- the camera and the "you are here" ring move instantly, so they stay in step by construction; `snapTransform`, `indicatorSnap`, their refs and the CSS rule are gone, with a note in GenieMapView and map-panel.css;
+- **Genie Map Animations** (`settings.mapAnimations`) covers only the room effects (glints, ripples, auras, the healer heartbeat), and its default is now **off**. The location ping is not one of them: it keeps pulsing on both maps, and only epilepsy safe mode stops it (Sekmeht, after the first draft of this section put it under the setting). Settings are saved as a whole object, so existing characters keep their stored value; only a character with no saved settings gets the new default. The three prop defaults (PanelFrame, MapPanel, GenieMapView) are `false` to match;
+- if a glide is ever wanted again, the pan has to live on an HTML wrapper the compositor can move.
+
+**Residual:** in the app the zone-change frame cost 280 ms against 33–50 ms in the harness, so something else dirty on the page made that layout worse. The Living Tableau redrawing its scenery each room is the suspect; not measured. The Lich map never glided (its pan is an SVG attribute with no transition) and is unaffected.
+
+### 54.6 Engaged creatures between assesses (B535, B536)
+
+DR's automatic assess arrives every 15–70 s and is often empty (nothing on you, e.g. after a kill); the Tableau holds an assess for 30 s (`ASSESS_TTL_MS`). Between full assesses the creatures come from the `<crtrStatus>` roster, which says who is engaged with you (`rosterEngaged`: no `disengaged`, `sleeping` or `dead`). Two places now use it for the engaged glow, gated on ⚙ Threat (`showEngaged`):
+
+- an arrival the last assess didn't list (the dashed "unassessed" figure);
+- the roster-only row shown when no assess is up.
+
+Their hover text says "engaged with you". A roster entry with no flags at all would count as engaged; every capture carries `hostile`, so it isn't expected.
+
+`StormFrontParser` also ends a line at the `popStream` of an `assess` block, because Lich's spec stores DR's assess as one joined line of blocks and B256's same-stream merge then folded every creature into the "You assess your combat situation..." line. Real DR sends one block per line, so this is latent.
+
+### 54.7 Links open web addresses only (B538)
+
+Found by the v0.20.5 bug check. An `<a href>` in the stream, which any Lich script can write, accepted any scheme, and `wrapExternalLink` let non-web addresses through untouched even with link safety on. Main's `open-url` then called `shell.openExternal` on whatever it got, which runs a `file:` address. Now:
+
+- main's `open-url` opens only `http(s)://` and logs what it refuses; it is the one place every link opens through;
+- the parser renders a non-web `<a>` as plain text.
+
+Bare URLs in text already auto-link only from `http(s)://`, and every address the app opens itself is `https`. Pitfall #188.
+
+### 54.8 The locator ping is not a Genie effect (B541)
+
+Both maps draw the same `.genie-here-ping` rings, but only the Genie map's sit inside the pan group that carries `genie-anim-off`, so turning Genie Map Animations off stopped the Genie ping while the Lich map's kept going (Sekmeht). The ping is Lichborne's "you are here" locator, not a room effect, so it left that freeze list and now pulses on both maps regardless of the setting. Epilepsy safe mode had never stopped either ping, and the setting had been the Genie one's only off switch, so one rule, `:root[data-epilepsy-safe='true'] .genie-here-ping { animation: none; opacity: 0 }`, now hides the rings on both maps; the solid ring and the Lich map's centre dot stay (UX standard #9b).
+
+Cost, measured in `tmp-mapperf/` (the real component on real zones, animations off, with and without the epilepsy attribute): about 1% of a core in the renderer and 1% in the GPU process at idle, 0% with the ping stopped, and no dropped frames during a 25-rooms/s run. A script check of `map-panel.css` confirms the persistent freeze still covers all 17 other animated classes.
+
+### 54.9 The bug and CSS/theme check (B539, B540)
+
+**Transfer re-aims on every request (B539).** `ProfileTransferModal` read `initialMode` into `useState` at mount, so File → Import Profile… over an already-open Transfer left it on Export. App now holds `{ mode, seq }` (`aimProfileTransfer`, the one opener for the menu actions and the launcher's event) and passes `modeSeq`; the dialog's `[initialMode, modeSeq]` effect sets the tab. The same shape as the Automations fix in CLAUDE.md pitfall #153: count requests, not changes.
+
+**Accent text on the Overview input bar (B540).** Every new or touched rule in v0.20.5 uses theme variables, but three painted text in bare `var(--accent)`: the menu tick `.ctx-menu-mark`, the broadcast label `.ov-inputbar-target--all` and `.ov-inputbar-send`. Measured over all 21 built-in themes (`tmp-v0205-css/contrast.ts`, which resolves each theme's variables over `darkBase` and computes WCAG contrast against the surface the text sits on):
+
+| | Barbarian before → after | Commoner before → after |
+|---|---|---|
+| Menu tick on `--bg-raised` | 1.83 → 3.40 | 3.17 → 4.88 |
+| "All · N" on its tinted `--bg-input` | 2.04 → 3.80 | 3.50 → 5.39 |
+
+All three now use `color-mix(in srgb, var(--accent) 60%, var(--text-primary))`, the mix `.ui-menu-mark` already used; every other theme reads above 5:1. The broadcast picker also has its own hover (more tint, never the neutral hover the single-character picker gets, pitfall #107). Bare-accent TEXT remains in about a dozen older rules in `game.css` and `overview.css`; they predate this version and are left for a separate sweep.
+
+### 54.10 A full bar for permanent spells
+
+The Spell Monitor gave a permanent effect (`Indefinite`, `OM`) no bar, so its cell carried an empty reserved slot under the name, which read as an awkward gap (Sekmeht). `barFraction` now returns 1 for `permanent`: a full bar beside its ∞. Its band stays `none` (a traffic light on something that never runs down would be noise), and `.sm-cell--permanent` paints the fill in `--experience-scene-text`, dimmed with the rest of the cell by `--untimed`. The colour was chosen by measurement (`tmp-v0205-css/bar.ts`, every built-in theme, bar against its track with the dimming applied):
+
+| Fill | Worst theme | Notes |
+|---|---|---|
+| bare `--accent` (the default fill) | 1.34 (Barbarian) | also 2.08 Commoner, 2.37 Mist: the bar all but vanished |
+| accent mixed 60% toward text | 2.14 (Barbarian) | |
+| `--spell-band-ok` (green) | 2.00 (Mist) | about 2:1 on every light theme |
+| `--experience-scene-text` | 2.56 (Thief) | 3:1 or better on the other 20; neutral, as a no-countdown spell should be | An `unknown` reading keeps the empty slot, because a full bar would claim a measure we don't have. The value never changes, so the 1 Hz clock re-renders it with an identical style string and the bar's transition never fires (pitfall #160).
+
+**No slash command** for any of §54: dialogs, import, parsing, display and safety fixes, with no new capability. Genie Map Animations has never had a command and still doesn't: a display preference set once, in Settings.
 

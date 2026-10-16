@@ -57,7 +57,7 @@ export interface AppSettings {
   // `bWebLinkSafety` setting. On by default — safer for users who don't
   // trust every script-emitted URL.
   webLinkSafety: boolean
-  mapAnimations: boolean   // Genie Maps motion — per-room category effects AND the camera glide; on by default
+  mapAnimations: boolean   // Genie Maps room effects (glints, ripples, auras, healer heartbeat; NOT the location ping, which is shared with the Lich map); OFF by default since v0.20.5 (existing saves keep their value). The camera glide was removed the same release.
   // v0.8.4 (B113): text-weight offset for game text. Positive values
   // (0.2–0.6) add faux-bold via -webkit-text-stroke to compensate for
   // Chromium DirectWrite's lighter rendering vs Frostbite's GDI ClearType
@@ -145,7 +145,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   timerStyle: 'chips',
   autoLinkUrls: true,
   webLinkSafety: true,
-  mapAnimations: true,
+  mapAnimations: false,
   textWeight: 0,
   panelFontSizes: {},
   // Static — the wordmark takes its colours from the theme, as it always has.

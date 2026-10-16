@@ -63,7 +63,12 @@ const MIN_MS = 60_000
 // shows a full bar rather than an empty one, since empty would read as "about
 // to expire" on something we simply know nothing about yet.
 function barFraction(e: SpellEffect, now: number): number | null {
-  if (e.kind === 'permanent' || e.kind === 'unknown') return null
+  // A permanent effect (Indefinite / OM) never runs down, so its bar is simply
+  // FULL (v0.20.5, Sekmeht): an empty slot left an awkward gap under the name.
+  // Its band is 'none'; the fill is the neutral scene-text colour (.sm-cell--permanent).
+  if (e.kind === 'permanent') return 1
+  // An unknown reading has no measure at all; a full bar would claim one.
+  if (e.kind === 'unknown') return null
   if (e.kind === 'fading') return 0
   // A SPENT cell's bar drains its one-roisan grace rather than a spell duration
   // — the cell has no duration left to show, and this is the same question the
@@ -116,6 +121,8 @@ function SpellCell({ effect, now, showBars, showUrgency, pulse, showBadges, useA
     // but it is the most urgent thing on screen, so it must never be quieted
     // along with the permanents.
     effect.kind === 'permanent' || effect.kind === 'unknown' ? 'sm-cell--untimed' : '',
+    // Its full bar is drawn in the neutral scene-text colour (see the CSS).
+    effect.kind === 'permanent' ? 'sm-cell--permanent' : '',
     // STAGE ONE of the two-stage end: our countdown has run out while the game
     // is STILL listing the effect. Marked independently of the urgency layer,
     // because "the time you were told has elapsed" is a STATE rather than a
@@ -176,7 +183,7 @@ function SpellCell({ effect, now, showBars, showUrgency, pulse, showBadges, useA
         {aside && <span className="sm-aside">{aside}</span>}
       </div>
       {/* While bars are on, the bar slot is ALWAYS there, so a cell with no bar
-          (a permanent or unknown effect) is exactly as tall as one with a bar.
+          (an unknown reading) is exactly as tall as one with a bar.
           `--none` hides the track without giving its space back. */}
       {showBars && (
         <div className={bar === null ? 'sm-bar sm-bar--none' : 'sm-bar'} aria-hidden="true">

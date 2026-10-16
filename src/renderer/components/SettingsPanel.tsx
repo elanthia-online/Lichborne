@@ -1267,7 +1267,7 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
 
           {vMapAnim && <Toggle
             label="Genie map animations"
-            description="Genie Maps motion — per-room effects (shop glints, water ripples, sparkles) and the camera glide as it follows you. Turn off if the map feels sluggish; the map then snaps instantly with no effects."
+            description="Room effects on the Genie map: shop glints, water ripples, sparkles, fire auras and healer heartbeats. The pulsing ring that marks where you are isn't affected."
             checked={settings.mapAnimations}
             onChange={v => set('mapAnimations', v)}
           />}

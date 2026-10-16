@@ -31,7 +31,7 @@ import type {
   SessionLogExportSpec, SessionLogExportResult, SessionLogDiskUsage, SessionLogWindowRow,
   CatchupDigest, CatchupProgress,
   AICapability, AIKeyStatus, AITestResult, AIChatRequest, AIChatChunk, AIChatDone, AIChatError,
-  SimuCoinStatus, UserTextPayload, CharacterNotice, RoutedToast,
+  SimuCoinStatus, UserTextPayload, LaunchUrlPayload, CharacterNotice, RoutedToast,
 } from '../shared/types'
 
 // One shared list — see the note on IPC in shared/types.ts.
@@ -131,6 +131,12 @@ contextBridge.exposeInMainWorld('api', {
     const listener = (_e: Electron.IpcRendererEvent, p: UserTextPayload) => cb(p)
     ipcRenderer.on(CH.USER_TEXT, listener)
     return () => ipcRenderer.removeListener(CH.USER_TEXT, listener)
+  },
+
+  onLaunchUrl: (cb: (p: LaunchUrlPayload) => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, p: LaunchUrlPayload) => cb(p)
+    ipcRenderer.on(CH.LAUNCH_URL, listener)
+    return () => ipcRenderer.removeListener(CH.LAUNCH_URL, listener)
   },
 
   onGameEvent: (cb: (batch: GameEventBatch) => void) => {

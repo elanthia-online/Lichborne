@@ -22,6 +22,7 @@
 // STAT-TABLE alignment (mock.xml:460-461) — the verb/shape regex is the
 // signal; ctx.preset is advisory only.
 import type { GameEvent, SceneSpeechEvent } from '../../shared/types'
+import { stripTags } from '../../shared/xmlTag'
 
 export interface SceneCtx {
   stream: string     // the parser's active stream when the line arrived
@@ -279,7 +280,7 @@ function decodeEntities(text: string): string {
 export function runSceneCapturers(rawLine: string, ctx: SceneCtx): GameEvent[] {
   if (LIVE_CAPTURERS.length === 0) return []
   if (rawLine.length > 4000) return []  // sanity cap — speech lines are short
-  const line = decodeEntities(rawLine.replace(/<[^>]*>/g, '')).trim()
+  const line = decodeEntities(stripTags(rawLine)).trim()
   if (!line) return []
   const out: GameEvent[] = []
   const lower = line.toLowerCase()

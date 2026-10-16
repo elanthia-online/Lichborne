@@ -1620,7 +1620,7 @@ export const EXPERIENCES: ExperienceDef[] = [
     badge: 'Beta',
     // One option per visual LAYER, each accurate about exactly what it hides.
     options: [
-      { id: 'bars',    label: 'Duration bars',   desc: 'A depleting bar under each effect, drawn against the longest duration seen for it this session (the game never states a spell’s full length, so the bar learns it from a recast).' },
+      { id: 'bars',    label: 'Duration bars',   desc: 'A depleting bar under each effect, drawn against the longest duration seen for it this session (the game never states a spell’s full length, so the bar learns it from a recast). A spell with no expiry shows a full bar.' },
       { id: 'urgency', label: 'Traffic-light colours', desc: 'Each effect runs green while it is full, yellow past the halfway mark, and red as it nears its end — in the same colours as your health bar, so they follow your theme and your colour-blind setting. Off = every cell uses one neutral colour.' },
       { id: 'expired', label: 'Ended effects',  desc: 'Keep an effect on screen once the game stops listing it — greyed and marked "ended" — so you can see exactly what lapsed and needs recasting rather than having it quietly vanish. It clears when you recast it, and after one roisan on its own. An effect whose countdown has simply run out is always shown, marked "expired", until the game settles it either way.' },
       { id: 'untimed', label: 'Untimed effects', desc: 'Effects the game reports without a countdown, such as a Trabe Chalice reading “intact, fading”. Shown last, after everything with a timer.' },

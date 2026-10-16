@@ -138,6 +138,12 @@ export const IPC = {
   // DOM event could never reach.
   SEND_USER_TEXT:    'send-user-text',
   USER_TEXT:         'user-text',
+  // v0.20.5: a <LaunchURL> from the game or a Lich script, sent to the owning
+  // window so its GameWindow can apply the character's link-safety setting
+  // (the play.net bounce page) before opening it. Deliberately NOT a
+  // GameEvent: those are buffered for replay, and a replayed launch would
+  // reopen the browser when a character moves to another window.
+  LAUNCH_URL:        'launch-url',
   DISCONNECT:        'disconnect',
   GAME_EVENT:        'game-event',
   CONNECTION_STATUS: 'connection-status',
@@ -200,6 +206,8 @@ export interface RoutedToast {
 export interface SendUserTextPayload { sessionId: SessionId; text: string }
 /** Main → the OWNING window: the same, delivered for that GameWindow to run. */
 export type UserTextPayload = SendUserTextPayload
+/** Main → the owning window: a <LaunchURL> to open (see IPC.LAUNCH_URL). */
+export interface LaunchUrlPayload { sessionId: SessionId; url: string }
 
 export type LoginResult =
   | { ok: true; sessionId: SessionId }
@@ -388,6 +396,10 @@ export interface StreamTextEvent {
   // `lastEmitWasPrompt`, ran before the mute removed the content between them).
   // See GameWindow's prompt-collapse pass + pitfalls #88/#98.
   prompt?: boolean
+  // true on the main lines of a view of ANOTHER room (a Moon Mage's Locate),
+  // from its roomName to the prompt that ends it (v0.20.5). The renderer shows
+  // them as usual but doesn't take the description as the player's room.
+  remoteView?: boolean
 }
 
 // Vitals — current and max both provided by the server text attribute ("72 100")

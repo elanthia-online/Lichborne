@@ -880,9 +880,11 @@
  * would win or lose on bundle order (pitfall #111), and the two bars would drift
  * apart the first time either is retuned. Retune the game bar; both follow.
  *
- * The picker is a FIXED-WIDTH select: it does not grow with the roster, where a
- * chip per character would (pitfall #109 — the SimuCoin popover that ran past
- * the viewport for a user with seven accounts).
+ * The picker is a FIXED-WIDTH button that opens the app's own menu: it does not
+ * grow with the roster, where a chip per character would (pitfall #109 — the
+ * SimuCoin popover that ran past the viewport for a user with seven accounts).
+ * It was a native <select> until v0.20.5, which clipped "All characters (2)"
+ * mid-word with no ellipsis and drew an unthemed platform arrow.
  */
 .ov-inputbar-to { display: flex; align-items: center; gap: 0.4em; flex: 0 0 auto; }
 
@@ -900,10 +902,13 @@
 .ov-inputbar-single { font-size: 0.85em; line-height: 1; color: var(--text-secondary); font-weight: 600; }
 
 .ov-inputbar-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
   font-family: inherit;
   font-size: 0.8em;
   line-height: 1;
-  padding: 0.3em 0.4em;
+  padding: 0.3em 0.5em;
   max-width: 12em;
   color: var(--text-secondary);
   background: var(--bg-input);
@@ -911,14 +916,25 @@
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
-.ov-inputbar-target option { background: var(--bg-raised); color: var(--text-primary); }
+.ov-inputbar-target:not(.ov-inputbar-target--all):hover { color: var(--text-primary); border-color: var(--text-dim); }
+/* A long name ends in "…" instead of being cut off mid-letter. */
+.ov-inputbar-target-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-inputbar-target-caret { flex: 0 0 auto; font-size: 0.85em; opacity: 0.75; }
 
 /* Broadcast is the loud state — it deserves to look different from "one
  * character", because the cost of not noticing is sending to everybody. */
 .ov-inputbar-target--all {
-  color: var(--accent);
+  /* Text mixed toward --text-primary, not bare accent: bare, this label read
+     2.0:1 on Barbarian (pitfall #150); mixed it is 3.8, and above 5 elsewhere. */
+  color: color-mix(in srgb, var(--accent) 60%, var(--text-primary));
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   background: color-mix(in srgb, var(--accent) 8%, var(--bg-input));
+}
+/* It stays the loud state on hover (pitfall #107): more tint, never the
+   neutral hover the single-character picker gets. */
+.ov-inputbar-target--all:hover {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-input));
 }
 
 /* The wrapper carries the border/background/focus ring — AND its flex — from
@@ -942,7 +958,7 @@
   border-radius: var(--radius-sm);
   border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--accent);
+  color: color-mix(in srgb, var(--accent) 60%, var(--text-primary));  /* matches the target label beside it */
   cursor: pointer;
   flex: 0 0 auto;
   transition: background 0.15s, border-color 0.15s, opacity 0.15s;

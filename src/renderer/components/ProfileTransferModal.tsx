@@ -38,6 +38,12 @@ interface Props {
   sessions: TransferSession[]
   reloadSession: (characterId: string) => void
   onClose: () => void
+  /** Which tab to open on. File → Import Profile… opens on Import (Vaddon);
+   *  the launcher's Transfer button and Export Profile… open on Export. */
+  initialMode?: 'export' | 'import'
+  /** Bumped by every request to open Transfer, so a request made while it is
+   *  already open switches to `initialMode` (pitfall #153). */
+  modeSeq?: number
 }
 
 interface ProfileRow { name: string; account: string; game: string }
@@ -55,14 +61,16 @@ async function loadProfileRows(): Promise<ProfileRow[]> {
   return rows.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-export default function ProfileTransferModal({ sessions, reloadSession, onClose }: Props) {
+export default function ProfileTransferModal({ sessions, reloadSession, onClose, initialMode = 'export', modeSeq = 0 }: Props) {
   useEscapeClose(onClose)
   const titleId = useId()
   // B397: open with focus INSIDE the dialog (the panel itself — the first field
   // is a <select>, where a stray arrow key would silently change the source).
   const panelRef = useRef<HTMLDivElement>(null)
   useEffect(() => { panelRef.current?.focus() }, [])
-  const [mode, setMode] = useState<'export' | 'import'>('export')
+  const [mode, setMode] = useState<'export' | 'import'>(initialMode)
+  // A later request while open (File → Import Profile… over an open Transfer).
+  useEffect(() => { setMode(initialMode) }, [initialMode, modeSeq])
   const [profiles, setProfiles] = useState<ProfileRow[]>([])
 
   // Active = has an open session (focused or backgrounded).
@@ -332,7 +340,7 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose 
               value={importFileName && exportsList.some(e => e.name === importFileName) ? importFileName : ''}
               onChange={e => { if (e.target.value) pickFromExports(e.target.value) }}
             >
-              <option value="">{exportsList.length ? 'Choose an export…' : 'No exports found'}</option>
+              <option value="">{exportsList.length ? 'Choose a file to import…' : 'No exports found'}</option>
               {exportsList.map(e => <option key={e.name} value={e.name}>{e.name}</option>)}
             </select>
             <button type="button" className="ui-btn" onClick={browseForFile}>Browse…</button>

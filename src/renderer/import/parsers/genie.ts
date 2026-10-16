@@ -507,9 +507,21 @@ function parseActionParts(actionRaw: string): {
   // come off the command text — it used to import as the command `2 look`.
   // `#q` has no case of its own in Genie's source; it stays with the queue
   // forms because the importer has always accepted it.
-  const COMMAND_PREFIX_RE = /^#(send|put|do|q|que|queue)\s+/i
+  //
+  // `#event`/`#events` (v0.20.5) is Genie's timer: `#event 5 look` runs `look`
+  // five seconds later (Command.cs, the "event" case → Events.AddToQueue). For a
+  // plain game command that is exactly a command action with a delay and no
+  // roundtime wait, so it imports alongside the queue forms. An event whose
+  // action is itself a `#command` (`#event 60 #echo time's up`) is reported
+  // unsupported rather than imported: only command actions carry a delay here,
+  // so the echo would fire at once and the timer would silently be lost.
+  const COMMAND_PREFIX_RE = /^#(send|put|do|q|que|queue|events?)\s+/i
   const VAR_PREFIX_RE     = /^#(?:var|variable|setvar|setvariable|tvar|tempvar|tempvariable|svar)\s+/i
-  const SOUND_PREFIX_RE   = /^#(?:play|playsound|playwave)\s+/i
+  // `#playsystem` (v0.20.5) plays a Windows system sound by name (asterisk,
+  // exclamation, hand, question, beep — Command.cs → Sound.PlayWaveSystem). Those
+  // are names, not files, so they take the same built-in-preset fallback as a
+  // Genie library sound.
+  const SOUND_PREFIX_RE   = /^#(?:play|playsound|playwave|playsystem)\s+/i
 
   for (const part of parts) {
     if (!part.startsWith('#')) {
@@ -547,7 +559,8 @@ function parseActionParts(actionRaw: string): {
       }
       const opts: ImportCommandOpts = { delayMs, waitForRt: verb === 'send' || verb === 'do' }
       const cmd = stripSendMarker(body)
-      const isQueueVerb = verb === 'q' || verb === 'que' || verb === 'queue'
+      const isEventVerb = verb === 'event' || verb === 'events'
+      const isQueueVerb = verb === 'q' || verb === 'que' || verb === 'queue' || isEventVerb
       // Genie queue CONTROL, not a command to send: `#send|#do|#queue clear`
       // empties Genie's queue. And `#queue` always takes a delay first — with
       // one word it LISTS the queue, with more it reads the first word as the
@@ -568,7 +581,10 @@ function parseActionParts(actionRaw: string): {
         // and the trigger would silently spam errors on every match. The
         // recursion goes through THIS function which knows how to map
         // `#flash` → hasFlash, `#beep` → hasBeep, etc.
-        if (cmd.startsWith('#')) {
+        if (cmd.startsWith('#') && isEventVerb) {
+          // A timed Genie command — see COMMAND_PREFIX_RE above.
+          dropped.push(part)
+        } else if (cmd.startsWith('#')) {
           const inner = parseActionParts(cmd)
           inner.commands.forEach((c, i) => pushCommand(c, inner.commandOpts[i]))
           if (inner.usedDo) usedDo = true
@@ -602,6 +618,9 @@ function parseActionParts(actionRaw: string): {
       } else {
         logActions.push({ file: '', message: body })
       }
+    } else if (/^#playsystem\s+beep\s*$/i.test(part)) {
+      // The system "beep" sound is what Lichborne's Beep action plays.
+      hasBeep = true
     } else if (SOUND_PREFIX_RE.test(part)) {
       const sound = part.replace(SOUND_PREFIX_RE, '').trim()
       if (sound && sound.toLowerCase() !== 'stop') {
@@ -610,9 +629,13 @@ function parseActionParts(actionRaw: string): {
         const isFilePath = /[/\\]/.test(sound) || /\.(wav|mp3|ogg|aiff?)$/i.test(sound)
         if (!isFilePath) hasLibrarySound = true
       }
-    } else if (lower === '#flash') {
+    // Matched on the command WORD, not the whole part: Genie's #flash and
+    // #beep/#bell ignore anything after them (Command.cs, the "flash" and
+    // "beep"/"bell" cases), so `#flash 3` or `#beep twice` still mean flash/beep.
+    // They used to be dropped as unsupported because only the bare word matched.
+    } else if (/^#flash(?:\s|$)/.test(lower)) {
       hasFlash = true
-    } else if (lower === '#beep' || lower === '#bell') {
+    } else if (/^#(?:beep|bell)(?:\s|$)/.test(lower)) {
       hasBeep = true
     } else if (lower === '#nop' || lower === '#comment' || lower.startsWith('#comment ')) {
       // B133: explicit no-ops. Genie's `#nop` does nothing; `#comment` is

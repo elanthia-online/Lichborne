@@ -552,6 +552,14 @@ function AppShell() {
   // nonces (to remount a session after a live import). Opened via the
   // `lichborne:open-profile-transfer` custom event the Launcher dispatches.
   const [showProfileTransfer, setShowProfileTransfer] = useState(false)
+  // The tab Transfer opens on: Import Profile… lands on Import (Vaddon). `seq`
+  // counts REQUESTS, so asking for a tab while Transfer is already open re-aims
+  // it even when the mode value is unchanged (pitfall #153).
+  const [profileTransferAim, setProfileTransferAim] = useState<{ mode: 'export' | 'import'; seq: number }>({ mode: 'export', seq: 0 })
+  const aimProfileTransfer = useCallback((mode: 'export' | 'import') => {
+    setProfileTransferAim(prev => ({ mode, seq: prev.seq + 1 }))
+    setShowProfileTransfer(true)
+  }, [])
   const [showAbout, setShowAbout] = useState(false)
   const [quitConfirm, setQuitConfirm] = useState<QuitConfirmRequest | null>(null)
   // Per-session remount key suffix. Bumping a character's nonce changes its
@@ -825,7 +833,7 @@ function AppShell() {
   // this. Empty deps: opening just flips the boolean; the modal reads live
   // `sessions` via props at render time.
   useEffect(() => {
-    const open = () => setShowProfileTransfer(true)
+    const open = () => aimProfileTransfer('export')
     document.addEventListener('lichborne:open-profile-transfer', open)
     return () => document.removeEventListener('lichborne:open-profile-transfer', open)
   }, [])
@@ -843,7 +851,10 @@ function AppShell() {
         // B330: Transfer (z 300) would open UNDER the + window (1000) and look
         // like nothing happened, so + closes first.
         case 'profile-export':
-        case 'profile-import':  setShowAdd(false); setShowProfileTransfer(true); break
+        case 'profile-import':
+          setShowAdd(false)
+          aimProfileTransfer(action === 'profile-import' ? 'import' : 'export')
+          break
         case 'login-character': setShowAdd(true); break  // same as the "+" tab — character picker + add-account button
         case 'bulk-connect':    void loadCharacterCards().then(cards => { if (cards.length) setBulkPickerSource(cards) }); break
         case 'close-character': if (activeId) handleCloseTab(activeId); break
@@ -2441,6 +2452,8 @@ function AppShell() {
           // its owner window would overwrite on save.
           sessions={roster.filter(r => r.connected).map(r => ({ character: r.character, characterId: r.characterId }))}
           reloadSession={(cid) => window.api.requestSessionReload(cid)}
+          initialMode={profileTransferAim.mode}
+          modeSeq={profileTransferAim.seq}
           onClose={() => setShowProfileTransfer(false)}
         />
       )}

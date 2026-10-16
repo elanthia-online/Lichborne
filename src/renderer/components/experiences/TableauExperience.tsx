@@ -2615,7 +2615,12 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
                 return (
                   <div
                     key={`as-${c.id}`}
-                    className={`tableau-figure tableau-figure--creature tableau-figure--assess tableau-assess--unassessed${onYou ? '' : ' tableau-assess--elsewhere'}`}
+                    // Engaged per the ROSTER (no "disengaged" flag, awake): the
+                    // same glow an assessed melee creature gets. DR's automatic
+                    // assess comes every 15-70s and is often EMPTY between fights,
+                    // so a creature that arrived and engaged since then otherwise
+                    // showed no sign of it (Sekmeht, v0.20.5).
+                    className={`tableau-figure tableau-figure--creature tableau-figure--assess tableau-assess--unassessed${onYou ? (showEngaged ? ' tableau-assess--engaged' : '') : ' tableau-assess--elsewhere'}`}
                     style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
                     title={`${c.name ?? 'A creature'} — here since your last assess${onYou ? ', engaged with you' : ''}${states.length ? ` — ${states.join(', ')}` : ''}. Assess to see where it stands.`}
                   >
@@ -2640,12 +2645,15 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
                 if (!pos) return null
                 const dead = c.flags.includes('dead')
                 const states = creatureStateWords(c.flags)
+                // No assess up (expired, or cleared by an empty one), but the
+                // roster still says who is on you: show it (v0.20.5).
+                const onYou = !dead && rosterEngaged(c.flags)
                 return (
                   <div
                     key={`as-${c.id}`}
-                    className={`tableau-figure tableau-figure--creature${dead ? ' tableau-assess--corpse' : ''}${states.length ? ' tableau-assess--reeling' : ''}`}
+                    className={`tableau-figure tableau-figure--creature${dead ? ' tableau-assess--corpse' : ''}${states.length ? ' tableau-assess--reeling' : ''}${onYou && showEngaged ? ' tableau-assess--engaged' : ''}`}
                     style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-                    title={`${c.name}${dead ? ' — dead. It stays until its body decays or is skinned.' : states.length ? ` — ${states.join(', ')}` : ''}`}
+                    title={`${c.name}${dead ? ' — dead. It stays until its body decays or is skinned.' : `${onYou ? ' — engaged with you' : ''}${states.length ? ` — ${states.join(', ')}` : ''}`}`}
                   >
                     <div className="tableau-avatar tableau-avatar--creature" data-fig={`c:${c.id}`}>
                       {initials(c.name!)}

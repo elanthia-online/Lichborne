@@ -16,7 +16,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 export type CtxItem =
-  | { label: string; onClick: () => void; disabled?: boolean }
+  /** `checked` (true OR false) reserves a tick column so the rows line up —
+   *  for a menu that picks one value out of several (the Overview's target).
+   *  Leave it undefined on an ordinary action menu. */
+  | { label: string; onClick: () => void; disabled?: boolean; checked?: boolean }
   | { label: string; submenu: CtxItem[] }
   | { label: null }
 
@@ -30,9 +33,12 @@ interface Props {
    *  no way into the portaled menu. Off by default: a right-click must not
    *  steal focus from the command bar. */
   focusFirst?: boolean
+  /** Open UPWARD from `y` (the menu's bottom edge sits at y). For an opener at
+   *  the bottom of the screen, like the Overview's input bar. */
+  openUp?: boolean
 }
 
-export default function ContextMenu({ x, y, items, onClose, focusFirst }: Props) {
+export default function ContextMenu({ x, y, items, onClose, focusFirst, openUp }: Props) {
   const menuRef = useRef<HTMLDivElement>(null)
   // Clamp the root menu into the viewport so a tall menu near a screen edge
   // doesn't overflow off-screen (measured before paint, so no flicker).
@@ -45,9 +51,9 @@ export default function ContextMenu({ x, y, items, onClose, focusFirst }: Props)
     const { width, height } = el.getBoundingClientRect()
     setPos({
       left: Math.max(m, Math.min(x, window.innerWidth - width - m)),
-      top:  Math.max(m, Math.min(y, window.innerHeight - height - m)),
+      top:  Math.max(m, Math.min(openUp ? y - height : y, window.innerHeight - height - m)),
     })
-  }, [x, y, items.length])
+  }, [x, y, items.length, openUp])
 
   useEffect(() => {
     if (!focusFirst) return
@@ -125,6 +131,7 @@ function MenuRows({ items, onClose }: { items: CtxItem[]; onClose: () => void })
             disabled={it.disabled}
             onClick={() => { if (it.disabled) return; it.onClick(); onClose() }}
           >
+            {it.checked !== undefined && <span className="ctx-menu-mark" aria-hidden="true">{it.checked ? '✓' : ''}</span>}
             {it.label}
           </button>
         )
