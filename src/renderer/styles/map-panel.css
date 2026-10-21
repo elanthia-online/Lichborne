@@ -61,23 +61,11 @@
   animation-play-state: paused !important;
 }
 
-/* Smooth camera motion — pan/zoom CSS transform transitions over
-   150ms so follow-the-player and wheel zoom slide between positions
-   instead of snapping. Applied to BOTH the pan group and the "you are
-   here" indicator so they move in lockstep (the indicator stays
-   centred instead of bouncing — see `snapTransform` in GenieMapView).
-
-   `linear` is deliberate: a follow camera continuously re-targets on
-   every walk step, and each new target restarts the transition from
-   the current position. With an ease-out curve the restart resets the
-   velocity profile (fast-in, slow-out) on every step, producing a
-   visible accelerate/decelerate pulse — the "jitter" testers saw.
-   Linear has constant velocity, so chained transitions read as one
-   continuous glide. The class is suppressed while `isDragging` so the
-   drag stays 1:1 with the cursor. */
-.genie-pan-smooth {
-  transition: transform 150ms linear;
-}
+/* No camera glide (removed v0.20.5). The pan group and the "you are here"
+   ring used to transition `transform` over 150ms; every frame of that
+   redrew the whole zone's SVG, and it made a slow map look like a sliding
+   one. The camera now moves instantly. See the NO CAMERA GLIDE note in
+   GenieMapView.tsx before adding any transition here. */
 
 /* "You are here" sonar ping — an expanding ring that emanates from the
    solid locator ring and fades. Two circles share this animation
@@ -100,14 +88,23 @@
 .genie-here-ping--delayed {
   animation-delay: -1s;
 }
+/* Epilepsy-safe: no ping on either map. The solid ring and the centre dot
+   still mark the room (UX standard #9b: drop the motion, keep the signal).
+   The Lich map's ping never had an off switch, and since v0.20.5 the Genie
+   one is no longer stopped by Genie Map Animations, so this is the one rule
+   that stops both. */
+:root[data-epilepsy-safe='true'] .genie-here-ping {
+  animation: none;
+  opacity: 0;
+}
 /* The locator ping and the healer heartbeat stay LIVE through the
    transient drag/walk freeze — the ping because it is the one thing a
    travelling player most wants to keep tracking, the heartbeat because
    healers are rare and finding one fast matters. Both used to need a
    `running !important` counter-rule to win back against the wildcard;
    now they are simply omitted from the transient list above, which is
-   both cheaper and harder to get wrong. They ARE frozen by the
-   persistent setting below — "off" means off, ping included.
+   both cheaper and harder to get wrong. The heartbeat IS frozen by the
+   persistent setting below; the ping is not (v0.20.5, next comment).
 
    The two freeze classes are mutually exclusive on the pan group (the
    className ternary picks one), so they never fight. */
@@ -115,8 +112,12 @@
 /* PERSISTENT animations-off (Settings → Genie Map Animations).
    Enumerated for the same invalidation reason as the transient freeze,
    though this one is applied permanently rather than toggled, so its
-   recalc is a one-off. Unlike the transient list this covers EVERY
-   animated class, ping and heartbeat included.
+   recalc is a one-off. Unlike the transient list this covers every
+   animated class EXCEPT the ping. The ping is not a Genie room effect: it is
+   Lichborne's "you are here" locator, shared with the Lich map (same class,
+   MapImageView), which has always kept pinging. Since v0.20.5 the Genie map
+   matches it, and Genie Map Animations governs only the room effects
+   (Sekmeht). Epilepsy-safe hides the ping on both maps (rule above).
 
    Kept comprehensive on purpose: when this class is active
    `showEffects` is false, so most of these are never mounted and the
@@ -130,7 +131,6 @@
 .genie-anim-off .genie-coin-glint,
 .genie-anim-off .genie-dirt-fall,
 .genie-anim-off .genie-heartbeat,
-.genie-anim-off .genie-here-ping,
 .genie-anim-off .genie-implode,
 .genie-anim-off .genie-leaf-fall,
 .genie-anim-off .genie-mote-drift-n,

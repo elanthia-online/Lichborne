@@ -117,7 +117,7 @@ export default function AboutModal({ onClose }: { onClose: () => void }) {
               className="about-link"
               href={REPO_URL}
               onClick={e => { e.preventDefault(); window.api.openUrl(REPO_URL) }}
-            >github.com/SekmehtDR/Lichborne</a>
+            >github.com/elanthia-online/Lichborne</a>
             <a
               className="about-link"
               href={DISCORD_URL}

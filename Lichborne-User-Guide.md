@@ -4,9 +4,9 @@
 
 Welcome! Lichborne is a modern DragonRealms client for Windows, Linux, and macOS. Whether you're brand new or you've been playing since the StormFront days, this guide walks you from **download** to **fully set up** — and then tours everything the client can do. You don't need to read it front to back; jump to what you need using the contents below.
 
-> **Stuck or something looks wrong?** Come say hi on **Discord** — the invite link lives in **Help → About Lichborne** inside the app (which also shows your version and credits). We're a friendly bunch and love a good bug report.
+> **Stuck or something looks wrong?** Come say hi on **Discord**. The invite is inside Lichborne: [download it](#getting-started) first, then choose **Help → Discord**. (**Help → About Lichborne** shows your version, which is handy to mention.) We're a friendly bunch and love a good bug report.
 
-> ℹ️ **Heads up:** this guide was **written with the help of AI**, so it may contain the occasional mistake or a detail that's drifted out of date. If something here doesn't match what you see in the app, trust the app — and please let us know on Discord so we can fix it.
+> ℹ️ **Heads up:** this guide was **written with the help of AI**, so it may contain the occasional mistake or a detail that's drifted out of date. If something here doesn't match what you see in the app, trust the app — and please let us know on Discord (**Help → Discord** in the app) so we can fix it.
 
 ---
 
@@ -70,56 +70,33 @@ A few ideas shape everything:
 
 ## What's New in the Latest Version
 
-**v0.20.2**
+**v0.20.5**
 
-- **The Living Tableau shows your fights.** Run `ASSESS` and the scene turns
-  into a battlefield laid out the way the fight really stands: who is in front
-  of you, beside you or behind, your group's fights beside yours, and other
-  people's fights above. Lines join each fighter to what it's fighting, with
-  arrows showing who faces whom, and a crosshair marks each person's target in
-  their own colour. A **?** beside the room title explains every line, arrow
-  and colour.
-- **Fights with other players.** A player who closes on you takes centre
-  stage, joined to you by a line that shows the range and who is closing;
-  everyone else steps aside to a column on the left.
-- **Your group, and how hurt they are.** Group members stand beside you, the
-  leader marked, with a small health meter when someone is hurt.
-- **Creatures die where they stand.** A creature you kill stays in its place,
-  greyed with a skull, until its body decays or is skinned. Unconscious or
-  downed creatures say so, and newcomers appear at once.
-- **More life in the scene.** Words float off you when you dodge, block, parry
-  or get hit; a gold burst when you gain a rank; a glow while you prepare a
-  spell; people act out their emotes; and the place itself is drawn behind
-  everyone from the room's description (peaks, forests, rooftops, ruins,
-  rivers, a shop or a temple inside), with rain and snow when the weather
-  turns.
-- **Add a character without stopping.** With someone already open, a new
-  character logs in behind you and arrives as a tab, like a team's other
-  members.
-- **A steadier screen.** Fixed several causes of the whole screen briefly
-  "quivering": connecting a character no longer redraws the window in a
-  different font, and the row of character tabs can no longer change the
-  height of the bar above your game text (it now scrolls with a thin overlay
-  bar instead).
-
-**v0.20.1**
-
-- **Text styles.** Give room names — or speech, thoughts, whispers, bold text,
-  room descriptions and your own commands — their own font, size, bold,
-  italic, capitals and text effect, under **Settings → Text styles**. Make room
-  names big and fancy; leave the rest alone and it looks exactly as before.
-- **Compass options.** Show or hide the compass, make it smaller or larger,
-  move it to any corner, give it a backing so it stands out over busy text,
-  choose how faint the unavailable exits are, and optionally click an arrow to
-  walk. In **Settings → Layout**, or `/compass`.
-- **Talk from the Living Tableau.** Right-click a person for **Say to…** or
-  **Whisper to…** — it types `say @Name ` or `whisper Name ` into your command
-  bar for you to finish. Contacts also get their card there.
-- **A tidier update notice.** New versions show as a small **Update** pill in
-  the top bar instead of a bar across the window. Click it to see what's new,
-  download, and restart when you're ready — it asks first if characters are
-  connected. (Windows and Linux. A Mac doesn't update itself: **Help → Check
-  for Updates** points you to the download page.)
+- **The Genie map no longer slides.** It jumps straight to your new room, so
+  running and go2 stay smooth. **Genie Map Animations** now covers only the
+  room effects, and it's off by default for new characters. The ring that
+  marks where you are keeps pulsing on both maps either way.
+- **Links in game text can't launch programs.** Only web addresses open;
+  anything else shows as plain text.
+- **The Living Tableau shows who's fighting you between assesses**, from DR's
+  creature list.
+- **Genie Maps tells you where to get the maps.** With no maps folder set,
+  the Genie Maps view has a **Download the maps ZIP** link (from
+  [github.com/GenieClient/Maps](https://github.com/GenieClient/Maps)):
+  unzip it and pick that folder.
+- **File → Import Profile… opens on the Import tab**, even if Transfer is
+  already open, and the file list there says "Choose a file to import…"
+  (thanks, Vaddon).
+- **A Moon Mage's Locate no longer moves you.** The located room still
+  prints, but your Room panel, Tableau scenery and compass stay on your room.
+- **Game-opened links follow your link-safety setting.** A link the game or
+  a script opens by itself now shows the play.net "leaving" page first, like
+  a link you click, while that setting is on.
+- **Overview "send to" button.** It reads **All · 2 ▾** or a character's
+  name and opens a menu with a tick on the current choice. It is easier to
+  read on darker themes too.
+- **Genie import:** `#flash 3`, `#beep twice`, `#event 5 look` and
+  `#playsystem` triggers now convert (thanks, Legiro).
 
 ## On the Horizon (Roadmap)
 
@@ -132,7 +109,7 @@ Lichborne is actively developed. A few things we're heading toward — direction
 - **Windowed Panels becomes the default.** The floating-window layout is the future; the older docked "Static Panels" mode will eventually retire, with an automatic one-time conversion so no layout is ever lost.
 - **More Lichborne Experiences.** The graphical scenes (Living Tableau, Moons, Spell Monitor) are the first of a larger set of "graphics for text players" — richer combat instruments, wound/status visuals, and more.
 - **More AI helpers.** Catch Me Up is the first BYOK ("bring your own key") AI feature. Others are designed and on the way — always optional, always with a working non-AI baseline, and always privacy-first.
-- **A proper Discord community** for feedback and bug reports (link in **Help → About Lichborne**).
+- **A proper Discord community** for feedback and bug reports (join from **Help → Discord** in the app).
 - **Linux and Mac out of beta.** The v0.18.0 platform betas graduate once they've soaked with testers — if you play on either, your reports are what get them there.
 - **Code signing**, to remove the first-install warnings (Windows SmartScreen now; the macOS certificate — which would also enable Mac auto-update — if Mac demand shows).
 
@@ -223,10 +200,10 @@ state refresh on attach, so your vitals would come up blank.*
 Once you're in, run this **once**:
 
 ```
-SET PROMPT STATUS
+SET STATUSPROMPT
 ```
 
-This tells DragonRealms to include your full status (hidden, stunned, roundtime, and so on) with every prompt, which keeps your vitals and timers accurate. If you've used StormFront, you've likely done this already.
+This tells DragonRealms to put your current state (stunned, prone, unconscious and so on) in front of every `>` prompt. Lichborne reads it for the **Unconscious** marker on the icon bar and the `$unconscious` trigger variable, which DragonRealms reports nowhere else. Your vitals and roundtime don't depend on it. If you've used StormFront, you've likely done this already.
 
 *(EXPBRIEF works either way — the Experience panel handles it on or off.)*
 
@@ -308,7 +285,8 @@ rather than a row of zeroes.
 
 Clicking a card selects that character: the input bar aims at it and its tab
 becomes the active one, while you stay in the Overview. Pick **All characters**
-in the bar (or click empty space) to aim at everyone again — every connected
+from the bar's **send to** button (it reads **All · 2 ▾** or the character's
+name) or click empty space to aim at everyone again — every connected
 card and tab lights up, so you can see exactly who a command will reach. **Double-clicking** a
 card (or **Go to … 's game session** in its menu) opens that character
 full-screen. Cards
@@ -345,13 +323,13 @@ there; and Lichborne always starts in Session view.
 Lichborne shows the game plus side "panels" (streams like Thoughts, Combat, Room, Experience, Maps…).
 
 - **Static Panels** (default) — panels sit docked in tidy zones.
-- **Windowed Panels** — flip this in the **Layout** manager (**Layout** on the top bar → *Layout Manager*) and your *whole* layout floats: main text, input bar, vitals, status icons, and every panel become independent windows you can drag, resize, and **snap together** (they click flush to each other and the screen edges, with guide lines). Add as many panel windows as you like, hide a window's title bar for a compact look, and **lock** the layout when it's just right — locking hides every window's drag handle and border chrome, so a locked layout reads like the docked one. The drag handle sits *over* your content rather than taking a slice of it, so what you arrange is exactly what you get once locked. If the vitals / status / command bars look taller than their contents, **Fit bars to content** in the Panels manager snaps them down in one click.
+- **Windowed Panels** — flip this in the **Layout** manager (**Layout** on the top bar → *Layout Manager*) and your *whole* layout floats: main text, input bar, vitals, status icons, and every panel become independent windows you can drag, resize, and **snap together** (they click flush to each other and the screen edges, with guide lines). Add as many panel windows as you like, hide a window's title bar for a compact look, and **lock** the layout when it's just right — locking hides every window's drag handle and border chrome, so a locked layout reads like the docked one. The drag handle sits *over* your content rather than taking a slice of it, so what you arrange is exactly what you get once locked. **Point at that thin strip and it opens into a readable title bar** with the window's name and its collapse (⌃) and close (✕) buttons; double-click the name to rename the window. The vitals, input and status windows show their strip only when you hover them, so it never covers the line you're typing in. A bar window is never drawn shorter than its bar, so the bars don't get cut off on a smaller screen. If the vitals / status / command bars look taller than their contents, **Fit bars to content** in the Panels manager snaps them down in one click.
 
 Either way, **drag a stream tab along its bar to reorder it**, and add streams with a panel's **+** button. Your layout is per-character and saved across launches. *(Windowed Panels is where Lichborne is heading — see [Roadmap](#on-the-horizon-roadmap).)*
 
 ### Themes & accessibility
 
-Open the **Theme** picker for a gallery of built-in light and dark themes, or craft your own in the **Theme Editor** (every color is adjustable). **Settings** holds font size, line height, and the accessibility options — high-contrast, color-blind palettes, large print, and an epilepsy-safe mode that calms animations. **Settings → Text styles** gives each kind of game text its own look — a font, size, bold/italic, capitals and a text effect for room names, descriptions, speech, whispers, thoughts, bold text and your own commands (sizes are a percentage of your game font, so they follow it). Room descriptions offer only the calm effects, since a moving effect over whole paragraphs is heavy on your computer, and a row tells you when an effect with its own pale colours would be hard to read on your light theme. Everything you build or pick is yours and travels with [Transfer](#transfer-a-setup-between-your-characters).
+Open the **Theme** picker for a gallery of built-in light and dark themes, or craft your own in the **Theme Editor** (every color is adjustable). **Settings** holds font size, line height, and the accessibility options. Font size is this character's game text; **Window zoom** (also Ctrl+= / Ctrl+− / Ctrl+0) scales the whole window, every window, and is remembered when you restart. The accessibility options are high-contrast, color-blind palettes, large print, and an epilepsy-safe mode that calms animations. **Settings → Text styles** gives each kind of game text its own look — a font, size, bold/italic, capitals and a text effect for room names, descriptions, speech, whispers, thoughts, bold text and your own commands (sizes are a percentage of your game font, so they follow it). Room descriptions offer only the calm effects, since a moving effect over whole paragraphs is heavy on your computer, and a row tells you when an effect with its own pale colours would be hard to read on your light theme. Everything you build or pick is yours and travels with [Transfer](#transfer-a-setup-between-your-characters).
 
 ### Automations: highlights, triggers, macros, aliases
 
@@ -401,7 +379,7 @@ Open the **Maps** button for two very different map views. Both track your curre
 
 **Lich Map — native, zero setup.** Lichborne reads Lich's built-in map **artwork** straight out of your Lich installation's `maps` folder — so once your [Lich path is set](#2-set-up-lich-recommended), it just works. It shows the real map image with your current room highlighted, and it's the **most reliable tracker** because it matches by room **id**. Tip: turn on DragonRealms' room-number display (so room titles show a number like `[Town Square] (12345)`) and your marker stays locked on.
 
-**Genie Maps — the community XML maps, from a folder you point it at.** This view renders the community-maintained **Genie XML map files** directly. The first time, point it at the **folder** where those files live (Lichborne remembers it, and caches the parse so every launch after the first is instant). It draws one zone at a time at the hand-curated coordinates the Genie maps team has refined for years, follows you as you walk, and auto-switches zones as you cross boundaries — with a pulsing sonar "you are here" ring that's easy to find.
+**Genie Maps — the community XML maps, from a folder you point it at.** This view renders the community-maintained **Genie XML map files** directly. Download them from [github.com/GenieClient/Maps](https://github.com/GenieClient/Maps) ([direct ZIP](https://github.com/GenieClient/Maps/archive/refs/heads/main.zip), then unzip). The first time, point it at the **folder** where those files live (Lichborne remembers it, and caches the parse so every launch after the first is instant). It draws one zone at a time at the hand-curated coordinates the Genie maps team has refined for years, follows you as you walk, and auto-switches zones as you cross boundaries — with a pulsing sonar "you are here" ring that's easy to find.
 
 **Rooms are color-coded by what they are — and each color has its own tiny animation** so you can recognize a room type at a glance without reading the legend:
 
@@ -413,7 +391,7 @@ Open the **Maps** button for two very different map views. Both track your curre
 - ✦ **Guildmaster / stat-trainer** rooms rise with XP particles
 - 🌀 **Transports** swirl with magical motes
 
-…and more. Arcs between rooms are colored by exit kind (cardinal / climb / door), and floating labels mark landmarks. A **legend (▤)** spells out every color and glyph, and a single **Genie Map Animations** setting turns *all* the motion off (the room effects and the camera glide) if you'd rather it stay perfectly still.
+…and more. Arcs between rooms are colored by exit kind (cardinal / climb / door), and floating labels mark landmarks. A **legend (▤)** spells out every color and glyph. The room effects are controlled by the **Genie Map Animations** setting, which is off by default; turn it on for a livelier map. Either way, the map follows you instantly as you move, and the ring marking where you are keeps pulsing, on this map and the Lich map alike (**Epilepsy safe mode** stops the pulse).
 
 **Getting around, either view:** **left-click** a room to pin its route on the map (study it, no walking); **right-click** to actually walk there — the moves echo in your game window step-by-step. Cross-zone exits are marked **↗** — left-click to peek at the neighbouring zone, right-click to walk to the boundary (the map switches only once you've truly arrived, never racing ahead). Hover any room for its id, exits, category, and a preview of the path you'd take.
 
@@ -462,17 +440,17 @@ There are three Experiences today, all **[Beta]**:
 
 Your room, rendered as a living scene.
 
-- **Everyone becomes an avatar** in their [Contact](#contacts) colors. Your Contacts wear a ✦. **Right-click anyone** for **Say to…** or **Whisper to…**, which types `say @Name ` or `whisper Name ` into your command bar for you to finish (anything you'd already typed becomes the message), and **Contact card** for your contacts. Your own avatar shows your condition (hidden, bleeding, dead, and the rest).
+- **Everyone becomes an avatar** in their [Contact](#contacts) colors. Your Contacts wear a ✦. **Right-click anyone** for **Say to…** or **Whisper to…**, which types `say @Name ` or `whisper Name ` into your command bar for you to finish (anything you'd already typed becomes the message), and **Contact card** for your contacts. **Empaths** also get **Touch** at the top, which starts healing that person (Lichborne knows your guild once you've typed `info`, or from the Guild in Edit Profile). Your own avatar shows your condition (hidden, bleeding, dead, and the rest).
 - **Speech blooms as comic bubbles** — whispers dotted and private, emotes as action captions. **Telepathic thoughts collect in a quiet log in the bottom-left corner** (newest at the bottom, older ones fading up) so they never cover the scene.
 - **Arrivals slide in** from the direction they came; **departures walk out** as fading ghosts. Hiders and the invisible show as shadows; the dead lie greyed until a resurrection stands them up.
 - **The seating tells the story** — talkers gather toward the middle (you included), pairs in conversation drift together, and a crowd spreads into an amphitheater.
 - **Creatures stand as their own figures** in the game's monsterbold color (four blademasters are four monsters). One that's unconscious or knocked down says so; one you kill **stays where it fell, greyed with a skull**, until its body decays or is skinned.
-- **The place is drawn behind everyone**, read from the room's description: what's on the horizon (peaks, hills, dunes, the sea, a distant town), what stands in front of it (pines, palms, rooftops, castle walls, ruins, standing stones, a farm, gravestones, reeds), and water or a road nearer still. Indoors it's a temple, a shop, a home or a hall; caves get stalactites. The same room always looks the same, and a sky follows the time of day. Turn it off with ⚙ **Scenery**. If your last look at the sky (`WEATHER`, or glancing up) was within half an hour and you're outdoors, **rain and snow fall** over the scene and clouds gather. Clear skies change nothing.
+- **The place is drawn behind everyone**, read from the room's description: what's on the horizon (peaks, hills, dunes, the sea, a distant town), what stands in front of it (pines, palms, jungle, rooftops, castle walls, ruins, a farm, gravestones, reeds), and water or a road nearer still. **Towns have their own look** (Shard's crystal spires, Muspar'i's domes, Ratha's terraces, Mer'Kresh on the water, the clans' longhouses), and a building whose name doesn't say the town keeps the look of the one you're in. **Indoors** you see the walls' material, the light, up to three furnishings the room describes, and in a shop what it sells. **Outdoors and in caves** up to four things the room describes stand in the scene: a fountain, a well, stalls, huts, a pond, standing stones, a campfire, grazing animals and more. Only things the room is actually talking about are drawn: "cobblestones flecked with crystals" draws no crystals, and "an oak door" is not a tree. Caves are drawn by kind (cavern, tunnel, mine, sewer, ice). The same room always looks the same, and a sky follows the time of day. Turn it off with ⚙ **Scenery**. If your last look at the sky (`WEATHER`, or glancing up) was within half an hour and you're outdoors, **rain and snow fall** over the scene and clouds gather. Clear skies change nothing.
 - **Your group stands beside you**, the leader marked. When someone is hurt, a small **health meter** shows how badly, using the game's own words (bruised, battered, badly hurt…).
 - **When you fight, it can become a battlefield** (off to start: switch it on with ⚙ **Combat view**). Run **`ASSESS`** and everyone moves to where the fight really puts them: you low in the middle facing up, what's in front of you above you, flankers at your sides, your group's fights beside yours and other people's fights above. **Lines** join each fighter to what it's fighting (solid at melee, dashed further out), with **arrows** for who faces whom, and a **crosshair** marks each person's target in their own colour. Anyone not fighting moves to a quiet column on the left. It returns to the social scene about 30 seconds after your last assess, once nothing is still on you. Your target **flashes when it hits you**; words float off you as you **dodge, block, parry or get hit**.
 - **Fighting another player**: they take centre stage, joined to you by a line that shows the range and who's closing. If they hide, a **?** keeps their place; right-click to **Search** or **Assess**. Right-click anyone you're fighting to **Face** them.
 - **The cockpit**: three **readiness rings** wrap your avatar (roundtime, cast, aim), your avatar **pulses** when you're stunned or bleeding, and a small panel reads your **balance**, **position** and **range** as gauges. They wake on the first blow either way and stay while the fight goes on. **Click a creature to turn and face it.**
-- **Under your figure**: your conditions (hidden, stunned, joined…) on one line, and, if you switch on ⚙ **Your hands**, what you're holding on another, left hand on the left. Neither line changes height, so your figure never bobs.
+- **Under your figure**: your conditions (bleeding, stunned, hidden, joined…) on one line, including whether you're **sitting, kneeling or prone** (in your icon bar's colours), and, if you switch on ⚙ **Your hands**, what you're holding on another, left hand on the left. Neither line changes height, so your figure never bobs. When you're hidden or invisible your figure fades, but these words stay readable.
 - **Not sure what something means?** Click the **?** beside the room title for a key to every line, arrow, ring and colour.
 - **Out of the box** every layer is on except **Combat view** and **Your hands**.
 
@@ -483,8 +461,8 @@ Elanthia's night sky and world, alive.
 - The **three moons** — sooty **Katamba**, ruby **Yavash**, ice-blue **Xibar** — and the **sun** arc across a living sky, positioned by how long each has left, then travel a shallow path underground back to where they'll rise (nothing ever just blinks out).
 - The **whole sky lives**: bright at midday, warm glows at sunrise and sunset, deepening night with **stars that fade in** through twilight and multiply toward midnight, the odd **shooting star**, seasonal **aurora** and **fireflies**, and a mountain silhouette on the horizon. Each **moon is lit from the sun's direction** so you watch it wax and wane in its own colors.
 - Below the horizon, a little **wilderness** — distant forest, foreground trees, a winding stream and a **lake that mirrors the sun and moons** — that **dresses itself by season** (snow and ice in winter, blossoms in spring, lush summer, falling leaves in autumn) and casts **sun-following shadows**.
-- **Header and footer strips** read the sky at a glance: day/night with the sun's countdown, the next moon, and the current **weather** up top; the **Elanthian date** below. **Hover any body for its lore** and its next rise/set time, with live "sets in 88m" countdowns throughout. A single **⟳** silently refreshes the weather and date (it sends `WEATHER`/`TIME` behind the scenes — nothing clutters your game window).
-- **Powered by the community `moonwatch` script** — run `;moonwatch window` on a Lich character to feed it the moons. Even without it, you still get a day/night sky from public sun data.
+- **Header and footer strips** read the sky at a glance: day/night with the sun's countdown, the next moon, and the current **weather** up top; the **Elanthian date** and **Moonskin** below. **Moonskin** says when Rakash next take their moonskin form and how long it lasts ("Mon 12:55 AM · in 21h · lasts 28h 11m"), or when the one in progress ends. It lasts exactly while Katamba is full and is shown to everyone, in the footer and in Katamba's hover; turn it off with ⚙ **Moonskin**. Each moon's hover also says when it's next full. **Hover any body for its lore** and its next rise/set time, with live "sets in 88m" countdowns throughout. A single **⟳** silently refreshes the weather and date (it sends `WEATHER`/`TIME` behind the scenes — nothing clutters your game window).
+- **Powered by the community `moonwatch` script** — run `;moonwatch window` on a Lich character to feed it the moons. Until that feed arrives, Moons shows a short "Waiting for moon data…" note instead of the sky, so without Lich there is no Moons view yet (phases and Moonskin are computed by Lichborne itself, but they appear inside that view).
 
 #### Spell Monitor
 
@@ -649,7 +627,7 @@ Lich is the **recommended** way to play — it unlocks the map, timers, variable
 | Living Tableau Experience | ✅ | ✅ (reads game text) |
 | AI — Catch Me Up | ✅ | ✅ (reads your log) |
 | Import wizard · Transfer | ✅ | ✅ |
-| Moons Experience | ✅ (with `;moonwatch`) | ⚠️ day/night only |
+| Moons Experience | ✅ (with `;moonwatch`) | ❌ waits for the moonwatch feed |
 | Spell Monitor Experience | ✅ | ✅ |
 | Lich Map · Genie Maps | ✅ | ❌ (needs Lich map data) |
 | Variables · Scripts · Profiles (Lich Dashboard) | ✅ | ❌ (Lich only) |
@@ -676,7 +654,7 @@ Lich is the **recommended** way to play — it unlocks the map, timers, variable
 | `Ctrl+Enter` / `Alt+Enter` / `NumpadEnter` | Repeat last / second-to-last / send-or-repeat |
 | `Esc` | Close the dialog on top — only that one. In the command line, clear it (or close the slash palette) |
 | `Tab` / `Shift+Tab` | Move between buttons, tabs, list rows and switches; `Enter` or `Space` uses the one in focus |
-| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom the window in / out / reset |
+| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom the whole window in / out / reset (every window; remembered on restart; also in Settings → Window zoom). A macro you bind to one of these keys takes over that key |
 
 Plain `Home`/`End` edit the command box (where your cursor usually is); hold `Ctrl` to scroll the story window instead. Macro hotkeys (F1–F12, Ctrl/Alt combos) are set up in the Automations panel.
 
@@ -692,8 +670,8 @@ Plain `Home`/`End` edit the command box (where your cursor usually is); hold `Ct
 > so that one line often saves a round-trip.
 
 
-- **Discord** — the friendliest place for questions, bug reports, and chat. The invite link is in **Help → About Lichborne** inside the app.
-- **Help → About Lichborne** — shows your exact version, the credits, and links to the Discord and the project on GitHub. Handy to have open when reporting an issue (mention your version!).
+- **Discord** — the friendliest place for questions, bug reports, and chat. The invite is inside Lichborne, so download it first, then choose **Help → Discord**.
+- **Help → About Lichborne** — shows your exact version, the credits, and links to the project on GitHub and the Discord. Handy to have open when reporting an issue (mention your version!).
 - **GitHub** — [issues and releases](https://github.com/SekmehtDR/Lichborne) live here.
 
 When something looks off, a quick note with **your version number** and **what you were doing** is gold. Thank you!
@@ -735,7 +713,7 @@ Notes: `edit` on any rule jumps straight to it in the editor; your real mode/gro
 
 **What still works direct.** Everything that's about *display and configuration* is native to Lichborne and needs no Lich: themes, panels, the full automation suite (highlights/triggers/macros/aliases/mutes/substitutes), groups & modes, contacts, the room window, vitals, RT/CT/aim timers, the experience panel, session logs, slash commands, the Living Tableau, and even Catch Me Up (it reads your session log, not Lich). Lichborne's native automation is deliberately the **fallback** that makes a no-Lich connection viable — it's finite and GUI-configured by design, not a scripting engine (that's Lich's job).
 
-**What degrades or needs Lich.** The **maps** need Lich's map files. The **Moons** Experience is powered by the community `moonwatch` script (Lich) — without it you still get a day/night sky from public sun data, but not the moons. **Variables, scripts, profiles**, spell timers, and `go2` walking are Lich features by nature. More broadly: **any feature that draws on Lich scripts, Lich's `drinfomon` game-state modules, or DRStat variables can lose functionality on a direct connection** (and may be affected if the underlying script or a future Lich version changes). Lichborne degrades gracefully wherever it can — falling back to what the raw game stream provides, or hiding a piece rather than breaking — but if something depends on script- or Lich-supplied data, count on it being a Lich feature.
+**What degrades or needs Lich.** The **maps** need Lich's map files. The **Moons** Experience is powered by the community `moonwatch` script (Lich); without it, Moons waits for that feed and shows no sky. **Variables, scripts, profiles**, spell timers, and `go2` walking are Lich features by nature. More broadly: **any feature that draws on Lich scripts, Lich's `drinfomon` game-state modules, or DRStat variables can lose functionality on a direct connection** (and may be affected if the underlying script or a future Lich version changes). Lichborne degrades gracefully wherever it can — falling back to what the raw game stream provides, or hiding a piece rather than breaking — but if something depends on script- or Lich-supplied data, count on it being a Lich feature.
 
 **The bottom line:** you can absolutely play direct, and it's a good experience — you'll just be missing the map and the script-powered extras. Most players run Lich.
 
@@ -801,7 +779,7 @@ Lichborne keeps a clean, dated **plain-text log** of every session — the game 
 
 ## Appendix D — Troubleshooting & known limits
 
-- **Platforms:** Windows x64 (stable), Linux x64 AppImage (beta), macOS Apple Silicon (beta). Linux/Mac are new in v0.18.0 — report anything odd on Discord.
+- **Platforms:** Windows x64 (stable), Linux x64 AppImage (beta), macOS Apple Silicon (beta). Linux/Mac are new in v0.18.0 — report anything odd on Discord (**Help → Discord**).
 - **First-install warnings** — expected on two platforms (no code-signing certs): Windows SmartScreen → **More info → Run anyway**. On macOS the download is quarantined, and Apple Silicon words that as **"Lichborne is damaged and can't be opened"** — it isn't damaged, that's Apple's phrasing for "not notarized". Clear it once with `xattr -cr /Applications/Lichborne.app` (or use **System Settings → Privacy & Security → Open Anyway** if macOS offers that instead).
 - **Mac: no auto-update.** Unsigned builds can't self-update (an Apple rule) — grab new versions from the Releases page. Windows and Linux auto-update normally.
 - **Mac: "Lichborne wants to access your Desktop"?** That's the Lich **Auto-detect** looking for the wiki-standard `~/Desktop/Lich5` install — allow it (or browse to Lich manually).
@@ -810,9 +788,10 @@ Lichborne keeps a clean, dated **plain-text log** of every session — the game 
 - **Map marker stuck?** The Lich Map tracks by room id and is most reliable — turn on DR's room-number display so titles show a number like `[Town Square] (12345)`. The Genie Map matches by room name + description (its data has no ids), so in areas full of identically-named rooms it can briefly lag. A **`LOOK`** resyncs either map.
 - **Hand bar says "Empty" but you're holding something?** The common cause was fixed in v0.13.3. For rare genuine gaps (e.g. spell-summoned items DR doesn't announce), a **`GLANCE`** always resyncs your hands.
 - **Lich won't start after updating Lich?** Recent Lich versions require a newer **Ruby** — check your Ruby version first. And if a very recent Lich shows raw protocol "garbage" instead of the normal game feed, update Lich to its latest patch (a known Lich-side hiccup fixed upstream).
+- **A message says a file "was kept as `….unreadable-…`"?** Lichborne found a settings file it couldn't read (damaged by a crash, or edited by hand) and set it aside in the same folder instead of overwriting it. If it was a character's file, that character leaves the launcher until you add it again (**+ Add account**); when you then connect, its settings come back from the copy Lichborne keeps while you play. If you'd rather restore the old file, fix it (or rename the copy back) while Lichborne is closed. Saved passwords and AI keys work the same way; you may need to enter them again.
 - **Ruby GTK script windows** (e.g. `kill-counter.lic`, `;vars setup`) are supported as of v0.9.1 (Lichborne now launches Lich the way Frostbite/Genie do). For variables specifically, the **Lich Dashboard → Variables** editor does the job in-app with no script window needed.
 
-Still stuck? **Join us on Discord** (link in **Help → About Lichborne**) — we're happy to help.
+Still stuck? **Join us on Discord** (**Help → Discord** in the app) — we're happy to help.
 
 ---
 

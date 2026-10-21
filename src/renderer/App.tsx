@@ -139,6 +139,18 @@ interface ConnectOpts {
 // blank. Per-character targets live on the profile (CharacterProfile.attach).
 const ATTACH_LAST_KEY = 'lichborne.attach.last'
 
+// The first window's _shared.yaml load, shared by every caller in this window
+// (v0.20.4). Under React StrictMode the boot effect runs twice; with the claim
+// alone, the second run was told "not first" and went on to Lich discovery and
+// a shared save BEFORE the first run's import had filled localStorage. Both
+// runs now await this one promise.
+let sharedProfileLoad: Promise<void> | null = null
+function loadSharedProfileOnce(): Promise<void> {
+  sharedProfileLoad ??= window.api.claimSharedImport()
+    .then(first => (first ? importSharedProfile() : undefined))
+  return sharedProfileLoad
+}
+
 export default function App() {
   return (
     <RosterProvider>
@@ -540,6 +552,14 @@ function AppShell() {
   // nonces (to remount a session after a live import). Opened via the
   // `lichborne:open-profile-transfer` custom event the Launcher dispatches.
   const [showProfileTransfer, setShowProfileTransfer] = useState(false)
+  // The tab Transfer opens on: Import Profile… lands on Import (Vaddon). `seq`
+  // counts REQUESTS, so asking for a tab while Transfer is already open re-aims
+  // it even when the mode value is unchanged (pitfall #153).
+  const [profileTransferAim, setProfileTransferAim] = useState<{ mode: 'export' | 'import'; seq: number }>({ mode: 'export', seq: 0 })
+  const aimProfileTransfer = useCallback((mode: 'export' | 'import') => {
+    setProfileTransferAim(prev => ({ mode, seq: prev.seq + 1 }))
+    setShowProfileTransfer(true)
+  }, [])
   const [showAbout, setShowAbout] = useState(false)
   const [quitConfirm, setQuitConfirm] = useState<QuitConfirmRequest | null>(null)
   // Per-session remount key suffix. Bumping a character's nonce changes its
@@ -813,7 +833,7 @@ function AppShell() {
   // this. Empty deps: opening just flips the boolean; the modal reads live
   // `sessions` via props at render time.
   useEffect(() => {
-    const open = () => setShowProfileTransfer(true)
+    const open = () => aimProfileTransfer('export')
     document.addEventListener('lichborne:open-profile-transfer', open)
     return () => document.removeEventListener('lichborne:open-profile-transfer', open)
   }, [])
@@ -831,7 +851,10 @@ function AppShell() {
         // B330: Transfer (z 300) would open UNDER the + window (1000) and look
         // like nothing happened, so + closes first.
         case 'profile-export':
-        case 'profile-import':  setShowAdd(false); setShowProfileTransfer(true); break
+        case 'profile-import':
+          setShowAdd(false)
+          aimProfileTransfer(action === 'profile-import' ? 'import' : 'export')
+          break
         case 'login-character': setShowAdd(true); break  // same as the "+" tab — character picker + add-account button
         case 'bulk-connect':    void loadCharacterCards().then(cards => { if (cards.length) setBulkPickerSource(cards) }); break
         case 'close-character': if (activeId) handleCloseTab(activeId); break
@@ -980,7 +1003,10 @@ function AppShell() {
 
   useEffect(() => {
     let cancelled = false
-    importSharedProfile().then(async () => {
+    // Only the run's first window loads _shared.yaml (see the main handler);
+    // every later window already shares that window's live localStorage.
+    loadSharedProfileOnce()
+      .then(async () => {
       if (cancelled) return
       const adv = loadAdvanced()
       // probeDesktop deliberately NOT passed — the silent startup discovery must
@@ -1570,8 +1596,12 @@ function AppShell() {
     // was wrong because lichPort is global (always the Lich front-end port,
     // not a per-shard port).
     try {
+      // Clear the working copy only when there is NO profile file. A file that
+      // exists but was unreadable (moved aside by main) or is from a newer
+      // version leaves the working copy as the best copy we have (v0.20.4).
+      const existed = await window.api.characterProfileExists(c.name).catch(() => true)
       const loaded = await importCharacterProfile(c.name)
-      if (!loaded) clearCharacterLocalStorage(c.name)
+      if (!loaded && !existed) clearCharacterLocalStorage(c.name)
     } catch (err) { console.error(err) }
     try {
       await exportCharacterProfile(c.account, c.name, c.game, c.useLich)
@@ -1663,8 +1693,12 @@ function AppShell() {
     // Same per-character profile load as runConnect, so an attached tab gets
     // the character's saved layout, highlights, macros and theme.
     try {
+      // Clear the working copy only when there is NO profile file. A file that
+      // exists but was unreadable (moved aside by main) or is from a newer
+      // version leaves the working copy as the best copy we have (v0.20.4).
+      const existed = await window.api.characterProfileExists(character).catch(() => true)
       const loaded = await importCharacterProfile(character)
-      if (!loaded) clearCharacterLocalStorage(character)
+      if (!loaded && !existed) clearCharacterLocalStorage(character)
     } catch (err) { console.error(err) }
 
     // REMEMBER THE TARGET — the reason this feature is usable twice. Saved on
@@ -1911,8 +1945,10 @@ function AppShell() {
       const result = await window.api.login(creds)
       if (!result.ok) return { error: result.error ?? 'Connection failed' }
       try {
+        // Same rule as runConnect: clear only when no profile file exists.
+        const existed = await window.api.characterProfileExists(c.name).catch(() => true)
         const loaded = await importCharacterProfile(c.name)
-        if (!loaded) clearCharacterLocalStorage(c.name)
+        if (!loaded && !existed) clearCharacterLocalStorage(c.name)
       } catch (err) { console.error(err) }
       try {
         await exportCharacterProfile(c.account, c.name, c.game, c.useLich)
@@ -2083,6 +2119,13 @@ function AppShell() {
         window.api.disconnect(target.sessionId)
       }
       window.api.destroySession(target.sessionId)
+      // Save this character before its tab goes (v0.20.4). Closing a tab never
+      // did, and the GameWindow unmounts before the "Disconnected" status that
+      // normally triggers a save, so anything that wrote localStorage without
+      // scheduling a save (command history, /group on|off, group and mode
+      // edits) was reverted from the old YAML at the next connect. The export
+      // reads localStorage, so it doesn't need the tab to stay mounted.
+      exportCharacterProfile(target.account, target.character, target.game, target.useLich).catch(console.error)
     }
     removeSession(id)
   }
@@ -2186,7 +2229,11 @@ function AppShell() {
           // connecting, failed) show as placeholder tabs. A connected one has
           // its real tab; one in its own window lives elsewhere; a skipped one
           // was the player's choice and needs nothing.
-          pendingTabs={teamRun?.members
+          // NOT `teamRun?.members.….concat(bgConnects…)`: optional chaining
+          // short-circuits the WHOLE chain, so with no team run the background
+          // connects vanished too and a + Connect showed nothing until its tab
+          // landed (B506).
+          pendingTabs={(teamRun?.members ?? [])
             .filter(m => m.status === 'waiting' || m.status === 'connecting' || m.status === 'failed')
             // A real tab already here for this character (it just landed and
             // the tile hasn't caught up, or an old one is being re-logged):
@@ -2405,6 +2452,8 @@ function AppShell() {
           // its owner window would overwrite on save.
           sessions={roster.filter(r => r.connected).map(r => ({ character: r.character, characterId: r.characterId }))}
           reloadSession={(cid) => window.api.requestSessionReload(cid)}
+          initialMode={profileTransferAim.mode}
+          modeSeq={profileTransferAim.seq}
           onClose={() => setShowProfileTransfer(false)}
         />
       )}

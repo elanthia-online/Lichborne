@@ -36,6 +36,7 @@ declare global {
       /** Run `text` as if typed in that character's own command bar (echo + log). */
       sendUserText: (sessionId: SessionId, text: string) => void
       onUserText: (cb: (p: import('../shared/types').UserTextPayload) => void) => () => void
+      onLaunchUrl: (cb: (p: import('../shared/types').LaunchUrlPayload) => void) => () => void
       disconnect: (sessionId: SessionId) => void
       disconnectAwait: (sessionId: SessionId) => Promise<void>
       destroySession: (sessionId: SessionId) => void
@@ -98,6 +99,8 @@ declare global {
       platform: string
       arch: string
       isAppImage: boolean
+      getZoomLevel: () => number
+      setZoomLevel: (level: number) => void
       secureStorageAvailable: () => Promise<boolean>
       simucoinCheck: (account: string, claim?: boolean) => Promise<SimuCoinStatus>
       simucoinCached: () => Promise<SimuCoinStatus[]>
@@ -146,6 +149,9 @@ declare global {
       readSharedProfile: () => Promise<unknown | null>
       writeSharedProfile: (data: unknown) => Promise<void>
       readCharacterProfile: (character: string) => Promise<unknown | null>
+      characterProfileExists: (character: string) => Promise<boolean>
+      takeProfileNotices: () => Promise<{ file: string; keptAs: string | null }[]>
+      claimSharedImport: () => Promise<boolean>
       writeCharacterProfile: (character: string, data: unknown) => Promise<void>
       listCharacterProfiles: () => Promise<string[]>
       deleteCharacterProfile: (character: string) => Promise<void>

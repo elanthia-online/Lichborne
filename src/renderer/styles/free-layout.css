@@ -104,6 +104,21 @@
 .fl-window:hover > .fl-grip,
 .fl-window--focused > .fl-titlebar { opacity: 1; }
 
+/* The BAR windows (vitals, command, icon) show their name only on HOVER
+   (v0.20.3, B507 follow-up; Sekmeht/Qij). Their name says nothing a glance at
+   the bar doesn't, the bars are thin (the strip covered a quarter of full
+   vitals and half of compact ones), and the command bar is nearly always the
+   FOCUSED window, so the focus rule above held its name solid over the top of
+   the input the whole time you typed. Like the grip: transparent at rest, still
+   grabbable, there on hover. (0,3,0) beats the focus rule; the hover rule comes
+   last so a focused AND hovered bar window shows it. */
+.fl-window--chrome > .fl-titlebar,
+.fl-window--chrome.fl-window--focused > .fl-titlebar { opacity: 0; }
+.fl-window--chrome:hover > .fl-titlebar { opacity: 1; }
+/* …and while you RENAME one, its strip stays visible after the pointer
+   leaves (it was hidden mid-typing). (0,3,0) and later than the focus rule. */
+.fl-window--chrome > .fl-titlebar.fl-titlebar--open { opacity: 1; }
+
 /* ── Title bar ─────────────────────────────────────────────────────────── */
 .fl-titlebar {
   display: flex;
@@ -229,6 +244,28 @@
 /* The collapse chevron is a touch smaller/quieter than the close × */
 .fl-tb-collapse { font-size: 0.95em; }
 .fl-tb-close:hover { opacity: 1; color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 15%, transparent); }
+
+/* OPEN (B510, v0.20.3, Sekmeht: "the name is so tiny and the little X so tiny you
+   can't see it unless you knew"). The strip above is slim on purpose, but at
+   0.5em its name is 6px at the default font and the buttons barely bigger. It
+   was squeezed that hard back when the header was a ROW that pushed content
+   down; since v0.18.1 it floats OVER the content and takes no space, so it can
+   open up without moving anything. Pointing at the strip itself (not the
+   window: a mouse resting over game text must not cover its top line), or
+   renaming, opens it into a readable bar: the name at least 10px and scaling
+   with the game font, real buttons. */
+.fl-titlebar:hover,
+.fl-titlebar--open {
+  font-size: max(10px, 0.8em);   /* em of the window's font, i.e. the game font */
+  height: 2em;                   /* ≈ 19px at the default 12px game font */
+  opacity: 1;
+}
+.fl-window:not(.fl-window--focused) .fl-titlebar:hover .fl-title,
+.fl-window:not(.fl-window--focused) .fl-titlebar--open .fl-title { color: var(--text-secondary); }
+.fl-titlebar:hover .fl-tb-btn,
+.fl-titlebar--open .fl-tb-btn { opacity: 0.85; }
+/* After the rule above, at equal specificity: a hovered button still lights. */
+.fl-titlebar .fl-tb-btn:hover { opacity: 1; }
 
 /* Title hidden → a thin draggable grip lip (saves vertical space). A centered
    handle bar makes it findable/grabbable (otherwise it reads as a border). */

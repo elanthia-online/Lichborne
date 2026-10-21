@@ -49,6 +49,7 @@ import { redactForAI } from '../../shared/redact'
 import { TextLineRow } from './TextLineRow'
 import { ScrollbackSearch } from './ScrollbackSearch'
 import { buildNameRegex } from '../utils/renderWithContacts'
+import { wrapExternalLink } from '../utils/renderSegment'
 import { ContactsContext } from '../ContactsContext'
 import { HighlightsContext, useCompiledHighlights } from '../HighlightsContext'
 import { loadContacts, loadContactTemplates, saveContacts, saveContactTemplates, type Contact } from '../contacts'
@@ -80,6 +81,7 @@ import WindowLayer from './WindowLayer'
 import ExperienceLayer from './ExperienceLayer'
 import ExperienceShelf from './ExperienceShelf'
 import { SORT_MODES, type SortMode } from '../expParse'
+import { resolvePlace, type PlaceKey } from './experiences/tableauPlaces'
 import { EXPERIENCES, experienceById, defaultHiddenMap, loadExperiences, saveExperiences, deriveSpellState, parseGroupLines, type GroupState, parseMoonLine, mergeMoonReport, parseTimeLine, SUN_RISE_RE, SUN_SET_RE, WEATHER_GLANCE_RE, type ExperienceInstance, type SceneCast, type SceneSpeechItem, type SceneMoveItem, type MoonsState, type WeatherInfo, type CalendarInfo, type SpellState, type SceneMoment, type SpellPulse, emptySpellPulse, recordSpellPulse, SPELL_ENDED_TTL_MS, type FaceTurn } from '../experiences'
 import { parseCombatPosition, parseCombatBalance, parseCombatRange, parseAssessLine, RANGE_ORDER, parseFaceReply, mayBeEngagementLine, parseEngagementLine, applyEngagement, stepOutRange, balanceFromAssessStatus, mayBeStrikeLine, parseStrikeLine, type CombatRange, type AssessEntity, type Engagement, type EngagementEvent, type StrikeEvent } from '../../shared/combatExtract'
 import { guildToFocusOption } from '../focusTemplates'
@@ -100,11 +102,11 @@ import LichDashboard, { type DashTab } from './LichDashboard'
 import ModeSwitcher from './ModeSwitcher'
 import { useGroups } from './GroupsContext'
 import { isRuleActive } from '../groups'
-import { loadMyThemes, saveMyThemes, type CustomTheme } from '../myThemes'
-import { loadSettings, saveSettings, applySettingsToDOM, DEFAULT_SETTINGS, LAST_DISPLAY_CHARACTER_KEY, type AppSettings } from '../settings'
+import { loadMyThemes, saveMyThemes, MY_THEMES_KEY, MY_THEMES_CHANGED_EVENT, type CustomTheme } from '../myThemes'
+import { loadSettings, saveSettings, applySettingsToDOM, clampFontSize, DEFAULT_SETTINGS, LAST_DISPLAY_CHARACTER_KEY, type AppSettings } from '../settings'
 import { loadSessionLogSettings } from '../sessionLogSettings'
 import { THEMES, applyTheme, applyCustomTheme, registerThemeAppliedHook } from '../themes'
-import { exportCharacterProfile, scheduleProfileSave, scheduleSharedProfileSave } from '../profile'
+import { exportCharacterProfile, scheduleProfileSave, scheduleSharedProfileSave, rememberCharacterTheme, rememberedCharacterTheme } from '../profile'
 import { scopedKey, GLOBAL_RULES_SCOPE, asGlobalRules } from '../characterScope'
 import { loadCommandHistory, saveCommandHistory, COMMAND_HISTORY_MAX } from '../commandHistory'
 import { loadCommandHistorySettings, saveCommandHistorySettings, shouldRememberCommand } from '../commandHistorySettings'
@@ -811,6 +813,16 @@ export default function GameWindow({
   }, [])
 
   const [roomState, setRoomState] = useState<RoomState>({ title: '', desc: '', objects: [], players: [], creatures: [], extra: [], exits: [] })
+  // The town this character is in, for the Tableau's scenery (v0.20.3). Kept
+  // here rather than in the Experience because GameWindow sees every room
+  // change, even while no Tableau is open. resolvePlace returns the same answer
+  // when handed its own result, so a StrictMode double run of this memo can't
+  // advance it twice (the pitfall #70 hazard).
+  const placeRef = useRef<PlaceKey | null>(null)
+  const place = useMemo(
+    () => (placeRef.current = resolvePlace(roomState.title ?? '', roomState.desc ?? '', placeRef.current)),
+    [roomState.title, roomState.desc],
+  )
   const [lichMapVersion, setLichMapVersion] = useState(0)
   const [expSkills, setExpSkills]       = useState<Record<string, string>>({})
   const [rankUpSkills, setRankUpSkills] = useState<Set<string>>(new Set())
@@ -867,6 +879,21 @@ export default function GameWindow({
     }).catch(() => {})
     return () => { cancelled = true }
   }, [session.character])
+  // The character's GUILD for guild-only actions (v0.20.4: the Tableau's
+  // Touch, for empaths). Same sources and order as the badging above, minus
+  // the user's badge pick (a badge choice says nothing about the guild): the
+  // own-sheet `info` detection first, then Edit Profile's Guild field.
+  const [characterGuild, setCharacterGuild] = useState<string | null>(() =>
+    localStorage.getItem(scopedKey(session.character, 'detectedGuild')))
+  useEffect(() => {
+    if (characterGuild) return
+    let cancelled = false
+    window.api.readCharacterProfile(session.character).then(raw => {
+      const g = (raw as { guild?: string } | null)?.guild
+      if (!cancelled && g && !localStorage.getItem(scopedKey(session.character, 'detectedGuild'))) setCharacterGuild(g)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [session.character]) // eslint-disable-line react-hooks/exhaustive-deps
   const [pinnedSkills, setPinnedSkills] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem(scopedKey(session.character, 'expPins'))
@@ -1860,8 +1887,24 @@ export default function GameWindow({
   })
   const lastSeenTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingContactsRef = useRef<Contact[] | null>(null)
-  const [currentThemeId, setCurrentThemeId]     = useState(() => localStorage.getItem('lichborne.theme') ?? 'classic')
+  // Start from THIS character's theme (v0.20.4). The shared key holds whichever
+  // character last painted the window, which is wrong for a tab that remounts
+  // (a Transfer, a window move) while another character is showing.
+  const [currentThemeId, setCurrentThemeId]     = useState(() =>
+    rememberedCharacterTheme(session.character) ?? localStorage.getItem('lichborne.theme') ?? 'classic')
+  useEffect(() => { rememberCharacterTheme(session.character, currentThemeId) }, [session.character, currentThemeId])
   const [myThemes, setMyThemes]                 = useState<CustomTheme[]>(() => loadMyThemes())
+  // Keep this tab's copy of the custom-theme list current (see saveMyThemes).
+  useEffect(() => {
+    const reload = () => setMyThemes(loadMyThemes())
+    const onStorage = (e: StorageEvent) => { if (e.key === MY_THEMES_KEY) reload() }
+    document.addEventListener(MY_THEMES_CHANGED_EVENT, reload)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      document.removeEventListener(MY_THEMES_CHANGED_EVENT, reload)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [])
   const [settings, setSettings]                 = useState<AppSettings>(() => loadSettings(session.character))
   // Seed the AI output stream so it's always addable in Panel Manager even before
   // any AI feature has produced output (the user wants to pin it up front).
@@ -2419,7 +2462,7 @@ export default function GameWindow({
           // the Settings panel's onChange (setSettings + saveSettings + save).
           const size = action === 'font-reset'
             ? DEFAULT_SETTINGS.fontSize
-            : Math.max(8, Math.min(24, settings.fontSize + (action === 'font-increase' ? 1 : -1)))
+            : clampFontSize(settings.fontSize + (action === 'font-increase' ? 1 : -1))
           const next = { ...settings, fontSize: size }
           setSettings(next)
           saveSettings(session.character, next)
@@ -3269,7 +3312,9 @@ export default function GameWindow({
               // Capture the inline room description (preset 'roomdesc') for the
               // map matcher — applied to roomUpdates.desc after the loop so it
               // beats a same-batch clear-stream 'room'. See batchRoomDesc above.
-              const descSegs = segments.filter(s => s.preset === 'roomdesc')
+              // Not from a view of another room (a Moon Mage's Locate): the
+              // parser flags those lines, and their description isn't ours.
+              const descSegs = evt.remoteView ? [] : segments.filter(s => s.preset === 'roomdesc')
               if (descSegs.length > 0) {
                 const d = descSegs.map(s => s.text).join('').trim()
                 if (d) batchRoomDesc = d
@@ -3577,6 +3622,7 @@ export default function GameWindow({
             const mapped = guildToFocusOption(evt.guild)
             if (mapped) {
               localStorage.setItem(scopedKey(session.character, 'detectedGuild'), evt.guild)
+              setCharacterGuild(evt.guild)
               handleFocusChange(mapped)
             }
             break
@@ -5225,11 +5271,12 @@ export default function GameWindow({
         ...THEMES.map(t => ({ id: t.id, name: t.name })),
         ...myThemes.map(t => ({ id: t.id, name: t.name })),
       ],
-      // Fresh localStorage read, NOT the currentThemeId state: a theme switched
-      // in ANOTHER window applies cross-window via the storage listener without
-      // updating this window's state (by design), so the state can be stale —
-      // localStorage is written by applyTheme on every switch and is the truth.
-      getCurrentThemeId: () => localStorage.getItem('lichborne.theme') ?? currentThemeId,
+      // THIS character's theme (v0.20.4). It used to read the shared
+      // `lichborne.theme` key, which holds whichever character last wrote it —
+      // a character logging in behind you rewrites it — so /theme could report
+      // another character's theme. Since B520 the character's own theme is what
+      // it saves and re-applies when its tab is shown.
+      getCurrentThemeId: () => currentThemeId,
       // Exactly what ThemePicker's onThemeChange does — the theme-apply effect
       // runs applyTheme (which persists lichborne.theme + storage-syncs other
       // windows) and re-applies accessibility overlays via the hook.
@@ -5488,6 +5535,21 @@ export default function GameWindow({
   //
   // `clearInput: false`: the sender owns its own field; this must never reach
   // into this character's command bar and wipe a half-typed line.
+  // A <LaunchURL> from the game or a Lich script (v0.20.5). It opens the
+  // browser without a click, so it must at least honour the link-safety
+  // setting: on (the default), it goes through the play.net bounce page and
+  // its "you are leaving Play.net" warning, the same as a clicked link. Read
+  // through a ref so the once-mounted listener sees the current setting.
+  const webLinkSafetyRef = useRef(settings.webLinkSafety)
+  webLinkSafetyRef.current = settings.webLinkSafety
+  useEffect(() => {
+    const off = window.api.onLaunchUrl(p => {
+      if (p.sessionId !== sessionIdRef.current) return
+      window.api.openUrl(wrapExternalLink(p.url, webLinkSafetyRef.current))
+    })
+    return () => off?.()
+  }, [])
+
   useEffect(() => {
     const off = window.api.onUserText(p => {
       if (p.sessionId !== sessionIdRef.current) return
@@ -5673,7 +5735,7 @@ export default function GameWindow({
     getPanelFontSize: (tabId: string) => settings.panelFontSizes?.[tabId],
     onAdjustPanelFontSize: (tabId: string, delta: number) => {
       const current = settings.panelFontSizes?.[tabId] ?? settings.fontSize
-      const next = Math.max(8, Math.min(24, current + delta))
+      const next = clampFontSize(current + delta)
       const nextMap = { ...(settings.panelFontSizes ?? {}), [tabId]: next }
       const nextSettings = { ...settings, panelFontSizes: nextMap }
       setSettings(nextSettings)
@@ -6040,12 +6102,14 @@ export default function GameWindow({
         onOpenContact={openContactPopover}
         onCommand={sendCommand}
         onDirect={directTo}
+        guild={characterGuild}
         hidden={hidden}
         moons={moonsState}
         serverClockOffsetMs={serverClockOffsetMs}
         combat={experienceCombat}
         weather={weather ?? undefined}
         calendar={calendar ?? undefined}
+        place={place}
         onSyncSky={syncSky}
         spells={spellsState}
         spellsPulse={spellPulseRef}

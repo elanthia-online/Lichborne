@@ -73,7 +73,7 @@ import { SceneParser } from './parser/SceneParser'
 import { LichBridge } from './lichbridge'
 import { registerLichSqliteHandlers } from './lichbridge/sqliteReader'
 import { registerSessionLogHandlers, flushAllSessionLogs } from './sessionLog'
-import { readSharedProfile, writeSharedProfile, readCharacterProfile, writeCharacterProfile, listCharacterProfiles, deleteCharacterProfile, archiveCharacterProfile, restoreCharacterProfile, listArchivedProfiles, backupAllProfiles, ensureProfilesDir, ensureExportsDir, getExportsDir } from './profiles'
+import { readSharedProfile, writeSharedProfile, readCharacterProfile, writeCharacterProfile, characterProfileExists, takeProfileNotices, listCharacterProfiles, deleteCharacterProfile, archiveCharacterProfile, restoreCharacterProfile, listArchivedProfiles, backupAllProfiles, ensureProfilesDir, ensureExportsDir, getExportsDir } from './profiles'
 import { savePassword, loadPassword, deletePassword } from './passwords'
 import { registerAIHandlers } from './ai'
 import { registerSimuCoinHandlers } from './simucoin'
@@ -84,7 +84,7 @@ import type {
   AttachCredentials, GameEvent, GameEventBatch, LoginCredentials, LoginResult,
   ConnectionStatusPayload, RawXmlPayload, ErrorPayload, SessionId,
   RosterEntry, SessionRosterPayload,
-  UserTextPayload, CharacterNotice, RoutedToast,
+  UserTextPayload, LaunchUrlPayload, CharacterNotice, RoutedToast,
 } from '../shared/types'
 import type { MenuAction } from '../shared/menuActions'
 
@@ -337,7 +337,15 @@ function wireSession(s: Session) {
 
     const events = s.parser.parse(line)
     for (const evt of events) {
-      if (evt.type === 'launch-url') shell.openExternal(evt.url)
+      // v0.20.5: forwarded to the owning window instead of opened here, so the
+      // character's link-safety setting (the play.net bounce page, on by
+      // default) applies to a <LaunchURL> exactly as it does to a clicked
+      // link. Main never had that setting, so a LaunchURL used to open its
+      // address directly, without a click or the warning.
+      if (evt.type === 'launch-url') {
+        const payload: LaunchUrlPayload = { sessionId: s.id, url: evt.url }
+        ownerWindow(s)?.webContents.send(CH.LAUNCH_URL, payload)
+      }
       if (evt.type === 'game-exit') s.cleanDisconnect = true
       // B169: disarm Lich's `inventory_boxes_off` downstream hook. Lich installs
       // it BY DEFAULT for stormfront-style front-ends (main.rb:546) and its strip
@@ -1976,6 +1984,20 @@ ipcMain.handle('eaccess:fetch-characters', async (_e, account: string, password:
 ipcMain.handle('profile:read-shared',               ()                               => readSharedProfile())
 ipcMain.handle('profile:write-shared',              (_e, data: unknown)              => writeSharedProfile(data))
 ipcMain.handle('profile:read-character',            (_e, character: string)          => readCharacterProfile(character))
+ipcMain.handle('profile:character-exists',          (_e, character: string)          => characterProfileExists(character))
+ipcMain.handle('profile:take-notices',              ()                               => takeProfileNotices())
+// _shared.yaml is loaded into localStorage ONCE per run, by the first window to
+// ask (v0.20.4). localStorage is shared by every window, so a later window
+// loading the YAML again only overwrote changes not yet saved to disk:
+// decoupling a character or a Team Login into separate windows reverted
+// settings changed a moment before. A reload of the first window doesn't need
+// it either; its localStorage is intact.
+let sharedProfileClaimed = false
+ipcMain.handle('profile:claim-shared-import', () => {
+  if (sharedProfileClaimed) return false
+  sharedProfileClaimed = true
+  return true
+})
 ipcMain.handle('profile:write-character',           (_e, character: string, data: unknown) => writeCharacterProfile(character, data))
 ipcMain.handle('profile:list',                      ()                               => listCharacterProfiles())
 ipcMain.handle('profile:delete-character',          (_e, character: string)          => deleteCharacterProfile(character))
@@ -2080,7 +2102,24 @@ ipcMain.handle('save-text-file', async (e, opts: { defaultName: string; content:
 })
 
 ipcMain.on('write-clipboard', (_e, text: string) => clipboard.writeText(text))
-ipcMain.on('open-url', (_e, url: string) => shell.openExternal(url))
+// Settings → Window zoom (v0.20.4). Applied on the sender's webContents, the
+// same call the View menu's zoom roles make, so Chromium saves it like a
+// Ctrl+= (a renderer-side webFrame zoom is temporary and was lost on restart).
+ipcMain.on('set-zoom-level', (e, level: number) => {
+  if (typeof level !== 'number' || !Number.isFinite(level)) return
+  e.sender.setZoomLevel(Math.max(-8, Math.min(9, level)))
+})
+// Web addresses only (v0.20.5 bug check). URLs reach here from game text: an
+// `<a href>` in the stream, which any Lich script can write, and <LaunchURL>.
+// shell.openExternal on a `file:` URL RUNS that file, so a link to a program
+// would launch it on one click. Every legitimate caller passes https.
+ipcMain.on('open-url', (_e, url: string) => {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+    console.warn('[open-url] refused a non-web address:', String(url).slice(0, 200))
+    return
+  }
+  shell.openExternal(url)
+})
 
 ipcMain.on('flash-window', (e) => {
   // Flash the window that asked for attention (the one whose tab wants notice).
@@ -2554,12 +2593,13 @@ function setupMenu() {
       submenu: [
         // Lichborne items are click-only (no accelerator) per the native-menu
         // hotkey policy in CLAUDE.md. The Electron role items below keep their
-        // own built-in accelerators. "Game Font" = settings.fontSize (game
-        // text), NOT Electron's UI zoom (the zoom roles stay below, untouched).
-        { label: 'Font', submenu: [
-          { label: 'Increase Font Size', click: () => sendMenuAction('font-increase') },
-          { label: 'Decrease Font Size', click: () => sendMenuAction('font-decrease') },
-          { label: 'Reset Font Size',    click: () => sendMenuAction('font-reset') },
+        // own built-in accelerators. "Game Text Size" = settings.fontSize (this
+        // character's game text), NOT Electron's window zoom (the zoom roles
+        // below). v0.20.4 named both so the menu shows they are different.
+        { label: 'Game Text Size', submenu: [
+          { label: 'Larger',           click: () => sendMenuAction('font-increase') },
+          { label: 'Smaller',          click: () => sendMenuAction('font-decrease') },
+          { label: 'Reset to Default', click: () => sendMenuAction('font-reset') },
         ] },
         { type: 'separator' },
         // v0.19.0 Views. Click-only like every other Lichborne menu item.
@@ -2574,8 +2614,10 @@ function setupMenu() {
         { role: 'forceReload' },
         { role: 'toggleDevTools' },
         { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
+        // A label on a role item keeps the role's behaviour and accelerator;
+        // it only says what is being zoomed (the whole window, every window).
+        { role: 'resetZoom', label: 'Reset Window Zoom' },
+        { role: 'zoomIn',    label: 'Window Zoom In' },
         // B176 (Binu): "Ctrl++ doesn't zoom in." The zoomIn role's built-in
         // accelerator is CmdOrCtrl+Plus, but on most layouts `+` is SHIFT+`=`
         // — so the chord users actually press (Ctrl with the =/+ key, or
@@ -2589,7 +2631,7 @@ function setupMenu() {
         // An invisible item's accelerator still registers in Electron.
         { role: 'zoomIn',  accelerator: 'CommandOrControl+=',      visible: false },
         { role: 'zoomIn',  accelerator: 'CommandOrControl+numadd', visible: false },
-        { role: 'zoomOut' },
+        { role: 'zoomOut',   label: 'Window Zoom Out' },
         { role: 'zoomOut', accelerator: 'CommandOrControl+numsub', visible: false },
         { type: 'separator' },
         { role: 'togglefullscreen' },

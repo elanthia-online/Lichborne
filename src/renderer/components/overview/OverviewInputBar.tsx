@@ -11,6 +11,7 @@
 // places to mistype into the wrong character.
 
 import { useEffect, useRef, useState } from 'react'
+import ContextMenu, { type CtxItem } from '../ContextMenu'
 import { useRoster } from '../../RosterContext'
 import {
   useOverviewTarget, setOverviewTarget,
@@ -42,6 +43,10 @@ export default function OverviewInputBar({ activeCharacterId }: Props) {
   const setTarget = (v: string) => setOverviewTarget(v === ALL ? null : v)
   const [text, setText] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  // The target picker's menu. It was a native <select>, whose closed label was
+  // clipped mid-word with the platform arrow jammed against it ("All characters
+  // (2⌄") and which ignored the theme. Now a button and the app's own menu.
+  const [menu, setMenu] = useState<{ x: number; y: number; keyboard: boolean } | null>(null)
 
   // Command history for THIS bar (Binu: "there is no command history to go
   // through in overview mode").
@@ -91,8 +96,10 @@ export default function OverviewInputBar({ activeCharacterId }: Props) {
       if (e.ctrlKey || e.altKey || e.metaKey || e.isComposing || e.defaultPrevented) return
       if (e.key.length !== 1) return
       const el = document.activeElement as HTMLElement | null
-      // A focused field keeps its own keystrokes — including a <select>, which
-      // types-to-match natively.
+      // Space on a focused button (the target picker, Send) presses it; moving
+      // focus to the input here would type the space instead (pitfall #165).
+      if (e.key === ' ' && el?.tagName === 'BUTTON') return
+      // A focused field keeps its own keystrokes.
       const tag = el?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return
       // Then WHERE the focus is, which the tag check alone does not cover. The
@@ -198,6 +205,12 @@ export default function OverviewInputBar({ activeCharacterId }: Props) {
     }
   }
 
+  // Choosing a target hands you straight back to the input, so you can type.
+  function pick(v: string) {
+    setTarget(v)
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }
+
   if (mine.length === 0) return null
 
   const noneConnected = connected.length === 0
@@ -221,21 +234,33 @@ export default function OverviewInputBar({ activeCharacterId }: Props) {
             {connected[0].character}
           </span>
         ) : (
-          <select
+          <button
+            type="button"
             className={`ov-inputbar-target${target === ALL ? ' ov-inputbar-target--all' : ''}`}
-            value={target}
-            onChange={e => setTarget(e.target.value)}
-            title="Which character receives what you type"
+            aria-haspopup="menu"
+            aria-expanded={menu != null}
+            // While the menu is open, a press on this button must not reach the
+            // menu's outside-click listener, or it closes and the click reopens it.
+            onMouseDown={e => { if (menu) e.stopPropagation() }}
+            title={target === ALL
+              ? `Sending to all ${connected.length} connected characters. Click to pick one.`
+              : 'Which character receives what you type'}
+            onClick={e => {
+              if (menu) { setMenu(null); return }
+              const r = e.currentTarget.getBoundingClientRect()
+              // detail 0 = Enter/Space, not a mouse click: put focus in the menu.
+              setMenu({ x: r.left, y: r.top - 4, keyboard: e.detail === 0 })
+            }}
           >
             {/* The count makes the broadcast honest — "All" alone does not tell
                 you how many sockets are about to get this. */}
-            <option value={ALL}>All characters ({connected.length})</option>
-            {mine.map(r => (
-              <option key={r.characterId} value={r.characterId} disabled={!r.connected}>
-                {r.character}{r.connected ? '' : ' (offline)'}
-              </option>
-            ))}
-          </select>
+            <span className="ov-inputbar-target-text">
+              {target === ALL
+                ? `All · ${connected.length}`
+                : (mine.find(r => r.characterId === target)?.character ?? 'Pick a character')}
+            </span>
+            <span className="ov-inputbar-target-caret" aria-hidden="true">▾</span>
+          </button>
         )}
       </label>
 
@@ -264,6 +289,28 @@ export default function OverviewInputBar({ activeCharacterId }: Props) {
         disabled={!text.trim() || targets.length === 0}
         title={sendTitle}
       >Send</button>
+
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          openUp
+          focusFirst={menu.keyboard}
+          // Keyed per opening so a keyboard re-open re-runs the focus effect.
+          key={`${menu.x},${menu.y},${menu.keyboard}`}
+          onClose={() => setMenu(null)}
+          items={[
+            { label: `All characters (${connected.length})`, checked: target === ALL, onClick: () => pick(ALL) },
+            { label: null },
+            ...mine.map<CtxItem>(r => ({
+              label: r.connected ? r.character : `${r.character} (offline)`,
+              checked: target === r.characterId,
+              disabled: !r.connected,
+              onClick: () => pick(r.characterId),
+            })),
+          ]}
+        />
+      )}
 
       {lostTarget && (
         <span className="ov-inputbar-warn" title="That character disconnected — pick another target">

@@ -50,6 +50,7 @@ import { healthBand, SESSION_HEALTH_THRESHOLDS } from '../VitalsBar'
 import { groupHealthOf, exactSunPhase, detectWeather, type GroupMember, type SceneMoment } from '../../experiences'
 import { TableauBackdrop, TableauWeather, skyBandOf } from './tableauBackdrop'
 import { sceneOf } from './tableauScene'
+import { PLACES } from './tableauPlaces'
 import { solveBattlefield, type BattleEdge, type Battlefield, type Pt } from '../../battlefield'
 import type { SceneCreature, CreatureStatus } from '../../../shared/types'
 import { useTimers } from '../../hooks/useTimers'
@@ -451,7 +452,8 @@ function GroupTags({ member, focus }: { member: GroupMember; focus?: string[] })
 }
 
 // A small SKULL for the dead (v0.20.2, Sekmeht — was a gravestone): the Dead
-// list and the mark that rises where a creature falls. Drawn in the text
+// list, the mark that rises where a creature falls, and (v0.20.4, Sekmeht —
+// was a ✕) the avatar of your own dead figure and of a dead creature. Drawn in the text
 // colour, not the emoji, which can arrive as a full-colour picture on some
 // systems (pitfall #125).
 function Skull() {
@@ -595,7 +597,7 @@ export function TableauKey({ onClose }: { onClose: () => void }) {
       <KeyRow swatch={<span className="tableau-key-rings"><i className="r" /><i className="c" /><i className="a" /></span>}>Rings round you, inside out: roundtime, cast, aim, in the colours of your timer bars. Each drains as it runs out.</KeyRow>
       <KeyRow swatch={<span className="tableau-key-glyph">BAL</span>}>The gauges: your balance, your position against your foe, and your range. They wake when a fight does (a blow either way, or another player engaging you) and fade about ten seconds after it goes quiet.</KeyRow>
       <KeyRow swatch={<span className="tableau-key-dot tableau-key-dot--red" />}>A red pulse round you: stunned, webbed, bleeding, poisoned or diseased</KeyRow>
-      <KeyRow swatch={<span className="tableau-self-chip" style={{ color: 'var(--ind-hidden-color)', borderColor: 'var(--ind-hidden-border)' }}>Hidden</span>}>Words under you: your conditions, in your icon bar's colours. Past three, a "+N" names the rest.</KeyRow>
+      <KeyRow swatch={<span className="tableau-self-chip" style={{ color: 'var(--ind-hidden-color)', borderColor: 'var(--ind-hidden-border)' }}>Hidden</span>}>Words under you: your conditions, and whether you are sitting, kneeling or prone, in your icon bar's colours. Past three, a "+N" names the rest.</KeyRow>
       <KeyRow swatch={<span className="tableau-key-glyph tableau-key-pop">Parry!</span>}>A word floating up: how you met an attack (dodge, block, parry) or where it hit</KeyRow>
       <KeyRow swatch={<span className="tableau-key-dot tableau-key-dot--spell" />}>A violet glow, with the spell's name under you: preparing a spell. A gold burst: a new rank.</KeyRow>
 
@@ -790,6 +792,10 @@ const SELF_STATUSES: { key: string; label: string }[] = [
   { key: 'joined', label: 'Joined' },
 ]
 const SELF_RING_KEYS = ['bleeding', 'stunned', 'dead', 'webbed', 'poisoned', 'diseased']
+// Your posture as a chip (F135, v0.20.3, Sekmeht), from `combat.stance`, which the
+// game's posture indicators set (the Icon Bar's stance chip reads the same
+// state). Standing shows nothing: the line stays quiet unless it's unusual.
+const SELF_POSTURES: Record<string, string> = { sitting: 'Sitting', kneeling: 'Kneeling', prone: 'Prone' }
 // Condition chips shown on your one reserved line; any more fold into "+N".
 const MAX_CONDITION_CHIPS = 3
 
@@ -820,7 +826,7 @@ const DIR_VECTOR: Record<string, [number, number]> = {
 // Tableau only needs to when its own inputs change (cast/speech/moves are
 // state objects with stable identities between changes). The default export
 // wraps this at the bottom of the file.
-function TableauExperience({ character, characterId, roomState, sceneCast, speech: rawSpeech, moves: rawMoves, indicators, contacts, contactTemplates, settings, isActive, onOpenContact, onCommand, onDirect, hidden, combat: combatIn, group, serverClockOffsetMs, weather }: ExperienceProps) {
+function TableauExperience({ character, characterId, roomState, sceneCast, speech: rawSpeech, moves: rawMoves, indicators, contacts, contactTemplates, settings, isActive, onOpenContact, onCommand, onDirect, guild, hidden, combat: combatIn, group, serverClockOffsetMs, weather, place }: ExperienceProps) {
   // The assess picture kept current between assesses (correctAssess, above):
   // every reader below — duels, fight lines, the battlefield, crosshairs — sees
   // the corrected list without knowing it was corrected.
@@ -1213,7 +1219,10 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
   // The kind of place from the room's name and description (tableauScene),
   // and the time of day from the
   // server clock (exactSunPhase — no Lich needed). Re-derived per minute.
-  const scene = useMemo(() => sceneOf(roomState.title ?? '', roomState.desc ?? ''), [roomState.title, roomState.desc])
+  const scene = useMemo(
+    () => sceneOf(roomState.title ?? '', roomState.desc ?? '', place ? PLACES[place] : null),
+    [roomState.title, roomState.desc, place],
+  )
   const skyMinute = Math.floor((Date.now() + (serverClockOffsetMs ?? 0)) / 60_000)
   const sky = useMemo(() => skyBandOf(exactSunPhase(skyMinute * 60_000), scene.enclosure), [skyMinute, scene.enclosure])
 
@@ -1514,8 +1523,32 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
       const boxes: { k: string; x: number; y: number; hw: number; hh: number; fixed: boolean }[] = []
       for (const [k, p] of battlePos) {
         let wEm = 4, hEm = 4.6
-        if (k === 'self') { wEm = 6.2; hEm = 6.6 }
-        else if (k.startsWith('c:')) {
+        if (k === 'self') {
+          // YOU are two boxes, not one (B509, v0.20.3): measured in the live render,
+          // your figure is centred on its position and runs from the avatar
+          // (top) through your name (5.76em of it) down to the status lines,
+          // which are 12em wide (1.0em conditions, 1.2em hands, 0.5em gap).
+          // The old single 6.2×6.6em guess sat too LOW on the avatar, so a
+          // creature in front was placed into it, its "facing you" tag over
+          // your circle; worst with your hands shown, which push the avatar
+          // up. A narrow upper box keeps flankers from being shoved out by
+          // the wide status lines below. Both boxes are fixed: you hold still.
+          const statusEm = (handsOn || conditionsOn) ? 0.5 + (handsOn ? 1.2 : 0) + (conditionsOn ? 1.0 : 0) : 0
+          const top = (p.y / 100) * H - ((5.76 + statusEm) * em) / 2
+          const x = (p.x / 100) * W
+          // The readiness rings are drawn OUTSIDE the avatar, about 0.6em above
+          // its top, so the upper box starts there: a creature's tag must clear
+          // the rings, not just the circle.
+          const RING = 0.6
+          boxes.push({ k, x, y: top + (2.88 - RING / 2) * em, hw: 3.1 * em, hh: (2.88 + RING / 2) * em, fixed: true })
+          if (statusEm > 0) {
+            // The status lines run from 0.5em below the name to the bottom.
+            const sTop = top + (5.76 + 0.5) * em, sBottom = top + (5.76 + statusEm) * em
+            boxes.push({ k: 'self:status', x, y: (sTop + sBottom) / 2, hw: 6 * em, hh: (sBottom - sTop) / 2, fixed: true })
+          }
+          continue
+        }
+        if (k.startsWith('c:')) {
           const e = assessCreatures.find(a => `c:${a.id}` === k)
           const rel = e ? (assessOnYou(e) ? (ASSESS_LABEL[e.relation] ?? e.relation) : `SE ${SHORT_REL[e.relation] ?? e.relation}`) : ''
           const chipChars = rel.length + 3
@@ -1532,6 +1565,7 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
         for (let i = 0; i < boxes.length; i++) {
           for (let j = i + 1; j < boxes.length; j++) {
             const a = boxes[i], b = boxes[j]
+            if (a.fixed && b.fixed) continue   // your two boxes never move each other
             const ox = a.hw + b.hw - Math.abs(a.x - b.x)
             const oy = a.hh + b.hh - Math.abs(a.y - b.y)
             if (ox <= 0 || oy <= 0) continue
@@ -1551,7 +1585,9 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
         }
         if (!moved) break
       }
-      for (const b of boxes) battlePos.set(b.k, { x: (b.x / W) * 100, y: (b.y / H) * 100, depth: 1 })
+      // Fixed boxes (you) never moved, and their box centres aren't your
+      // position, so only the figures that stepped aside are written back.
+      for (const b of boxes) if (!b.fixed) battlePos.set(b.k, { x: (b.x / W) * 100, y: (b.y / H) * 100, depth: 1 })
     }
     // Members in another room: faded, at the ends of your line.
     for (const m of groupList) {
@@ -2579,7 +2615,12 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
                 return (
                   <div
                     key={`as-${c.id}`}
-                    className={`tableau-figure tableau-figure--creature tableau-figure--assess tableau-assess--unassessed${onYou ? '' : ' tableau-assess--elsewhere'}`}
+                    // Engaged per the ROSTER (no "disengaged" flag, awake): the
+                    // same glow an assessed melee creature gets. DR's automatic
+                    // assess comes every 15-70s and is often EMPTY between fights,
+                    // so a creature that arrived and engaged since then otherwise
+                    // showed no sign of it (Sekmeht, v0.20.5).
+                    className={`tableau-figure tableau-figure--creature tableau-figure--assess tableau-assess--unassessed${onYou ? (showEngaged ? ' tableau-assess--engaged' : '') : ' tableau-assess--elsewhere'}`}
                     style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
                     title={`${c.name ?? 'A creature'} — here since your last assess${onYou ? ', engaged with you' : ''}${states.length ? ` — ${states.join(', ')}` : ''}. Assess to see where it stands.`}
                   >
@@ -2604,12 +2645,15 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
                 if (!pos) return null
                 const dead = c.flags.includes('dead')
                 const states = creatureStateWords(c.flags)
+                // No assess up (expired, or cleared by an empty one), but the
+                // roster still says who is on you: show it (v0.20.5).
+                const onYou = !dead && rosterEngaged(c.flags)
                 return (
                   <div
                     key={`as-${c.id}`}
-                    className={`tableau-figure tableau-figure--creature${dead ? ' tableau-assess--corpse' : ''}${states.length ? ' tableau-assess--reeling' : ''}`}
+                    className={`tableau-figure tableau-figure--creature${dead ? ' tableau-assess--corpse' : ''}${states.length ? ' tableau-assess--reeling' : ''}${onYou && showEngaged ? ' tableau-assess--engaged' : ''}`}
                     style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-                    title={`${c.name}${dead ? ' — dead. It stays until its body decays or is skinned.' : states.length ? ` — ${states.join(', ')}` : ''}`}
+                    title={`${c.name}${dead ? ' — dead. It stays until its body decays or is skinned.' : `${onYou ? ' — engaged with you' : ''}${states.length ? ` — ${states.join(', ')}` : ''}`}`}
                   >
                     <div className="tableau-avatar tableau-avatar--creature" data-fig={`c:${c.id}`}>
                       {initials(c.name!)}
@@ -2651,7 +2695,7 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
                 title={`${c.name}${c.total > 1 ? ` #${c.ord}` : ''}${c.dead ? ' (dead)' : ''}`}
               >
                 <div className="tableau-avatar tableau-avatar--creature">
-                  {c.dead ? '✕' : initials(c.name)}
+                  {c.dead ? <Skull /> : initials(c.name)}
                   {attackFlash.has(`cr-${c.name}-${c.ord}`) && <span key={`atk-${attackFlash.get(`cr-${c.name}-${c.ord}`)}`} className="tableau-attack-flash" aria-hidden="true" />}
                 </div>
                 <div className="tableau-name">{c.name}</div>
@@ -2939,19 +2983,37 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
           so the bubble check covers both. */}
       {(() => {
         const selfBubble = bubbleFor('you') ?? bubbleFor(character)
-        const selfStatuses = SELF_STATUSES.filter(s => indicators[s.key])
+        // Danger conditions first, then your posture, then the quieter states
+        // (hidden, invisible, joined). Posture wears the Icon Bar's own stance
+        // colours; dead implies lying down, so it shows no posture chip.
+        const postureKey = (combat?.stance ?? '').toLowerCase()
+        const posture = !indicators.dead ? SELF_POSTURES[postureKey] : undefined
+        const chipOf = (key: string, label: string, vars: 'ind' | 'stance') => ({
+          key, label, title: CONDITION_TITLES[key],
+          color: `var(--${vars}-${key}-color)`, border: `var(--${vars}-${key}-border)`,
+        })
+        const activeStatuses = SELF_STATUSES.filter(s => indicators[s.key])
+        const selfStatuses = [
+          ...activeStatuses.filter(s => SELF_RING_KEYS.includes(s.key)).map(s => chipOf(s.key, s.label, 'ind')),
+          ...(posture ? [chipOf(postureKey, posture, 'stance')] : []),
+          ...activeStatuses.filter(s => !SELF_RING_KEYS.includes(s.key)).map(s => chipOf(s.key, s.label, 'ind')),
+        ]
         const ringKey = SELF_RING_KEYS.find(k => indicators[k])
         const selfCls = `tableau-figure tableau-figure--self`
           + (selfBubble ? ' tableau-figure--speaking' : '')
           + (indicators.dead ? ' tableau-figure--player-dead' : '')
           + (indicators.hidden ? ' tableau-figure--self-hidden' : '')
           + (indicators.invisible ? ' tableau-figure--self-invisible' : '')
+        // By id first: two of your characters can share a name, and this
+        // figure is THIS session's, whose tab and card look up by id.
+        // monogramStyle picks readable ink — a picked colour can be pale.
+        const selfInk = monogramStyle(character,
+          characterColor(charColors, { characterId }) ?? avatarColor(character, contacts, contactTemplates, myColors, ownNames).color)
         const avatarStyle = {
-          // By id first: two of your characters can share a name, and this
-          // figure is THIS session's, whose tab and card look up by id.
-          // monogramStyle picks readable ink — a picked colour can be pale.
-          ...monogramStyle(character,
-            characterColor(charColors, { characterId }) ?? avatarColor(character, contacts, contactTemplates, myColors, ownNames).color),
+          ...selfInk,
+          // Dark ink on a pale fill has no halo, so the dead skull drops its
+          // shadow too (it stands in for the halo an SVG doesn't get).
+          ...(selfInk.textShadow === 'none' ? { '--skull-halo': 'none' } : {}),
           ...(ringKey ? { '--self-ring': `var(--ind-${ringKey}-color)`, '--self-glow': `var(--ind-${ringKey}-glow)` } : {}),
         } as React.CSSProperties
         return (
@@ -2972,7 +3034,7 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
                 data-fig="self"
                 title={danger ? 'In danger' : undefined}
               >
-                {indicators.dead ? '✕' : initials(character)}
+                {indicators.dead ? <Skull /> : initials(character)}
               </div>
               )
               return selfPose ? <span key={`pose-${selfBubble!.id}`} className={`tableau-pose tableau-pose--${selfPose}`}>{selfAvatar}</span> : selfAvatar
@@ -3047,8 +3109,8 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
                     <span
                       key={s.key}
                       className="tableau-self-chip"
-                      title={CONDITION_TITLES[s.key]}
-                      style={{ color: `var(--ind-${s.key}-color)`, borderColor: `var(--ind-${s.key}-border)` } as React.CSSProperties}
+                      title={s.title}
+                      style={{ color: s.color, borderColor: s.border } as React.CSSProperties}
                     >{s.label}</span>
                   ))}
                   {selfStatuses.length > MAX_CONDITION_CHIPS && (
@@ -3122,6 +3184,15 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
         const m = figMenu
         const items: CtxItem[] = []
         const lostDuel = duels.get(m.name.toLowerCase())?.lost === true
+        // Touch (v0.20.4, Sekmeht): an EMPATH touches someone to start healing
+        // them, so it leads the menu, above a divider — and only for an empath,
+        // and only for someone actually in the room. Sent, like Look. The guild
+        // is what the game said on your own `info` sheet, else Edit Profile's
+        // Guild; until either is known the item doesn't appear.
+        if (onCommand && /^empaths?$/i.test((guild ?? '').trim()) && playerKeys.has(m.name.toLowerCase())) {
+          items.push({ label: `Touch ${m.name}`, onClick: () => onCommand(`touch ${m.name}`) })
+          items.push({ label: null })
+        }
         if (onDirect && !lostDuel) {
           items.push({ label: `Say to ${m.name}…`, onClick: () => onDirect('say', m.name) })
           items.push({ label: `Whisper to ${m.name}…`, onClick: () => onDirect('whisper', m.name) })

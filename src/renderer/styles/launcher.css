@@ -918,9 +918,13 @@
   color: var(--accent-dim);
 }
 
-.launcher-card-connect {
-  margin-top: 6px;
-  align-self: flex-end;
+/* The accent action LOOK, shared by the launcher's Connect buttons (card and
+   team) and the contact popover's "Edit contact" (v0.20.4, Sekmeht: "make them
+   match"). Only the look lives here; each host sizes and places its own button
+   below, with properties this rule never sets, so the files can't fight over
+   load order (pitfalls #111/#113). Restyle here and every one follows. */
+.launcher-card-connect,
+.cpop-edit-btn {
   background: var(--accent-dim);
   color: #fff;
   /* The same halo `.btn-primary` carries (login.css) and for the same reason:
@@ -933,17 +937,24 @@
   text-shadow: 0 0 2px rgba(0, 0, 0, 0.75), 0 1px 1px rgba(0, 0, 0, 0.5);
   border: none;
   border-radius: var(--radius-sm);
-  padding: 6px 14px;
   font-family: inherit;
-  font-size: 0.8rem;
   font-weight: 600;
   letter-spacing: 0.5px;
   cursor: pointer;
   transition: background var(--ui-transition);
 }
 
-.launcher-card-connect:hover:not(:disabled) {
+.launcher-card-connect:hover:not(:disabled),
+.cpop-edit-btn:hover {
   background: var(--accent);
+}
+
+/* The launcher's own size and place (app chrome, fixed rem size). */
+.launcher-card-connect {
+  margin-top: 6px;
+  align-self: flex-end;
+  padding: 6px 14px;
+  font-size: 0.8rem;
 }
 
 .launcher-card-connect:disabled {

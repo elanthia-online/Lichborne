@@ -858,11 +858,39 @@ export interface YamlViewHandle {
 // where the scrolling element IS the padded element; pass a separate
 // `styleEl` when scroll lives on a wrapper while padding lives on an
 // inner content element.
+// The line PITCH actually laid out, which is not always the computed
+// line-height (v0.20.4). The 21px pin (B249, pitfall #116) makes n × 21 exact
+// only at 100% zoom: under Ctrl+=/− Chromium lays a line out at 21 × zoom,
+// and at 80%, 90% or 110% that value is not on its 1/64px layout grid, so the
+// error per line accumulates and the search highlight drifts deep in a long
+// file — while getComputedStyle still reports 21px. Dividing the real content
+// height by its line count recovers the true pitch. The result is used only
+// when it is within a hair of the computed value (the per-line error is under
+// 1/64px); anything further off means the box was stretched or the content is
+// too short to measure, and the computed value is the better answer.
+function linePitch(el: HTMLElement, cs: CSSStyleDeclaration, lh: number): number {
+  const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0)
+  let content: number
+  if (el instanceof HTMLTextAreaElement) {
+    // A textarea's scrollHeight is its full text, but never less than the box.
+    if (el.scrollHeight <= el.clientHeight) return lh
+    content = el.scrollHeight - pad
+  } else {
+    const borders = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0)
+    content = el.getBoundingClientRect().height - pad - borders
+  }
+  const lines = Math.round(content / lh)
+  if (lines < 2) return lh
+  const pitch = content / lines
+  return Math.abs(pitch - lh) < 0.05 ? pitch : lh
+}
+
 function scrollElementToLine(scrollEl: HTMLElement, lineIndex: number, styleEl: HTMLElement = scrollEl) {
   const cs = window.getComputedStyle(styleEl)
-  const lh = parseFloat(cs.lineHeight)
+  const raw = parseFloat(cs.lineHeight)
   const pt = parseFloat(cs.paddingTop)
-  if (!Number.isFinite(lh) || lh <= 0) return
+  if (!Number.isFinite(raw) || raw <= 0) return
+  const lh = linePitch(styleEl, cs, raw)
   const top = (Number.isFinite(pt) ? pt : 0) + lineIndex * lh
   scrollEl.scrollTop = Math.max(0, top - (scrollEl.clientHeight / 2) + (lh / 2))
 }
@@ -900,9 +928,10 @@ const YamlHighlight = forwardRef<YamlViewHandle, { content: string; language?: s
     const pre = preRef.current
     if (!pre) return
     const cs = window.getComputedStyle(pre)
-    const lh = parseFloat(cs.lineHeight)
+    const raw = parseFloat(cs.lineHeight)
     const pt = parseFloat(cs.paddingTop)
-    if (!Number.isFinite(lh) || lh <= 0) return
+    if (!Number.isFinite(raw) || raw <= 0) return
+    const lh = linePitch(pre, cs, raw)
     const top = Number.isFinite(pt) ? pt : 0
     setLineMetrics(prev => (prev.lineHeight === lh && prev.paddingTop === top) ? prev : { lineHeight: lh, paddingTop: top })
   }, [])
@@ -945,9 +974,10 @@ const YamlHighlight = forwardRef<YamlViewHandle, { content: string; language?: s
     // highlight but never scrolled back to it, so your search hit could be
     // anywhere off-screen. Computed style is authoritative and always current.
     const cs = window.getComputedStyle(pre)
-    const lh = parseFloat(cs.lineHeight)
+    const raw = parseFloat(cs.lineHeight)
     const pt = parseFloat(cs.paddingTop)
-    if (!Number.isFinite(lh) || lh <= 0) return
+    if (!Number.isFinite(raw) || raw <= 0) return
+    const lh = linePitch(pre, cs, raw)
     const target = (Number.isFinite(pt) ? pt : 0) + lineIndex * lh
     el.scrollTop = Math.max(0, target - (el.clientHeight / 2) + (lh / 2))
   }
@@ -967,7 +997,7 @@ const YamlHighlight = forwardRef<YamlViewHandle, { content: string; language?: s
       const hl = scrollRef.current?.querySelector('.ld-yaml-line-highlight') as HTMLElement | null
       if (!pre || !hl) return
       const cs = window.getComputedStyle(pre)
-      const lh = parseFloat(cs.lineHeight)
+      const lh = linePitch(pre, cs, parseFloat(cs.lineHeight))
       const pt = parseFloat(cs.paddingTop) || 0
       const actual = hl.getBoundingClientRect().top - pre.getBoundingClientRect().top
       const expected = pt + lineIndex * lh

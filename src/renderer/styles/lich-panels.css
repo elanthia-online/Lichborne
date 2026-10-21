@@ -940,7 +940,10 @@
      the "highlight sits between two lines, but only in the YAML" report, and
      why it never reproduced in the Ruby editor on short files.
      An integer px is exactly representable, so computed == used and the
-     arithmetic is exact at any line number. Keep all four sites integer px. */
+     arithmetic is exact at any line number. Keep all four sites integer px.
+     Under window zoom (Ctrl+=/−) the laid-out value is 21 × zoom, which is
+     off the grid again at 80/90/110%, so the code measures the real pitch
+     (linePitch in LichDashboard.tsx, v0.20.4) instead of trusting this. */
   line-height: 21px;
   color: var(--text-primary);
   background: transparent;

@@ -26,6 +26,7 @@ import { applyCustomTheme, type ThemeVars } from '../themes'
 import type { CustomTheme } from '../myThemes'
 import { THEME_COLOR_INPUT_TITLE } from '../colors'
 import ColorField from './ColorField'
+import NumberField from './NumberField'
 import '../styles/theme-editor.css'
 
 // ── Field type definitions ─────────────────────────────────────────────────
@@ -384,10 +385,10 @@ function RgbaRow({ field, vars, onChange }: { field: RgbaField; vars: ThemeVars;
           onChange={e => onChange(field.key, hexOpacityToRgba(e.target.value, opacity))}
           className="te-color-swatch"
         />
-        <input
-          type="number" value={opacity} min={0} max={1} step={0.05}
-          onChange={e => onChange(field.key, hexOpacityToRgba(hex, parseFloat(e.target.value) || 0))}
-          className="te-opacity-input"
+        <NumberField
+          live value={opacity} min={0} max={1} step={0.05} decimals={2}
+          onCommit={n => onChange(field.key, hexOpacityToRgba(hex, n))}
+          className="te-opacity-input" aria-label={`${field.label} opacity`}
         />
         <span className="te-opacity-label">opacity</span>
       </div>

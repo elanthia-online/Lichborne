@@ -27,9 +27,10 @@
 //     layer's deps read their inputs from `walkCtxRef` so their identities
 //     stay stable and the whole-zone `nodeRects` memo holds.
 //   • "Fit-to-view + center-on-current" / "Pan / zoom" — the follow camera is
-//     a `useLayoutEffect` (same paint frame as the indicator's new position);
-//     `snapTransform` drops the glide for big jumps; a `ResizeObserver`
-//     recentres when a hidden (0×0) tab regains its size.
+//     a `useLayoutEffect` (same paint frame as the indicator's new position),
+//     and it always SNAPS (the glide was removed in v0.20.5, see the note at
+//     the pan group); a `ResizeObserver` recentres when a hidden (0×0) tab
+//     regains its size.
 //   • "Memoized SVG layers" — every hook MUST sit above the "Render guards"
 //     early returns (hook order is load-bearing, React #310). Per-colour
 //     category effects render only while `showEffects` (still + animations
@@ -90,8 +91,8 @@ interface Props {
   onPickGenieFolder:   () => void
   onClearGenieFolder:  () => void
   // Genie Map Animations toggle (Settings). When false the map
-  // permanently wears the drag/walk animation-pause AND the camera
-  // glide is disabled (snaps instead). One switch for all map motion.
+  // permanently wears the animation pause, so the room effects stop. The
+  // camera never glides either way (v0.20.5).
   mapAnimations?:      boolean
 }
 
@@ -525,7 +526,7 @@ function bfsZoneRoomPath(zone: GenieZone, fromId: number, toId: number): number[
 export default function GenieMapView({
   zones, roomTitle, roomDesc = '', roomExits, onSendCommand,
   genieMapsDir, genieLoading, genieReady, genieProgress,
-  onPickGenieFolder, onClearGenieFolder, mapAnimations = true, persist,
+  onPickGenieFolder, onClearGenieFolder, mapAnimations = false, persist,
 }: Props) {
   // SEEDED FROM MapPanel's persist ref, not from nothing. Switching to the Lich
   // map UNMOUNTS this view (MapPanel renders it conditionally), so a fresh
@@ -544,20 +545,6 @@ export default function GenieMapView({
   const [currentZoneId, setCurrentZoneId] = useState<string>(() => persist?.zoneId ?? '')
   const [currentLevel,  setCurrentLevel]  = useState<number>(() => persist?.level ?? 0)
   const [transform,     setTransform]     = useState<Transform>({ x: 0, y: 0, scale: 1 })
-  // Tracks the transform we last painted with, so we can detect a
-  // large jump (zone switch via stub, ◆ from far away, fit-to-view)
-  // and SNAP rather than letting the 150ms transition "race across"
-  // the screen. Per-walk-step deltas are tiny (one room ≈ 8px world
-  // units × scale) so they stay under the threshold and keep smooth.
-  const prevTransformRef = useRef<Transform>({ x: 0, y: 0, scale: 1 })
-  useEffect(() => { prevTransformRef.current = transform }, [transform])
-  // Tracks the indicator's previous WORLD position. `snapTransform`
-  // above only sees the pan delta — when follow is OFF (the user is
-  // browsing) the pan doesn't move, so a teleport / cross-cluster
-  // jump would leave the indicator transitioning ("racing") across
-  // the static map. This ref lets the indicator snap on its own
-  // large jumps regardless of follow state.
-  const prevIndicatorPosRef = useRef<{ x: number; y: number } | null>(null)
   const [selectedId,    setSelectedId]    = useState<number | null>(null)
   const [hoveredId,     setHoveredId]     = useState<number | null>(null)
   const [tooltipPos,    setTooltipPos]    = useState<{ x: number; y: number } | null>(null)
@@ -1080,14 +1067,9 @@ export default function GenieMapView({
   // to wire the listener manually with { passive: false }.
   // ACTIVE ZOOM, treated like an active drag.
   //
-  // A wheel tick scales by 1.15 (15%) while `snapTransform` only drops the
-  // camera glide above 20%, so ordinary zooming kept the 150ms transition ON
-  // and animated a SCALE change across ~1057 SVG node groups, several times a
-  // second. A scale change re-rasterizes the whole subtree — unlike the Lich
-  // map, which is a bitmap the GPU scales for free, which is exactly why that
-  // one feels smooth and this one did not (Sekmeht). Transitioning a
-  // continuous user input is also pointless lag in its own right: the glide
-  // exists for follow-camera WALK steps, not for the wheel under your finger.
+  // `zooming` pauses the room effects while the wheel is turning, the same
+  // way a drag does (see `showEffects` and the freeze classes). It once also
+  // switched off the camera glide, which no longer exists (v0.20.5).
   const [zooming, setZooming] = useState(false)
   const zoomQuietRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -2242,45 +2224,17 @@ export default function GenieMapView({
   // similarly-colored adjacent rooms and "looked behind" them.
   const currentNode = currentNodeId != null ? visibleById.get(currentNodeId) : undefined
 
-  // Large-jump detection — shared by the pan group AND the "you are
-  // here" indicator so the two transition (or snap) in LOCKSTEP. This
-  // is the fix for indicator "bounce" during walks: the indicator
-  // lives inside the pan group, so its on-screen position is
-  // panTransform ∘ indicatorTransform. If only the pan transitions and
-  // the indicator's world position jumps instantly, the indicator sits
-  // off-centre for 150ms then slides back — every step. Giving the
-  // indicator a MATCHED transition makes the two interpolations
-  // cancel: lerp(panA,panB,f) + lerp(roomA,roomB,f) = centre for all
-  // f, so the indicator stays pinned at screen centre while the map
-  // slides beneath it. They must also SNAP together, hence one shared
-  // flag. Walk steps stay well under 600px; zone switches / ◆ / fit
-  // exceed it. Scale jumps > 20% snap too (wheel zoom's 1.15×/tick is
-  // below the threshold and keeps its smooth transition).
-  const snapTransform = (() => {
-    const prev = prevTransformRef.current
-    const dx = transform.x - prev.x, dy = transform.y - prev.y
-    const ds = Math.abs(transform.scale - prev.scale) / Math.max(prev.scale, 0.001)
-    return (dx * dx + dy * dy) > 600 * 600 || ds > 0.2
-  })()
-
-  // Indicator-specific snap — true on first appearance (nothing to
-  // transition from) or when the player's room jumped a large WORLD
-  // distance (teleport, room-pump cap discard, zone switch while
-  // follow is off). 120 world units ≈ many rooms — a normal walk
-  // step between adjacent rooms is well under it, so single steps
-  // still transition smoothly. ORed with `snapTransform` so the
-  // indicator snaps whenever EITHER the camera or its own room
-  // jumped far.
-  const indicatorSnap = (() => {
-    if (!currentNode) return false
-    const prev = prevIndicatorPosRef.current
-    if (!prev) return true
-    const dx = currentNode.x - prev.x, dy = currentNode.y - prev.y
-    return (dx * dx + dy * dy) > 120 * 120
-  })()
-  useEffect(() => {
-    prevIndicatorPosRef.current = currentNode ? { x: currentNode.x, y: currentNode.y } : null
-  }, [currentNode])
+  // NO CAMERA GLIDE (removed v0.20.5, Sekmeht). The camera and the "you are
+  // here" ring used to slide 150ms between rooms (`genie-pan-smooth`), with
+  // snap rules for big jumps and, briefly, for running. The slide animated the
+  // transform of an SVG group, which Chromium can't hand to the compositor, so
+  // every frame of it redrew the whole zone: ~60 of ~280 frames over 20ms
+  // during a 25-rooms/s run, none without it (tmp-mapperf). And with the
+  // slide on, a slow map and a sliding map looked the same, so players
+  // couldn't tell whether the client was lagging. Both now move instantly,
+  // which also keeps them in step by construction. Don't reintroduce a
+  // transition on the pan group; if a glide is ever wanted again, it needs
+  // the pan on an HTML wrapper the compositor can move.
 
   // Locator ring radius — 1.3125× NODE_SIZE (was 1.75×; trimmed 25%
   // per tester feedback that the ring read too large around the room).
@@ -2296,15 +2250,7 @@ export default function GenieMapView({
   const currentIndicator = currentNode && (
     <g
       pointerEvents="none"
-      className={!isDragging && !zooming && mapAnimations ? 'genie-pan-smooth' : undefined}
-      style={{
-        // Transitions in lockstep with the pan group (same class) so
-        // the halo stays centred instead of bouncing. Snaps when the
-        // camera jumped far (`snapTransform`) OR the indicator's own
-        // room jumped far (`indicatorSnap` — covers follow-off jumps).
-        transform: `translate(${currentNode.x}px, ${currentNode.y}px)`,
-        ...((snapTransform || indicatorSnap) ? { transition: 'none' as const } : {}),
-      }}
+      style={{ transform: `translate(${currentNode.x}px, ${currentNode.y}px)` }}
     >
       {/* Sonar pings — two expanding rings staggered half a cycle apart
           so a fresh ring emanates every ~1s. Drawn FIRST so the crisp
@@ -2371,7 +2317,10 @@ export default function GenieMapView({
           <div className="map-empty-sub">
             Genie Maps need a folder of community-maintained XML map files.
             <br />
-            Download from the <a href="https://github.com/elanthia-online/scripts" target="_blank" rel="noreferrer">elanthia-online maps</a> and point Lichborne at the folder.
+            {/* Opened in the system browser via openUrl (the About dialog's pattern):
+                main has no window-open handler, so a bare target=_blank would
+                open an Electron window inside Lichborne (B525). */}
+            <a href="https://github.com/GenieClient/Maps/archive/refs/heads/main.zip" onClick={e => { e.preventDefault(); window.api.openUrl('https://github.com/GenieClient/Maps/archive/refs/heads/main.zip') }}>Download the maps ZIP</a> (from <a href="https://github.com/GenieClient/Maps" onClick={e => { e.preventDefault(); window.api.openUrl('https://github.com/GenieClient/Maps') }}>github.com/GenieClient/Maps</a>), unzip it, then use the button below to pick that folder.
           </div>
           <button className="map-btn" onClick={onPickGenieFolder} style={{ marginTop: 12, pointerEvents: 'auto' }}>
             📁 Pick Genie maps folder…
@@ -2540,32 +2489,25 @@ export default function GenieMapView({
             style={{
               transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
               willChange: 'transform',
-              // `snapTransform` (shared with the indicator) skips the
-              // transition for big jumps — zone switch, ◆ from afar,
-              // fit-to-view — which at 150ms would visibly "race across"
-              // the screen. Walk steps stay smooth.
-              ...(snapTransform ? { transition: 'none' as const } : {}),
             }}
-            // Class hooks (mutually exclusive freeze classes + an
-            // independent transition class):
+            // Freeze classes (mutually exclusive). There is no transition
+            // class any more: the camera never glides (see the NO CAMERA
+            // GLIDE note above).
             //   1. `genie-anim-off` — persistent freeze when the player
             //      has turned off `mapAnimations` (Settings → Genie Map
-            //      Animations). Pauses EVERY descendant animation,
-            //      including the locator sonar ping.
+            //      Animations). Pauses every room effect, but NOT the
+            //      locator sonar ping: that is Lichborne's "you are here"
+            //      marker, shared with the Lich map (v0.20.5). Epilepsy-safe
+            //      hides it on both maps.
             //   2. `genie-pan-dragging` — transient freeze while
             //      panning/walking. Pauses category animations but
             //      EXEMPTS the ping (you still want to see yourself
             //      mid-walk). Only used when animations are on.
-            //   3. `genie-pan-smooth` — CSS transition on `transform`
-            //      for the camera glide. Gated on `mapAnimations` (the
-            //      same Settings toggle), suppressed while `isDragging`.
-            //      Independent of the freeze classes.
-            className={[
+            className={
               !mapAnimations
                 ? 'genie-anim-off'
-                : (isDragging || inMotion || zooming) ? 'genie-pan-dragging' : '',
-              !isDragging && !zooming && mapAnimations ? 'genie-pan-smooth' : '',
-            ].filter(Boolean).join(' ') || undefined}
+                : (isDragging || inMotion || zooming) ? 'genie-pan-dragging' : undefined
+            }
           >
             {/* Aura layer — soft translucent halos behind COLOR_LEGEND
                 rooms (shops, healers, stat trainers, etc.). Drawn first

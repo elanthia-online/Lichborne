@@ -240,6 +240,17 @@
   cursor: default;
 }
 
+/* The tick column of a pick-one menu (CtxItem.checked). A fixed width on every
+   row, ticked or not, so the labels line up. */
+.ctx-menu-mark {
+  display: inline-block;
+  width: 1.1em;
+  /* The same mix as .ui-menu-mark: a bare accent tick measured 1.8:1 on
+     Barbarian's --bg-raised (pitfall #150); mixed toward the text it is 3.4. */
+  color: color-mix(in srgb, var(--accent) 60%, var(--text-primary));
+  line-height: 1;
+}
+
 .ctx-menu-sep {
   border: none;
   border-top: 1px solid var(--border-subtle);

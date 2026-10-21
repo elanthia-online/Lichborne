@@ -3,7 +3,7 @@
 > Internal reference document. Captures what we've learned about **Lich5 internals, the DragonRealms protocol, and the live installation** — the verified facts we mirror or depend on, so they aren't re-derived. Each fact cites its source `file:line`.
 > Sources: Lich5 source tree (`C:\temp\lich-dev\lich-5`, live install `C:\Ruby4Lich5`), the DR `drinfomon` scripts, and captured game XML.
 > This is the LICH/DR *fact* layer — how Lich and DR actually behave. Lichborne's own implementation (how we consume these facts) lives in CLAUDE.md and DESIGN.md; each Lichborne pitfall that came from a Lich/DR fact points back here.
-> Updated: 2026-10-02 (added DR's <crtrStatus> creature feed, the Vitality ladder, and the facing / range / defence line shapes).
+> Updated: 2026-10-14 (the injuries dialog is a full snapshot; DR's announced Combat panel, not yet seen in the feed; earlier: a view of another room — Locate — and Lich's room-name rewrites, 2026-10-13).
 
 ---
 
@@ -744,7 +744,15 @@ index   = (angle * 8) / 360
 
 **Verified** (ported to JS and sampled a 400-day year, 2026-07-28): all 8 buckets reachable for all three moons, each dwelling ~28h — matching the script's "roughly a real day".
 
-Two caveats the script states itself: phase is **model-only** (DR broadcasts no passive phase event to self-correct against), and only **4 of 8** wordings are confirmed against the `observe <moon>` verb — *growing crescent* → waxing crescent, *nearly turned its full face* → waxing gibbous, *perfect circle* → full, *waned to a narrow crescent* → waning crescent. The other four are logged raw as they're seen.
+Two caveats the script states itself: phase is **model-only** (DR broadcasts no passive phase event to self-correct against), and the wordings of the `observe <moon>` verb confirm it. As of v4.5.0 only 4 of 8 were mapped (*growing crescent* → waxing crescent, *nearly turned its full face* → waxing gibbous, *perfect circle* → full, *waned to a narrow crescent* → waning crescent). **moonwatch v4.5.4 (read 2026-10-04, `scripts/moonwatch.lic` changelog lines 64–95) maps 7 of 8 for every guild and 8 of 8 for Moon Mages**, validated against ~2,700 logged observe responses:
+- v4.5.1: "beginning to wane, travels slowly through the sky" → waning gibbous; "moves across the skies" → third quarter.
+- v4.5.2: "Waxing still, half of the … moon <M> looks down from above" → first quarter. The wording was there all along; the script's pattern had anchored on a leading "The".
+- **A new moon does rise, but DR broadcasts no rise for it** (0 rises at the model's new across ~2,700 logged rises, against ~130 per other phase). So a rise-triggered observe never fires while new, and non-Moon-Mages get only "nowhere to be seen".
+- A **Moon Mage** can still sense it: "…moon <M> turns up fruitless" (below the horizon, 40/42 = new, v4.5.3) and "<M> is hidden from you, but its energy is quite strong" (up, 45/45 = new, v4.5.4).
+
+### Moonskin — Rakash change while Katamba is full
+
+**Verified 2026-10-04** (Elanthipedia "Moonskin"; Mahtra's DRMoonWatch, github.com/MahtraDR/DRMoonWatch `index.html`; reproduced in `tmp-moon-harness/moonskin.ts`). Rakash take their moonskin form (claws, fangs, sharper senses) for exactly as long as **Katamba is full**: from the minute the phase math above first gives index 4 until the minute it leaves 4. With the client constants that reproduces Elanthipedia's observed Moonskin table **to the minute**: 2012-03-13 05:05Z → 03-14 08:34Z, and 03-22 13:10Z → 03-23 17:20Z (the table lists CDT). A window lasts about 27.5–28.2 hours and comes roughly every 8–9 days, so it is a pure function of time, with no feed and no Lich needed. DRMoonWatch labels the length "(~28h)", which is a fixed string, not a measurement. The repository carries **no license** (the GitHub API reports none), so Lichborne re-derives the algorithm from the client constants it already had rather than copying code. Consumed in DESIGN §52.11.
 
 Separately, moonwatch's **synodic** cycle constants (its own OLS fits, used for rise/set timers — `cycle` / `visible` seconds per moon) are NOT client constants and carry per-character calibration offsets; **v4.2+ requires `;moonwatch reset` once per character after updating** or the timers drift. Lichborne consumes those timers via the `moonWindow` stream, so a tester who skipped the reset will see our moon positions drift too.
 
@@ -874,6 +882,7 @@ Measured on `map-1790653415.json` (18,950 rooms), for the Tableau's scene classi
 - **`title`** is an ARRAY of `[[…]]`-wrapped strings. Nearly every room has one; 11 have more than one.
 - **`description`** is an ARRAY too. 18,945 rooms have one, and **1,313 carry more than one version**. Which one the game shows at a given moment is not recorded here. In play the Tableau classifies the description the game actually sent; only the tuning harness reads `description[0]`.
 - **`location`** (the area name, e.g. "Horse Clan") is present on 14,769 rooms.
+- **A room title often doesn't name its town; `location` does** (verified 2026-10-04 for the Tableau's towns). Titles start with a place name before the first comma, but districts and buildings use their own ("[Undershard, …]" is Shard, "[Crossing Temple, …]" the Crossing, "[Theren Keep, …]" Therenborough). Two `location` names that read wrong: **"Horse Clan" is Zaldi Taipa**, and **"Dragonspine Fortress" is Chyolvea Tayeu'a**. Grouping rooms by title prefix and taking the town most of each prefix's rooms sit in (at least two rooms and 60%) places 184 prefixes covering 3,948 rooms (`tools/gen-place-data.mjs`; the rest are wilderness or ambiguous).
 - **Room prose is full of scene words used figuratively**, and that is the main thing a word-based reader has to handle. Of 144 prose uses of "falls", most are the verb ("the ground falls away", "light falls on", "accidental falls") rather than a waterfall; "sea" appears in colours ("sea-green") and crowds ("a sea of faces"); "keep" is mostly "keep watch". A real waterfall almost always says so in the room's TITLE.
 
 ### The `--saga` frontend — DECISION: do NOT adopt
@@ -1390,7 +1399,59 @@ direct connection (Principle #2). Re-run it when Lich publishes new spells.
 
 
 
+## DR protocol — a view of another room (Locate) and Lich's room-name rewrites (v0.20.5)
+
+**A Moon Mage's Locate prints the located person's room on main in LOOK form**, with no `<nav>`, no `<streamWindow>` subtitle and no room components. From ProfanityFE's real capture (`spec/fixtures/room_pipeline/dr_locate_after_move.xml`, from `DR-Fidon/2026/10/2026-10-07_13-09-45.xml`):
+
+```
+<spell>None</spell>You gesture.
+<resource picture="0"/><style id="roomName" />[Willow Walk, Willow Tree] (84081)
+<style id=""/><preset id='roomDesc'>The massive weeping willow tree …</preset>
+Also here: Quilsilgas.
+Obvious paths: <d>north</d>, <d>east</d>, <d>west</d>.
+<compass><dir value="n"/><dir value="e"/><dir value="w"/></compass><castTime value='…'/>
+<prompt time="…">&gt;</prompt>
+```
+
+A real move, by contrast, sends `<nav rm>` and a subtitle BEFORE the roomName (every DR room fixture in Profanity's suite, and their 15 real logs). With DR's showroomid on, the roomName's `] (NNN)` id equals the `<nav rm>` id on arrival. A familiar's view instead arrives inside `<pushStream id="familiar" ifClosedStyle="watching"/>`.
+
+**Lich rewrites the roomName for its `;display` options, using the PLAYER's room, not the room the line names** (lich-5 `lib/games.rb`, checked at `0bd852bc`, 2026-10-06):
+- `process_room_information` (~line 1166) matches any roomName line, optionally inside the familiar push, calls `modify_room_display` when `display_lichid`, `display_uid` or `hide_uid_flag` is on, and arms `@room_number_after_ready`.
+- DR's `modify_room_display` (line 1553): with the title placement (`display_roomid_location` title/both) it strips the game's `] (NNN)` when `suppress_game_realid?` (`display_uid` or `hide_uid_flag`, line 1639) and inserts ` - <room_number_display>` before `]`. `room_number_display` (line 1608) is `Map.current.id` and/or `(u#{XMLData.room_id})`: the player's current room. So `[Name - 2072 - (u230007)]` carries the same ids for any room; only the NAME tells a view apart.
+- At the next line containing `<prompt `, `process_room_display` (DR, ~line 1580) prepends, for room-window front-ends (`--stormfront` is one), a `<streamWindow id='main' … subtitle=" - [<XMLData.room_title> - <room_number>]…"/>` (and a `room` one). That happens after ANY room view, a Locate included, and names the player's room. The view's `<compass>` typically shares that prompt line, so it comes AFTER this subtitle.
+
+Lichborne's handling: DESIGN §54.2.
+
+
 ---
+
+## DR protocol — the injuries dialog is a full snapshot (verified 2026-10-14)
+
+From Sekmeht's raw-XML captures in combat (the first captures to include the dialog). Each update lists **all 15 body parts**, in this order: head, neck, rightArm, leftArm, rightLeg, leftLeg, rightHand, leftHand, chest, abdomen, back, rightEye, leftEye, rightFoot, nsys. A healthy part's `name` is its own id; a wounded one's is `Injury<n>` (`Scar<n>`, `Nsys<n>` per Lich's parser, see CLAUDE.md pitfall #97):
+
+```
+<dialogData id="injuries"><image id="head" name="head" height="0" width="0"/>…<image id="chest" name="Injury1" height="0" width="0"/>…<image id="nsys" name="nsys" height="0" width="0"/></dialogData>
+<dialogData id="injuries"><skin id="healthSkin" name="healthBar2" controls="health2" …/><progressBar id="health2" value="100" text="HEALTH 100%" customText="t" …/></dialogData>
+```
+
+- **Every update is complete**, so replacing the whole injury map on each one (what Lichborne does) is correct, and a part healing is reported by its name returning to its id. This settles one of the two open questions in pitfall #97; the other (whether an empty dialog can ever arrive) is still unseen.
+- A **second** `injuries` dialog follows with a `health2` progress bar (the health bar Wrayth draws under its body diagram). Lichborne's `<progressBar>` handler ignores ids it doesn't know, so it can't reach the vitals.
+- The dialog arrives when injuries change. Captures show none during long stretches without injury changes (and none in a whole login burst, B422), so an empty injury map is the normal state for an unhurt character.
+
+## DR's Combat panel — announced 2026-10-14, not yet seen in the feed
+
+GM Auchand announced work on DR's Combat panel, which "has been largely non-functional in DR": creatures and NPCs on it, with "some limited status icons that indicate the creature's current range". Two raw-XML captures in combat that day (Sekmeht, mid-session, through Lich as `--stormfront`) showed **nothing new**:
+
+- the only dialogs were `minivitals` and `injuries`; no combat `<openDialog>`/`<dialogData>`;
+- `<crtrStatus>` carried only `hostile` and `disengaged` (no range attribute);
+- the `combat` stream was still attack narration, and range still arrived only as text without ids ("The ice archon closes to pole weapon range on you!").
+
+A player watching his own feed (Mahtra) reported the same. Two untested explanations:
+
+1. **Dialog layouts arrive in the login burst** (`<openDialog>`), so a session already logged in when the change rolled out would never receive a new panel's setup. A capture from a fresh login settles it.
+2. **A version gate.** DR receives the client's own id line: for a Stormfront-style front end, Lich relays the client's login key and version line unchanged and substitutes its own string (`Frontend::CLIENT_STRING`, `/FE:WRAYTH /VERSION:1.0.1.28 /P:WIN_UNKNOWN /XML`, lich-5 `lib/common/frontend.rb:515`) only for its GSL and Frostbite paths and its `--without-frontend` mode (`lib/main/main.rb:702-790`). Lichborne sends `/FE:WRAYTH /VERSION:1.0.1.22` (`LichConnection.ts`, `ConnectionManager.ts` `CLIENT_ID`). If DR sends the panel only to newer clients, Lichborne wouldn't get it.
+
+Tracked in BUGS.md, Pending Tester Follow-ups.
 
 ## 19. Detachable Client — the Attach Protocol
 

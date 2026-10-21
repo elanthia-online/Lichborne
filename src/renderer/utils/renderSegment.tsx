@@ -43,9 +43,9 @@ export function presetEffectContent(text: string, preset: string | undefined, co
 // The URL param is passed RAW (not URL-encoded): redirect.asp treats the
 // value after `URL=` literally — encoding `://` to `%3A%2F%2F` makes the
 // bounce hand the browser a malformed destination and the redirect fails.
-function wrapExternalLink(href: string, safety: boolean): string {
+export function wrapExternalLink(href: string, safety: boolean): string {
   if (!safety) return href
-  if (!/^https?:\/\//i.test(href)) return href  // file://, mailto:, etc. pass through
+  if (!/^https?:\/\//i.test(href)) return href  // non-web: main's open-url refuses it anyway
   return 'https://www.play.net/bounce/redirect.asp?URL=' + href
 }
 

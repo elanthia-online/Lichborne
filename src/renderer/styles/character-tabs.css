@@ -35,16 +35,22 @@
 .character-tabs-wrap > .character-tabs { flex: 1 1 auto; min-width: 0; }
 
 /* More tabs beyond an edge: the strip fades out toward it. A MASK, so it needs
-   no background colour and works over the app bar's gradient on every theme. */
-.character-tabs--fade-r { mask-image: linear-gradient(to right, #000 calc(100% - 1.6em), transparent); }
-.character-tabs--fade-l { mask-image: linear-gradient(to left, #000 calc(100% - 1.6em), transparent); }
-.character-tabs--fade-l.character-tabs--fade-r {
+   no background colour and works over the app bar's gradient on every theme.
+   The panel tab strip (B511, PanelFrame) shares these rules and the thumb's
+   below, so the two overlay scrollbars can't drift apart (pitfall #113). */
+.character-tabs--fade-r,
+.panel-tab-list--fade-r { mask-image: linear-gradient(to right, #000 calc(100% - 1.6em), transparent); }
+.character-tabs--fade-l,
+.panel-tab-list--fade-l { mask-image: linear-gradient(to left, #000 calc(100% - 1.6em), transparent); }
+.character-tabs--fade-l.character-tabs--fade-r,
+.panel-tab-list--fade-l.panel-tab-list--fade-r {
   mask-image: linear-gradient(to right, transparent, #000 1.6em, #000 calc(100% - 1.6em), transparent);
 }
 
 /* The thumb: laid OVER the tabs' bottom edge, quiet until you're over the
    strip. Its ::before widens the grab area without drawing anything. */
-.character-tabs-thumb {
+.character-tabs-thumb,
+.panel-tab-thumb {
   position: absolute;
   bottom: 1px;
   height: 3px;
@@ -57,8 +63,18 @@
 }
 .character-tabs-thumb::before { content: ''; position: absolute; inset: -5px 0 -2px; }
 .character-tabs-wrap:hover .character-tabs-thumb,
-.character-tabs-thumb--drag { opacity: 0.9; }
-:root[data-epilepsy-safe='true'] .character-tabs-thumb { transition: none; }
+.character-tabs-thumb--drag,
+.panel-tab-list-wrap:hover .panel-tab-thumb,
+.panel-tab-thumb--drag { opacity: 0.9; }
+/* The PANEL strip's thumb is display-only (v0.20.4 bug check). Panel tabs are
+   short and are dragged to reorder and to move between windows, so a grabbable
+   thumb over their bottom edge blocked drops onto that band, stopped a tab
+   being dragged by its lower half, and dropped the hover there — the very gap
+   B511 fixed. The wheel scrolls the strip, and the active tab scrolls itself
+   into view, so nothing needs to grab it. */
+.panel-tab-thumb { pointer-events: none; }
+:root[data-epilepsy-safe='true'] .character-tabs-thumb,
+:root[data-epilepsy-safe='true'] .panel-tab-thumb { transition: none; }
 
 .character-tab {
   display: flex;
@@ -70,19 +86,18 @@
   /* Original TAB silhouette — rounded top, square bottom (Sekmeht kept this
      over the pill the accent chip normally wears). It is the shape only: the
      v0.18.0 accent-chip TREATMENT (accent tint + accent hairline, UX standard
-     #10) is unchanged, and the tab is still a free-floating chip — it does NOT
-     attach to anything below.
+     #10) is unchanged.
      The bottom BORDER is deliberately kept (the pre-v0.18.0 rule had
      `border-bottom: none`) for two reasons: the accent hairline should close
      the shape now that it is a visible outline rather than a merge seam, and
      dropping one border edge would make the active tab 1px shorter than every
      inactive tab, breaking their shared baseline.
-     A true attach-to-the-edge folder look was built and REVERTED (Sekmeht,
-     2026-07-27): the strip is `overflow-x: auto` with a 5px scrollbar, so as
-     soon as enough characters are open to overflow, that scrollbar claims the
-     strip's bottom edge and lifts every tab off the border — the attachment
-     silently breaks exactly when a player has the most tabs open. Don't
-     re-attempt it without solving the overflow case first. */
+     The tabs now sit ON the app bar's bottom border (v0.20.4, app-bar.css).
+     That join was reverted once (2026-07-27) because the strip's real 5px
+     scrollbar claimed its bottom edge when tabs overflowed and lifted every
+     tab off the border; since v0.20.2 the scrollbar is an overlay that takes
+     no space, which is what makes the join safe. If a real scrollbar ever
+     comes back, the join breaks again. */
   border-radius: 4px 4px 0 0;
   cursor: pointer;
   /* Connected-but-inactive tabs read at near-full strength — a live character

@@ -294,33 +294,40 @@ function OverviewCardImpl(p: Props) {
 
       {o.showRoom && <RoomLine roomState={p.roomState} />}
 
-      {o.showExp && <StatRow stats={stats} now={now} idleMs={idleMs} connected={p.connected} />}
-
-      {/* Stream selector — labels the feed AND changes it. Every interactive
-          control inside the card must stop propagation, or using it also fires
-          the card's click-to-open and drops you into Session view (the card
-          root is a button). `onClick` alone is not enough: a native select
-          also emits mousedown/keydown that would bubble the same way. */}
-      {o.feedLines > 0 && p.streamChoices.length > 1 && (
-        <div
-          className="ov-card-streampick"
-          onClick={e => e.stopPropagation()}
-          onMouseDown={e => e.stopPropagation()}
-          onKeyDown={e => e.stopPropagation()}
-        >
-          <select
-            className="ov-card-streamsel"
-            /* Drives the "not on the game window" styling — a non-default
-               selection stays legible without hover, so you can tell at a glance
-               which cards are showing something other than the game window. */
-            data-main={p.streamId === 'main' ? 'true' : 'false'}
-            value={p.streamId}
-            onChange={e => p.onStreamChange(e.target.value)}
-            title="Which stream this card shows"
-            aria-label={`Stream shown for ${p.character}`}
-          >
-            {p.streamChoices.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-          </select>
+      {/* v0.20.3 (Sekmeht): what the feed is showing and the session stats share
+          ONE row — "showing [Game window]" first, then up / idle / lines /
+          rooms. It wraps on a narrow tile, and the size tiers still drop the
+          stats (compact) and the whole row (micro). */}
+      {(o.showExp || (o.feedLines > 0 && p.streamChoices.length > 1)) && (
+        <div className="ov-card-meta">
+          {/* Stream selector — labels the feed AND changes it. Every interactive
+              control inside the card must stop propagation, or using it also fires
+              the card's click-to-open and drops you into Session view (the card
+              root is a button). `onClick` alone is not enough: a native select
+              also emits mousedown/keydown that would bubble the same way. */}
+          {o.feedLines > 0 && p.streamChoices.length > 1 && (
+            <div
+              className="ov-card-streampick"
+              onClick={e => e.stopPropagation()}
+              onMouseDown={e => e.stopPropagation()}
+              onKeyDown={e => e.stopPropagation()}
+            >
+              <select
+                className="ov-card-streamsel"
+                /* Drives the "not on the game window" styling — a non-default
+                   selection stays legible without hover, so you can tell at a glance
+                   which cards are showing something other than the game window. */
+                data-main={p.streamId === 'main' ? 'true' : 'false'}
+                value={p.streamId}
+                onChange={e => p.onStreamChange(e.target.value)}
+                title="Which stream this card shows"
+                aria-label={`Stream shown for ${p.character}`}
+              >
+                {p.streamChoices.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            </div>
+          )}
+          {o.showExp && <StatRow stats={stats} now={now} idleMs={idleMs} connected={p.connected} />}
         </div>
       )}
 

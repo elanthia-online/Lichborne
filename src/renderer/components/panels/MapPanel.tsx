@@ -39,7 +39,7 @@ interface Props {
   lichMapVersion?: number
   onSendCommand: (cmd: string) => void
   large?: boolean
-  mapAnimations?: boolean   // Settings → Genie Map Animations; gates per-room effects AND the camera glide
+  mapAnimations?: boolean   // Settings → Genie Map Animations; gates the per-room effects (the camera never glides, v0.20.5)
   // GS4 support: Lich Map works for both families (Lich saves per-game map
   // data — see findLichMapFile's comment in main.ts) but there is no GS4
   // Genie map data, so the Genie Maps view is gated off and 'image' is
@@ -182,7 +182,7 @@ function primeGenieCache(dir: string, zones: Map<string, GenieZone>): void {
 // B172: memoized — the map re-renders when the room actually changes (its
 // props are room primitives + stable callbacks), not on every GameWindow
 // render (vitals ticks, main-text batches).
-export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits, roomId, lichMapVersion = 0, onSendCommand, large = false, mapAnimations = true, gameFamily }: Props) {
+export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits, roomId, lichMapVersion = 0, onSendCommand, large = false, mapAnimations = false, gameFamily }: Props) {
   const character = useCharacter()
   const saveProfile = useProfileSaver()
   const isGS4 = gameFamily === 'GS4'

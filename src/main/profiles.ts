@@ -5,8 +5,9 @@
 // payloads are `unknown` here; profile shape, versioning and migrations are
 // the caller's concern. What it does own:
 //
-//  • Atomic writes (tmp + rename — see atomicWriteFile for the Windows EPERM
-//    dance) so a crash mid-save can't corrupt a profile.
+//  • Atomic writes (writeFileAtomic: fsync'd tmp + rename) so a crash mid-save
+//    can't corrupt a profile, and QUARANTINE of a file that can't be parsed:
+//    it is moved aside rather than overwritten by the next save (v0.20.4).
 //  • The one-time v0.6.4 legacy migration (install-dir → userData; the NSIS
 //    uninstaller wiped $INSTDIR on every upgrade — pitfall #3). It runs at
 //    first access via getProfilesDir(), copies without deleting the legacy dir.
@@ -23,6 +24,7 @@ import { app } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
+import { writeFileAtomic, readFileRetrying, quarantineFile, isPlainObject, hasQuarantinedCopy, takeQuarantineNotices } from './atomicWrite'
 
 // v0.6.4: profiles moved from `<install-dir>/profiles/` to `<userData>/profiles/`
 // (= `%APPDATA%\Lichborne\profiles\` on Windows). The legacy install-dir location
@@ -111,26 +113,76 @@ export function ensureExportsDir(): string {
   return dir
 }
 
-// Atomic write: write the payload to {target}.tmp, then rename in place. On
-// Windows fs.rename of an existing file fails — use fs.renameSync after fs.rmSync
-// of the destination. The window where a crash can corrupt the file is tiny
-// (between rm and rename) and far smaller than rewriting the file in place.
+// Paths a save must NOT write over right now, and why:
+//  • 'unmovable' — the file is damaged and couldn't be moved aside, so it is
+//    still the only copy of whatever it held;
+//  • 'unreadable' — the file couldn't be READ (locked by antivirus, the indexer,
+//    another process). It is probably fine; it just isn't available.
+// A block lifts when the file is gone, or (unmovable) when it finally moves
+// aside, or (unreadable) when a READ through readProfileFile succeeds. The
+// first version lifted 'unreadable' on main's own raw re-read at write time,
+// which let a save through whose renderer side had read nothing — it wrote a
+// profile that never merged favorite, notes and the other launcher fields
+// (second bug check). Every saver reads first, so the next save re-reads,
+// lifts the block, and merges properly.
+const blocked = new Map<string, 'unmovable' | 'unreadable'>()
+
+// What was moved aside this session, for the launcher to tell the player
+// (otherwise the character just vanishes from the list with no reason given).
+// One queue for every quarantine, including the password / AI-key stores.
+export function takeProfileNotices(): { file: string; keptAs: string | null }[] {
+  return takeQuarantineNotices()
+}
+
+function stillBlocked(file: string): boolean {
+  const why = blocked.get(file)
+  if (!why) return false
+  if (!fs.existsSync(file)) { blocked.delete(file); return false }
+  if (why === 'unreadable') return true
+  if (quarantineFile(file, `${path.basename(file)} could not be read`)) { blocked.delete(file); return false }
+  return true
+}
+
 function atomicWriteFile(targetPath: string, content: string): void {
-  const tmpPath = `${targetPath}.tmp`
-  fs.writeFileSync(tmpPath, content, 'utf8')
-  // On Windows, rename to an existing file throws EPERM. Remove the target
-  // first if it exists; the tmp file is durable on disk at this point so a
-  // crash here loses no data — recovery just reads the .tmp.
-  try { fs.rmSync(targetPath, { force: true }) } catch {}
-  fs.renameSync(tmpPath, targetPath)
+  if (stillBlocked(targetPath)) {
+    // Thrown, not swallowed: the renderer's save then fails visibly in the
+    // console instead of believing it succeeded.
+    throw new Error(`not overwriting ${path.basename(targetPath)}: it can't be read right now`)
+  }
+  writeFileAtomic(targetPath, content)
+}
+
+// Reads and parses a profile.
+//  • A file that won't PARSE to an object (a syntax error, an empty or truncated
+//    file after a crash) used to read exactly like "no file", and the next
+//    connect wrote a blank profile over it. It is now moved aside to
+//    `{name}.unreadable-{ts}` first (v0.20.4, Principle #3).
+//  • A file that can't be READ right now is left exactly where it is and
+//    blocked from being overwritten; that is a lock, not damage.
+// A leftover `.tmp` is NOT promoted when the file is missing: since v0.20.4 the
+// writer never deletes the target first, so a missing file with a `.tmp` is a
+// file the player deleted or archived, and a truncated YAML can still parse
+// (second bug check — it brought deleted characters back).
+function readProfileFile(file: string): unknown | null {
+  if (!fs.existsSync(file)) return null
+  let text: string
+  try { text = readFileRetrying(file) }
+  catch (err) {
+    console.warn(`[persist] ${path.basename(file)} can't be read right now`, err)
+    blocked.set(file, 'unreadable')
+    return null
+  }
+  let parsed: unknown
+  try { parsed = yaml.load(text) }
+  catch (err) { console.warn(`[persist] ${path.basename(file)} is not valid YAML`, err); parsed = undefined }
+  if (isPlainObject(parsed)) { blocked.delete(file); return parsed }
+  const keptAs = quarantineFile(file, `${path.basename(file)} could not be read`)
+  if (keptAs) blocked.delete(file); else blocked.set(file, 'unmovable')
+  return null
 }
 
 export function readSharedProfile(): unknown | null {
-  try {
-    const file = path.join(getProfilesDir(), '_shared.yaml')
-    if (!fs.existsSync(file)) return null
-    return yaml.load(fs.readFileSync(file, 'utf8'))
-  } catch { return null }
+  return readProfileFile(path.join(getProfilesDir(), '_shared.yaml'))
 }
 
 export function writeSharedProfile(data: unknown): void {
@@ -142,11 +194,20 @@ export function writeSharedProfile(data: unknown): void {
 }
 
 export function readCharacterProfile(character: string): unknown | null {
-  try {
-    const file = path.join(getProfilesDir(), `${character}.yaml`)
-    if (!fs.existsSync(file)) return null
-    return yaml.load(fs.readFileSync(file, 'utf8'))
-  } catch { return null }
+  return readProfileFile(path.join(getProfilesDir(), `${character}.yaml`))
+}
+
+// Whether a character has a profile file at all. The connect path asks BEFORE
+// reading: when the file exists but turns out unreadable or from a newer
+// version, the local working copy is the best copy of the user's settings and
+// must not be cleared (see importCharacterProfile's callers).
+export function characterProfileExists(character: string): boolean {
+  const file = path.join(getProfilesDir(), `${character}.yaml`)
+  // A file moved aside as unreadable counts. The launcher reads every profile at
+  // startup, so by the time a player connects, a damaged file has usually
+  // ALREADY been moved; answering "no file" then cleared the very working copy
+  // the move was meant to protect (v0.20.4 bug check).
+  return fs.existsSync(file) || hasQuarantinedCopy(file)
 }
 
 export function writeCharacterProfile(character: string, data: unknown): void {
@@ -217,6 +278,8 @@ export function listArchivedProfiles(): string[] {
 function moveProfile(character: string, fromDir: string, toDir: string): boolean {
   const src = path.join(fromDir, `${character}.yaml`)
   if (!fs.existsSync(src)) return false
+  // A leftover .tmp from a failed save must not outlive the profile it belonged to.
+  try { fs.rmSync(`${src}.tmp`, { force: true }) } catch { /* harmless */ }
   const dest = path.join(toDir, `${character}.yaml`)
   const move = (a: string, b: string) => {
     try {
@@ -263,6 +326,7 @@ export function deleteCharacterProfile(character: string): void {
   try { if (fs.existsSync(target)) fs.unlinkSync(target) } catch (err) {
     console.error('[profiles] delete failed for', target, err)
   }
+  try { fs.rmSync(`${target}.tmp`, { force: true }) } catch { /* harmless */ }
   // Remove every backup that belongs to this character — both legacy
   // {name}.yaml.bak and the new timestamped {name}.yaml.{ts}.bak.
   for (const backup of backupFilesFor(target)) {
@@ -329,8 +393,11 @@ function copyToBackup(targetPath: string): void {
 export function backupAllProfiles(): void {
   const dir = getProfilesDir()
   if (!fs.existsSync(dir)) return
-  copyToBackup(path.join(dir, '_shared.yaml'))
+  // Never back up a file we know is damaged or unreadable: rotation keeps 5,
+  // and copies of a broken file would push the good backups out.
+  const backup = (file: string) => { if (!blocked.has(file)) copyToBackup(file) }
+  backup(path.join(dir, '_shared.yaml'))
   for (const character of listCharacterProfiles()) {
-    copyToBackup(path.join(dir, `${character}.yaml`))
+    backup(path.join(dir, `${character}.yaml`))
   }
 }

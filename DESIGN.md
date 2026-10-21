@@ -848,7 +848,7 @@ Font settings work at two levels: **global defaults** and **per-panel overrides*
 
 **Global defaults** (Settings → Display & Accessibility):
 - Font family: any font installed on the user's system, selected via a scrollable inline picker with live filter. The current selection is shown above the list; typing in the filter box narrows it instantly. The selected font is highlighted and auto-scrolled into view when the panel opens. **Each entry in the picker list renders in its own face** (v0.7.1, F15) — the inline `style={{ fontFamily: "'<name>'" }}` overrides the picker's monospace inheritance for the label only, so the picker doubles as a visual preview. A **Monospace** filter chip narrows the list to monospace fonts only, detected at enumeration time via a canvas width test (`i` vs `W`).
-- Font enumeration uses the **Local Font Access API** (`window.queryLocalFonts()`), available in Electron 21+ / Chromium 103+. The main process grants the `local-fonts` permission via `setPermissionRequestHandler` + `setPermissionCheckHandler` before the window loads. Results are deduplicated by family name and sorted alphabetically.
+- Font enumeration uses the **Local Font Access API** (`window.queryLocalFonts()`), available in Electron 21+ / Chromium 103+. The main process grants the `local-fonts` permission via `setPermissionRequestHandler` + `setPermissionCheckHandler` before the window loads. Results are deduplicated by family name and sorted alphabetically. **Two performance rules (B515, v0.20.4, §53.4):** the rows carry `content-visibility: auto` so only the visible ones are laid out in their own face, and the scan (with its canvas monospace test) runs once per window session. Chromium enumerates installed fonts once per process, so a font installed after launch appears only after a restart, and no in-app rescan can change that.
 - Stored value is usually the raw font family name (e.g. `"Cascadia Code"`). Three truly-retired preset keys (`terminal`, `sansserif`, `serif`) still transparently migrate to their font names the first time Settings is opened. The active default key `'cascadia'` is **not** migrated (v0.7.1, B94) — it intentionally stays as a key so `applySettingsToDOM` keeps resolving it to the full fallback chain `'Cascadia Code' → 'Fira Code' → 'Consolas' → monospace`. Migrating it would collapse the fallback to `'Cascadia Code', monospace` and cause a Cascadia-less Win10 user's font to visibly flip from Consolas to generic monospace the moment Settings opened.
 - `applySettingsToDOM` ([settings.ts](src/renderer/settings.ts)) resolves the stored value via `FONT_FAMILIES[fontFamily]` first (key match → full chain) and falls through to `'FontName', monospace` for an explicit font name.
 - Default font: **Cascadia Code (key: `cascadia`), 12px, Compact (1.2) line height** (v0.7.1, B93). Cascadia Code ships with weights 200/300/350/400/500/600/700 — critically, real `500` and `600` faces — so the codebase's intermediate-weight emphasis (hands HUD, status bars, panel tabs, character tabs, vitals, game `<bold>`) actually renders at its intended weight instead of falling back to full bold 700 on a two-weight font like Consolas. The previous default (`'Consolas'` literal name) collapsed every `font-weight: 600` declaration to 700 and read as "everything is too bold." Players who explicitly chose Consolas (or any other font) keep their choice through profile load — only fresh installs / unset characters get the new default.
@@ -2120,6 +2120,7 @@ Sekmeht: *"that should run in the background similar to like when you connect a 
 - **Failures** are toasts with the real error (`throwOnFail` makes `runConnectBody` throw instead of reporting, so the conflict path's one retry can actually run). No saved password still opens the account wizard, which needs you.
 - **A tab's Reconnect** (B496) uses the same quiet landing without the placeholder (the tab exists): it comes back in place and focus stays where you are.
 - **Attach tiles** still use the panel; an attach is a local connection and is over in a moment.
+- **B506 (v0.20.3): the placeholder never appeared in v0.20.2** unless a Team Login was running. App built `pendingTabs` as `teamRun?.members.….concat(bgConnects…)`, and optional chaining short-circuits the whole chain, `.concat` included, so with no team run there were no placeholders at all: a + Connect showed nothing until its tab landed. It now starts from `(teamRun?.members ?? [])`.
 
 ### 13.6.5 Per-Shard Tabs (CharacterId)
 
@@ -3411,7 +3412,7 @@ The repository is being **transferred** (GitHub "Transfer ownership", not a fork
 2. **Phase 2 (transfer day):** transfer the repo on GitHub. Releases/issues/stars move; redirects arm. No release needed that day. Do NOT pre-create the org repo (a partial repo with some releases would answer the check with stale data — the transfer moves everything atomically).
 3. **Phase 3 (first org release):** flip the hardcoded owner strings (checklist below), cut the release from the org via Actions. Dual-feed installs get it from the new feed; older installs via the redirect.
 
-**Phase-3 cut-over checklist (every hardcoded `SekmehtDR`):** `package.json` `build.publish.owner` · `build/app-update.yml` `owner` · `publish.mjs` `owner` · the local-run fallback literals in `.github/scripts/release-prepare.mjs` + `release-verify.mjs` (the Actions path self-corrects via `GITHUB_REPOSITORY`) · main.ts Help-menu links (GitHub Repository / Report a Bug) · `credits.ts` `REPO_URL` + `AI_NOTICE_URL` · `AboutModal.tsx` displayed link text · README (3 links) · Lichborne-User-Guide (2 links) · this file's §18.2 table · release-notes.md. Keep `UPDATE_FEEDS` itself unchanged — it already names both homes, and the legacy entry stays as belt-and-braces.
+**Phase-3 cut-over checklist (every hardcoded `SekmehtDR`):** `package.json` `build.publish.owner` · `build/app-update.yml` `owner` · `publish.mjs` `owner` · the local-run fallback literals in `.github/scripts/release-prepare.mjs` + `release-verify.mjs` (the Actions path self-corrects via `GITHUB_REPOSITORY`) · main.ts Help-menu links (GitHub Repository / Report a Bug) · ~~`credits.ts` `REPO_URL` + `AI_NOTICE_URL` · `AboutModal.tsx` displayed link text~~ (done early in v0.20.4 at Sekmeht's ask; Help → About now points at `elanthia-online/Lichborne`) · README (3 links) · Lichborne-User-Guide (2 links) · this file's §18.2 table · release-notes.md. Keep `UPDATE_FEEDS` itself unchanged — it already names both homes, and the legacy entry stays as belt-and-braces.
 
 **Org-side pre-flight for Phase 3:** the release workflow's `GITHUB_TOKEN` must be able to create releases — check org **Settings → Actions → Workflow permissions** is "Read and write" (many orgs default to read-only, which 403s the draft pre-create in `release-prepare.mjs`).
 
@@ -3935,7 +3936,7 @@ Stubs are boundary rooms duplicated in adjacent zones. The "stub" version has `n
 
 **Why always-center (not margin-snap):** earlier implementation only panned when the indicator approached a 15% safe-margin edge. At fast walk rates each step pushed the indicator just outside the margin and the camera snapped back, producing a visible vibration. Always-centering means each camera delta exactly matches the player's world delta.
 
-**Smooth camera motion.** The pan group is positioned with the CSS `transform` *property* (not the SVG `transform` attribute) so it can be CSS-transitioned. `.genie-pan-smooth` applies `transition: transform 150ms linear`; follow walks and wheel zoom slide between positions instead of snapping. `linear` is deliberate — a follow camera re-targets every walk step, and an ease-out curve resets its velocity profile on each restart, producing a visible accelerate/decelerate pulse. The class is suppressed while `isDragging` so manual drag stays 1:1 with the cursor. It is gated on the **`mapAnimations`** setting (Settings → Genie Map Animations, default on): both the pan group and the indicator only get `.genie-pan-smooth` when `!isDragging && mapAnimations`, gated together so they stay in lockstep — when off, both snap. (v0.6.8–v0.6.11 gated this on a separate `smoothScroll` setting shared with the now-removed story-window smooth scroll; v0.6.12 removed that setting and folded the map glide under `mapAnimations` — one switch for all Genie map motion.)
+**Smooth camera motion — REMOVED in v0.20.5 (§54.5).** The camera and the indicator now move instantly. The two paragraphs below describe the removed glide and are kept for history. The pan group is positioned with the CSS `transform` *property* (not the SVG `transform` attribute) so it can be CSS-transitioned. `.genie-pan-smooth` applies `transition: transform 150ms linear`; follow walks and wheel zoom slide between positions instead of snapping. `linear` is deliberate — a follow camera re-targets every walk step, and an ease-out curve resets its velocity profile on each restart, producing a visible accelerate/decelerate pulse. The class is suppressed while `isDragging` so manual drag stays 1:1 with the cursor. It is gated on the **`mapAnimations`** setting (Settings → Genie Map Animations, default on): both the pan group and the indicator only get `.genie-pan-smooth` when `!isDragging && mapAnimations`, gated together so they stay in lockstep — when off, both snap. (v0.6.8–v0.6.11 gated this on a separate `smoothScroll` setting shared with the now-removed story-window smooth scroll; v0.6.12 removed that setting and folded the map glide under `mapAnimations` — one switch for all Genie map motion.)
 
 **Snap-on-large-delta.** A 150ms transition visibly "races across" the screen on a big jump. `snapTransform` is a render-time delta check (Euclidean > 600px OR scale change > 20% vs `prevTransformRef`, the last *painted* transform, updated in a post-commit `useEffect`). When true, an inline `transition: none` drops the transition for that one update — zone switches, ◆-from-afar, and fit-to-view cut instantly; walk steps and wheel zoom stay smooth.
 
@@ -3955,7 +3956,7 @@ Pre-hoist, all were inline children of each per-node `<g>`, so changing the curr
 
 **Current-room indicator (v0.6.8).** Solid ring radius `INDICATOR_R = NODE_SIZE * 1.3125`. The `<g>` is structured: two **sonar-ping** circles (`genie-here-ping`, a CSS keyframe scaling 0.7→2.7× while fading; the two are staggered half a cycle via `--delayed` so a fresh ring emanates ~every 1s), then a dark backdrop ring, then the bright green ring on top. `non-scaling-stroke` keeps the expanding pings thin as they grow. The pings are exempt from the drag/motion animation-pause via a higher-specificity rule (`.genie-pan-dragging .genie-here-ping` beats `.genie-pan-dragging *`) — the locator is the one thing the user most wants to keep tracking.
 
-**Indicator transition lockstep.** The indicator `<g>` lives inside the pan group and carries its OWN `genie-pan-smooth` transition on a `translate(node.x, node.y)` transform. With only the pan transitioning, the halo sat off-centre for 150ms after each walk step then slid back ("bounce"). Giving both the same matched transition makes the interpolations cancel — `lerp(panA,panB,f) + lerp(roomA,roomB,f) = centre` for all `f` — so the halo stays pinned at screen centre while the map slides beneath it. `indicatorSnap` (a world-distance large-jump check, > 120 units) is ORed with `snapTransform` for the indicator so it also snaps on follow-off teleports where the pan delta is zero.
+**Indicator transition lockstep — moot since v0.20.5 (§54.5): neither the pan group nor the indicator transitions any more, so they cannot fall out of step.** Kept for history: the indicator `<g>` lives inside the pan group and carries its OWN `genie-pan-smooth` transition on a `translate(node.x, node.y)` transform. With only the pan transitioning, the halo sat off-centre for 150ms after each walk step then slid back ("bounce"). Giving both the same matched transition makes the interpolations cancel — `lerp(panA,panB,f) + lerp(roomA,roomB,f) = centre` for all `f` — so the halo stays pinned at screen centre while the map slides beneath it. `indicatorSnap` (a world-distance large-jump check, > 120 units) is ORed with `snapTransform` for the indicator so it also snaps on follow-off teleports where the pan delta is zero.
 
 **Backdrop ring** — single-colour halo dissolved into similarly-coloured adjacent rooms. Translucent dark ring + bright stroke gives unconditional contrast.
 
@@ -4016,7 +4017,7 @@ Inside the SVG `<g transform>` pan/zoom group:
 - **`pointer-events: none` on the pan group breaks click-to-walk.** `isDragging` flips true on mousedown BEFORE click fires, so toggling pointer-events at that point makes the click target the SVG root, not the inner node `<g>`. Hover is gated at the React layer (`dragRef.current` check in `onNodeHoverEnter`) instead.
 - **`will-change: transform`** on the pan group promotes the subtree to its own composited layer so pan/zoom is GPU-translated rather than triggering paint of siblings.
 - **No inline `height: 100%` on the `GenieMapView` outer wrap.** It carries `.map-canvas-wrap` (`flex: 1; min-height: 0`) plus inline `display: flex; flex-direction: column`. An inline `height: 100%` overrides the flex sizing and — evaluated against the parent's *full* height before the parent subtracts its own toolbar — pushes the MapPanel's view-selector toolbar off-screen at narrow window heights. Let CSS flex own the height.
-- **Pan group + indicator must transition in lockstep.** Both carry `.genie-pan-smooth` and share the `snapTransform` flag. If they used different easings or one snapped while the other transitioned, the "you are here" halo would bounce off-centre or slide while the map cut. See §19.16.7.
+- **Pan group + indicator must transition in lockstep** (moot since v0.20.5: the glide was removed, §54.5). Both carry `.genie-pan-smooth` and share the `snapTransform` flag. If they used different easings or one snapped while the other transitioned, the "you are here" halo would bounce off-centre or slide while the map cut. See §19.16.7.
 
 ### 19.17 Per-Color Effect System (v0.6.7)
 
@@ -4133,7 +4134,7 @@ The locator sonar ping is **exempt** from this transient freeze — you still wa
 
 Why: Chrome DevTools profiling showed Layerize ~33% + Recalculate Style ~22% + Paint ~14% during drag, and Layerize ~17% + Recalculate Style ~16% + Layout ~11% during cross-map walking — all attributable to continuously-running animations the user wasn't stationary long enough to appreciate during those scenarios. Pausing frees frame budget for transform updates and React reconciliation.
 
-**Pause permanently (opt-out setting, v0.6.9).** `settings.mapAnimations` (Settings → Genie Map Animations, **default on**) threads to `GenieMapView` as the `mapAnimations` prop. When off, the pan group instead gets a distinct `genie-anim-off` class, which enumerates the animated classes the same way the transient freeze does (v0.18.5 — see the note above) but applied permanently. Unlike the transient class it covers **every** animated class, ping and heartbeat included: "off" stops the sonar ping too. Its list is kept comprehensive even where entries are inert today (most aren't mounted while the setting is off), because `genie-heartbeat` and `genie-aura-fire` already render outside the `showEffects` gate and the next effect to do so would silently escape a list pruned to "what is mounted right now". The two freeze classes are mutually exclusive on the pan group (`!mapAnimations ? 'genie-anim-off' : (isDragging || inMotion) ? 'genie-pan-dragging' : ''`), so there is no specificity duel between the ping-pause and the ping-exemption rules. Effect *elements* stay in the DOM — only paused, not removed — so a cold mount with the setting off freezes them at their 0% keyframe (fade-in effects like motes therefore read as absent rather than static).
+**Pause permanently (opt-out setting, v0.6.9; default OFF since v0.20.5, §54.5).** `settings.mapAnimations` (Settings → Genie Map Animations, **default off** for new characters since v0.20.5; it was on) threads to `GenieMapView` as the `mapAnimations` prop. When off, the pan group instead gets a distinct `genie-anim-off` class, which enumerates the animated classes the same way the transient freeze does (v0.18.5 — see the note above) but applied permanently. Unlike the transient class it covers every animated class **except the sonar ping** (the heartbeat included). Until v0.20.5 it stopped the ping too; it no longer does, because the ping is Lichborne's "you are here" locator, the same `.genie-here-ping` class the Lich map draws, and the Lich map's ping never had an off switch (Sekmeht). Both maps now behave alike, and epilepsy safe mode is the one switch for both (`:root[data-epilepsy-safe='true'] .genie-here-ping` hides the rings; the solid ring and centre dot stay). Its list is kept comprehensive even where entries are inert today (most aren't mounted while the setting is off), because `genie-heartbeat` and `genie-aura-fire` already render outside the `showEffects` gate and the next effect to do so would silently escape a list pruned to "what is mounted right now". The two freeze classes are mutually exclusive on the pan group (`!mapAnimations ? 'genie-anim-off' : (isDragging || inMotion) ? 'genie-pan-dragging' : ''`), so there is no specificity duel between the ping-pause and the ping-exemption rules. Effect *elements* stay in the DOM — only paused, not removed — so a cold mount with the setting off freezes them at their 0% keyframe (fade-in effects like motes therefore read as absent rather than static).
 
 **Why class-based, not pointer-events.** Earlier attempts toggled `pointer-events: none` on the pan group during drag for hit-test savings, but that shifts the click-target off the inner node `<g>` (mousedown sets `isDragging` true *before* `click` fires), silently breaking click-to-walk. The animation-pause class doesn't have this hazard because it only affects animation execution, not event routing.
 
@@ -4398,7 +4399,7 @@ export const characterMigrations: Record<number, (data: any) => any> = { /* empt
 3. On disconnect (clean or dropped) → immediate final character write regardless of debounce state.
 4. On window close (graceful shutdown) → main fires `window.__flushProfileSaves` in the renderer via `executeJavaScript`; the renderer runs every pending timer immediately and `await`s all writes. Main then runs `backupAllProfiles()` which copies each `{Character}.yaml` and `_shared.yaml` to `.yaml.bak` in the same directory. Single rolling backup per file from the last clean shutdown.
 
-**Atomic write:** `writeCharacterProfile` / `writeSharedProfile` write to `{path}.tmp` and then rename in place (after removing the existing target on Windows). The corruption window collapses to a single rename syscall.
+**Atomic write:** `writeCharacterProfile` / `writeSharedProfile` go through `writeFileAtomic` ([atomicWrite.ts](src/main/atomicWrite.ts)): write `{path}.tmp`, `fsync`, rename over the target (retried while antivirus holds it, then a copy as a last resort). The target is never deleted first, so a crash leaves the old file or the new one. Before v0.20.4 the target WAS deleted first, which opened a window with no file at all (B517, §53.7).
 
 **Character profile debounce triggers** (`scheduleProfileSave` in `GameWindow` and panels):
 - Settings panel `onChange`
@@ -4445,7 +4446,7 @@ This means adding a new game server (e.g. Briarmoon Cove) requires only a new en
 | `src/renderer/characterScope.ts` | `scopedKey(character, suffix)` and `normalizeCharacter(name)` — single source of truth for the `lichborne.{character}.{suffix}` namespace |
 | `src/renderer/profile-types.ts` | `SharedProfile`, `CharacterProfile` (v2) |
 | `src/renderer/hooks/useProfileSaver.ts` | `useProfileSaver()` — returns a stable `saveProfile()` callback bound to the current character's session info; called at every per-character `setItem` site |
-| `src/main/profiles.ts` | Main YAML file I/O — `readSharedProfile`, `writeSharedProfile`, `readCharacterProfile`, `writeCharacterProfile`, `listCharacterProfiles`, `backupAllProfiles`. `atomicWriteFile` is the internal `.tmp`-then-rename helper |
+| `src/main/profiles.ts` | Main YAML file I/O — `readSharedProfile`, `writeSharedProfile`, `readCharacterProfile`, `writeCharacterProfile`, `listCharacterProfiles`, `backupAllProfiles`. `atomicWriteFile` refuses to write over a damaged or locked file, then calls `writeFileAtomic` (atomicWrite.ts) |
 | `src/renderer/profile.ts` | Renderer-side logic — `buildSharedProfile`, `buildCharacterProfile` (scans `lichborne.{char}.*`), `exportSharedProfile`, `exportCharacterProfile`, `importSharedProfile`, `importCharacterProfile` (v2 only as of v0.6.1), `clearCharacterLocalStorage`, `scheduleProfileSave` (per-character `Map`), `scheduleSharedProfileSave`, `flushPendingProfileSaves` |
 | `src/main/main.ts` | IPC handlers: `profile:read-shared`, `profile:write-shared`, `profile:read-character`, `profile:write-character`, `profile:list`. Window-close handler invokes `window.__flushProfileSaves` then `backupAllProfiles` |
 | `src/main/preload.ts` | IPC bridge — exposes profile API to renderer |
@@ -7614,8 +7615,9 @@ gates** (procedural fallbacks always).
          skew is harmless, but the cost of doing it right is one field.
        - **Ship it as a MODEL, with the provenance the sun already has.** The script states outright that
          phase is model-only — *there is no passive phase broadcast to self-correct against* — and only
-         **4 of the 8** wordings are validated against `observe` (waxing crescent, waxing gibbous, full,
-         waning crescent). Present it the way the sun distinguishes observed from computed; do not
+         **4 of the 8** wordings were validated against `observe` (waxing crescent, waxing gibbous, full,
+         waning crescent) as of moonwatch v4.5.0; v4.5.4 maps 7 of 8, and 8 of 8 for a Moon Mage
+         (Knowledge.md §16). Present it the way the sun distinguishes observed from computed; do not
          present a computed bucket as fact.
        - **`observe <moon>` is the free correction layer.** `MOON_PHASE_LINE_PATTERN` +
          `OBSERVED_PHASE_MAP` decode the game's own wording (*"The black moon Katamba is a growing
@@ -8040,7 +8042,8 @@ across a full day.
      - **Spent cells:** a spent cell keeps "ended" and its clear-out countdown. Its stale reading
        moves to the tooltip as "last reported as …".
      - **Fixed height:** the slot is capped with an ellipsis, and a barless cell reserves the bar's
-       space (`.sm-bar--none`), so every cell is the same height whatever it holds.
+       space (`.sm-bar--none`), so every cell is the same height whatever it holds. Since v0.20.5
+       only an UNKNOWN reading is barless: a permanent effect shows a full bar (§54.10).
      - **Kept separate on purpose:** DR's own "fading" and our `<1m` countdown still read
        differently. One is the game's word and the other is our clock (the two-stage rule).
    - **(v0.19.6, now feeding the slot) THE NOTE ADDS WHAT THE LABEL DOES NOT SAY** — `spellNoteText`. A first cut rendered the
@@ -9013,7 +9016,7 @@ The tab and its six children also moved `rem` → `em`, each converted to render
 
 **Verified rather than eyeballed:** the chip was computed against all 21 built-in themes (composited over `--bg-raised`, the harder end of the bar gradient) — label contrast ≥ 6.17:1 everywhere, accent hairline perceptible everywhere, Barbarian the faintest (fill 1.05, hairline 1.14) because its accent sits close to the bar in luminance. That is inherent to the recipe, so the Automations tabs are equally subtle there; it is consistency, not a regression. Geometry was swept at font sizes 8→24: labels scale 9.06→27.19px, nothing clips the strip (`overflow-y: hidden`), and the active/inactive tabs keep identical heights and a shared baseline.
 
-**Rejected: the folder attachment.** An attach-to-the-edge look was built and measured landing exactly (active tab bottom = bar bottom, unclipped, shared baseline) — then reverted. The strip is `overflow-x: auto` with a 5px scrollbar; as soon as enough characters are open to overflow, that scrollbar claims the strip's bottom edge and lifts every tab off the border. The attachment would break precisely when a player has the most tabs open, which is the worst failure timing. Don't re-attempt without solving the overflow case first.
+**The folder attachment: rejected in v0.18.0, shipped in v0.20.4.** An attach-to-the-edge look was built and measured landing exactly (active tab bottom = bar bottom, unclipped, shared baseline), then reverted. The strip was `overflow-x: auto` with a 5px scrollbar; as soon as enough characters were open to overflow, that scrollbar claimed the strip's bottom edge and lifted every tab off the border, the worst possible timing. v0.20.2 hid that scrollbar behind an overlay thumb that takes no space (B486), which removed the objection, and v0.20.4 joined the tabs to the bar's bottom border at Sekmeht's ask (§53.6).
 
 ### 43.7 Shared primitives and the control vocabulary (v0.19.7)
 
@@ -9024,7 +9027,7 @@ The v0.18.0 tokens unified the *surface* of a dialog. The v0.19.7 UI/UX audit (B
 - six different "are you sure?" patterns;
 - no editor that knew whether its draft had been saved.
 
-Four pieces of shared machinery replace them.
+Four pieces of shared machinery replace them. A fifth, the shared number field, joined in v0.20.4 (§53.3).
 
 **1. Control classes: [ui.css](src/renderer/styles/ui.css).**
 - **Controls:** `ui-btn` (plus `--primary`, `--danger` and `--ghost`, each combinable with `--sm`), `ui-close`, `ui-field` (plus `--code`), `ui-tabs` / `ui-tab`, `ui-section-label`, `ui-hint` and `ui-empty`.
@@ -10635,6 +10638,8 @@ Right-clicking a player in the Living Tableau opens a menu:
 - **Whisper to *Name*…** → `whisper Name `.
 - **Contact card** (for a contact, under a divider) — this used to be the left-click; it moved here so a person has one interaction surface (Sekmeht: *"each person in the living tableau only has a right-click option… then we can add more options as time goes"*).
 
+- **Touch *Name*** (v0.20.4, Sekmeht) — at the top, above a divider, for EMPATHS only, and only for someone in the room. Sends `touch Name`, which starts an empath's healing. Unlike Say/Whisper it is SENT (through `onCommand`, echoed and logged like Look), because touching is the whole action. The guild comes in as the new `ExperienceProps.guild`: GameWindow's `characterGuild`, from the character's own `info` sheet (`detectedGuild`, the same line Lich's `DRStats.guild` is parsed from — DRStats itself lives in Lich's memory and isn't readable by a front end) else Edit Profile's Guild field. Unknown guild → no item. No slash command, like the rest of this menu.
+
 A plain left-click does nothing; the cursor is the context-menu cursor and the tooltip says "right-click for options". From the keyboard, Tab reaches a figure and Enter opens the same menu with focus on its first item (`ContextMenu`'s new opt-in `focusFirst`). The menu closes when the Tableau stops being the active character's (it is portaled to `<body>` and would otherwise float over the next character).
 
 **Nothing is sent.** The items only TYPE into the command bar, caret at the end, for the player to finish and press Enter; `GameWindow.directTo` writes `setCommand` + `commandRef`, leaves history browsing, and focuses through `focusCommandInput`.
@@ -10739,8 +10744,8 @@ Everything here stays inside the Tableau's own guardrails: it **reads** the game
     - indoors, an `interior`: temple, shop, home or hall.
   - **How it scores:** each feature has weighted word patterns; each pattern group counts at most two matches, and a title match counts three times. Misleading phrases are stripped first ("waves of heat", "a sea of faces", "an icy stare", "sea-green", "keep watch"). A sentence about the distance ("peaks rise in the distance") feeds only the far layer, at half weight. Title-only features (`indoorT`, `townT`, `fortT`, `caveT`, `fallsT`) ignore the description, where those words are asides ("the shop's front door"). "Falls" is title-only because in prose it is nearly always the verb ("the ground falls away"); surf needs the sea to be HERE (a score of 5), not mentioned; indoors needs a ceiling, furniture or an indoor title, and must beat the outdoor evidence.
   - **Tuned against the whole Lich map DB** (18,950 rooms) with `tmp-v0202-harness/scene-db.ts` (the distribution, or real rooms per layer with their descriptions) and reviewed visually with `gallery.tsx` (six real rooms per kind, drawn by the real component and stylesheet, on a light and a dark theme). Last distribution: 11,873 outdoor / 5,384 indoor / 1,688 cave. **Re-run both after any change to a pattern** — a word that reads well in one room is often a figure of speech in fifty others.
-  - **Cost:** tens of microseconds per room, about 60µs on a cold pass over the whole DB, run once per room change (a `useMemo` on title + description). Crossing the world is a few thousand rooms, i.e. well under a second of CPU in total.
-  - **[tableauBackdrop.tsx](src/renderer/components/experiences/tableauBackdrop.tsx) draws:** a 400×40 horizon SVG painted far → mid → near (stars first at night), and a 400×100 ground SVG under the figures for a road narrowing to the vanishing point, a winding river, crop furrows, swamp puddles, lava cracks or floorboards. Shapes come from a generator seeded by the title, so a room always looks the same and two rooms of a kind differ. Static: no animation, memoized, the busiest case (a shop wall) about 160 shapes.
+  - **Cost:** about 60µs per room as of v0.20.2, run once per room change (a `useMemo` on title + description). v0.20.3's things, towns and review rules raised it to about 0.3ms (§52.8), still negligible at one call per room change.
+  - **[tableauBackdrop.tsx](src/renderer/components/experiences/tableauBackdrop.tsx) draws:** a 400×40 horizon SVG painted far → mid → near (stars first at night), and a 400×100 ground SVG under the figures for a road narrowing to the vanishing point, a winding river, crop furrows, swamp puddles, lava cracks or floorboards. Shapes come from a generator seeded by the title, so a room always looks the same and two rooms of a kind differ. Static: no animation, memoized, the busiest case (a shop wall) about 160 shapes in v0.20.2 (v0.20.3: mean 47, worst 237, §52.8).
   - **The horizon height follows the stage's WIDTH** (`--tb-band: min(10cqw, 20cqh)`): the skyline keeps its drawn proportions and is capped at a fifth of the height so a wide, short panel tab keeps room for the figures. The backdrop is the size container, so the gradient that uses `--tb-band` is painted on its `::before` (pitfall #172).
   - **Theme-safe by construction:** silhouettes are 15% / 8% (far) mixes of the scene text over transparent, ground tints a fixed hue at 8–12%. Checked on Classic Light, where silhouettes had been too faint at the old 11% / 6%.
   - a sky band from the server clock (`exactSunPhase`), none indoors or in caves;
@@ -10783,3 +10788,394 @@ The Tableau's surface is its window: the ⚙ layers, the right-click menus and t
 - **On green-accent themes** (Empath, Necromancer, Terminal, Ranger), your fight lines and your group's are near the same colour. They differ in which figure they attach to; a stronger cue is a design call.
 - **The battlefield can mirror** depending on the order the assess lists creatures. The warm start hides this between solves but not on a cold start.
 - **A corpse needs a place to keep.** A creature that dies without ever having been drawn (dead before you looked, or past the row's cap) goes to the Dead list instead.
+
+## 52. The Tableau's sense of place, room by room (v0.20.3)
+
+v0.20.2 gave the Living Tableau a layered backdrop read from the room's description (§51.6). v0.20.3 turned it into a picture of *where you are*: each town drawn in its own style, rooms furnished from what their description names, and things standing in the scene. Then every room in the map was read and judged, and the rules were tuned against what the reviewers found. The split from §51.6 holds: [tableauScene.ts](src/renderer/components/experiences/tableauScene.ts) **decides** (pure, harnessed), [tableauBackdrop.tsx](src/renderer/components/experiences/tableauBackdrop.tsx) **draws** (static, memoized, deterministic). A third file, [tableauPlaces.ts](src/renderer/components/experiences/tableauPlaces.ts), knows the towns.
+
+### 52.1 Towns
+
+- **39 towns in 13 building styles** (`PLACES`, `TownStyle`): river (gabled houses, chimneys, a spire: the Crossing, Riverhaven, Therenborough…), harbor (boardwalks on pilings, masts), tiers (Ratha's and Aesry's terraces), floating (Mer'Kresh on platforms over water), sandstone (Muspar'i's domes), crystal (Shard's spires), elven (Leth Deriel's great tree), dwarven (doors carved into a rock face), logs, clan (longhouses and a palisade), tents (Zaldi Taipa), ruins (Throne City, Dirge) and fortress (Ain Ghazal, Hvaral). A town can also set a default horizon (`far`), a lake mist (Aesry) or volcanic country (Dirge, Sicle Grove, Arthelun).
+- **Which town a room is in**, in order:
+  1. its title's place name, through `PLACE_PREFIXES`. That table is GENERATED from the Lich map's `location` field by [tools/gen-place-data.mjs](tools/gen-place-data.mjs) (184 title prefixes, 3,948 rooms), because districts and buildings often never name their town ("[Undershard, …]", "[Crossing Temple, …]"). It is committed rather than read at runtime, so it works without Lich (Principle #2). Re-run the generator when the map grows; its output must stay byte-identical to the committed file.
+  2. a town name at the start of the title (`NAMES`);
+  3. **the last town this character was in** (Sekmeht: walk into a building in Shard and the title stops saying Shard). GameWindow keeps it per character in a memo over `resolvePlace` and passes it to the Experience as `place`. It is dropped as soon as a room reads as open wilderness, so leaving town by an unnamed road doesn't carry Shard's spires to the next village. **While a room's description hasn't arrived yet it is kept**: a room change clears the description, and judging the title alone could read as open country and lose the town for good.
+- `resolvePlace` is **idempotent** (calling it again with its own answer returns the same answer), which is what makes it safe inside a memo that writes a ref (the pitfall #70 hazard).
+- **The description still decides WHAT is drawn**; the town only decides how its buildings look. It fills the horizon only where the description leaves it blank, and adds buildings only when the text names something built (`BUILT`) and nothing natural dominates. A town whose default horizon is the sea doesn't impose it on an inland forest room.
+
+### 52.2 The classifier, reviewed against every room
+
+- **Process.** Reviewers read all 18,945 rooms with prose in 38 chunks (`tmp-v0203-scene/review.ts all`) and reported RECURRING mistakes, not one-offs. Each finding became a general rule, checked by diffing the whole map before and after (`snapall.ts`) and reading the rooms that flipped. On the build before the review they judged 73.5% of rooms correct, 17.8% minor (right enclosure, a layer off) and 8.7% wrong. A validation pass on 500 random rooms, judged more strictly, found 65.4% correct, 29.2% minor and **5.4% wrong**. The wrong rate is the comparable number, since the two passes used different strictness.
+- **The room part of the title decides a lot** (the words after the last comma):
+  - an outdoor word there ("Garden", "Road", any street word) beats a building named earlier in the title;
+  - "outside", "before/behind/beside the…" mean outdoors;
+  - "inside"/"interior" mean indoors;
+  - "beneath the mountain/city/temple" means a cave;
+  - balcony, bridge, gate, wall, terrace, roof and ledge are ambiguous and decide nothing on their own.
+- **A title word must be confirmed by the description** for ruins, dead trees, lava, volcanic, farm, palms, swamp and dunes (`DESC_CONFIRMS`): "[Ruined Keep, Hall]" with no rubble in the text is a hall.
+- **An indoor title alone doesn't beat strong open-air evidence** ("[Lumber Storage]" that is a stacked yard under the sky), and a cave-titled room needs real outdoor evidence beyond a river or an outdoor title word to come out of the cave.
+- **Figures of speech are removed before scoring** (`NOISE`, and `SCENE_NOISE` for the scene only). The families: dry or former water ("the dry riverbed", "where a river once ran"); similes ("like waves", "reminds one of"); "a forest of masts", "a sea of faces", "pools of light"; "beds of…" and "carpets of…"; tree names used as materials ("pine table", "oak walls"); painted or tiled scenes ("a mural depicts the sea"). A distant sentence feeds only the far layer, at half weight, except the sea and dunes, which are seen from afar.
+- **Fallbacks** when the scorer is unsure: `BUILT` (a town street), `SHOP_T`/`SALE`/`LIB_T` (a shop by name or by selling, but not a library or a museum), `DOCK` (water at a dock), and `DIRT`, `SALT`, `ROCKY`, `BARREN` for the ground.
+
+### 52.3 Indoors: walls, light, furnishings, wares
+
+- **Walls**: stone, marble, wood, plaster, canvas, earth or metal. A walls phrase ("walls of polished ironwood", "granite walls") counts 4 and a bare material word 1, with a floor of 3, so "an iron anvil" doesn't make iron walls. A town building without a stated material takes the town's (`WALL_OF_TOWN`).
+- **Light**: orbs (gaethzen), lanterns, candles, torches, a fire or daylight.
+- **Up to three furnishings** in fixed slots (middle, left, right). There are 30 kinds: counter, shelves, racks, cases, tables, benches, bar, hearth, stairs, columns, windows, stained glass, tapestries, rug, chandelier, bed, desk, altar, forge, barrels, books, plants and door, plus seven from the prop round (§52.4). **The rug and the pool lie on the floor** (`ON_FLOOR`) and take no wall slot.
+- **A shop's wares** (weapons, armor, clothing, jewelry, alchemy, food, drink, books, furs, tools, flowers, coin, music, or general) are drawn on its shelves or racks. A shop that names its wares but nowhere to put them gets a holder (racks for weapons, armour, clothing and furs; shelves otherwise; mannequins count as a holder).
+- A room that names no furnishings keeps the picture of its kind (hall, temple, shop, home) on its own walls and in its own light.
+
+### 52.4 Props and paving
+
+- **Up to four props outdoors and in caves** (`PROPS`), placed left of centre, then left, right, and right of centre, so the middle of the stage stays clear for the figures. They are drawn a step stronger than the scenery (`tb-sil--prop`) so a signpost doesn't vanish into the tree line.
+- **A prop must be HERE**: sentences about the distance don't count. The title only supports what the description says: it counts once, and a prop the description never mentions is dropped ("[Southeast Tower, Aumbry]" is a room inside the tower).
+- **A cave keeps only what can stand underground** (`CAVE_PROPS`). Dropped where the scene already shows them: a lone tree in a wood, a pool where there's water, pillars in ruins, stalactites outdoors or in a natural cavern (which draws its own).
+- **Paving** (cobbles, flagstones, mosaic, planks) is drawn on the ground, in perspective.
+- **The prop round (v0.20.3)** added what the reviewers saw undrawn most:
+  - 10 props: hut (362 rooms), pillars (243), pool (162), crates (148), arbor/gazebo (92), obelisk and standing stones (87), nest (50), stalactites (30, in tunnels, mines and ice caves), bell (23) and brazier (17).
+  - 7 fixtures: paintings (218, split from tapestries), statue (172), workbench (140), mannequins (63, split from racks), mirror (63), stage (52) and pool (45).
+  - Obelisks and standing stones used to draw as a tower or a boulder.
+- **Coverage** (`tmp-v0203-scene/coverage.ts`, the things descriptions name against what the scene draws): 41.9% before v0.20.3, 59.7% after the first props, 63.0% after the prop round on the same list of things.
+
+### 52.5 Is it the thing, or a word describing something else?
+
+Sekmeht's question, from room 768 ("cobblestones … flecked with crystals" drew a cluster of crystal spires): is a prop word the thing itself ("a bed of roses"), or describing something else ("rose colored curtains")? `tmp-v0203-scene/modsurvey.ts` answers it for every prop and fixture over the whole map: it finds each mention (`thingMentions`, which sees exactly the text the scorer sees) and looks at the word that follows. A verb, a preposition or punctuation means the thing; another noun means it may be describing that noun. The pairs were read prop by prop. Findings and rules:
+
+- **Most "modifiers" are verbs** ("shelves line", "vines drape", "the counter sits"): the prop is the thing.
+- **A describing compound is never the thing** (`DESCRIBES`, wrapped around every prop and fixture pattern): a word followed by `-like`, `-shaped`, `-colored`, `-hued`, `-tinted`, `-scented`, `-carved`, `-painted`, `-embroidered` and the like, or by " colored/hued/scented" without the hyphen. With a space, "carved" and "shaped" are excluded on purpose: "a statue carved from marble" and "lanterns shaped like stars" are the thing. **`-covered`, `-lined`, `-filled` and `-strewn` ARE the thing** ("vine-covered willows", "book-lined walls", "rubble-strewn"), so they are not in the list.
+- **A material or a part is not the thing**: an oak door or table is not a tree, a tree stump not a tree; log walls, cabins or fences are not logs; wagon tracks, wheels or a cart path are not a cart; a hog skull, horse droppings or the Horse Clan are not livestock; a bird feeder, bird nests or Gull Circle are not birds. **The bird exclusions apply only after a singular bird word**, so "birds nest in the branches" and "pigeons circle over the fountain" still draw birds. Bone as a building material is still bones (a giant skeleton's "bone spires").
+- **Crystals**: crystals that are part of a surface ("flecked with", "set into its surface", "mixed with crushed shells"), hanging decorations (fence crystals, a chandelier's, wind chimes) and crystals of ice or frost don't count, nor does Shard's skyline named from elsewhere. A lone "crystal" counts only as the thing ("around the crystal"), never as a material ("a crystal unicorn"). **In a cave, crystals in the walls are the cave's own**, so the surface rule doesn't apply there.
+- **Stalls**: "the X stand" counts only when X isn't a plural noun, so "the trees stand straight" is not a market stand.
+- **A noise rule removes the misleading word, never the thing next to it.** "a bed of roses", "flower beds" and "flowerbeds" used to lose their flowers, because the rule that stops a flower bed reading as furniture deleted the whole phrase. Now only "bed" goes.
+
+### 52.6 Corpses lie behind the living (B505)
+
+Dead creatures stacked in list order and often covered the living ones fighting beside them. The stage is now its own stacking context (`isolation: isolate`), with layers from back to front: scenery (z -3), weather (-2), corpses (-1), then everything else in DOM order (fight lines, living figures, bubbles, gauges); your figure and duelists keep their raised layers. Verified with a real layout probe: at an overlap the living creature is on top, and a corpse alone still paints above the scenery.
+
+### 52.7 The Overview card: one row for the stream and the stats
+
+The card's stream picker ("showing [Game window]") and its session stats (up, idle, lines, rooms…) share one row (`.ov-card-meta`) that wraps on a narrow tile. The compact size tier hides the row when there is no picker, and the micro tier hides it entirely.
+
+### 52.8 Cost and budget
+
+- **Classifying**: 293µs per room on average, about 1ms at worst, once per room change (a `useMemo` on title, description and town). Working out the town costs about 0.2ms more, for every connected character, since it must be known before a Tableau opens.
+- **Drawing**: mean 47 shapes, worst 237 (Aesry's courtyard terraces), measured over every room. Static and memoized: the Tableau's own re-renders don't redraw it.
+- **Checked over every room in every sky** (94,770 renders): no invalid value in the markup, no exception, and the same picture each time.
+
+### 52.9 No slash command (decided)
+
+Scenery is drawn from the room, with the ⚙ **Scenery** layer to turn it off. There is nothing to type, so per §34.6 and Principle #11 there is no command.
+
+### 52.10 Known limits
+
+- Some wall materials aren't recognised (brickwork, paneling, metal sheets).
+- A shop whose title doesn't say "shop" and whose text doesn't sell is drawn as a hall.
+- A negated thing can still be drawn ("not even birds").
+- A few trees can turn a meadow's ground to forest.
+- Things the drawing has no vocabulary for: water in caves, a ship's deck, cliff walls.
+- "Nest" is matched only in its clearest forms, catching about a third of the rooms that mention one.
+- Words are matched, not understood: a new figure of speech will slip through until someone sees it. Find it with `hits.ts` or `modsurvey.ts`, fix the general rule, and diff the whole map.
+
+### 52.11 Moonskin and each moon's next full (Moons)
+
+Vellinous asked for the Rakash Moonskin times that Mahtra's DRMoonWatch site shows; Mahtra (Destahd) pointed us at [the code](https://github.com/MahtraDR/DRMoonWatch).
+
+- **What it is.** Rakash take their moonskin form while **Katamba is full** (Knowledge.md §16): from the minute the phase index becomes 4 until the minute it leaves 4. It is a pure function of time, and Lichborne already had the phase math (F64a, `moonPhase`), so nothing new is needed from the game, Lich or moonwatch. DRMoonWatch has no license, so the algorithm is re-derived from our own constants rather than copied.
+- **The math** ([experiences.ts](src/renderer/experiences.ts)):
+  - `nextPhaseChange(moon, serverMs, target, leaving)` steps `moonPhase`'s exact integer math minute by minute (a phase can only change on a minute, so this is exact, unlike `secondsToNext`'s averaged rate);
+  - `moonskinWindow(serverMs)` returns the window in progress or the next one, `{ active, start, end }` in server time;
+  - `nextFullAt(moon, serverMs)`.
+
+  Harness: `tmp-moon-harness/moonskin.ts` (20 cases) reproduces Elanthipedia's 2012 table to the minute, the edges (the start minute is in, the end minute is out), DRMoonWatch's 2026 window, and agreement with `moonPhase`.
+- **Cost:** a scan is up to ~14,000 steps. Moonskin and three next-fulls take about 0.6ms together, so `skyCalendar` recomputes them once per server minute in a module-level cache. It is not a hook, because MoonsExperience returns early before its hooks (the Rules-of-Hooks crash Moons has hit before).
+- **Display:**
+  - The footer gains a **moonskin** segment beside the date: "Mon 12:55 AM · in 21h 5m · lasts 28h 11m", or "now · ends 9:06 AM, in 18h 44m". Times are computed on the server clock and shown on yours. The segment's hover gives the full dates and says it is computed.
+  - Each moon's hover adds **Next full** as a date, and **Katamba's hover adds the Moonskin window** ("Moonskin: now, until …" or "Moonskin: <start> to <end> (28h 11m)"; Sekmeht). Both come from the shared `phaseLines`, so the scene disc and the pill cell say the same thing. The ⚙ **Moonskin** switch hides it there as well.
+  - Hover text uses only fixed clock times, never a ticking "in …" (pitfall #145).
+  - Countdowns round UP (`spanLabel`), so the last half-minute reads "1m", never "0m" while the window hasn't started or ended.
+  - **Clock direction:** an event at server time T shows at local T − offset. `tmp-moon-harness/render.tsx` (11 cases, the real component) checks it: with the server an hour ahead, the same window shows an hour earlier on your clock. The same harness covers the footer, Katamba's hover, ⚙ Moonskin and ⚙ Calendar on and off.
+- **Shown to everyone**, not only Rakash (Sekmeht: you may need to know when OTHER Rakash change). It has its own ⚙ layer, **Moonskin** (on), independent of **Calendar**, so either can show without the other.
+- **No slash command** (§34.6: the window and ⚙ are the surface).
+- **Limit:** the Moons scene draws only once moonwatch's feed has arrived, so a player without Lich doesn't see Moonskin yet, even though it needs no feed. Showing the scene's phase-only parts (phases, Moonskin, next fulls) before the feed arrives is the natural follow-up, together with an uncalibrated rise/set from DRMoonWatch's three epochs, which we don't hold.
+
+### 52.12 Your posture, and a round of window and Tableau fixes
+
+**Your posture as a chip (F135, Sekmeht).**
+- Sitting, Kneeling or Prone shows as a chip on your conditions line.
+- Data source: `combat.stance`, which the game's posture indicators set. The Icon Bar's stance chip reads the same value, so the Tableau already received it but drew nothing.
+- Colours: the Icon Bar's own themed `--stance-*` values.
+- Order on the line: danger conditions, then posture, then hidden/invisible/joined. It shares the line's three-chip limit and "+N".
+- Hidden when: you're Standing (quiet by default), or you're dead (lying down is implied).
+- Hover text: from `CONDITION_TITLES` ("Sitting — you are sitting down. STAND to get up.").
+- Follows the ⚙ **Your conditions** switch; the "?" key and the ⚙ text say so.
+- **Checked during a fight with everything firing**, in a live render on both themes and a small panel: the chip line never meets the combat gauges, because the app lifts your figure clear of them. Seven render scenarios cover it in `tmp-v0202-harness/tableau-render.tsx`.
+
+**Hidden fades you, not your conditions (B508).** Hidden and invisible used to fade the whole figure, so "Bleeding" went faint exactly when you were hidden. Only the avatar and your name fade now.
+
+**Creature tags over your avatar (B509).**
+- **Cause:** the battlefield's pixel relaxation treated you as one 6.2×6.6em box. A live measurement shows your figure is 12em wide and 7.3–8.5em tall, with the avatar at its top.
+- **Model now:** two fixed boxes.
+  - Avatar + name: 5.76em tall from the figure's top, 6.2em wide, plus 0.6em for the readiness rings.
+  - Status lines: 0.5em gap, then 1.0em conditions and 1.2em hands, 12em wide.
+- **Loop rules:** fixed boxes never push each other, and are never written back (their centres aren't your position).
+- **If your figure changes shape, re-measure it:** `tmp-v0202-harness/chips-live.tsx` prints the parts in em.
+
+**Floating bar windows (B507, Qij).**
+- A rect is a fraction of the game area, but a bar's height comes from the font, so a smaller screen clipped the bars top and bottom.
+- `FloatingWindow` measures a chrome window's bar for drawing only (never persisted, pitfall #93; a 0 reading from a hidden tab is ignored, #83).
+- It draws the window at least bar + 2px border tall, moves it up rather than past the bottom, and floors resizing at the bar.
+- Stored rects are unchanged; "Fit bars to content" still writes exactly the bar height.
+- **The bar windows show their name only on hover**: the focused command bar's name sat over the top of the input while you typed. It stays visible while you rename (a bug the bug check caught).
+
+**A readable title bar (B510, Sekmeht).**
+- The strip's font was 0.5em, a 6px name. That size was chosen when the header was a flow row that pushed content down; since v0.18.1 it is an overlay, so it can open up without moving anything.
+- Pointing at the strip itself, or renaming (`fl-titlebar--open`), opens it to `max(10px, 0.8em)` text in a 2em bar, with full-strength buttons. A hovered ✕ still lights: a later rule at equal specificity.
+- Hovering the window body doesn't open it, so a mouse resting over game text never covers its top line.
+
+**Decided against (recorded so they aren't re-proposed without a fresh ask):**
+- Shrinking or abbreviating long full-vitals labels at large fonts in narrow windows: "Concentration 77%" can spill past its bar. Compact vitals already avoid it (Sekmeht: leave it).
+- Computing moon rise and set natively to drop moonwatch.lic: researched 2026-10-04 and passed on for now.
+  - Findings: the moons are a pure function of time plus three published start times; moonwatch v4.x is that formula plus a learned per-character offset, and no longer crowd-sources.
+  - The Moons waiting screen still says "crowd-sourced", which is out of date.
+
+**No slash command** for any of these: they're display behaviour (Principle #11).
+
+## 53. Window zoom, game text size, and number fields (v0.20.4)
+
+Sekmeht asked for a bug review of Ctrl+/− "to help unify the experience". It found that the app had four size controls that knew nothing of each other, one of which disagreed with the others about its own range, and that the number boxes throughout the app fought the user while typing. A follow-up report ("a slight delay as the setting is applied, also after clicking between character tabs") was traced to the Settings font picker.
+
+### 53.1 Two systems, now named
+
+- **Window zoom** is Chromium's page zoom: Ctrl+= / Ctrl+− / Ctrl+0 (Cmd on a Mac), driven by the View menu's `zoomIn` / `zoomOut` / `resetZoom` roles plus the B176 hidden aliases (Ctrl+=, Ctrl+Num+, Ctrl+Num−).
+  - It scales the whole window: dialogs, chrome and game text together.
+  - It applies to every Lichborne window and every character (Chromium's same-origin zoom policy).
+  - **Chromium remembers it across restarts** (Sekmeht tested it: the login screen, a reconnected character and a newly added one all came back zoomed). No Lichborne code stores it.
+- **Game text size** is the per-character `settings.fontSize`, plus the per-panel and per-Experience A−/A+ overrides.
+- **What the user sees now:**
+  - Settings → Display has a **Window zoom** row (−, the percent, +, Reset) under **Font size (game text, this character)**, each with a tooltip saying what it scales.
+  - The View menu's **Font** submenu became **Game Text Size** (Larger / Smaller / Reset to Default), and the zoom items are labelled **Window Zoom In / Window Zoom Out / Reset Window Zoom**. A `label` on a role item keeps the role's behaviour and accelerator.
+- **How the zoom row works:**
+  - The preload's `getZoomLevel` reads through `webFrame` (synchronous); `setZoomLevel` sends `set-zoom-level` to main, which calls `webContents.setZoomLevel` on the sender. Setting it through `webFrame` looked right but was TEMPORARY and lost on restart (B516): only a `webContents` zoom is saved by Chromium. Steps are 0.5 levels, matching the menu roles; percent = 1.2^level; the row is clamped to levels −3…5 (about 58–249%).
+  - Nothing tells a page that its zoom changed, but zoom moves `devicePixelRatio`. `useWindowZoom` listens to a `(resolution: Ndppx)` media query re-armed at the current ratio after every change, so the readout follows Ctrl+=, the menu and other windows. Moving the window to a monitor with different scaling also fires it, and re-reading the level then is harmless.
+- **A macro on Ctrl+= or Ctrl+Num± wins over the zoom shortcut.** The renderer's keydown claims the key before the menu accelerator (Sekmeht tested a `smile` macro on Ctrl+=). That is the right priority: a key you bound beats a built-in. Zoom stays reachable through the other keys, the View menu and Settings.
+- **No slash command for window zoom**, by decision (Principle #11): it is a window setting with three standard keys, a menu and a Settings row. Game text size never had one either.
+
+### 53.2 One range for game text size (B512)
+
+Settings clamped the font to 10–24 while View → Font, a panel's A−/A+ and an Experience's A−/A+ allowed 8–24, so at 8 or 9 Settings' − button raised the size to 10. `FONT_SIZE_MIN` / `FONT_SIZE_MAX` / `clampFontSize` in settings.ts are now the only range; `coerceSettings` also clamps a loaded `fontSize`, so a hand-edited profile can't sit outside it. An invalid typed size used to fall back to 14 (the default is 12); with §53.3 it now reverts to the last value instead.
+
+### 53.3 One number field (B514)
+
+Every numeric field committed on each keystroke, so a half-typed value was final: backspacing the font size snapped it to 8, some boxes refused to be cleared, and the log retention box saved 3 and 36 on the way to 365. [NumberField.tsx](src/renderer/components/NumberField.tsx) replaces all twelve:
+
+- The box holds exactly what you type, as a draft.
+- **Enter, blur, ↑/↓ and the spinner commit.** An out-of-range number is clamped at that moment and the box shows the clamped value. A spinner click arrives as a plain `Event` rather than an `InputEvent`, which is how it is told apart from typing.
+- **Esc** restores the value from before editing began (in `live` mode the committed value has already moved, so the component remembers it on focus). Esc is `preventDefault`ed only when there is a draft, so a clean field still lets Esc close its dialog.
+- An empty or invalid draft on blur reverts to the last committed value: never the default, never the minimum.
+- **`live`** also commits while typing, but only a draft that is already a valid, in-range number.
+
+| Field | Mode |
+|---|---|
+| Settings font size, Overview feed lines | live |
+| Overview idle seconds | commit on Enter or blur (live would flag cards idle at 12 on the way to 120) |
+| Macro, alias and trigger-action delay; trigger cooldown (decimals) | live (only the open editor's draft changes; Save still decides) |
+| Theme Editor opacity (decimals) | live |
+| Text styles size (`PercentInput`, the pattern this generalizes) | live |
+| Command-history minimum, Session Log retention and size cap | commit on Enter or blur only |
+
+The Attach port and the character Circle field store text and are unchanged.
+
+**Fixed in the v0.20.4 bug check:**
+- **Enter in an editor that saves on Enter** (the macro, alias and trigger editors' `enterToSave`): that handler runs in the same keydown with the value from before the commit, so a delay typed as 40000 saved the last live value, 4000. When an Enter CHANGES the value, NumberField now stops the event: the first Enter commits (clamped), the next one saves. An Enter that changes nothing passes through and saves as before.
+- **Esc after an Enter** no longer undoes it: a commit becomes the new Esc point.
+- **Parsing:** `Number()` instead of `parseInt`, so "1e3" is 1000 and whole-number fields round (12.7 → 13).
+- **↑/↓ snap to the step grid** like the native spinner (37 with step 50 goes to 50).
+
+**Clamps that changed** (intentional): macro, alias and trigger-action delays are now capped at their 30000 ms attribute (the old code enforced only ≥ 0); trigger cooldown is capped at 3600 s and kept to 2 decimals; Overview feed lines and idle seconds are clamped at entry; an out-of-range text-style size now commits the clamped value instead of reverting.
+
+### 53.4 The font picker was the delay (B515)
+
+Measured from a DevTools trace Sekmeht recorded, then confirmed in a harness (`tmp-zoomperf/`):
+
+- Each slow action spent 850–900 ms in `performLayout`, on a page of only ~4,200 layout objects (about 200 µs per object, where ~1 µs is normal), so one thing was expensive rather than the page being big.
+- The first suspect, the Genie map's ~1,100-child pan group, was ruled out by the harness: a transform change on that much SVG costs under 1 ms.
+- The cause: the Settings font picker draws every installed font in its own face, about 430 of them on that machine. Every relayout while Settings is open loads and shapes all of them, and a zoom change forces one. The harness (197 fonts): 420–520 ms per zoom change with the list, under 50 ms without.
+- **Fix:** `content-visibility: auto; contain-intrinsic-size: auto 1.9em` on `.sp-font-item`, so rows outside the list's scroll view are skipped. Same harness: under 50 ms at every zoom level. The preview is unchanged when you scroll.
+- **Also:** opening Settings spent ~450 ms on the font scan (the canvas monospace test sets `ctx.font` to each family, which loads it). The scan now runs once per window session; a failed scan isn't kept.
+- Tab switching felt faster afterwards as well (Sekmeht): in the trace, Settings was open during the tab switches, so they were relaying out the same list.
+- **Decided against:** a Rescan button. Chromium builds its installed-font list once per process (`content/browser/font_access/font_enumeration_cache.cc`), so only a restart finds a new font.
+
+### 53.5 Zoom-safe measurement (B511, B513)
+
+Two places did arithmetic with fixed pixels that zoom invalidates:
+
+- **The panel tab strip (B511)** reserved a 3px scrollbar track (B312) that stayed 3px while the tabs scaled, leaving a sliver under a hovered tab. It now uses `useOverlayScrollX`, the character tabs' overlay scrolling: no track, a thin thumb over the bottom edge when tabs overflow, edge fades, the wheel scrolls sideways, and the active tab scrolls into view. The shared CSS in character-tabs.css names both strips. **Unlike the character tabs' thumb, the panel thumb is display-only** (`pointer-events: none`): panel tabs are short and are dragged to reorder and to move between windows, and a grabbable thumb with its enlarged hit area covered their lower half, blocking drops, drags and hover there (found by the bug check). The wheel and the auto-reveal do the scrolling.
+- **The Lich Dashboard search highlight (B513)** relied on B249's whole-pixel 21px line height, which is exact only at 100%: at 80%, 90% and 110% the laid-out line height is off Chromium's 1/64px grid and the error accumulates down a long file. `linePitch` measures the content's real height ÷ its line count and uses it when within 0.05px of the computed value.
+
+### 53.6 Character tabs sit on the app bar's border (Sekmeht)
+
+The active character tab stopped 3–4px above the app bar's bottom border, because the bar's 3px bottom padding applied to the tab strip like everything else. Now:
+
+- `.app-bar` has no bottom padding; the tab strip's wrapper stretches to the bottom (`align-self: stretch`) and the strip takes the 3px as TOP padding with its tabs aligned to the bottom.
+- Every other DIRECT child of the bar (the wordmark, the Session/Overview toggle, and `.app-bar-actions`, which holds the buttons and pills) gets a 3px bottom margin (`.app-bar > :not(.character-tabs-wrap)`), so under `align-items: center` it lands exactly where it was. The strip's own **+** (`align-self: center`) is centred in the strip, which now reaches the border, so it sits up to 3px lower than before.
+- Measured old vs new by rendering the real stylesheets (fonts 12 and 18, with and without a taller button in the bar): the bar's height and the other items' positions are identical, and the gap is 0.
+- This was rejected in v0.18.0 (§43.6) only because of the strip's real scrollbar, which v0.20.2 replaced with an overlay.
+
+### 53.7 The persistence sweep (B517–B523)
+
+Sekmeht asked, after B516, for a look at "other bugs for persistence". Three read-only audits (app-wide settings, per-character settings, main-process files) produced about 35 candidates; each serious one was confirmed by reading the code before fixing.
+
+**Fixed in v0.20.4:**
+- **Crash-safe writes** ([atomicWrite.ts](src/main/atomicWrite.ts)): `.tmp` + `fsync` + rename over the target, retried when antivirus holds the file. Used for profiles, `passwords.json` and `ai-keys.json` (B517, B518).
+- **Unreadable files are kept, never overwritten** (B519, B518): main moves a file that doesn't parse to an object aside as `{name}.unreadable-{ts}`, refuses to write over one it couldn't move, and the launcher, a connect or the shared import shows a toast naming the kept file. The connect paths clear a character's working copy only when no profile file existed, so a damaged profile is rebuilt from the working copy rather than blanked. Both savers refuse to overwrite a NEWER `profileVersion`.
+- **Per-character theme** (B520): stored under `lichborne.characterTheme.{name}`, written by the GameWindow and the import, read by the save and by a GameWindow when it mounts. The shared `lichborne.theme` remains the boot fallback and the cross-window paint signal.
+- **Custom-theme list kept current** (B521): `saveMyThemes` dispatches `lichborne:my-themes-changed`; GameWindows reload on it and on the `storage` event.
+- **Shared settings load once per run** (B522): `profile:claim-shared-import` lets only the first window load `_shared.yaml`. Dialog saves use `scheduleSharedProfileSave`; the Analytics toggle schedules one.
+- **Closing a tab saves the character** (B523).
+
+**Corrected in the v0.20.4 bug check** (two independent reviews of the uncommitted changes):
+- **The working copy really is kept now.** The launcher reads every profile at startup, so a damaged file had usually been moved aside BEFORE any connect, and the "did a file exist?" check then said no and cleared the working copy anyway. `characterProfileExists` now also counts a `{name}.yaml.unreadable-*` copy (a leftover `.tmp` does not count; see below).
+- **Locked ≠ damaged.** A file that can't be READ right now (EBUSY/EPERM/EACCES) is left in place and nothing may write over it until a read through the normal read path succeeds (not main's own check at write time — a second bug check found that let an unmerged save through); only a file that reads but won't PARSE is moved aside. Same for the password and AI-key stores (`readJsonStore` returns null for a lock, and the save is skipped).
+- **A blocked file unblocks itself.** A file that couldn't be moved aside is retried on each write, and a deleted one lifts its block; a LOCKED file is unblocked only by a successful normal read, which every save does first (the block used to last the whole session, silently dropping saves). A refused write now throws, so the save fails visibly.
+- **The last-resort write copies over the target instead of deleting it first.** A leftover `.tmp` is never promoted to a profile: the writer no longer deletes the target, so a missing file beside a `.tmp` is one the player deleted or archived, and a truncated YAML can still parse (a second bug check found it brought deleted characters back). Delete and archive remove the `.tmp` too.
+- **Toasts for every read that can move a file aside**, including the saves' own reads (not just the launcher, a connect and the shared import).
+- **Dev-mode boot race:** under StrictMode the second boot run ran Lich discovery and a shared save before the first run's import; both now await one module-level promise.
+- **`/theme` status** reports this character's theme, not the shared key; a cleared character's theme record is removed with it.
+- **The panel tab strip's thumb is display-only** (it blocked drops, drags and hover over the tabs' lower half); see §53.5.
+- **Second bug check:** a file that can't be moved aside is reported once per run, not on every save; damaged or locked files are left out of the rolling backups (copies of a broken file would push the good ones out); a damaged password or AI-key store raises the same toast; Esc no longer undoes a ↑/↓ or spinner step; the Window zoom row steps once from a level outside its range instead of jumping, and re-reads the real level after setting it; the panel thumb's unused drag wiring was removed.
+- **Final check (before packaging):** every read of a profile, `_shared.yaml`, `passwords.json` or `ai-keys.json` goes through `readFileRetrying` ([atomicWrite.ts](src/main/atomicWrite.ts)), which retries for about 300ms while the file is locked. A momentary lock (antivirus scanning a profile just copied in) used to fail the import, and the save right after rebuilt the file's `state` from a working copy that is empty on a fresh machine. Tested against a real exclusive lock: a 150ms lock is ridden out, a 1s lock still fails and blocks the write as before. `NumberField` also treats a non-number `value` as its minimum (an older macro without `delayMs` saved `null` after a ↑/↓).
+- `tmp-persist/` has 21 cases.
+
+**Found and left for later (not fixed in v0.20.4):**
+- A lock that outlasts the ~300ms read retry still loses the connect-time import, and the save after it rebuilds `state` from the working copy (fine on the same machine, empty on a fresh one). Closing it fully needs the renderer to know the import didn't happen and either retry it or hold that character's saves; not built.
+- The launcher's small profile writers (favorite, hidden, notes, attach, the inactive Transfer write) don't check `profileVersion`. They keep the newer file's fields and stamp, but still write it.
+- A theme picked within ~2.5s before a tab's in-place Reconnect can be saved as the old one: the import re-records the YAML's theme and the mounted window doesn't re-record its own.
+- Importing a character's profile still writes the shared `lichborne.theme`, which repaints OTHER windows with that character's theme (pre-existing; B520 fixed what is saved, not this repaint).
+- A Transfer that sets a theme on a character whose tab was closed within the last ~2.5s can be overwritten by that tab's last scheduled save (the remembered theme wins over the file's).
+- A Windows restart or log-off skips every close-time save: Electron emits `session-end` / `query-session-end` there, not the normal quit events, and our only OS-shutdown hook is non-Windows. Needs a small design (what can safely run in that window).
+- Settings → AI writes back a snapshot taken when the panel opened, which can undo consent or `/ai off` changed in another window; the Team Login picker does the same with teams.
+- `/theme` doesn't schedule a profile save (now harmless for the theme itself after B520, but it still waits for the next save).
+- Unverified claims from the audits: the Import Wizard's groups/modes overwritten by the live GroupsProvider; a Transfer into an open but disconnected tab; removing an account while one of its characters is open; window zoom not persisting on a Linux AppImage (Chromium keys it by the page's full file path, which changes per launch there); shutdown hanging behind a frozen window; the last session-log lines dropped at quit; backup rotation able to push out every good copy after a clobber.
+- No single-instance lock: deliberate (CLAUDE.md, multiple instances are not gated), noted here because it lets two processes write the same files.
+
+**No profile-shape change.** The new `lichborne.characterTheme.*` keys are localStorage only; the YAML `theme` field is unchanged.
+
+**No profile-shape change** in any of this: window zoom is Chromium's, and the font range only clamps an existing field.
+
+### 53.8 Smaller changes late in the release
+
+- **A skull for the dead in the Living Tableau (Sekmeht).** Your own figure and a dead creature's avatar showed a ✕ when dead. Both now draw the `Skull` SVG the Dead list and corpse marks already use (§51), in the avatar's own ink through `currentColor`, so it greys with the figure and can't arrive as a colour emoji (pitfall #125). `.tableau-avatar > .tableau-grave` sizes it like the initials it replaces. An SVG gets no `text-shadow`, so a `drop-shadow` filter stands in for the halo, read through `--skull-halo`. The self avatar sets that to `none` exactly when `monogramStyle` drops the halo (dark ink on a pale picked colour); creatures, which never had a halo, turn it off in CSS.
+- **"Edit contact" wears the Connect button's look (Sekmeht).** The contact popover's button was a plain outlined one. It now shares ONE look rule with the launcher's character and team Connect buttons (`.launcher-card-connect, .cpop-edit-btn` in launcher.css: accent fill, halo, weight, hover). Each host keeps only its own size and placement in its own file: the launcher in rem (app chrome), the popover in em so it scales with the game font (pitfall #45b). The two kinds of rule set disjoint properties, so load order can't decide between them (pitfalls #111/#113). launcher.css is always in the bundle (App imports the Launcher statically), so the popover never loses the look.
+- **B524 (Vaddon): the User Guide's setup step said `SET PROMPT STATUS`.** Corrected to `SET STATUSPROMPT`, and the paragraph now says what it is for: the Unconscious marker and `$unconscious`, the only state DR reports nowhere else (Knowledge.md, B426). Vaddon joins the About credits as a contributor; Crobin moves from Testers to Contributors.
+- **Help → About points at the new home.** The repository and AI notice links in the About dialog go to `github.com/elanthia-online/Lichborne`, done early from the §18.4.1 checklist. Every other `SekmehtDR` link is unchanged.
+- **The Discord invite lives only in the app.** README, the User Guide and AINOTICE.md say to download Lichborne and join through **Help → Discord**; the README's direct invite link is gone. The in-app copies (Help → Discord, the About dialog) still follow the per-major-version rotation rule.
+- **README credits** were a second copy of `credits.ts` that had drifted by four promotions and two testers; synced, and CLAUDE.md's credits rule now names it.
+
+**No slash command** for any of these: they are visual and documentation changes that add no capability (the Edit contact button's behaviour is unchanged; `/contact` has add, remove and list).
+
+## 54. Small fixes from a read-through, and lessons from ProfanityFE (v0.20.5)
+
+Reports from Vaddon (B525–B527) and Legiro (B529), a review of ProfanityFE's last 223 commits (B531–B533), and Sekmeht's go2, Tableau and scrolling reports with the bug and CSS/theme checks that followed (B534–B541).
+
+- **Genie Maps download link.** The "No Genie maps folder set" state links [github.com/GenieClient/Maps](https://github.com/GenieClient/Maps), where the Genie XML maps are maintained, with a **Download the maps ZIP** link straight to `https://github.com/GenieClient/Maps/archive/refs/heads/main.zip`, and says to unzip it and pick the folder with the button beneath. The ZIP link assumes the repo's default branch stays `main`; if GenieClient renames it, the link 404s and the repo link beside it still works. Both open in the system browser through `window.api.openUrl`, never a bare `target="_blank"`: main sets no `setWindowOpenHandler`, so a `_blank` link opens an Electron window inside the app. It used to link `elanthia-online/scripts`, which holds Lich scripts, not these maps.
+- **Transfer opens on the tab you asked for.** `ProfileTransferModal` takes `initialMode: 'export' | 'import'` (default `'export'`), read once into its `mode` state. App keeps `profileTransferMode`: the `profile-import` menu action sets `'import'`; `profile-export` and the launcher's `lichborne:open-profile-transfer` event set `'export'`. Because the prop is read only at mount, choosing Import Profile… while Transfer is already open leaves it on its current tab (the pitfall #153 shape; acceptable for a dialog the user can switch with one click).
+- **Import placeholder** reads "Choose a file to import…".
+
+- **The Overview's "send to" button (B528).** The target picker is a button reading `All · 2 ▾` or the target's name (ellipsized), opening `ContextMenu` upward. `CtxItem` gained an optional `checked` (a fixed tick column, so pick-one rows line up; undefined leaves an ordinary row unchanged) and `ContextMenu` an optional `openUp` (the menu's bottom edge sits at `y`). The All state keeps its accent tint. Picking refocuses the input; Enter/Space open the menu with focus inside (`focusFirst`, keyed per opening).
+- **Genie trigger import (B529, B530).** `#flash`/`#beep`/`#bell` match on the command word. `#event`/`#events N <command>` join the queue forms: `delayMs = N×1000`, no roundtime wait; an event whose action starts with `#` is dropped (only command actions carry a delay). `#playsystem <name>` is a sound by name (the library-sound preset fallback); `#playsystem beep` is Beep. Everything else in Genie's `#` list is backlogged as F136.
+
+### 54.1 Game-opened links follow link safety (B531)
+
+`<LaunchURL src>` opens the browser without a click. The parser emits `launch-url` only for a `/path` (made `https://www.play.net/path`; `//host` is refused) or a whole `http(s)://` URL with no whitespace; anything else (`@host/x`, `javascript:`, `file:`) is dropped. Main does not open it: it sends `LaunchUrlPayload { sessionId, url }` on `IPC.LAUNCH_URL` to `ownerWindow(s)`, and GameWindow (filtering on `sessionIdRef`) opens `wrapExternalLink(url, settings.webLinkSafety)` through `openUrl`. So the setting that governs clicked links governs these too: on (the default), the play.net bounce page warns first. It is deliberately not a GameEvent, because those are buffered for the pitfall #60 replay and would reopen the browser when a character changes window.
+
+### 54.2 A view of another room (B532)
+
+**The room-name style ends with its line (B534).** DR opens `<style id="roomName"/>` on the name's line and closes it with `<style id=""/>` only at the start of the next line, so anything slipped in between wore the room-name style: during a fast go2, Lich's `[go2]>…` echoes did, and the check below could have read them as room names. `text()` sets `roomNameOnLine` when it writes room-name text, and `parse()` clears `currentPreset` at the end of that line.
+
+A Moon Mage's Locate prints another room on main in LOOK form, without `<nav>`, subtitle or components (Knowledge.md, "DR protocol — a view of another room"). The parser decides at each inline roomName on main (`isRemoteRoomName`, after `parseInlineRoomName` cleans the name the way the subtitle is cleaned):
+
+1. a burst that moved us (a `<nav>`, or a subtitle naming a different room, since the last prompt) → ours;
+2. a session that has never sent `<nav>`, or no room known yet → ours;
+3. the game's id after the bracket (`] (84081)`, not `(u…)`) against the last `<nav rm>`;
+4. else the name against ours (`ownRoomName`: the subtitle's, or a move's roomName).
+
+While a view is open, its main lines carry `remoteView: true` and its `<compass>` emits no `exits`. The renderer still shows the lines, and skips their `roomdesc` for `roomState.desc`. A prompt ends the view. A subtitle ends it only when it names a different room, because Lich (`;display lichid/uid`, room-window front-ends) prepends a subtitle for the player's own room to the prompt line of ANY room view (pitfall #186). Two rooms with the same name read as ours (costs only a description). **Known gap:** after login or an Attach and before the first move, rule 2 treats a Locate as ours; Profanity closes this with a LOOK it sends at startup, which Lichborne doesn't send.
+
+### 54.3 Where a tag ends (B533)
+
+`src/shared/xmlTag.ts` holds `TAG_PATTERN` (a tag ends at the first `>` outside a quoted value; an unbalanced quote falls back to the first `>`) and `stripTags`. The tokenizer, the glance-hand check and the scene capturers use it, so all three agree.
+
+### 54.4 ProfanityFE review (2026-10-13)
+
+223 commits since March, mostly work against 15 real session logs. Applied: B531, B532, B533. Already fine in Lichborne: styles end at a prompt (#185), nested popStream (#102), glance empty hands (#142), zero-width highlight loops (#56), the LNet `[A-z]` range (#82), atomic settings writes (#112, #255), duplicate speech (#107, solved here by not falling back for natively-duplicated streams). Not applicable to our architecture: span flushes (#161), Room Number lines (#225). Ideas noted, not built: multi-line mutes that hide a header through the next prompt (#40), a configurable notification stream for script `***STATUS***` lines (#46), and sticky script-pushed timers like their GemStone effects window (#254) for the Spell Monitor.
+
+### 54.5 No camera glide on the Genie map (B537)
+
+Sekmeht reported scrolling that felt clunky and text that jittered now and then. A 19 s DevTools trace taken while Agan ran a 25-rooms/s go2 showed:
+
+- the renderer main thread 26% busy, and highlights about 0.08 ms a line (`tmp-scrollperf/`, his 1,297 real rules over 4,000 real lines);
+- one 297 ms frame (20 dropped) at a Genie zone change, when the camera's layout effect forced the layout of a freshly built zone;
+- the main thread at 45–62% for the length of the run.
+
+`tmp-mapperf/` renders the real `GenieMapView`, real CSS and his real zone cache in an offscreen Electron window. During a 25-rooms/s run, the 150 ms camera glide (`.genie-pan-smooth`, a `transform` transition on the pan group) put 52–67 of ~280 frames over 20 ms; with only the glide turned off, none. The room effects made no difference. The glide animates an SVG group's transform, which Chromium can't hand to the compositor, so each frame of it redraws the whole zone, and while moving every room restarted it.
+
+A run-aware snap (snap when steps arrive within 300 ms) was built first and measured clean, then dropped at Sekmeht's call: a sliding map and a slow map look the same, so the glide made it hard to tell whether the client was lagging. Now:
+
+- the camera and the "you are here" ring move instantly, so they stay in step by construction; `snapTransform`, `indicatorSnap`, their refs and the CSS rule are gone, with a note in GenieMapView and map-panel.css;
+- **Genie Map Animations** (`settings.mapAnimations`) covers only the room effects (glints, ripples, auras, the healer heartbeat), and its default is now **off**. The location ping is not one of them: it keeps pulsing on both maps, and only epilepsy safe mode stops it (Sekmeht, after the first draft of this section put it under the setting). Settings are saved as a whole object, so existing characters keep their stored value; only a character with no saved settings gets the new default. The three prop defaults (PanelFrame, MapPanel, GenieMapView) are `false` to match;
+- if a glide is ever wanted again, the pan has to live on an HTML wrapper the compositor can move.
+
+**Residual:** in the app the zone-change frame cost 280 ms against 33–50 ms in the harness, so something else dirty on the page made that layout worse. The Living Tableau redrawing its scenery each room is the suspect; not measured. The Lich map never glided (its pan is an SVG attribute with no transition) and is unaffected.
+
+### 54.6 Engaged creatures between assesses (B535, B536)
+
+DR's automatic assess arrives every 15–70 s and is often empty (nothing on you, e.g. after a kill); the Tableau holds an assess for 30 s (`ASSESS_TTL_MS`). Between full assesses the creatures come from the `<crtrStatus>` roster, which says who is engaged with you (`rosterEngaged`: no `disengaged`, `sleeping` or `dead`). Two places now use it for the engaged glow, gated on ⚙ Threat (`showEngaged`):
+
+- an arrival the last assess didn't list (the dashed "unassessed" figure);
+- the roster-only row shown when no assess is up.
+
+Their hover text says "engaged with you". A roster entry with no flags at all would count as engaged; every capture carries `hostile`, so it isn't expected.
+
+`StormFrontParser` also ends a line at the `popStream` of an `assess` block, because Lich's spec stores DR's assess as one joined line of blocks and B256's same-stream merge then folded every creature into the "You assess your combat situation..." line. Real DR sends one block per line, so this is latent.
+
+### 54.7 Links open web addresses only (B538)
+
+Found by the v0.20.5 bug check. An `<a href>` in the stream, which any Lich script can write, accepted any scheme, and `wrapExternalLink` let non-web addresses through untouched even with link safety on. Main's `open-url` then called `shell.openExternal` on whatever it got, which runs a `file:` address. Now:
+
+- main's `open-url` opens only `http(s)://` and logs what it refuses; it is the one place every link opens through;
+- the parser renders a non-web `<a>` as plain text.
+
+Bare URLs in text already auto-link only from `http(s)://`, and every address the app opens itself is `https`. Pitfall #188.
+
+### 54.8 The locator ping is not a Genie effect (B541)
+
+Both maps draw the same `.genie-here-ping` rings, but only the Genie map's sit inside the pan group that carries `genie-anim-off`, so turning Genie Map Animations off stopped the Genie ping while the Lich map's kept going (Sekmeht). The ping is Lichborne's "you are here" locator, not a room effect, so it left that freeze list and now pulses on both maps regardless of the setting. Epilepsy safe mode had never stopped either ping, and the setting had been the Genie one's only off switch, so one rule, `:root[data-epilepsy-safe='true'] .genie-here-ping { animation: none; opacity: 0 }`, now hides the rings on both maps; the solid ring and the Lich map's centre dot stay (UX standard #9b).
+
+Cost, measured in `tmp-mapperf/` (the real component on real zones, animations off, with and without the epilepsy attribute): about 1% of a core in the renderer and 1% in the GPU process at idle, 0% with the ping stopped, and no dropped frames during a 25-rooms/s run. A script check of `map-panel.css` confirms the persistent freeze still covers all 17 other animated classes.
+
+### 54.9 The bug and CSS/theme check (B539, B540)
+
+**Transfer re-aims on every request (B539).** `ProfileTransferModal` read `initialMode` into `useState` at mount, so File → Import Profile… over an already-open Transfer left it on Export. App now holds `{ mode, seq }` (`aimProfileTransfer`, the one opener for the menu actions and the launcher's event) and passes `modeSeq`; the dialog's `[initialMode, modeSeq]` effect sets the tab. The same shape as the Automations fix in CLAUDE.md pitfall #153: count requests, not changes.
+
+**Accent text on the Overview input bar (B540).** Every new or touched rule in v0.20.5 uses theme variables, but three painted text in bare `var(--accent)`: the menu tick `.ctx-menu-mark`, the broadcast label `.ov-inputbar-target--all` and `.ov-inputbar-send`. Measured over all 21 built-in themes (`tmp-v0205-css/contrast.ts`, which resolves each theme's variables over `darkBase` and computes WCAG contrast against the surface the text sits on):
+
+| | Barbarian before → after | Commoner before → after |
+|---|---|---|
+| Menu tick on `--bg-raised` | 1.83 → 3.40 | 3.17 → 4.88 |
+| "All · N" on its tinted `--bg-input` | 2.04 → 3.80 | 3.50 → 5.39 |
+
+All three now use `color-mix(in srgb, var(--accent) 60%, var(--text-primary))`, the mix `.ui-menu-mark` already used; every other theme reads above 5:1. The broadcast picker also has its own hover (more tint, never the neutral hover the single-character picker gets, pitfall #107). Bare-accent TEXT remains in about a dozen older rules in `game.css` and `overview.css`; they predate this version and are left for a separate sweep.
+
+### 54.10 A full bar for permanent spells
+
+The Spell Monitor gave a permanent effect (`Indefinite`, `OM`) no bar, so its cell carried an empty reserved slot under the name, which read as an awkward gap (Sekmeht). `barFraction` now returns 1 for `permanent`: a full bar beside its ∞. Its band stays `none` (a traffic light on something that never runs down would be noise), and `.sm-cell--permanent` paints the fill in `--experience-scene-text`, dimmed with the rest of the cell by `--untimed`. The colour was chosen by measurement (`tmp-v0205-css/bar.ts`, every built-in theme, bar against its track with the dimming applied):
+
+| Fill | Worst theme | Notes |
+|---|---|---|
+| bare `--accent` (the default fill) | 1.34 (Barbarian) | also 2.08 Commoner, 2.37 Mist: the bar all but vanished |
+| accent mixed 60% toward text | 2.14 (Barbarian) | |
+| `--spell-band-ok` (green) | 2.00 (Mist) | about 2:1 on every light theme |
+| `--experience-scene-text` | 2.56 (Thief) | 3:1 or better on the other 20; neutral, as a no-countdown spell should be | An `unknown` reading keeps the empty slot, because a full bar would claim a measure we don't have. The value never changes, so the 1 Hz clock re-renders it with an identical style string and the bar's transition never fires (pitfall #160).
+
+**No slash command** for any of §54: dialogs, import, parsing, display and safety fixes, with no new capability. Genie Map Animations has never had a command and still doesn't: a display preference set once, in Settings.
+

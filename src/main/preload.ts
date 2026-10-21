@@ -22,7 +22,7 @@
 // echoes while sendCommand writes straight to the socket, why catchup returns
 // a digest instead of rows) live in the inline comments below — read the
 // neighbours before adding a sibling method.
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webFrame } from 'electron'
 import { IPC } from '../shared/types'
 import type {
   GameEventBatch, ConnectionStatusPayload, RawXmlPayload, ErrorPayload,
@@ -31,7 +31,7 @@ import type {
   SessionLogExportSpec, SessionLogExportResult, SessionLogDiskUsage, SessionLogWindowRow,
   CatchupDigest, CatchupProgress,
   AICapability, AIKeyStatus, AITestResult, AIChatRequest, AIChatChunk, AIChatDone, AIChatError,
-  SimuCoinStatus, UserTextPayload, CharacterNotice, RoutedToast,
+  SimuCoinStatus, UserTextPayload, LaunchUrlPayload, CharacterNotice, RoutedToast,
 } from '../shared/types'
 
 // One shared list — see the note on IPC in shared/types.ts.
@@ -133,6 +133,12 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener(CH.USER_TEXT, listener)
   },
 
+  onLaunchUrl: (cb: (p: LaunchUrlPayload) => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, p: LaunchUrlPayload) => cb(p)
+    ipcRenderer.on(CH.LAUNCH_URL, listener)
+    return () => ipcRenderer.removeListener(CH.LAUNCH_URL, listener)
+  },
+
   onGameEvent: (cb: (batch: GameEventBatch) => void) => {
     const listener = (_e: Electron.IpcRendererEvent, batch: GameEventBatch) => cb(batch)
     ipcRenderer.on(CH.GAME_EVENT, listener)
@@ -221,6 +227,20 @@ contextBridge.exposeInMainWorld('api', {
   // Surfaced in Help → About so it is answerable without a round-trip.
   arch: process.arch,
   isAppImage: !!process.env.APPIMAGE,
+
+  // Window zoom (v0.20.4) — Chromium's page zoom, the same thing Ctrl+=/−/0
+  // drive through the View menu's zoom roles. It is NOT the game font: it
+  // scales the whole window, and Chromium shares it across every window of
+  // the app (same-origin zoom policy). Read synchronously so Settings can
+  // show it; the renderer notices a change through devicePixelRatio, which
+  // zoom moves (SettingsPanel's useWindowZoom).
+  // SET goes through MAIN, never webFrame.setZoomLevel: Electron applies a
+  // renderer-side zoom as TEMPORARY, so it showed on screen but was never
+  // saved, and a restart brought back whatever Ctrl+= had stored (Sekmeht:
+  // "keeps resetting to 120"). webContents.setZoomLevel is what the menu's
+  // zoom roles use, and Chromium persists that.
+  getZoomLevel: (): number => webFrame.getZoomLevel(),
+  setZoomLevel: (level: number): void => ipcRenderer.send('set-zoom-level', level),
 
   // Whether safeStorage-backed password saving works (false on Linux without
   // a secret service — GNOME Keyring / KWallet).
@@ -388,6 +408,11 @@ contextBridge.exposeInMainWorld('api', {
   readSharedProfile:    ():                                        Promise<unknown | null> => ipcRenderer.invoke('profile:read-shared'),
   writeSharedProfile:   (data: unknown):                          Promise<void>           => ipcRenderer.invoke('profile:write-shared', data),
   readCharacterProfile: (character: string):                      Promise<unknown | null> => ipcRenderer.invoke('profile:read-character', character),
+  characterProfileExists: (character: string): Promise<boolean> => ipcRenderer.invoke('profile:character-exists', character),
+  // Profiles that could not be read this session and were moved aside (v0.20.4).
+  takeProfileNotices: (): Promise<{ file: string; keptAs: string | null }[]> => ipcRenderer.invoke('profile:take-notices'),
+  // True for exactly one window per run: the one that loads _shared.yaml (v0.20.4).
+  claimSharedImport: (): Promise<boolean> => ipcRenderer.invoke('profile:claim-shared-import'),
   writeCharacterProfile:(character: string, data: unknown):       Promise<void>           => ipcRenderer.invoke('profile:write-character', character, data),
   listCharacterProfiles:():                                        Promise<string[]>       => ipcRenderer.invoke('profile:list'),
   deleteCharacterProfile:(character: string):                      Promise<void>           => ipcRenderer.invoke('profile:delete-character', character),

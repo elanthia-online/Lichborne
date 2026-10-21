@@ -11,7 +11,7 @@
 // masquerades as live truth (§32.4 text-equivalent spirit).
 import { memo, useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import type { ExperienceProps } from '../../experiences'
-import { MOON_UP_MINUTES, MOON_DOWN_MINUTES, exactSunPhase, detectWeather, moonPhase, moonRemainingMinutes, type MoonPhase, type SunPhase, type CalendarInfo, type WeatherFx } from '../../experiences'
+import { MOON_UP_MINUTES, MOON_DOWN_MINUTES, exactSunPhase, detectWeather, moonPhase, moonRemainingMinutes, moonskinWindow, nextFullAt, type MoonPhase, type MoonskinWindow, type SunPhase, type CalendarInfo, type WeatherFx } from '../../experiences'
 
 // Season → a little emoji for the date readout (Sekmeht). Colored splashes in an
 // otherwise-monochrome strip, one per season.
@@ -756,6 +756,25 @@ function TransitionRings({ x, y, r, color, kind }: { x: number; y: number; r: nu
   )
 }
 
+// Moonskin and each moon's next full (v0.20.3). Each is a minute-by-minute scan
+// (~0.6ms together), so it is recomputed once a minute, not every 2s tick. A
+// module-level cache, NOT a hook: this component returns early (no moonwatch
+// data yet) before any hook below it would run, and a hook after that return
+// is the Rules-of-Hooks crash Moons has hit before. Keyed on the server minute,
+// so two open Moons windows share it.
+let skyCalCache: { min: number; skin: MoonskinWindow | null; full: Record<string, number | null> } | null = null
+function skyCalendar(serverNow: number) {
+  const min = Math.floor(serverNow / 60_000)
+  if (skyCalCache?.min !== min) {
+    skyCalCache = {
+      min,
+      skin: moonskinWindow(serverNow),
+      full: Object.fromEntries(MOON_KEYS.map(k => [k, nextFullAt(k, serverNow)])),
+    }
+  }
+  return skyCalCache
+}
+
 function MoonsExperience({ moons, hidden, settings, weather, calendar, serverClockOffsetMs = 0, onSyncSky }: ExperienceProps) {
   // UNIQUE gradient-id prefix per instance (React useId, sanitized to id-safe
   // chars). CRITICAL: every character tab mounts its own Moons SVG, and SVG
@@ -853,6 +872,8 @@ function MoonsExperience({ moons, hidden, settings, weather, calendar, serverClo
   const showEffects = !hidden?.effects
   const showWeather = !hidden?.weather
   const showCalendar = !hidden?.calendar
+  const showMoonskin = !hidden?.moonskin
+  const skyCal = skyCalendar(serverNow)
   const showWeatherFx = !hidden?.weatherfx
   // Newer per-layer toggles (Sekmeht — everything toggleable).
   const showSunGlow = !hidden?.sunglow      // sun-centric sky glow + twilight afterglow
@@ -1230,13 +1251,42 @@ function MoonsExperience({ moons, hidden, settings, weather, calendar, serverClo
   // transition (SETS if currently up, RISES if down). Dot colours are saturated
   // lore hues chosen to read on the themed glass (the raw rims are too pale).
   const fmtDur = (m: number) => (m <= 0 ? 'now' : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`)
+  // Moonskin / next-full times are computed on the SERVER clock (skyCal) and
+  // shown on yours. Hover text uses only fixed clock times: a native tooltip
+  // whose text changes while it shows blinks (pitfall #145), and this scene
+  // re-renders every 2s.
+  const atLocal = (serverMs: number) => new Date(serverMs - serverClockOffsetMs)
+  const whenLabel = (serverMs: number) => {
+    const d = atLocal(serverMs)
+    return d.toDateString() === new Date(now).toDateString()
+      ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : d.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })
+  }
+  const dateLabel = (serverMs: number) => atLocal(serverMs).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  // A length of time: "28h 11m" (a moonskin is about a day, so hours read best);
+  // a wait of two days or more as "3d 4h".
+  const spanLabel = (ms: number, days = false) => {
+    // Rounded UP: in the last half-minute a countdown says "1m", never "0m"
+    // while the window hasn't started or ended yet. Window lengths are whole
+    // minutes, so they are unchanged.
+    const m = Math.max(0, Math.ceil(ms / 60_000))
+    if (days && m >= 2 * 1440) return `${Math.floor(m / 1440)}d ${Math.floor((m % 1440) / 60)}h`
+    return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`
+  }
+  const skin = showMoonskin ? skyCal.skin : null
+  const skinText = skin && (skin.active
+    ? `now · ends ${whenLabel(skin.end)}, in ${spanLabel(skin.end - serverNow)}`
+    : `${whenLabel(skin.start)} · in ${spanLabel(skin.start - serverNow, true)} · lasts ${spanLabel(skin.end - skin.start)}`)
+  const skinTitle = skin
+    ? `Rakash take their moonskin form while Katamba is full.\n${skin.active ? 'Now' : 'Next'}: ${dateLabel(skin.start)} to ${dateLabel(skin.end)} (${spanLabel(skin.end - skin.start)}).\n\nComputed from the moons' phase (the same reckoning as Mahtra's moon watch); it matches Elanthipedia's moonskin table to the minute.`
+    : undefined
   // ONE phase description, shared by the scene discs and the pill so the two can
   // never describe the same moon differently (the B234 lesson).
   //
   // Marked "(computed)" deliberately: rise/set times come from moonwatch's
   // observed feed, but phase has NOTHING to self-correct against — the script
-  // says so itself, and only 4 of the 8 wordings are confirmed against the
-  // game's `observe` verb. The sun already distinguishes observed from assumed;
+  // says so itself (its `observe` wordings confirm the model, 7 of 8 phases
+  // since moonwatch v4.5.4, Knowledge.md §16). The sun already distinguishes observed from assumed;
   // phase gets the same honesty rather than being presented as fact.
   //
   // Phase buckets run ~28h, so the countdown is formatted in days+hours past a
@@ -1254,8 +1304,18 @@ function MoonsExperience({ moons, hidden, settings, weather, calendar, serverClo
     // skimmed as preamble and the tooltip read as if it only told you what was
     // coming (Sekmeht: "add the current phase — it shows when the next one is").
     // The data never changed; it just wasn't saying which was which.
+    const full = skyCal.full[k]
     return `\n\nNow: ${p.name} · ${Math.round(p.illum * 100)}% lit (computed)`
       + `\nNext: ${p.nextName} in ~${next}`
+      // v0.20.3: the next full as a fixed time (the DRMoonWatch card's "Next full").
+      + (full != null ? `\nNext full: ${dateLabel(full)}` : '')
+      // Katamba carries the Rakash moonskin too (Sekmeht), behind the same ⚙
+      // switch as the footer. Fixed dates only, so the hover can't blink.
+      + (k === 'katamba' && skin
+        ? (skin.active
+          ? `\nMoonskin: now, until ${dateLabel(skin.end)}`
+          : `\nMoonskin: ${dateLabel(skin.start)} to ${dateLabel(skin.end)} (${spanLabel(skin.end - skin.start)})`)
+        : '')
       // (A Katamba-specific "the black moon..." line used to hang off the end
       // here, explaining why a dark moon can read as "full" and still raise the
       // moonlight figure. Removed at Sekmeht's ask, v0.18.2 — the combined-
@@ -2088,17 +2148,29 @@ function MoonsExperience({ moons, hidden, settings, weather, calendar, serverClo
       {/* Footer — now just the Elanthian date (the sky/moons/weather row moved to
           the top pill above). The ⟳ here SILENTLY sends TIME + WEATHER (no echo,
           replies consumed) — it refreshes both the date and the pill's weather. */}
-      {showCalendar && (
-        <div className="moons-footer" title="The Elanthian date (from TIME). ⟳ refreshes the date and the weather up top, silently.">
+      {(showCalendar || skin) && (
+        <div className="moons-footer" title={showCalendar ? 'The Elanthian date (from TIME). ⟳ refreshes the date and the weather up top, silently.' : undefined}>
           <div className="moons-foot-row">
-            <span className="moons-foot-seg" title={calendar ? calendarTooltip(calendar) : 'The Elanthian date, month, year, season and time of day (from TIME). Click ⟳ to check — silent (nothing shows in the game window).'}>
-              <span className="moons-foot-key">date</span>
-              {calendar ? (
-                <span className="moons-foot-v">{calendarLine(calendar)}</span>
-              ) : (
-                <span className="moons-foot-none">not checked yet</span>
-              )}
-            </span>
+            {showCalendar && (
+              <span className="moons-foot-seg" title={calendar ? calendarTooltip(calendar) : 'The Elanthian date, month, year, season and time of day (from TIME). Click ⟳ to check — silent (nothing shows in the game window).'}>
+                <span className="moons-foot-key">date</span>
+                {calendar ? (
+                  <span className="moons-foot-v">{calendarLine(calendar)}</span>
+                ) : (
+                  <span className="moons-foot-none">not checked yet</span>
+                )}
+              </span>
+            )}
+            {showCalendar && skin && <span className="moons-foot-sep">|</span>}
+            {/* v0.20.3 — Rakash moonskin: the window in progress, or the next one.
+                Shown to everyone (Sekmeht: you may need to know when OTHER Rakash
+                change). Pure phase math, so it needs no TIME check. */}
+            {skin && (
+              <span className="moons-foot-seg" title={skinTitle}>
+                <span className="moons-foot-key">moonskin</span>
+                <span className="moons-foot-v">{skinText}</span>
+              </span>
+            )}
             {onSyncSky && (
               <button type="button" className={syncClass} title={syncTitle} onClick={onSyncSky}>⟳</button>
             )}

@@ -90,6 +90,7 @@ import { analyzeTriggers } from '../automationHealth'
 import GroupPicker from './GroupPicker'
 import '../styles/triggers.css'
 import ColorField from './ColorField'
+import NumberField from './NumberField'
 import { IS_MAC } from '../lichSettings'
 import '../styles/groups.css'
 
@@ -296,14 +297,11 @@ function ActionCard({ action, canRemove, onChange, onRemove }: ActionCardProps) 
             />
             <div className="trg-action-row" title="Wait this long before sending. 1000 ms = 1 second. 0 = right away.">
               <label className="trg-label">Delay</label>
-              <input
-                className="trg-input trg-cooldown-input"
-                type="number"
-                min={0}
-                max={30000}
-                step={100}
+              <NumberField
+                className="trg-input trg-cooldown-input" live
+                min={0} max={30000} step={100}
                 value={action.delayMs ?? 0}
-                onChange={e => up({ delayMs: Math.max(0, parseInt(e.target.value) || 0) })}
+                onCommit={n => up({ delayMs: n })}
               />
               <span className="trg-delay-unit">ms</span>
             </div>
@@ -1204,14 +1202,12 @@ export default function TriggersPanel({ onSaved, prefillPattern, openRuleId, ana
                       <div className="trg-field">
                         <label className="trg-label">Cooldown</label>
                         <div className="trg-cooldown-row">
-                          <input
+                          <NumberField
                             title="After firing, ignore further matches for this many seconds. 0 = no cooldown."
-                            className="trg-input trg-cooldown-input"
-                            type="number"
-                            min={0}
-                            max={3600}
+                            className="trg-input trg-cooldown-input" live
+                            min={0} max={3600} decimals={2}
                             value={draft.cooldownSeconds}
-                            onChange={e => setDraft({ ...draft, cooldownSeconds: Math.max(0, parseFloat(e.target.value) || 0) })}
+                            onCommit={n => setDraft(d => d && { ...d, cooldownSeconds: n })}
                           />
                           <span className="trg-cooldown-unit">sec</span>
                           <label className="trg-checkbox-label" title="Fire once, then switch this trigger off. It stays in the list; turn it back on with its dot.">
