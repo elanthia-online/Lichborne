@@ -89,7 +89,7 @@ export default function VitalsBar({ vitals, labels, compact = false, thresholds 
             // B333: compact mode shows only an acronym (H / M / IF…), so the
             // tooltip spells it out; regular mode already shows the full name.
             <div key={id} className="vital-bar"
-              title={compact ? `${fullLabel}${v.max > 0 ? `: ${v.current}%` : ''}` : undefined}>
+              title={compact ? `${fullLabel}${v.max > 0 ? `: ${Math.round(pct)}%` : ''}` : undefined}>
               <div className="vital-track">
                 <div className={vitalFillClass(id, pct, thresholds)} style={{ width: `${pct}%` }} />
               </div>

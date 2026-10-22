@@ -614,7 +614,11 @@ export class StormFrontParser {
     // additive: if DR ALSO ever sends this inline marker with a title that's
     // already current, extractAndEmitRoomTitle's lastRoomTitle gate makes the
     // second call a harmless no-op repaint, not a duplicate room change.
-    if (line.includes('roomName') && this.activeStream === 'main' && this.streamStack.length === 0) {
+    // Skipped while a remote view is active: a DR Locate's inline roomName has
+    // the same `[Name] (uid)` shape, flushSegments() above has already flagged
+    // it as another room, and extractAndEmitRoomTitle would clear that flag
+    // and adopt the located room as ours.
+    if (line.includes('roomName') && !this.remoteView && this.activeStream === 'main' && this.streamStack.length === 0) {
       const rm = line.match(/<style id=["']roomName["']\s*\/>([^<]*)/)
       if (rm) this.extractAndEmitRoomTitle(rm[1])
     }
