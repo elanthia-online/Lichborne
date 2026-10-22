@@ -3412,7 +3412,7 @@ export default function GameWindow({
             vitalUpdates[evt.id] = { current: evt.current, max: evt.max }
             triggerCtxRef.current.vitals[evt.id] = { current: evt.current, max: evt.max }
             if (evt.label) labelUpdates[evt.id] = evt.label
-            processVariableChangeRef.current(evt.id, String(evt.current))
+            processVariableChangeRef.current(evt.id, String(vitalPercent(evt)))
             break
           case 'roundtime':
             newRt = evt.expires

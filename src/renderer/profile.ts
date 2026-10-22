@@ -48,25 +48,16 @@ import { getOverviewPersisted, applyOverviewState } from './overviewStore'
 import { loadSessionLogSettings, saveSessionLogSettings, DEFAULT_SESSION_LOG_SETTINGS } from './sessionLogSettings'
 import { loadAIConfig, saveAIConfig, DEFAULT_AI_CONFIG } from './aiConfig'
 import { loadCustomColors, saveCustomColors, coerceCustomColors } from './colors'
-import { DEFAULT_RUBY, DEFAULT_LICH } from './lichSettings'
+import { DEFAULT_RUBY, DEFAULT_LICH, GAMES } from './lichSettings'
 import { loadSimuCoinConfig, saveSimuCoinConfig, coerceSimuCoinConfig } from './simucoinConfig'
 
 // ── Default game definitions ──────────────────────────────────────────────────
 // Written once when creating _shared.yaml; user can edit the file to add more.
 
-// GS4 rows mirror lichSettings.ts's GAMES table — see that file's comment for
-// the lich-5 source citation (login_helpers.rb / argv_options.rb) backing the
-// ports/flags.
-const DEFAULT_GAMES = {
-  DR:  { name: 'DragonRealms Prime',      gameCode: 'DR',  lichPort: 11024, lichArguments: '--dragonrealms' },
-  DRT: { name: 'DragonRealms Prime Test',  gameCode: 'DRT', lichPort: 11624, lichArguments: '--test --dragonrealms' },
-  DRX: { name: 'DragonRealms Platinum',    gameCode: 'DRX', lichPort: 11124, lichArguments: '--platinum --dragonrealms' },
-  DRF: { name: 'DragonRealms The Fallen',  gameCode: 'DRF', lichPort: 11324, lichArguments: '--fallen' },
-  GS3: { name: 'GemStone IV Prime',       gameCode: 'GS3', lichPort: 10024, lichArguments: '--gemstone' },
-  GSX: { name: 'GemStone IV Platinum',    gameCode: 'GSX', lichPort: 10124, lichArguments: '--gemstone --platinum' },
-  GST: { name: 'GemStone IV Test',        gameCode: 'GST', lichPort: 10624, lichArguments: '--gemstone --test' },
-  GSF: { name: 'GemStone IV Shattered',   gameCode: 'GSF', lichPort: 10324, lichArguments: '--shattered' },
-}
+// Derived from lichSettings.ts's GAMES table (the single source of truth for
+// per-shard ports/flags) so the two can't drift.
+const DEFAULT_GAMES = Object.fromEntries(GAMES.map(g =>
+  [g.code, { name: g.name, gameCode: g.code, lichPort: g.port, lichArguments: g.lichArguments }]))
 
 // Schema versions for the two profile files. Bumped only when a breaking
 // change ships — register a migration in `profile-migrations.ts` keyed by the

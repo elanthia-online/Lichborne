@@ -308,6 +308,10 @@ export class StormFrontParser {
   // Used to gate clear-stream emission so a streamWindow re-emit with the
   // same title doesn't wipe just-populated sub-stream data.
   private lastRoomTitle = ''
+  // Has a main subtitle ever carried a bracketed title? DR's always does; some
+  // GS4 accounts' never do. Gates the inline-roomName title fallback in parse()
+  // so it only runs for sessions with no other title source.
+  private subtitleTitled = false
 
   // A view of ANOTHER room on main (v0.20.5, from ProfanityFE #247–#249): a Moon
   // Mage's Locate prints the located person's room in the same form as a LOOK —
@@ -391,6 +395,7 @@ export class StormFrontParser {
     this.lastPromptText    = ''
     this.lastEmitWasPrompt = false
     this.lastRoomTitle     = ''
+    this.subtitleTitled    = false
     this.remoteView        = false
     this.lastNavId         = undefined
     this.movedSincePrompt  = false
@@ -441,9 +446,16 @@ export class StormFrontParser {
   // against GS4's inline `<style id="roomName"/>[Title...] (uid)` text,
   // which — verified live (Ilten @ GST, 2026-08-27) — carries the exact same
   // bracket format DR's subtitle does, just delivered a different way.
-  private extractAndEmitRoomTitle(fragment: string) {
+  //
+  // `inline` = called from that roomName fallback. The inline name arrives
+  // AFTER the room's components (GS4 and DR alike), so it must not run the
+  // B121 clears below — they would wipe the objects/players/exits and the
+  // pending creature roster the server just sent. <nav> already clears those
+  // streams ahead of the components.
+  private extractAndEmitRoomTitle(fragment: string, inline = false) {
     const titleMatch = fragment.match(/\[([^\]]+)\]/)
     if (!titleMatch) return
+    if (!inline) this.subtitleTitled = true
     const inner = titleMatch[1]
     // DR carries the room id in TWO subtitle formats — handle both:
     //   "[Whistling Wood, Barrows - 9479]"   id INSIDE the brackets after " - "
@@ -519,7 +531,7 @@ export class StormFrontParser {
     // every component to re-emit). Using lastRoomTitle as
     // the gate so the clear only fires on actual changes,
     // not every streamWindow repaint.
-    if (cleanTitle !== this.lastRoomTitle) {
+    if (!inline && cleanTitle !== this.lastRoomTitle) {
       this.lastRoomTitle = cleanTitle
       this.emit({ type: 'clear-stream', stream: 'room' })
       this.emit({ type: 'clear-stream', stream: 'room-objects' })
@@ -610,17 +622,18 @@ export class StormFrontParser {
     // `<style id="roomName"/>[Town Square, Southwest - 284] (u7046)` — same
     // bracket format DR's subtitle uses, just delivered a different way.
     // Same main-stream-only safety gate as the guild capture above (a script
-    // echoing this shape into a panel can't spoof a room change). Purely
-    // additive: if DR ALSO ever sends this inline marker with a title that's
-    // already current, extractAndEmitRoomTitle's lastRoomTitle gate makes the
-    // second call a harmless no-op repaint, not a duplicate room change.
-    // Skipped while a remote view is active: a DR Locate's inline roomName has
-    // the same `[Name] (uid)` shape, flushSegments() above has already flagged
-    // it as another room, and extractAndEmitRoomTitle would clear that flag
-    // and adopt the located room as ours.
-    if (line.includes('roomName') && !this.remoteView && this.activeStream === 'main' && this.streamStack.length === 0) {
+    // echoing this shape into a panel can't spoof a room change). Skipped once
+    // any subtitle has carried a bracketed title (`subtitleTitled` — every DR
+    // session): DR sends this inline marker on every room display, often with
+    // no id, and a second room-title without one would overwrite the roomId
+    // <nav>/the subtitle just set. Skipped while a remote view is active: a DR
+    // Locate's inline roomName has the same `[Name] (uid)` shape,
+    // flushSegments() above has already flagged it as another room, and
+    // extractAndEmitRoomTitle would clear that flag and adopt the located room
+    // as ours.
+    if (!this.subtitleTitled && line.includes('roomName') && !this.remoteView && this.activeStream === 'main' && this.streamStack.length === 0) {
       const rm = line.match(/<style id=["']roomName["']\s*\/>([^<]*)/)
-      if (rm) this.extractAndEmitRoomTitle(rm[1])
+      if (rm) this.extractAndEmitRoomTitle(rm[1], true)
     }
 
     // SceneParser line capturers (DESIGN §35.1) — registry-driven; only

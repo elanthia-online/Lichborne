@@ -81,10 +81,7 @@ export function saveAdvanced(s: AdvancedSettings) {
 }
 
 export function gameCodeFromPort(port: number): string {
-  if (port === 11624) return 'DRT'
-  if (port === 11124) return 'DRX'
-  if (port === 11324) return 'DRF'
-  return 'DR'
+  return gameOptionFromPort(port).code
 }
 
 // Catalog of supported games — the single source of truth for per-shard
