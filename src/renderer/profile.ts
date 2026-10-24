@@ -48,18 +48,16 @@ import { getOverviewPersisted, applyOverviewState } from './overviewStore'
 import { loadSessionLogSettings, saveSessionLogSettings, DEFAULT_SESSION_LOG_SETTINGS } from './sessionLogSettings'
 import { loadAIConfig, saveAIConfig, DEFAULT_AI_CONFIG } from './aiConfig'
 import { loadCustomColors, saveCustomColors, coerceCustomColors } from './colors'
-import { DEFAULT_RUBY, DEFAULT_LICH } from './lichSettings'
+import { DEFAULT_RUBY, DEFAULT_LICH, GAMES } from './lichSettings'
 import { loadSimuCoinConfig, saveSimuCoinConfig, coerceSimuCoinConfig } from './simucoinConfig'
 
 // ── Default game definitions ──────────────────────────────────────────────────
 // Written once when creating _shared.yaml; user can edit the file to add more.
 
-const DEFAULT_GAMES = {
-  DR:  { name: 'DragonRealms Prime',      gameCode: 'DR',  lichPort: 11024, lichArguments: '--dragonrealms' },
-  DRT: { name: 'DragonRealms Prime Test',  gameCode: 'DRT', lichPort: 11624, lichArguments: '--test --dragonrealms' },
-  DRX: { name: 'DragonRealms Platinum',    gameCode: 'DRX', lichPort: 11124, lichArguments: '--platinum --dragonrealms' },
-  DRF: { name: 'DragonRealms The Fallen',  gameCode: 'DRF', lichPort: 11324, lichArguments: '--fallen' },
-}
+// Derived from lichSettings.ts's GAMES table (the single source of truth for
+// per-shard ports/flags) so the two can't drift.
+const DEFAULT_GAMES = Object.fromEntries(GAMES.map(g =>
+  [g.code, { name: g.name, gameCode: g.code, lichPort: g.port, lichArguments: g.lichArguments }]))
 
 // Schema versions for the two profile files. Bumped only when a breaking
 // change ships — register a migration in `profile-migrations.ts` keyed by the
