@@ -69,6 +69,7 @@ import type { GameEvent, StreamTarget, TextSegment } from '../../shared/types'
 import { STREAM_ID_ALIASES, normalizeStreamId } from '../../shared/streamAliases'
 import { runSceneCapturers } from './sceneCapturers'
 import { TAG_PATTERN, stripTags } from '../../shared/xmlTag'
+import { boldRuns, type RosterName } from '../../shared/sceneExtract'
 
 function decodeEntities(text: string): string {
   return text
@@ -191,6 +192,96 @@ function parseTag(raw: string): ParsedTag {
   return { name, attrs: parseAttrs(inner), closing, selfClosing }
 }
 
+// ── The rich stream's <room> block (v0.21.0, DESIGN §55.4) ──────────────────
+// DR's Saga-identity ("rich") stream sends a room view as ONE line,
+//   <resource picture="0"/><room><name>[Area, Title] (uid)</name><description>…</description>
+//   <exists>You also see …</exists>[<crtrStatus …/>]<players>Also here: …</players>
+//   <exits>Obvious paths: <d>north</d>.</exits><extra></extra></room>
+// where the legacy stream sends the roomName style line, the roomDesc preset
+// line, one line per part and a <compass> line. Rather than a second path
+// through the parser, the block is rebuilt into the legacy lines before they are
+// tokenized, so every legacy rule (room name, description capture, the Locate
+// check, the compass gate) applies unchanged. This mirrors lich-5's own
+// RoomBlock.legacy_lines / legacy_shape_with_compass (#1708, #1721) verbatim, so
+// a Lich that rewrites for us and our own rewrite produce the same lines.
+// A block cut off before </room> is left as it is (never observed: 0 of 53,663).
+const ROOM_BLOCK_RE = /<room>((?:(?!<room>)[\s\S])*?)<\/room>/g
+const ROOM_PART_NAMES = ['name', 'description', 'exists', 'players', 'exits', 'extra'] as const
+const ROOM_PARTS_RE = /<(name|description|exists|players|exits|extra)>[\s\S]*?<\/\1>/g
+// The legacy <compass> value for each exit name in "Obvious paths:", in order.
+const COMPASS_DIRS: Record<string, string> = {
+  north: 'n', northeast: 'ne', east: 'e', southeast: 'se',
+  south: 's', southwest: 'sw', west: 'w', northwest: 'nw',
+  up: 'up', down: 'down', out: 'out',
+}
+function roomPart(body: string, tag: typeof ROOM_PART_NAMES[number]): string {
+  const m = body.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`))
+  return m ? m[1] : ''
+}
+/** Exit names in a block's <exits>, as the game lists them. */
+function roomExitNames(body: string): string[] {
+  return [...roomPart(body, 'exits').matchAll(/<d(?:\s[^>]*)?>([\s\S]*?)<\/d>/g)].map(m => m[1])
+}
+/** The legacy compass line for those exits; none known gives an empty compass. */
+function legacyCompass(exits: string[]): string {
+  return '<compass>' + exits.filter(e => Object.prototype.hasOwnProperty.call(COMPASS_DIRS, e))
+    .map(e => `<dir value="${COMPASS_DIRS[e]}"/>`).join('') + '</compass>'
+}
+/** A block's body as legacy lines (lich-5 RoomBlock.legacy_lines). */
+function roomBlockLegacyLines(body: string, compass: string | null, dropDescription: boolean): string[] {
+  const name = roomPart(body, 'name')
+  const exists = roomPart(body, 'exists')
+  const players = roomPart(body, 'players')
+  const extra = roomPart(body, 'extra')
+  // Tags between the parts (the <crtrStatus> batch after <exists>) lead the
+  // next line, where the legacy stream puts them.
+  const between = body.replace(ROOM_PARTS_RE, '')
+  const lines = [`<style id="roomName" />${name}`]
+  let description = dropDescription ? '' : roomPart(body, 'description')
+  if (description) description = `<preset id='roomDesc'>${description}</preset>`
+  lines.push(`<style id=""/>${description}  ${exists}`)
+  if (players) lines.push(`${between}${players}`)
+  let exits = roomPart(body, 'exits')
+  if (!players) exits = `${between}${exits}`
+  if (exits) lines.push(exits)
+  if (compass !== null) lines.push(compass)
+  if (extra) lines.push(extra)
+  return lines
+}
+
+// How long a spell-window clear may wait for its push (see spellClearHeldAt).
+const SPELL_CLEAR_HOLD_MS = 10_000
+
+// A roundtime refusal the game cut into the line it was sending (v0.21.0,
+// mirrors lich-5 #1857 `buffer_split_line`, games.rb SPLIT_REFUSAL). The game
+// puts "...wait N seconds." plus a line end into the middle of a line, then
+// sends the rest of that line (or only its line end) as the next line. Lich
+// main rejoins it before we see it; released Lich and a direct connection do
+// not, so the sentence showed as two lines and a cut room component kept the
+// refusal in its text.
+const SPLIT_REFUSAL_RE = /\.\.\.wait \d+ seconds?\.\r?\n$/
+
+// One line in, one line out, exactly as Lich does it. A line ending in a
+// refusal with text BEFORE it returns the refusal alone and holds that text;
+// the next line is returned with the held text in front of it. A refusal that
+// starts its line (pre-match empty) is a normal refusal and passes through,
+// which is also what an already-rejoined stream from Lich main looks like, so
+// this is a no-op there. Pure, so the harness can lock it.
+export function rejoinRefusalSplit(held: string | null, line: string): { line: string; held: string | null } {
+  const joined = held === null ? line : held + line
+  const m = SPLIT_REFUSAL_RE.exec(joined)
+  if (!m || m.index === 0) return { line: joined, held: null }
+  return { line: joined.slice(m.index), held: joined.slice(0, m.index) }
+}
+
+// The game's answers to FLAG DESCRIPTION, and the Description row of the FLAG
+// listing (linked on the rich stream). Mirrors lich-5 RoomDescriptionFilter.
+// A line reaches parse() WITH its line end, and `$` (no m flag) matches only at
+// the very end, so both must allow the line feed: without it the reply never
+// matched in play, only in a harness that strips line ends (v0.21.0 bug check).
+const DESC_FLAG_REPLY_RE = /^You will (no longer|now) see room descriptions\.\r?\n?$/
+const DESC_FLAG_ROW_RE = /^(?:<popBold\/>)?  (?:<d cmd="[^"]*">Description<\/d>|Description) +(ON|OFF)(?: |\r?\n?$)/
+
 interface CaptureContext {
   tag: string
   id?: string
@@ -208,6 +299,11 @@ export class StormFrontParser {
   private linkCmd: string | undefined = undefined
   private linkCmdIsText = false  // true when <d> has no cmd attr; first text node becomes the cmd
   private linkHref: string | undefined = undefined
+  // A game link on the rich stream (v0.21.0, DESIGN §55): `<a exist="ID"
+  // noun="NOUN">text</a>`. Stamped on every segment written inside it, so a
+  // later consumer can tie the text to the object, creature or player.
+  private linkExist: string | undefined = undefined
+  private linkNoun: string | undefined = undefined
 
   private monoMode = false
 
@@ -317,7 +413,37 @@ export class StormFrontParser {
   // (an older server, or a front-end path that strips it), so no roster is
   // emitted and the renderer keeps its name-based fallback.
   private crtrSeen = false
-  private rosterPending: { names: string[] | null; list: { id: string; flags: string[] }[] } | null = null
+  private rosterPending: { names: RosterName[] | null; list: { id: string; flags: string[] }[] } | null = null
+
+  // FLAG DESCRIPTION on the rich stream (v0.21.0, DESIGN §55.4): DR ignores the
+  // flag there and fills every <room> block's description, a game bug. We
+  // follow the game's own answers to the flag and leave the description out of
+  // the player's own room view while it is off, as legacy does. Unknown (shown)
+  // until the game answers FLAG DESCRIPTION or lists its flags this session —
+  // Lich's RoomDescriptionFilter (lich-5 #1725) does exactly this.
+  private descriptionsOff = false
+
+  // A spell-window clear waiting for its push (v0.21.0, DESIGN §55.4). On the
+  // rich stream the `percWindow` push often comes many lines after its clear,
+  // sometimes after prompts (DR rich reference §2.10: 3,311 of 18,259
+  // refreshes). Applied at once, the clear emptied the Active Spells panel for
+  // that whole gap, and the Spell Monitor read the empty block as "every
+  // effect ended". So the clear is held and emitted just before the push. A
+  // refresh with NO push (the last spell dropped) is still a clear, so a held
+  // one is also emitted once SPELL_CLEAR_HOLD_MS has passed, at the next line.
+  private spellClearHeldAt: number | null = null
+  // The part of a line before a roundtime-refusal cut, waiting for the rest
+  // (see rejoinRefusalSplit); null when nothing is held.
+  private refusalHeld: string | null = null
+  // Has this session sent a game link (`<a exist>`)? The rich stream links
+  // nearly everything from the first lines of a login (DR rich reference §1.3),
+  // the legacy stream never does. Only the spell-clear hold needs to know: on
+  // legacy the push always follows its clear before the prompt, so a held clear
+  // still pending at the prompt is an empty refresh and is released there,
+  // exactly when it used to apply.
+  private linksSeen = false
+  // Has this session announced the rich stream ('rich-stream' event)?
+  private richAnnounced = false
 
   // Emit the pending creature roster (at the <prompt> that closes its refresh).
   // Names pair by position only when the counts match (Lich's rule). A list
@@ -333,15 +459,27 @@ export class StormFrontParser {
     // "everyone else left" and empty the arena; it's dropped instead.
     if (p.names === null) return
     if (p.list.length === 0 && (p.names?.length ?? 0) > 0) return
-    const pair = !!p.names && p.names.length === p.list.length
+    // The rich stream links each creature, and the link's id is the tag's id:
+    // pair exactly. Legacy has no ids, so names pair by position, and only
+    // when the counts match.
+    const byId = new Map<string, string>()
+    for (const n of p.names) if (n.exist) byId.set(n.exist, n.name)
+    const pair = byId.size === 0 && p.names.length === p.list.length
     this.emit({
       type: 'creature-roster',
-      creatures: p.list.map((c, i) => ({ id: c.id, name: pair ? p.names![i] : null, flags: c.flags })),
+      creatures: p.list.map((c, i) => ({
+        id: c.id,
+        name: byId.size > 0 ? (byId.get(c.id) ?? null) : pair ? p.names![i].name : null,
+        flags: c.flags,
+      })),
     })
   }
 
-  // Call when a new connection is established to clear carry-over state
-  reset() {
+  // Call when a new connection is established to clear carry-over state.
+  // `keepGameFlags`: a re-attach to the same game session (B310) keeps what
+  // the GAME still has set (FLAG DESCRIPTION), which a new connection can't
+  // re-learn until the player changes it.
+  reset(opts: { keepGameFlags?: boolean } = {}) {
     this.boldDepth     = 0
     this.activeStream  = 'main'
     this.streamStack   = []
@@ -357,6 +495,8 @@ export class StormFrontParser {
     this.linkCmd           = undefined
     this.linkCmdIsText     = false
     this.linkHref          = undefined
+    this.linkExist         = undefined
+    this.linkNoun          = undefined
     this.monoMode          = false
     this.inInjuriesDialog  = false
     this.injuryBuf         = []
@@ -370,6 +510,11 @@ export class StormFrontParser {
     this.navSeen           = false
     this.crtrSeen          = false
     this.rosterPending     = null
+    if (!opts.keepGameFlags) this.descriptionsOff = false
+    this.spellClearHeldAt  = null
+    this.refusalHeld       = null
+    this.linksSeen         = false
+    this.richAnnounced     = false
     this.rtExpires     = 0
     this.lastPromptTime = 0
     // Cleared with the rest of the per-session state (pitfall #4) so a new login
@@ -402,7 +547,53 @@ export class StormFrontParser {
   }
 
   parse(line: string): GameEvent[] {
+    // Rejoin a line the game cut with "...wait N seconds." before anything
+    // reads it. Cheap includes() gate first: this runs per line.
+    if (this.refusalHeld !== null || line.includes('...wait ')) {
+      const r = rejoinRefusalSplit(this.refusalHeld, line)
+      this.refusalHeld = r.held
+      line = r.line
+    }
+    // FLAG DESCRIPTION state, from the game's own answer or its FLAG listing
+    // (see `descriptionsOff`). Cheap includes() gate first: this runs per line.
+    if (line.includes(' see room descriptions.') || line.includes('Description')) {
+      const reply = line.match(DESC_FLAG_REPLY_RE)
+      const row = reply ? null : line.match(DESC_FLAG_ROW_RE)
+      if (reply) this.descriptionsOff = reply[1] === 'no longer'
+      else if (row) this.descriptionsOff = row[1] === 'OFF'
+    }
+    if (!line.includes('<room>')) return this.parseLine(line)
+    // A rich-stream room view: rebuild it into the legacy lines and parse
+    // those (see ROOM_BLOCK_RE). A line without a complete block parses as is.
+    let rebuilt = false
+    const text = line.replace(ROOM_BLOCK_RE, (_block, body: string) => {
+      rebuilt = true
+      // Only a view of the player's OWN room lights the compass or loses its
+      // description to the flag; a Locate shows another room (lich-5 #1721/#1725).
+      const view = parseInlineRoomName(roomPart(body, 'name'))
+      const own = view ? !this.isRemoteRoomName(view) : true
+      // Joined with \r\n as Lich joins them (room_block.rb legacy_lines), so each
+      // rebuilt line reaches parseLine ending as a real line does.
+      return roomBlockLegacyLines(body, own ? legacyCompass(roomExitNames(body)) : null, own && this.descriptionsOff).join('\r\n')
+    })
+    if (!rebuilt) return this.parseLine(line)
+    const out: GameEvent[] = []
+    if (!this.richAnnounced) { this.richAnnounced = true; out.push({ type: 'rich-stream' }) }
+    // Split AFTER each line end, as the connection does: splitting ON it left an
+    // empty last piece, which parseLine turned into a blank spacer line under
+    // every room view (v0.21.0 bug check).
+    for (const l of text.split(/(?<=\n)/)) out.push(...this.parseLine(l))
+    this.events = out
+    return out
+  }
+
+  private parseLine(line: string): GameEvent[] {
     this.events = []
+    // A held spell clear whose push never came: an empty refresh after all.
+    if (this.spellClearHeldAt !== null && Date.now() - this.spellClearHeldAt > SPELL_CLEAR_HOLD_MS) {
+      this.spellClearHeldAt = null
+      this.emit({ type: 'clear-stream', stream: 'spells' })
+    }
     const isBlankLine = !line.replace(/[\r\n]/g, '').trim()
 
     // A tag ends at the first `>` outside quotes (TAG_PATTERN, ProfanityFE #100).
@@ -505,6 +696,8 @@ export class StormFrontParser {
       ...(topColor?.bg       ? { bg: topColor.bg }            : {}),
       ...(this.linkCmd       ? { cmd: this.linkCmd }           : {}),
       ...(this.linkHref      ? { href: this.linkHref }         : {}),
+      ...(this.linkExist     ? { exist: this.linkExist }       : {}),
+      ...(this.linkNoun      ? { noun: this.linkNoun }         : {}),
       ...extra,
     })
   }
@@ -520,6 +713,8 @@ export class StormFrontParser {
         this.captureSegments.push({
           text: cleaned,
           ...(this.boldDepth > 0 ? { bold: true } : {}),
+          ...(this.linkExist ? { exist: this.linkExist } : {}),
+          ...(this.linkNoun  ? { noun: this.linkNoun }   : {}),
         })
       }
       return
@@ -591,6 +786,10 @@ export class StormFrontParser {
         const target = normalizeStreamId(id)
         this.streamStack.push(this.activeStream)
         this.activeStream = target
+        if (target === 'spells' && this.spellClearHeldAt !== null) {
+          this.spellClearHeldAt = null
+          this.emit({ type: 'clear-stream', stream: 'spells' })
+        }
         // Always emit stream-push so the renderer can discover new streams
         if (id) this.emit({ type: 'stream-push', stream: target })
         break
@@ -973,6 +1172,8 @@ export class StormFrontParser {
         // normalizeStreamId always returns a string (never undefined) which
         // would short-circuit the COMPONENT_STREAM fallback.
         const stream = STREAM_ID_ALIASES[id] ?? COMPONENT_STREAM[id] ?? (id || null)
+        // The spell window's clear waits for its push (see spellClearHeldAt).
+        if (stream === 'spells') { this.spellClearHeldAt ??= Date.now(); break }
         if (stream) this.emit({ type: 'clear-stream', stream })
         break
       }
@@ -1012,6 +1213,14 @@ export class StormFrontParser {
         // open-url refuses them too).
         if (!selfClosing && attrs.href && /^https?:\/\//i.test(attrs.href.trim())) {
           this.linkHref = attrs.href.trim()
+        }
+        // A game link (rich stream). `noun` is trimmed: one creature type is
+        // sent as noun=" moth" (DR rich reference §2.3).
+        if (!selfClosing && attrs.exist) {
+          this.linksSeen = true
+          if (!this.richAnnounced) { this.richAnnounced = true; this.emit({ type: 'rich-stream' }) }
+          this.linkExist = attrs.exist
+          this.linkNoun  = attrs.noun?.trim() || undefined
         }
         break
 
@@ -1055,12 +1264,22 @@ export class StormFrontParser {
           .filter(k => k !== 'exist' && attrs[k] && attrs[k] !== '0')
           .map(k => k.toLowerCase())
         if (!this.rosterPending) this.rosterPending = { names: null, list: [] }
-        this.rosterPending.list.push({ id, flags })
+        // The newest tag is the whole state. A rich move sends a creature's tag
+        // twice before its prompt (after the room objs component, and again
+        // inside the <room> block), which would otherwise list it twice.
+        const at = this.rosterPending.list.findIndex(c => c.id === id)
+        if (at >= 0) this.rosterPending.list[at] = { id, flags }
+        else this.rosterPending.list.push({ id, flags })
         break
       }
 
       case 'prompt': {
         this.flushRoster()
+        // Legacy: a spell clear still held at the prompt had no push (see linksSeen).
+        if (this.spellClearHeldAt !== null && !this.linksSeen) {
+          this.spellClearHeldAt = null
+          this.emit({ type: 'clear-stream', stream: 'spells' })
+        }
         // The prompt carries the SERVER's current time — anchor any pending
         // RT/CT to it: duration = end − serverNow, expressed as a LOCAL-clock
         // expiry (Date.now() + durationMs) so the renderer's countdown is
@@ -1130,7 +1349,9 @@ export class StormFrontParser {
     }
 
     if (name === 'a') {
-      this.linkHref = undefined
+      this.linkHref  = undefined
+      this.linkExist = undefined
+      this.linkNoun  = undefined
       return
     }
 
@@ -1245,10 +1466,7 @@ export class StormFrontParser {
           // A creature-list refresh opens the roster its <crtrStatus> tags fill.
           // The bold spans are the creatures, in the same order as the tags.
           if (id === 'room objs') {
-            this.rosterPending = {
-              names: capturedSegments.filter(sg => sg.bold).map(sg => sg.text.trim()).filter(Boolean),
-              list: [],
-            }
+            this.rosterPending = { names: boldRuns(capturedSegments), list: [] }
           }
           if (stream) {
             this.emit({ type: 'clear-stream', stream })
@@ -1298,6 +1516,11 @@ export class StormFrontParser {
         this.colorStack    = []
         this.linkCmd       = undefined
         this.linkCmdIsText = false
+        // A link never spans a prompt: an <a> whose </a> was lost (a truncated
+        // line, a script's stray tag) must not stamp every later segment.
+        this.linkHref      = undefined
+        this.linkExist     = undefined
+        this.linkNoun      = undefined
         // A view of another room ends at its prompt, and so does the burst.
         this.remoteView       = false
         this.movedSincePrompt = false

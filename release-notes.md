@@ -1,45 +1,46 @@
-## v0.20.5
+## v0.21.0
 
-Fixes from Vaddon's read-through, two Genie import gaps Legiro hit, and a few lessons borrowed from [ProfanityFE](https://github.com/elanthia-online/ProfanityFE), whose recent work on the shared DragonRealms stream turned up issues Lichborne had too. Thanks, Vaddon and Legiro, and thanks to the ProfanityFE developers.
+DragonRealms has a newer, richer game stream, the one the Saga client uses, and Lich 5.23.0 (released 2026-10-27) now takes it from the game for you. This release teaches Lichborne to read it, and with Lich 5.23.0 or later it switches over automatically. Thanks to Mahtra, whose research and Lich work on the new stream this release is built on, to the [ProfanityFE](https://github.com/elanthia-online/ProfanityFE) developers for the creature-state idea, and to Vaddon for the account-transfer report.
 
-### The Genie map no longer slides
+### DragonRealms' rich stream, on by default with Lich 5.23
 
-The Genie map used to glide for a moment each time you moved. Redrawing a whole zone for every frame of that slide was expensive: while running or on a go2 it dropped frames and made the rest of the window, game text included, feel sluggish, and it was hard to tell a slow map from one that was still sliding. The map and its "you are here" ring now jump straight to your new room.
+Lich 5.23.0 takes the rich stream from DragonRealms, and Lichborne now asks Lich to pass it through. Before, Lich turned it back into the older stream for us. With Lich 5.23.0 or later, it's on automatically from your next login; nothing to set up.
 
-**Genie Map Animations** now covers only the room effects (shop glints, ripples, fire auras, the healer heartbeat), and it's **off by default** for new characters. If you already have it on, it stays on; turn it off in Settings if your map or text feels heavy.
+What you get:
 
-The pulsing ring that marks where you are is no longer part of that setting. It now behaves the same on both maps: it keeps pulsing on the Genie map with animations off, as it always has on the Lich map. **Epilepsy safe mode** stops the pulse on both, leaving the solid ring.
+- **Clickable names.** Click a creature, an item or a player in game text for a small menu: Look and Face for creatures, Look and Get for items, and Say to, Whisper to, Look and the contact card for players (plus Touch for empaths). Each one targets the exact thing you clicked, even when there are three identical creatures in the room. Right-click a name for the same items above the usual text menu.
+- **Creatures named reliably.** The Living Tableau and the Room panel match each creature to its state (dead, sleeping, prone, engaged) by the game's own id rather than by order.
+- **Creature names in bold** in combat and action lines, where the game now marks them.
+- **Your `FLAG DESCRIPTION` setting followed by Lichborne**, so turning room descriptions off works again (see below).
 
-### Links in game text can't launch programs
+Everything else looks as it did: room views, the compass, click-to-walk, the maps, the Room panel, your highlights, mutes, substitutes and triggers.
 
-A link in game text, which any Lich script can write, could point at a file on your computer, and clicking it would have run that file. Lichborne now opens only web addresses (`https://`/`http://`); anything else shows as plain text and does nothing when clicked.
+**To turn it off or check it:**
 
-### The Living Tableau shows who's fighting you between assesses
+- **Lich Setup → Game stream** (the ⚙ on the launcher, or Settings → Open Lich Setup…): **Rich (Saga) when Lich supports it** (the default), **Rich (Saga) always**, or **Legacy**. The line underneath says whether your Lich supports it. A change applies from your next connect.
+- **`/richstream`** shows the setting and which stream your current session is getting; `/richstream auto|on|off` changes it.
+- **Attaching** to a Lich on this machine follows the same setting. For a Lich on another machine, Lichborne can't check its version, so choose **Rich (Saga) always** to get it there.
+- **Direct connections** (no Lich) keep the older stream for now.
 
-DR's automatic assess only comes every so often, and is often empty. A creature that had engaged you since the last one, or any creature once the last assess had cleared, didn't get the red "engaged" glow. Now it does, as soon as DR's creature list says it's on you.
+**If you update to Lich 5.23.0:**
 
-### A Moon Mage's Locate no longer moves you
+- **Room descriptions came back** even though you turned them off with `FLAG DESCRIPTION OFF`? With the rich stream on, Lichborne handles this itself. If you've set **Game stream** to **Legacy**, type `;display descflag on` once instead.
+- Lich recommends **Ruby 4.0.9** for its security fixes. Ruby 4.0 is still the minimum.
 
-Locate shows the other person's room in your game window the same way a LOOK shows yours. Lichborne used to take that room as yours: the Room panel showed its description, the Living Tableau drew its scenery, and the compass showed its exits until your next move or LOOK. The located room still prints in the game window, but your room stays your room, with or without Lich's `;display` room-number options.
+### Characters that moved to another account
 
-### Game-opened links follow your link-safety setting
+If you transferred a character to another account in-game, Lichborne used to keep it filed under the old account: refreshing the new account called it "already added", and the old account's tile tried to log in with the wrong account. Now refreshing the new account offers it with a **moved from …** badge, already ticked, and **Finish** moves it across with all its settings, highlights, layout and colour. Refreshing the old account lists characters it no longer has under **No longer on this account**, which you can tick to remove. A removed character is archived, not deleted, so the new account still gets it back with its settings. (Vaddon)
 
-A link the game or a Lich script opens by itself (`<LaunchURL>`) now goes through the same **"you are leaving Play.net"** page as a link you click, while that setting is on (it is by default). It also only opens a real `https://`/`http://` address or a play.net page, so a malformed address can no longer point the browser somewhere unexpected.
+### Dead, sleeping and prone creatures in the Room panel
 
-### Overview: a clearer "send to" button
+In the Room panel's "You also see" line, a dead creature's name is greyed and no longer bold, a sleeping one is in italics, and a prone one is underlined. Hover the ⚔ count for a summary ("3 creatures here: 1 dead") and what each look means. The main window is unchanged. (An idea from ProfanityFE.)
 
-The Overview's input bar picked its target from a dropdown that cut its own label off ("All characters (2" plus a stray arrow). It's now a button that reads **All · 2 ▾** or the character's name, and opens Lichborne's own menu with a tick on the current choice. It follows your theme and text size, and picking someone puts you straight back in the input. The tick, the **All** label and the Send button are also easier to read on darker themes such as Barbarian, where the accent colour on its own was hard to make out.
+### Lines cut by "...wait N seconds."
 
-### Genie import
-
-- `#flash` and `#beep` with anything after them (`#flash 3`) now import as Flash and Beep instead of being skipped (thanks, Legiro).
-- `#event 5 look` (Genie's timer) imports as a command sent 5 seconds later, and `#playsystem` sounds import as a sound or a beep.
+When you act in roundtime, DragonRealms sometimes cuts the line it's sending in two to fit in "...wait 3 seconds.", so the sentence arrived as two lines and the Room panel's "You also see" line could end in the refusal. Lichborne now shows the refusal on its own line and the sentence whole, as Lich 5.23.0 does.
 
 ### Smaller fixes
 
-- **Genie Maps tells you where to get the maps.** With no maps folder set, the Genie Maps view pointed at a page that doesn't exist. It now has a **Download the maps ZIP** link straight to the [GenieClient/Maps](https://github.com/GenieClient/Maps) download: unzip it, then use the button to pick that folder. (Vaddon)
-- **File → Import Profile… opens on the Import tab**, even when Transfer is already open. It used to open Transfer on Export. The launcher's Transfer button and File → Export Profile… still open on Export. (Vaddon)
-- **Clearer wording when importing.** The file list on the Import tab now says "Choose a file to import…" instead of "Choose an export…". (Vaddon)
-- A link inside a game command that contains `>` (`look >here`) no longer spills part of the tag into the game text.
-- During a fast go2, Lich's `[go2]>` lines no longer show in the room-name colour.
-- **Spell Monitor:** a spell with no expiry (Indefinite, or OM) now shows a full bar instead of an empty gap under its name.
+- **An attached session that drops and re-attaches by itself starts clean.** If the connection dropped in the middle of a block of text, game text could keep landing in the wrong panel afterwards. (Kahlen's attach mode.)
+- **The Living Tableau names every creature after a LOOK.** A LOOK in the middle of a fight sent the creature list twice, which left creatures unnamed until the next move.
+- **The Active Spells panel and the Spell Monitor no longer blink empty** for a moment when the game refreshes your spell list in the middle of combat.

@@ -99,6 +99,13 @@
   color: var(--text-muted);
   margin-top: 4px;
 }
+/* A second zone in the same step (B542's "No longer on this account"),
+   separated by a hairline like other in-body zones (UX standard #5). */
+.wiz-section-label--gap {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
 
 .wiz-hint {
   font-size: var(--modal-hint-size);
@@ -264,6 +271,14 @@
   border: 1px solid var(--border-subtle);
   background: var(--modal-bg);
   white-space: nowrap;
+}
+/* A character transferred here from another account (B542): it IS
+   selectable, so the badge reads as news rather than a muted "can't".
+   Accent text uses the house mix toward --text-primary so it stays legible on
+   themes whose accent is dark (pitfall #150). */
+.wiz-char-moved-badge {
+  color: color-mix(in srgb, var(--accent) 60%, var(--text-primary));
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 /* ── Error display ───────────────────────────────────────────────────── */

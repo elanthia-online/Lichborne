@@ -14,6 +14,8 @@
 
 import { newHighlight, type HighlightRule, HIGHLIGHT_EFFECTS, effectiveEffect } from './highlights'
 import { CMD_HISTORY_MIN_MAX } from './commandHistorySettings'
+import { richStreamModeText } from './lichSettings'
+import type { RichStreamMode } from '../shared/types'
 import type { CompassOptions } from './settings'
 import { newMute, type MuteRule } from './mutes'
 import { newSubstitute, type SubstituteRule } from './substitutes'
@@ -54,6 +56,10 @@ export interface SlashContext {
    *  the registry stays pure — it never touches storage itself. */
   getCommandHistoryMinLength: () => number
   setCommandHistoryMinLength: (n: number) => void
+  // v0.21.0 — DragonRealms' rich stream: the app-wide request (Lich Setup) and
+  // what this session is receiving. A change applies from the next connect.
+  getRichStream: () => { mode: RichStreamMode; receiving: boolean; viaLich: boolean }
+  setRichStream: (mode: RichStreamMode) => void
   // v0.20.0 — character status notifications (app-wide).
   getCharacterNotices: () => boolean
   setCharacterNotices: (on: boolean) => void
@@ -1353,6 +1359,34 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
     },
   },
 
+  // ── /richstream (v0.21.0, DESIGN §55.11) ─────────────────────────────────
+  // One entry: bare = status, an argument sets the mode. Three states, so no
+  // bare toggle. The setting is app-wide and read at connect.
+  {
+    noun: 'richstream', nounAliases: ['saga'], verb: '',
+    args: [{ name: 'auto|on|off', required: false, kind: 'word', hint: 'omit for status' }],
+    options: [], flags: [],
+    description: "Ask Lich for DragonRealms' rich (Saga) stream, or show which stream you're getting",
+    example: '/richstream auto',
+    run: (ctx, p) => {
+      const want = p.args[0]?.toLowerCase()
+      if (want && want !== 'auto' && want !== 'on' && want !== 'off') {
+        return err(`/richstream takes "auto", "on", "off", or nothing (status) — not "${p.args[0]}".`)
+      }
+      if (want) {
+        ctx.setRichStream(want as RichStreamMode)
+        return ok(`Rich stream: ${richStreamModeText(want as RichStreamMode)} Applies from your next connect (or Reconnect).`)
+      }
+      const r = ctx.getRichStream()
+      const now = !r.viaLich
+        ? 'This character connects directly (no Lich), which always uses the legacy stream.'
+        : r.receiving
+          ? 'This session is receiving the rich stream.'
+          : 'This session is receiving the legacy stream (Lich is converting it, or the game has not sent a room or link yet).'
+      return ok(`Rich stream setting: ${richStreamModeText(r.mode)} ${now}`)
+    },
+  },
+
   // ── /view (Views — DESIGN §47) ────────────────────────────────────────────
   // A bare+verbs noun like /ai and /colors: the BARE form reports status and
   // toggles, the verbs switch and configure. Per the palette rule there is
@@ -1657,6 +1691,7 @@ const NOUN_HELP: Record<string, string> = {
   timestamps: 'Show the time next to each line in the main window',
   compass:    'The floating compass — show or hide it, resize it, move it, give it a backing',
   notices:    'Turn the "character is in the game / disconnected" notifications on or off',
+  richstream: "Ask Lich for DragonRealms' rich (Saga) stream, or see which stream you're getting",
   clear:      'Wipe the main window (your Session Log still keeps everything)',
   colors:     'Named colors — make your own, and everything using one changes when you change it (/colors manage)',
   ai:         'AI features (bring your own key) — /ai catchup 30m summarizes what happened',

@@ -67,6 +67,7 @@ import * as cp from 'child_process'
 import { expandHome } from './homePath'
 import { autoUpdater } from 'electron-updater'
 import { ConnectionManager } from './connection/ConnectionManager'
+import { lichSupportsFrontendCaps } from './connection/frontendCaps'
 import { SGEConnection } from './connection/SGEConnection'
 import { StormFrontParser } from './parser/StormFrontParser'
 import { SceneParser } from './parser/SceneParser'
@@ -150,6 +151,9 @@ interface Session {
   // Pending auto re-attach (attach sessions only). Held so teardown and a
   // manual reconnect can cancel it — see scheduleReattach / cancelReattach.
   reattachTimer?: ReturnType<typeof setTimeout>
+  // The rich-stream request this attach was made with (DESIGN §55.11), so an
+  // auto re-attach declares again: a declaration lasts one connection.
+  attachRich?: { richStream?: AttachCredentials['richStream']; lichPath?: string }
 }
 
 const HISTORY_BUFFER_MAX = 600
@@ -184,6 +188,9 @@ function snapshotKey(evt: GameEvent): string | null {
     // room state like the tokens — a window takeover must repaint it.
     case 'room-exits-text': return 'room-exits-text'
     case 'player-info':   return 'player-info'
+    // v0.21.0: "this session gets the rich stream" — sticky, so /richstream
+    // in a window that took the session over still knows.
+    case 'rich-stream':   return 'rich-stream'
     default:              return null
   }
 }
@@ -494,9 +501,15 @@ function scheduleReattach(s: Session, attempt = 0) {
     if (!sessions.has(s.id) || s.connected || !s.meta?.attach) return
     const { host, port } = s.meta.attach
     sendStatus(s, false, `Re-attaching to ${host}:${port}…`)
+    // B310: the Session (and so the parser) outlives the dropped connection.
+    // Start the new one with a clean parser, as a fresh login would, so a drop
+    // mid-block can't leave text filed under a sub-stream, mono on, a spell
+    // clear held, half a refused line, or the old room as "ours". The game's
+    // own flags (FLAG DESCRIPTION) didn't change, so they are kept.
+    s.parser.reset({ keepGameFlags: true })
     s.connection.connectAttach({
       account: s.meta.account, character: s.meta.character,
-      game: s.meta.game, host, port,
+      game: s.meta.game, host, port, ...s.attachRich,
     })
       .then(() => {
         if (!sessions.has(s.id)) return
@@ -1205,6 +1218,7 @@ ipcMain.handle(CH.LOGIN_ATTACH, async (event, creds: AttachCredentials): Promise
     // to the same listener instead of relaunching a login — in any window.
     attach: { host: creds.host, port: creds.port },
   }
+  s.attachRich = { richStream: creds.richStream, lichPath: creds.lichPath }
   broadcastRoster()
 
   const onProgress = (message: string) => {
@@ -1588,6 +1602,8 @@ ipcMain.handle('discover-lich-paths', async (_event, currentRuby: string, curren
     lichPath:         null as string | null,
     rubyAlreadyValid: fs.existsSync(expandHome(currentRuby ?? '')),
     lichAlreadyValid: fs.existsSync(expandHome(currentLich ?? '')),
+    // v0.21.0: does the configured Lich understand SET_FRONTEND_CAPS (5.23.0+)?
+    richStreamSupported: lichSupportsFrontendCaps(currentLich),
     baseFolderExists: false,
     rubyVersion:      null as string | null,
     // Back-compat field — LichSetupFields keyed its whole status banner on it

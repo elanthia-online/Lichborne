@@ -157,6 +157,7 @@ export default function LoginScreen({ onConnected, isModal = false }: Props) {
       rubyPath,
       lichPort: gameOpt.port,
       lichMode,
+      richStream: adv.richStream,
     }
 
     const result = await window.api.login(creds)

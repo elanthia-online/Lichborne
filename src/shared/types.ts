@@ -47,7 +47,21 @@ export interface LoginCredentials {
   // port, which made cross-shard logins land on the wrong server.
   lichPort: number
   lichMode: '--stormfront' | '--genie' | '--wizard' | '--avalon' | '--frostbite'
+  // Ask Lich for DragonRealms' rich ("Saga") stream (v0.21.0, DESIGN §55.11).
+  // Absent = 'auto'. Ignored on a direct connection, which stays legacy.
+  richStream?: RichStreamMode
 }
+
+// Whether to send Lich `SET_FRONTEND_CAPS room_element game_links double_bold`
+// (lich-5 #1726, in Lich 5.23.0), which stops Lich rewriting the rich stream
+// into the legacy shape for this client:
+//   auto — when Lichborne can see the Lich supports it: the install it launches
+//          has lib/common/client_capabilities.rb, or, for an attach to this
+//          machine, the configured install does;
+//   on   — always, including an attach to another machine (an older Lich passes
+//          the line to the game, which answers it once as an unknown command);
+//   off  — never: the legacy shape, as before v0.21.0.
+export type RichStreamMode = 'auto' | 'on' | 'off'
 
 // Attach to an ALREADY-RUNNING, detachable Lich session.
 //
@@ -80,6 +94,10 @@ export interface AttachCredentials {
   game: string
   host: string
   port: number
+  // Rich-stream request (see RichStreamMode). `lichPath` is the configured
+  // local install, checked under 'auto' when the attach target is this machine.
+  richStream?: RichStreamMode
+  lichPath?: string
 }
 
 export interface CharacterEntry {
@@ -345,6 +363,12 @@ export interface TextSegment {
   cmd?: string      // clickable command link (from <d cmd='...'>)
   href?: string     // clickable URL link (from <a href='...'>)
   autoHref?: boolean // true when href was auto-detected in plain text (not from <a href>)
+  // A game link on the rich stream (v0.21.0, DESIGN §55): the object, creature
+  // or player this text names. `exist` is its id (players negative), usable as
+  // `#id` in commands; `noun` is the game's noun for it, often NOT the text's
+  // last word. Absent on the legacy stream.
+  exist?: string
+  noun?: string
 }
 
 // --- Typed game events ---
@@ -383,6 +407,14 @@ export type GameEvent =
   | SceneLogonEvent
   | CharacterGuildEvent
   | CreatureRosterEvent
+  | RichStreamEvent
+
+// The first rich-stream shape of the session (a <room> block or an
+// <a exist> game link): Lich is passing DragonRealms' rich stream through
+// unrewritten. Emitted once per parser lifetime (reset() re-arms it).
+export interface RichStreamEvent {
+  type: 'rich-stream'
+}
 
 export interface StreamTextEvent {
   type: 'stream-text'

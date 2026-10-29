@@ -1549,6 +1549,7 @@ function AppShell() {
       rubyPath:      adv.rubyPath,
       lichPort:      gameOpt.port,
       lichMode:      adv.lichMode,
+      richStream:    adv.richStream,
     }
 
     // CANCEL, honoured for real (Sekmeht: "there's no way to stop it until you
@@ -1682,7 +1683,10 @@ function AppShell() {
       } catch { /* no profile — placeholders stand */ }
     }
 
-    const result = await window.api.loginAttach({ account, character, game, host, port })
+    const adv = loadAdvanced()
+    const result = await window.api.loginAttach({
+      account, character, game, host, port, richStream: adv.richStream, lichPath: adv.lichPath,
+    })
     if (!result.ok) return result.error ?? 'Attach failed'
 
     if (cancelled?.current) {
@@ -1940,7 +1944,7 @@ function AppShell() {
         account: c.account, password, character: c.name,
         game: c.game, lichArguments: gameOpt.lichArguments,
         useLich: c.useLich, lichPath: adv.lichPath, rubyPath: adv.rubyPath,
-        lichPort: gameOpt.port, lichMode: adv.lichMode,
+        lichPort: gameOpt.port, lichMode: adv.lichMode, richStream: adv.richStream,
       }
       const result = await window.api.login(creds)
       if (!result.ok) return { error: result.error ?? 'Connection failed' }

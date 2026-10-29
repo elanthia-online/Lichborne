@@ -34,6 +34,7 @@
 // multi-segment line must pass precomputed ranges or it re-runs the scan per
 // segment (the pre-B172 cost); and a line effect goes on an element INSIDE the
 // segment's own, never on the line container (see `renderPlainRun`).
+import { linkDataAttrs } from '../gameLinks'
 import type { TextSegment, LineStyleHint } from '../../shared/types'
 import type { Contact, ContactTemplate } from '../contacts'
 import type { CompiledRule } from '../HighlightsContext'
@@ -449,7 +450,8 @@ export function renderSegmentFull(
       // No highlight/contact covers this run — render via renderSegment so it
       // picks up the segment's preset / fg / bg as plain text, with the line
       // layer's colour and effect on top when a line rule matched.
-      parts.push(renderPlainRun({ ...seg, text: matchText }, k(), onSendCommand, autoLinkUrls, webLinkSafety, line, offset + run.start))
+      // The link stays on the wrapper below (its whole text), not on each run.
+      parts.push(renderPlainRun({ ...seg, text: matchText, exist: undefined, noun: undefined }, k(), onSendCommand, autoLinkUrls, webLinkSafety, line, offset + run.start))
       continue
     }
 
@@ -513,5 +515,9 @@ export function renderSegmentFull(
   // (Settings → Text styles, v0.20.1) also reaches the highlighted and contact
   // runs inside it — only the unmatched runs carry `data-preset`. Nothing
   // styles `data-ts` unless the player set a style for that kind.
-  return <span key={segKey} data-ts={seg.preset ?? (seg.bold ? 'bold' : undefined)}>{parts}</span>
+  // A game link split by a highlight or contact keeps its link on the wrapper
+  // (gameLinks.ts reads the nearest data-exist), since the runs inside are
+  // painted by the highlight and contact builders, not renderSegment.
+  const link = linkDataAttrs(seg)
+  return <span key={segKey} className={link ? 'game-link' : undefined} data-ts={seg.preset ?? (seg.bold ? 'bold' : undefined)} {...link}>{parts}</span>
 }

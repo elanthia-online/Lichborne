@@ -2,6 +2,8 @@
 // and SettingsPanel (in-session edits). Persisted to localStorage; replicated
 // to _shared.yaml by callers so concurrent Electron processes stay in sync.
 
+import type { RichStreamMode } from '../shared/types'
+
 // Cross-platform (v0.18.0): which OS we're on, from the preload bridge.
 // Guarded so non-renderer contexts (the tmp-* harnesses stub window.api
 // without a platform field) fall back to Windows behavior.
@@ -55,6 +57,10 @@ export interface AdvancedSettings {
   lichMode: '--stormfront' | '--genie' | '--wizard' | '--avalon' | '--frostbite'
   modeLocked: boolean
   showAdvanced: boolean
+  // DragonRealms' rich ("Saga") stream through Lich (v0.21.0, DESIGN §55.11):
+  // see RichStreamMode in shared/types.ts. Default 'auto' = on whenever the
+  // Lich install supports it (Lich 5.23.0+).
+  richStream: RichStreamMode
 }
 
 export const ADV_DEFAULTS: AdvancedSettings = {
@@ -66,11 +72,27 @@ export const ADV_DEFAULTS: AdvancedSettings = {
   lichMode: '--stormfront',
   modeLocked: true,
   showAdvanced: false,
+  richStream: 'auto',
+}
+
+export function coerceRichStream(v: unknown): RichStreamMode {
+  return v === 'on' || v === 'off' || v === 'auto' ? v : ADV_DEFAULTS.richStream
+}
+
+// One sentence per mode, shared by Lich Setup and /richstream so they can't
+// describe the same setting differently.
+export function richStreamModeText(mode: RichStreamMode): string {
+  switch (mode) {
+    case 'auto': return 'Auto — Lichborne asks for it whenever your Lich supports it (5.23.0 or later).'
+    case 'on':   return 'Always — asked for on every Lich connection, including an attach to another machine.'
+    case 'off':  return 'Off — Lich converts it to the older stream, as before v0.21.0.'
+  }
 }
 
 export function loadAdvanced(): AdvancedSettings {
   try {
-    return { ...ADV_DEFAULTS, ...JSON.parse(localStorage.getItem(ADV_KEY) ?? '{}'), showAdvanced: false }
+    const s = { ...ADV_DEFAULTS, ...JSON.parse(localStorage.getItem(ADV_KEY) ?? '{}'), showAdvanced: false }
+    return { ...s, richStream: coerceRichStream(s.richStream) }
   } catch { return { ...ADV_DEFAULTS } }
 }
 

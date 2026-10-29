@@ -1858,6 +1858,8 @@ The single entry point for adding characters. Renamed from "Add Character" in v0
 
 A `prefillAccount` prop lets a launcher "↺ Refresh from account" button open the wizard with that account pre-filled — discovery is the same operation, just adds anything new for that account.
 
+**Characters that moved between accounts (B542, v0.21.0).** A profile is filed by the character's name; its `account` is a field inside it. So discovery compares each listed character's profile account with the account being added (`classifyRoster`, pure and harnessed): same account → already added; another account (or the `attach` placeholder) → transferred here, shown as "moved from X", ticked by default, and Finish re-files the existing profile (`refileProfile`: read-modify-write of `account` only, refusing an unreadable or newer-version file). A profile restored from the archive is re-filed too. The colour (`SharedProfile.characterColors`, keyed `account::character`) and the Reconnect Last entry move with it. Step 2 also lists "No longer on this account": profiles on this account, in the same game family (DRT counts as DR), that the roster no longer shows. They are unticked by default, and ticking one archives it, so adding the account it moved to restores it with its settings. `exportCharacterProfile` keeps the YAML's `account` over the session's, so a tab left open from before a move can't revert it. No slash command: this is part of the one-time account setup dialog.
+
 ### 13.6.2 Same-Account Conflict & Auto-Disconnect
 
 DR allows only one character per account active at a time. Three places enforce this:
@@ -10328,6 +10330,10 @@ cannot and does not try to reach those.
 - **`ConnectionManager`** gains mode `'attach'` and `connectAttach()`, translating
   ECONNREFUSED into "start Lich attachably" rather than a raw errno, and issuing
   a post-attach `look` (Lich's resync covers everything *except* the room).
+  Since v0.21.0 it may also send `SET_FRONTEND_CAPS` first, which Lich 5.23.0+
+  consumes (§55.11): only when the rich-stream setting allows it, and under
+  `auto` only to a Lich on this machine whose install supports it. It is sent
+  again on every re-attach, because a declaration lasts one connection.
 - **`main.ts`** adds `CH.LOGIN_ATTACH` mirroring `CH.LOGIN`'s lifecycle —
   **including the hold-for-replay** (§13.9 / pitfall #60), because the
   attach-time resync would otherwise be flushed into a window that has no
@@ -10389,16 +10395,15 @@ targets mid-session) — that *would* deserve a verb.
 - A **`--genie`-flavoured** headless Lich sends no attach-time resync at all and
   suppresses stream tags (genie is registered without the `streams` capability).
   Plain `--headless` is the shape to recommend; this is a Lich-side property.
-- **The parser is REUSED across an auto re-attach (B310 — open, unpatched).**
+- **~~The parser is REUSED across an auto re-attach~~ (B310, fixed in v0.21.0).**
   Every other connection path gets a fresh `StormFrontParser` because a new
   connection means a new `Session`; auto re-attach reuses `s`, so a drop that
-  lands mid-block can carry `activeStream` / `streamStack` / `monoMode` into the
-  new socket, filing subsequent game text under a stale stream with nothing to
-  self-correct it. The prompt boundary already scrubs the inline style state
-  each turn, so an idle-time drop — the common keepalive case — is harmless.
-  Pre-existing gap (`reset()` has never had a call site), newly reachable.
-  Deliberately left for the author's call rather than patched; the fix, if
-  accepted, is `s.parser.reset()` before `connectAttach()` in `scheduleReattach`.
+  landed mid-block could carry `activeStream` / `streamStack` / `monoMode` into
+  the new socket. v0.21.0 added more such state (the held spell clear, a held
+  refusal line, link and room-identity tracking), so `scheduleReattach` now calls
+  `s.parser.reset({ keepGameFlags: true })` before `connectAttach()`. It keeps
+  only FLAG DESCRIPTION, which is the game's setting and doesn't change with a
+  re-attach. The SceneParser is left alone; its cast self-corrects on the `look`.
 - **Auto-discovery is not attempted.** Lich writes a session descriptor file
   (`{name, host, port}` JSON) per character when detachable, which would remove
   the host/port entry entirely and the risk of mislabelling a tab by typing the
@@ -11179,3 +11184,202 @@ The Spell Monitor gave a permanent effect (`Indefinite`, `OM`) no bar, so its ce
 
 **No slash command** for any of §54: dialogs, import, parsing, display and safety fixes, with no new capability. Genie Map Animations has never had a command and still doesn't: a display preference set once, in Settings.
 
+## 55. The rich DragonRealms stream (v0.21.0)
+
+*Written 2026-10-16 from Mahtra's research note, the lich-5 wiki's "DragonRealms Rich XML Stream Developer Reference" and "Rich Stream Front-End Adaptation Design" (wiki @ `9b5a439`), and a replay of lich-5's anonymised fixtures through Lichborne's own parser. Phases 1 and 2 were built later the same day (each has a **Built** note below); Phase 3 is §55.6, and §55.11 records the readiness check and the switch-over.*
+
+### 55.1 What the rich stream is, and why it's urgent
+
+DragonRealms sends a richer XML dialect when the client string after the login key names Saga (`/FE:WRAYTH /VERSION:saga-0.10.4 /P:SAGA /XML`). The differences that matter (wiki §0, §2):
+
+- **A room view is one `<room>` line** (`<resource picture="0"/><room><name>…</name><description>…</description><exists>…</exists>[<crtrStatus/>…]<players>…</players><exits>…</exits><extra></extra></room>`). It replaces the legacy `roomName` style line, the `roomDesc` preset line, the players and exits lines, and the `<compass>` line. The room components and subtitles still come first, as in legacy.
+- **No `<compass><dir>` line.** The compass has to be derived from the `<d>` tags in `<exits>`.
+- **`<a exist="id" noun="noun">text</a>` links** on objects, creatures and players nearly everywhere: room components, story, combat, assess, speech, inventory feeds. `noun` is often not the last word. Player ids are negative; creature and object ids positive.
+- **Doubled bold** around creatures in room-objects listings (`<pushBold/><pushBold/>a <a …>jeol moradu</a><popBold/><popBold/>`). Elsewhere a linked creature has single bold, where legacy has none.
+- **`<crtrStatus exist>` ids match the creature links**, so a creature's state can be tied to its name exactly rather than by order.
+- **Game bug:** the rich stream ignores `FLAG DESCRIPTION OFF`.
+- Spell-window pushes can arrive many lines, even prompts, after their clear.
+
+Lichborne identifies with Genie's legacy string (`ConnectionManager.ts:40`, `LichConnection.ts:36`), so the default Lich path gets the legacy stream. **But two paths get the raw rich stream from Lich `main` today, with no adaptation:** Attach mode (Lich sends its own string, now Saga) and "Lich frontend" set to `--frostbite`. lich-5 #1700 (the Saga default) was merged on 2026-10-15, and the 5.23.0 release that ships it is pending (release PR #1699). Those users will hit the breakage below as soon as they update Lich. lich-5's open PRs #1708, #1721, #1722, #1724 and #1726 would rewrite the rich stream back to the legacy shape for front ends that don't declare support. None is merged or released, and #1724 would put the DEFAULT path on the rich stream too (rewritten).
+
+### 55.2 What Lichborne does with it today (measured)
+
+`tmp-v0210-rich/replay.ts` (machine-local) feeds lich-5's ten anonymised fixtures (`spec/fixtures/streams/dr_{legacy,saga}_*.xml` on MahtraDR/lich-5 `feat/per-client-caps`) line by line through the real `StormFrontParser` and `SceneParser`:
+
+| | Legacy fixtures | Rich fixtures |
+|---|---|---|
+| Room view in main | `roomName`- and `roomDesc`-styled lines (12 and 5 in the hunt) | each `<room>` becomes ONE unstyled line, name and description run together (56 of 56) |
+| Exits events | real directions (12 of 17 non-empty in the hunt) | every one empty (28 of 28, 15 of 15): compass, click-to-walk and `$exits` go dark |
+| Creature roster names | 181 of 193 named | 0 of 383 named (doubled bold makes two bold runs per creature, so the count never matches) |
+| Tableau cast | `jeol moradu` | `a` / `an` beside the real creature: a phantom per creature |
+| Unhandled tags | `inventoryManager`, `closeDialog` | the same, plus `room`, `name`, `description`, `exists`, `players`, `exits`, `extra` |
+
+`<a exist>` without `href` is ignored silently (the text renders, with no link). Bold is already a depth counter, and every other rich shape parses as legacy does. So the damage is exactly four things, all in the room view and the creature list.
+
+### 55.3 Goals and non-goals
+
+- **Parse both dialects, always, feature by feature.** Never one session-wide "dialect" switch (wiki §3.2): a rich session also sends component-only refreshes, and a client behind Lich can get either shape depending on Lich's version and settings.
+- **A legacy session renders byte-for-byte as today.** Every change is keyed on a rich-only shape (`<room>`, `<a exist>`, doubled bold).
+- **The rich stream renders as well as legacy, then better:** the ids are the reason to want it.
+- Display and configuration only (Principle #1). Links become user-initiated menus and clicks, never automation.
+- **Not in v0.21.0 unless decided (§55.7):** GemStone.
+
+### 55.4 Phase 1 — parse the rich stream correctly (required)
+
+Needed whatever else is decided, because Attach and `--frostbite` users get the rich stream with the next Lich release.
+
+1. **`<room>` block → the same events the legacy lines produce.** The parser treats `<room>` as a container and each part as a sub-capture, then emits what the legacy layout would have, keeping each part's inner markup (bold, links, `<d>`):
+   - a main line with the name on the `roomname` preset;
+   - a `roomdesc` description line, so GameWindow's inline-description capture for the map matcher (pitfall #70) keeps working;
+   - the objects, players and exits lines.
+
+   The `<crtrStatus>` tags between `</exists>` and `<players>` feed the roster as now. The B532 Locate check (`isRemoteRoomName`) applies to the block's `<name>`: a rich Locate is a `<room>` with no nav and a different name.
+2. **Compass from exits.** After a block for the player's own room, emit an `exits` event from the `<d>` texts (north→n … down→dn, up, out). An unknown text is skipped, `Obvious …: none.` gives an empty set, and a remote view emits none. The legacy `<compass>` path is untouched.
+3. **Links on segments.** `TextSegment` gains optional `exist?` and `noun?`, with `noun` trimmed (the guide found `noun=" moth"`). The parser keeps the open link while text flows and stamps it on each segment. The fields are optional, so the IPC, the renderer and the session log are unchanged until Phase 2 reads them.
+4. **One creature per link, not per bold run.** In `room objs`, a bold run that is only an article, followed by a bold linked run, is one creature. The roster pairs `crtrStatus` to names **by `exist` id** when the names carry ids. For legacy it falls back to today's order pairing, where the counts must match. `extractSceneCreaturesFromBold` counts bold links the same way, so the phantom "a" goes.
+5. **Spell window: a clear is pending until its push.** Hold the `percWindow` clear until the push's first line (or the next refresh, or a bounded timeout), for both the Active Spells panel and the Spell Monitor's empty-block deferral (§34.9), so a late push no longer blinks the grid empty. Before adding a fallback for unpushed refreshes (ProfanityFE #260), check it against our routing.
+6. **FLAG DESCRIPTION OFF.** Track the game's two answers (`You will no longer see room descriptions.` / `You will now see room descriptions.`). While descriptions are off, leave the description out of the main-window room view for the player's own room. The `room desc` component and the map's description capture keep it. Decision needed: automatic, or a setting.
+7. **Detection per feature, reset at `<settingsInfo>`/login**, only where a feature needs to know. The roster's id pairing does; the room block doesn't, since its shape announces itself.
+
+**Acceptance:**
+- The replay harness shows the rich fixtures producing styled room lines, real exits, named rosters and no phantom creatures.
+- Every legacy fixture's output is unchanged, golden-compared before and after.
+- `tmp-hl-harness`-style render checks pass for the room lines, and the existing parser harnesses rerun clean.
+
+**Built (parser side, 2026-10-16).** All in `StormFrontParser.ts` and `sceneExtract.ts`. Every legacy fixture renders as before, except two intended changes; the rich fixtures now match legacy (`tmp-v0210-rich/golden.ts`, `replay.ts`):
+
+- **The room block** is rebuilt into the legacy lines in `parse()` (`roomBlockLegacyLines`, a verbatim port of lich-5 `RoomBlock.legacy_lines`), then each line goes through the unchanged `parseLine`. The compass is added only for the player's own room, decided by the existing `isRemoteRoomName` (the B532 Locate check). A block without `</room>` is left as it is: a run-on line, which loses nothing.
+- **Links:** `TextSegment.exist` / `noun` on story and captured segments. The `<preset>` capture still collapses to one segment, so a speaker's link inside a speech preset is not carried yet.
+- **Creatures:** `boldRuns` (roster) and `extractSceneCreaturesFromBold` (Tableau) treat a run of consecutive bold segments as one creature. The roster pairs `crtrStatus` by `exist` when the names carry ids.
+- **Intended change 1 (legacy too):** a repeated `<crtrStatus>` id replaces its entry. Legacy repeats each creature's tag before the players line after a LOOK in the same burst, which doubled the list and stopped the names pairing. The legacy hunt fixture now names 6 creatures it used to leave unnamed.
+- **Intended change 2 (legacy too):** the spell-window clear is held until its push. Legacy pushes late too (a clear at line 505 of the legacy hunt has its push at 512, riding on a combat pop), so the Active Spells panel no longer blanks in between. A clear with no push is an empty refresh: on a session that has sent no game link (`linksSeen` false, i.e. legacy) it is released at the next prompt, which is when it used to apply. On the rich stream it is released after `SPELL_CLEAR_HOLD_MS` (10s) at the next line, because there a push can follow its clear across prompts. Legacy also sends unpushed refreshes (the 2026-10-07 hide/whisper fixture), as the guide reports for one rich session; their lines go to the main window, as before.
+- **FLAG DESCRIPTION:** `descriptionsOff` follows the game's reply and the FLAG listing row (lich-5 `RoomDescriptionFilter`'s patterns). While it is off, the player's own rebuilt room view has no description; a Locate keeps its description. The state starts unknown (shown) each session, as in Lich.
+
+### 55.5 Phase 2 — use what the rich stream adds
+
+- **Creatures by id everywhere.** The Tableau already keys creatures on the roster's ids (§51). With names paired by id, it no longer depends on counts matching.
+- **Click and right-click linked names in text**, on any surface that renders a segment with `exist`:
+  - creatures: Look, Face or target `#id`, Assess;
+  - objects: Look, Get;
+  - players: Look, the contact card.
+
+  Commands go through the canonical echoing `sendCommand` (CLAUDE.md, Command-send pipeline) and target `#id`, which avoids noun collisions between identical creatures. Rule colours keep precedence over link styling (wiki §3.4): highlights, presets and bold keep their colour, and a link colour applies only to otherwise uncoloured text.
+- **Players by id:** contacts, the Tableau's player figures and arrive/depart can key on the id rather than the name text.
+- **Hands and inventory feeds** carry links too; a later step.
+
+**Built (2026-10-16).**
+
+- **Every linked name is clickable:** in the main window, every stream panel (docked or floating) and the Room panel. A left-click opens that name's menu. A right-click puts it above the usual text menu (Modify Text ▸ / Trigger ▸ / Show in Log).
+- **What is excluded:** a click that ends a text selection, and a click on something with its own click (a `<d cmd>` command link, a web link, a contact name, which still opens its card).
+- **[gameLinks.ts](src/renderer/gameLinks.ts) owns it:**
+  - `linkDataAttrs` puts `data-exist` / `data-noun` / `data-link` / `data-bold` on the rendered element: on `renderSegment`'s element, or on `renderSegmentFull`'s wrapper when a highlight or contact splits the segment. The split runs inside drop the link, so a menu never shows half a name.
+  - `linkAtElement` reads the link back from the element under a click.
+  - `buildLinkMenu` makes the items.
+- **How a link is classified:**
+  - a negative id is a **player**: Touch (an empath only), Say to… / Whisper to… (typed, `directTo`), Look, and Contact card (only for a contact);
+  - a bold positive id is a **creature**: Look, Face;
+  - any other is an **object**: Look, Get.
+
+  A pronoun link (`it`, `his`) is named by its noun. Commands go through the echoing `sendCommand` and target `#id`.
+- **One context.** GameWindow provides `GameLinkContext`, one stable function for the session, reading the live actions from a ref (pitfall #82c). A context reaches PanelFrame's panels, floating windows and the Overview's portaled cards with no prop plumbing.
+- **The look.** A link is quiet at rest: a pointer cursor and, on hover, a dotted underline in the text's own colour, so highlights, presets and bold keep their colours and nothing needs a theme var.
+- **The Room panel's creature chip** now counts bold runs (`boldRuns`, moved to `src/shared/sceneExtract.ts`); on the rich stream it counted each creature twice.
+- **Verified:** DR accepts `get #id` (Mahtra/Destahd, 2026-10-16), as it does `look #id` and `face #id`, which the Tableau already uses.
+- **No slash command, by decision** (Principle #11): this is a click on game text, with no setting and nothing to type.
+- **Not built:** keyboard access to links in text (the Tableau's person menu remains the keyboard path). Players keyed by id in contacts and the Tableau, and the hands and inventory feeds, are later steps.
+
+### 55.6 Phase 3 — Lichborne's own identity
+
+Two independent switches, both to be decided:
+
+- **Finding (2026-10-16): the Lich path must keep the legacy string for now.** Lichborne's string goes through Lich to the game, so sending Saga there puts LICH itself on the rich stream. Lich's own support for it is the unmerged #1701–#1713 stack, including #1702 (DRParser patterns and Flags against link-stripped lines, i.e. what scripts match) and #1707 (parsing `<room>`). Until those ship in a release, switching would hand every script on a released Lich text it can't parse. The Lich path moves to the rich stream when Lich does it for us (lich-5 #1724, built on top of that stack), and then declaring capabilities (#1726) is what lets us receive it unrewritten. A **direct** connection has no Lich in the way, so it can switch now.
+- **Client string.** Either keep Genie's legacy string, so the stream depends on Lich's version and settings, or send the Saga string ourselves on the direct and Lich paths so every session is rich. Two things are unverified (wiki §5):
+  - which token selects the dialect (`/P:SAGA` or the `saga-` version);
+  - whether the proxied path needs the two `<c>` ready lines Lich's own Saga path sends.
+
+  A direct connection is the cheapest place to test both.
+- **Capability declaration (lich-5 #1726, unreleased).** `SET_FRONTEND_CAPS room_element game_links double_bold` tells Lich to stop rewriting for us. A Lich without #1726 forwards the line to the GAME as a command. So it can only be sent to a Lich known to support it, through a version check on the Lich install we launch or an explicit setting. Until then, Phase 1 handles both shapes, so nothing depends on it.
+- **Update (2026-10-26 Lich review): the stack has merged on Lich main, still unreleased.** Main replaces our client string with Lich's Saga string (#1724) and rewrites the rich stream to the legacy shape for us, since Lichborne declares nothing, so Lichborne on main receives what the legacy stream would have sent. Two facts change the plan above:
+  - **A version check can't gate the declaration.** Main still reads `LICH_VERSION = '5.22.0'`, the same as the release without #1726. Check for the FILE instead: `lib/common/client_capabilities.rb` in the Lich install we launch exists exactly when the line is understood. MAIN can do this before the launch (expandHome + `lichDirFrom`). Attach mode can't, because the Lich may be on another machine, so it would need a setting.
+  - **FLAG DESCRIPTION OFF regresses under Lich's rewrite.** DR's rich stream ignores the flag, Lich's filter is off by default (`;display descflag on`), and Lichborne's own flag handling only runs on a `<room>` block, which the rewrite has already replaced. Declaring `room_element` would put our handling back in charge. Short of that, the parser could drop the own-room `roomDesc` line while it knows the flag is off.
+  Per Mahtra, the declaration waits for the Lich release; Knowledge.md §17 has the citations.
+- **Update (2026-10-28 Lich review): the first unverified question above is answered.** lich-5 #1858: DragonRealms now sends the rich stream only for the exact string `/FE:WRAYTH /VERSION:1.0.1.28 /P:SAGA /XML`; neither `/P:SAGA` alone nor a `saga-` version selects it. Nothing changes for us on either path today. If the direct path ever switches, it must send that string exactly, and DR may change it again.
+- **Update (2026-10-28): Lich 5.23.0 has shipped the whole stack**, #1726 included (Knowledge.md §17). Mahtra's condition for the declaration, "wait for the Lich release", is met. The gate can now be `LICH_VERSION >= 5.23.0` read from the install we launch, or the `client_capabilities.rb` file check above; attach mode still needs a setting. **Built 2026-10-29, on by default (§55.11):** the file check, a three-way setting (`auto`/`on`/`off`) that covers attach, and `/richstream`. The direct path still sends the legacy string.
+
+### 55.7 GemStone
+
+GemStone already sends links and doubled bold whatever the client string (wiki §1.4, §2.17), so Phase 1's link and bold handling would read GS text. But a GS client needs far more than the parser:
+
+- The shard table is DR-only (`GAMES` in lichSettings.ts).
+- GS has no `<room>` but its own room-component push, and a `Spells` stream instead of `percWindow`.
+- GS adds `<roommeta>`, `health` in `crtrStatus`, and three injury radios.
+- Much of Lichborne is DR-specific: experience mind states, Moons, the Spell Monitor, assess, and the Tableau's combat.
+
+Recommended: a separate version once the DR work is done.
+
+### 55.8 Open questions and risks
+
+- **Unverified on the rich stream** (wiki §5; the 2026-10-29 replay in §55.11 answered part of the first):
+  - `(**)` rooms and familiar views inside `<room>`. The Heavens arrives as a `(**)` subtitle with no `<room>` block, and a peer into another room is an ordinary `<room>` after "You peer … and see …", treated as remote. A familiar's view is still unseen;
+  - a `<name>` without brackets;
+  - whether the server ever stops doubling bold;
+  - split `<room>` blocks: 0 of 53,663 observed, but the parser should still never render a half block raw.
+- **Single bold on creatures in story and combat text** is new: some players' highlights on creature names will now share the line with bold.
+- **Highlights, mutes, substitutes and triggers** match the joined segment text, which already excludes tags, so links shouldn't affect them. Verify this against the rich fixtures in Phase 1 rather than assume it.
+- **Slash commands:** Phase 1 adds no capability, so no command. If Phase 3's identity switch becomes a setting, it needs one (Principle #11).
+
+### 55.9 Decisions (Sekmeht, 2026-10-16; the identity decision superseded by §55.11)
+
+- **GemStone: a later version.** v0.21.0 is DragonRealms only. The link and bold handling built in Phase 1 carries over.
+- **Identity: on hold until the next Lich release (revised the same day, after Mahtra's advice).** The first decision was to switch to the Saga string once parsing was solid. Mahtra, who maintains the lich-5 rich-stream work: lich-5 `main` already always takes the rich stream, but will not be released as it is; 27 open PRs bring proper support. Lich will always get the rich stream and hide the extra tags from front ends, by intercepting their client strings in proxy mode (#1724). The next Lich release covers all of it, and that is when front ends can start relying on the rich stream. His advice for now: "code in support for the rich stream without using any other functionality from the rich stream (for now)". So v0.21.0 switches no client string, on any path, and declares no capabilities. The Lich path will get the rich stream from Lich itself. Declaring `room_element game_links double_bold` (#1726) is the step after that release.
+- **Phase 2 stays built but dormant.** Clickable names change nothing Lich or DR sends; they light up only when a link arrives. Today that means Attach or `--frostbite` on an unreleased Lich `main`. After the next Lich release, links reach Lichborne only once it declares `game_links`.
+- **FLAG DESCRIPTION OFF: follow the game's own flag automatically** (§55.4 item 6). No setting.
+- **Phase 2 (clickable linked names) is in v0.21.0**, after Phase 1.
+
+### 55.10 ProfanityFE review (2026-10-28)
+
+17 commits since §54.4 (through `fba13dd`). Seven are CI, style or dependency bumps. Of the rest, #258–#267 are Mahtra's rich-stream series, which this section drew on while it was open, so most of it is already here:
+
+- **Already done in Lichborne:** the `<room>` block read one part per line (#259; our `roomBlockLegacyLines` rebuild, so mutes and highlights also apply per part, which is what #262 had to add for gags); the compass lit from the exits (#263, item 2); text-based matching (#261: our mutes, substitutes, highlights and triggers already match the joined segment text, not the XML); a link never overriding another colour (#264: our links take the text's own colour); FLAG DESCRIPTION OFF followed by Lichborne (#266, item 6); the capability declaration (#267, our §55.6, still waiting on the Lich release).
+- **#260, a spell refresh sent without a pushStream:** seen on one early Lich `main` build only; later builds and every 2026-10-16 log pushed every refresh. Our held clear (item 5) already keeps the grid from blinking. No fallback added.
+- **Built (v0.21.0): dead, sleeping and prone creatures in the Room panel (#265).** `markCreatureStates` (RoomPanel.tsx) pairs the objects line's bold names with the parser's creature roster, the same rule `flushRoster` uses (the game's id when names are links, otherwise position, and only when the counts match), and gives a marked name a `creature-dead` / `creature-sleeping` / `creature-prone` preset. panels.css draws dead muted and not bold, sleeping in italics, prone with a dotted underline; the first set flag wins, dead first. The creature chip's tooltip counts them and says what each look means. Room panel only; the main window keeps monsterbold, as in Profanity. The roster rides `sharedFrameProps` → PanelFrame → RoomPanel (identity kept when unchanged, so the memo holds). No slash command: it is how existing text is painted, not a setting.
+- **Not applicable: #256's blank-lines opt-in.** Profanity hides the game's blank lines by default and #256 lets you show them. Lichborne already shows them (the parser emits each as an empty spacer line, which GameWindow keeps), so we have what #256 adds. The inverse, an option to hide them for compact output, was not built.
+- **Built (v0.21.0): the roundtime-refusal rejoin (lich-5 #1857, Knowledge.md §17).** DR cuts a line with "...wait N seconds." and sends the rest on the next line; Lich `main` rejoins it, released Lich (≤5.22) and a direct connection did not, so the sentence showed as two lines and a cut room-objects component kept the refusal in the Room panel. `rejoinRefusalSplit` (StormFrontParser.ts) mirrors Lich's `buffer_split_line`: a line ending in a refusal with text before it returns the refusal alone and holds that text for the next line. It runs at the top of `parse()` behind an `includes('...wait ')` gate, holds its state in `refusalHeld` (cleared by `reset()`), and is a no-op on a stream Lich already rejoined. `tmp-splitline/t2.ts` runs it against the real parser (13 cases).
+- **Bug check (2026-10-28), four fixes before release.**
+  - **A blank line under every rich room view.** `parse()` joined the rebuilt legacy lines with `\n` and split on it, leaving an empty last piece that `parseLine` turned into a spacer. They are now joined with `\r\n`, as Lich joins them (room_block.rb `legacy_lines`), and split after each line end.
+  - **FLAG DESCRIPTION OFF was never noticed in play.** `DESC_FLAG_REPLY_RE` ended `\r?$`; a line reaches the parser as `…\r\n`, and `$` without the `m` flag matches only at the very end, so the reply never matched. The FLAG listing row matched only when text followed ON/OFF. Both now allow the line feed.
+  - **A left-click link menu moved focus to the command bar**, so the Esc that closed the menu also cleared a half-typed command. Focus now stays put while the menu is open.
+  - **Prone's underline matched a link's hover cue** (both dotted); prone is now a faint solid underline.
+  
+  The first two were invisible to `tmp-v0210-rich/golden.ts`, which splits fixtures on `\r?\n` and so feeds lines without their endings. `golden-eol.ts` splits after each line end, as the connection does; after the fixes its output matches the stripped run apart from the file's last line and one `info` guild detection that needs the real trailing whitespace (CLAUDE.md pitfall #190).
+
+### 55.11 The switch: Lichborne asks Lich for the rich stream (v0.21.0, 2026-10-29)
+
+**Decision (Sekmeht, 2026-10-29): declare by default, so v0.21.0 is on the rich stream wherever Lich supports it** ("get the jump on it before they change it on the Lich side"). This supersedes §55.9's "on hold": Mahtra's condition, a Lich release, was met by 5.23.0.
+
+**Readiness check first.** Every DR fixture in lich-5 `spec/fixtures/` that the §55.2 replay hadn't covered (14 files, `tmp-v0210-rich/fixtures3/`: peer, Locate, no exits, arrival without the exits component, The Heavens, both FLAG listings, a login, creature-list shapes, stow handover, a full inventory) was replayed through the real `StormFrontParser` and `SceneParser` with production line endings (`replay3.ts`):
+- no tag or entity text in any line;
+- views of another room (peer, Locate) stay remote once the player's room is known, keep their description, and don't move the compass (the fixtures start mid-session, so they had to be prefixed with a `<nav>` and subtitle to show it);
+- the player's own room drops its description while FLAG DESCRIPTION is off;
+- speech, whispers and creatures come through as on legacy (`scenecmp.ts`);
+- the only unknown tags are `inventoryManager`/`<i>` (the 5.21 feed, dropped before IPC) and `settings`.
+
+The golden run now covers all 24 fixtures (`golden-eol.ts`, baseline `golden-v0210/`); against the previous baseline the only change is the new `rich-stream` event.
+
+**How it works:**
+- **The line.** `SET_FRONTEND_CAPS room_element game_links double_bold` ([frontendCaps.ts](src/main/connection/frontendCaps.ts), `FRONTEND_CAPS_LINE`). Lich consumes it and stops rewriting the rich stream for this client (Knowledge.md §17). Scripts are unaffected: they always see the stream as the game sent it.
+- **When.** On a Lich launch, right after `connectWithRetry` (the two handshake lines were written synchronously before it, so order holds). On an attach, straight after connecting and before the `look`, so the room comes back rich; again on every re-attach (`Session.attachRich` carries the request).
+- **The setting.** `AdvancedSettings.richStream` (app-wide, Lich Setup → **Game stream**; `_shared.yaml` `advancedSettings.richStream`, optional, coerced by `coerceRichStream`):
+  - `auto` (default): send when the launched install has `lib/common/client_capabilities.rb`. The file, not `LICH_VERSION`: unreleased main read 5.22.0 while already carrying the feature. For an attach, only when the host is this machine (`isLoopbackHost`) and the configured install has the file;
+  - `on`: always, including a remote attach. On an older Lich the game answers the line once as an unknown command (the doc's stated behaviour);
+  - `off`: never, the pre-v0.21.0 behaviour.
+- **Direct connections stay legacy.** Switching them means sending DR's exact Saga string (§55.6, lich-5 #1858), and whether the proxied path's two `<c>` ready lines are also needed is unverified. Left for a later version.
+- **Knowing what you got.** The parser emits `{ type: 'rich-stream' }` once, at the first `<room>` block or `<a exist>` link (`richAnnounced`, re-armed by `reset()`). It is snapshotted for the replay (`snapshotKey`), so a window that takes a session over still knows. GameWindow keeps it in `richStreamSeenRef` (cleared on a reconnect-in-place) for `/richstream`.
+- **Lich Setup** shows, under the select, the mode's one-sentence explanation (`richStreamModeText`, shared with `/richstream`) and whether the configured install supports it (`discover-lich-paths` gained `richStreamSupported`).
+- **Slash (Principle #11):** `/richstream` (alias `/saga`): bare = the setting plus what this session is receiving; `/richstream auto|on|off` sets it, from the next connect.
+
+**What changes for a player on the rich stream** (§55.5 is the detail): names in game text become clickable; linked creatures are bold in action and combat lines, as the game now sends them; rosters pair by id; Lichborne handles FLAG DESCRIPTION itself, so Lich's `;display descflag` is not needed. Room views, the compass, the maps, the Room panel and every rule type look and match as before.
+
+**Rollback.** `/richstream off` or Game stream → Legacy, then reconnect. Nothing is stored differently on the rich stream, so switching back loses nothing.
+
+**Not verified in play yet:** everything above is fixture-tested; the first live sessions on Lich 5.23.0 are the test plan's job. A familiar's view on the rich stream is still unseen (§55.8).

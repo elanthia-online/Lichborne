@@ -48,7 +48,7 @@ import { getOverviewPersisted, applyOverviewState } from './overviewStore'
 import { loadSessionLogSettings, saveSessionLogSettings, DEFAULT_SESSION_LOG_SETTINGS } from './sessionLogSettings'
 import { loadAIConfig, saveAIConfig, DEFAULT_AI_CONFIG } from './aiConfig'
 import { loadCustomColors, saveCustomColors, coerceCustomColors } from './colors'
-import { DEFAULT_RUBY, DEFAULT_LICH } from './lichSettings'
+import { DEFAULT_RUBY, DEFAULT_LICH, coerceRichStream } from './lichSettings'
 import { loadSimuCoinConfig, saveSimuCoinConfig, coerceSimuCoinConfig } from './simucoinConfig'
 
 // ── Default game definitions ──────────────────────────────────────────────────
@@ -66,7 +66,7 @@ const DEFAULT_GAMES = {
 // PREVIOUS version (e.g. bumping CHARACTER from 2 → 3 means add
 // `characterMigrations[2]` that upgrades v2-shaped data into v3-shaped data).
 const SHARED_PROFILE_VERSION    = 1 as const
-const CHARACTER_PROFILE_VERSION = 2 as const
+export const CHARACTER_PROFILE_VERSION = 2 as const
 
 // ── Last session (F62, v0.15.2) ──────────────────────────────────────────────
 // "Reconnect last session": the primary window snapshots the live roster (ALL
@@ -130,6 +130,7 @@ export function buildSharedProfile(): SharedProfile {
       lichPort:       adv.lichPort       ?? 11024,
       portLocked:     adv.portLocked     ?? true,
       modeLocked:     adv.modeLocked     ?? true,
+      richStream:     coerceRichStream(adv.richStream),
     },
     mapDir:      localStorage.getItem('lichborne.mapDir')      ?? '',
     genieMapsDir: localStorage.getItem('lichborne.genieMapsDir') ?? '',
@@ -286,6 +287,10 @@ export async function exportCharacterProfile(
     ? {
         ...built,
         // Launcher owns these — preserve whatever the YAML currently has.
+        // The account too (B542): the Add Account wizard re-files a character
+        // that was transferred to another account, and a tab still holding
+        // the old account must not write it back on its next save.
+        account:  existing.account  || built.account,
         game:     existing.game     ?? built.game,
         useLich:  existing.useLich  ?? built.useLich,
         hidden:   existing.hidden,
@@ -336,6 +341,7 @@ export async function importSharedProfile(): Promise<void> {
       lichPort:       adv.lichPort       ?? existing.lichPort,
       portLocked:     adv.portLocked     ?? existing.portLocked,
       modeLocked:     adv.modeLocked     ?? existing.modeLocked,
+      richStream:     adv.richStream !== undefined ? coerceRichStream(adv.richStream) : existing.richStream,
     }))
   }
 

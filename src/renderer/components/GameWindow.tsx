@@ -42,7 +42,7 @@ import { backdropHandlers } from "../utils/backdropClose"
 import { useEscapeClose, anyDialogOpen } from '../hooks/useEscapeClose'
 import { pressable } from '../utils/pressable'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
-import type { GameEvent, StreamTextEvent, TextLine, LineStyleHint, RoomState, TextSegment, InjuryState, FireLogEntry, SessionLogRecord, SimuCoinStatus, CreatureStatus } from '../../shared/types'
+import type { GameEvent, StreamTextEvent, TextLine, LineStyleHint, RoomState, TextSegment, InjuryState, FireLogEntry, SessionLogRecord, SimuCoinStatus, CreatureStatus, RichStreamMode } from '../../shared/types'
 import { normalizeStreamId } from '../../shared/streamAliases'
 import { redactForAI } from '../../shared/redact'
 import { TextLineRow } from './TextLineRow'
@@ -65,7 +65,7 @@ import { loadAnalyticsEnabled, recordFire } from '../automationStats'
 import { loadTriggers, saveTriggers, type TriggerRule } from '../triggers'
 import { useTriggerEngine, playWavFile, secondsLeft, type TriggerGameState } from '../hooks/useTriggerEngine'
 import { loadAliases, loadMacros, saveAliases, saveMacros, resolveAlias, resolveMacro, matchKeyCombo, getMacroToken, newMacro, parseCursorMarker, splitTypedCommands, type AliasRule, type MacroRule } from '../macros'
-import { IS_MAC } from '../lichSettings'
+import { IS_MAC, loadAdvanced, saveAdvanced } from '../lichSettings'
 import { loadSimuCoinConfig, accountConfig } from '../simucoinConfig'
 import ContactPopover from './ContactPopover'
 import MapPanel from './panels/MapPanel'
@@ -91,9 +91,10 @@ import '../styles/free-layout.css'
 import ThemePicker from './ThemePicker'
 import SettingsPanel from './SettingsPanel'
 import SessionLogModal from './SessionLogModal'
-import ContextMenu from './ContextMenu'
+import ContextMenu, { type CtxItem } from './ContextMenu'
+import { GameLinkContext, buildLinkMenu, linkAtElement, hasOwnClick, type GameLinkActions, type GameLinkMenu } from '../gameLinks'
 // B391: the one text context-menu builder, shared with every stream panel.
-import { buildTextMenu } from './panels/StreamPanel'
+import { buildTextMenu, joinMenuGroups } from './panels/StreamPanel'
 import ContactsPanel from './ContactsPanel'
 import AutomationsPanel from './AutomationsPanel'
 import { LiveVarsContext } from './VarMenu'
@@ -676,6 +677,9 @@ export default function GameWindow({
   // so listener filters must read from this ref rather than the captured closure
   // value to route events for the new sessionId after reconnect.
   const sessionIdRef = useRef(session.sessionId)
+  // Has this connection's stream arrived in the rich ("Saga") shape? Set by the
+  // parser's one-time 'rich-stream' event; read by /richstream (DESIGN §55.11).
+  const richStreamSeenRef = useRef(false)
   useEffect(() => {
     // A CHANGED sessionId for the same characterId = a reconnect IN PLACE (the
     // tab-menu Reconnect, v0.11.6 — this window is keyed by characterId, not
@@ -690,6 +694,7 @@ export default function GameWindow({
     // so the initial mount (already not dropped) is a no-op.
     const swapped = sessionIdRef.current !== session.sessionId
     if (swapped) {
+      richStreamSeenRef.current = false
       setDropped(false)
       setDisconnecting(false)
       // Reset transient sky-sync / weather-capture flags on a reconnect-in-place
@@ -1009,7 +1014,9 @@ export default function GameWindow({
     saveProfile()
     return next
   }), [session.character, saveProfile])
-  const [mainCtxMenu, setMainCtxMenu] = useState<{ x: number; y: number; word: string | null; lineText: string | null } | null>(null)
+  const [mainCtxMenu, setMainCtxMenu] = useState<{ x: number; y: number; word: string | null; lineText: string | null; linkItems: CtxItem[] } | null>(null)
+  // A left-click on a game link (rich stream, v0.21.0): that link's menu alone.
+  const [linkMenuAt, setLinkMenuAt] = useState<{ x: number; y: number; items: CtxItem[] } | null>(null)
 
   const [vitals, setVitals] = useState<Record<string, { current: number; max: number }>>({})
   const [vitalLabels, setVitalLabels] = useState<Record<string, string>>({})
@@ -3649,6 +3656,9 @@ export default function GameWindow({
           case 'stream-push':
             newDiscovered.push(evt.stream)
             break
+          case 'rich-stream':
+            richStreamSeenRef.current = true
+            break
           case 'player-info':
             playerTitleRef.current = `${evt.char} · ${evt.game}`
             // Update the SessionsContext to the server-canonical character
@@ -5173,6 +5183,17 @@ export default function GameWindow({
         saveSettings(session.character, next)
         scheduleProfileSave(session.account, session.character, session.game, session.useLich)
       },
+      // v0.21.0 — the rich-stream request (app-wide, Lich Setup's setting) and
+      // what THIS session is actually receiving.
+      getRichStream: () => ({
+        mode: loadAdvanced().richStream,
+        receiving: richStreamSeenRef.current,
+        viaLich: session.useLich,
+      }),
+      setRichStream: (mode: RichStreamMode) => {
+        saveAdvanced({ ...loadAdvanced(), richStream: mode })
+        scheduleSharedProfileSave()
+      },
       // v0.20.0 — app-wide, the same shape as the history setting below.
       getCharacterNotices: () => loadCharacterNoticesEnabled(),
       setCharacterNotices: (on: boolean) => {
@@ -5673,7 +5694,7 @@ export default function GameWindow({
   }, [])
 
   const sharedFrameProps = {
-    streamLines, roomState, expSkills, rankUpSkills,
+    streamLines, roomState, creatureRoster, expSkills, rankUpSkills,
     expFocus, pinnedSkills, onFocusChange: handleFocusChange, onTogglePin: handleTogglePin,
     onSendCommand: sendCommand,
     autoLinkUrls: settings.autoLinkUrls,
@@ -6054,6 +6075,29 @@ export default function GameWindow({
     })
   }, [focusCommandInput])
 
+  // Game links (rich stream, v0.21.0, DESIGN §55.5): the menu for a linked
+  // name, the same on every surface. The actions are read from a ref so the
+  // context value stays one identity for the session (a changing value would
+  // re-render every consumer — pitfall #82c), while each menu sees the live
+  // command funnel, guild and contacts.
+  const linkActionsRef = useRef<GameLinkActions>({ send: () => {} })
+  linkActionsRef.current = {
+    send: sendCommand,
+    direct: directTo,
+    guild: characterGuild ?? undefined,
+    isContact: name => contactsRef.current.some(c => c.name.toLowerCase() === name.toLowerCase()),
+    openContact: (name, x, y) => {
+      const c = contactsRef.current.find(c => c.name.toLowerCase() === name.toLowerCase())
+      if (!c) return false
+      openContactPopover(c.id, x, y)
+      return true
+    },
+  }
+  const linkMenu = useCallback<GameLinkMenu>((el, x, y) => {
+    const link = linkAtElement(el)
+    return link ? buildLinkMenu(link, linkActionsRef.current, { x, y }) : []
+  }, [])
+
   function renderExperienceContent(expId: string, hidden?: Record<string, boolean>): React.ReactNode {
     const def = experienceById(expId)
     if (!def) return null
@@ -6214,12 +6258,27 @@ export default function GameWindow({
           <div className="text-area">
             <div className="text-window"
               onWheel={e => { if (e.deltaY < 0) { pinnedRef.current = false; unpinAtRef.current = Date.now() } }}
-              onClick={() => focusCommandInput()}
+              onClick={e => {
+                // A game link opens its menu, unless the click ended a text
+                // selection (mouseup auto-copies it) or landed on something
+                // with its own click (a command link, a contact name).
+                const t = e.target as Element
+                if (!hasOwnClick(t) && !window.getSelection()?.toString()) {
+                  const items = linkMenu(t, e.clientX, e.clientY)
+                  // Leave focus where it was while the menu is open: in the
+                  // command bar, the Esc that closes the menu would also clear
+                  // a half-typed command (v0.21.0 bug check). Typing still
+                  // reaches the bar through type-anywhere.
+                  if (items.length) { setLinkMenuAt({ x: e.clientX, y: e.clientY, items }); return }
+                }
+                focusCommandInput()
+              }}
               onContextMenu={e => {
                 e.preventDefault()
                 const word = getWordAtPoint(e.clientX, e.clientY)
                 const lineText = getLineTextAtPoint(e.clientX, e.clientY)
-                setMainCtxMenu({ x: e.clientX, y: e.clientY, word, lineText })
+                const linkItems = linkMenu(e.target as Element, e.clientX, e.clientY)
+                setMainCtxMenu({ x: e.clientX, y: e.clientY, word, lineText, linkItems })
               }}>
               <Virtuoso
                 ref={virtuosoRef}
@@ -6466,6 +6525,7 @@ export default function GameWindow({
   return (
     <HighlightsContext.Provider value={highlightsCtxValue}>
     <ContactsContext.Provider value={contactsCtxValue}>
+    <GameLinkContext.Provider value={linkMenu}>
     <div ref={gameLayoutRef} className={`game-layout${layoutMode === 'free' ? ' game-layout--free' : ''}${expAnyOpen ? ' game-layout--has-exp' : ''}`}>
       {/* The per-session toolbar row was folded into the app-level app-bar
           (AppBar.tsx) in the top-chrome redesign (Phase 2c) — its buttons now
@@ -6718,11 +6778,19 @@ export default function GameWindow({
           x={mainCtxMenu.x}
           y={mainCtxMenu.y}
           onClose={() => setMainCtxMenu(null)}
-          items={buildTextMenu(
+          items={joinMenuGroups([mainCtxMenu.linkItems, buildTextMenu(
             mainCtxMenu,
             { onHighlight: openHighlightEditor, onTrigger: openTriggerEditor, onMute: openMuteEditor, onSubstitute: openSubstituteEditor, onShowInLog: showInLog },
             { timestamps: { shown: !!streamTimestamps['main'], toggle: () => toggleStreamTimestamp('main') }, clear: clearLines },
-          )}
+          )])}
+        />
+      )}
+      {linkMenuAt && (
+        <ContextMenu
+          x={linkMenuAt.x}
+          y={linkMenuAt.y}
+          onClose={() => setLinkMenuAt(null)}
+          items={linkMenuAt.items}
         />
       )}
 
@@ -6942,6 +7010,7 @@ export default function GameWindow({
       )}
 
     </div>
+    </GameLinkContext.Provider>
     </ContactsContext.Provider>
     </HighlightsContext.Provider>
   )

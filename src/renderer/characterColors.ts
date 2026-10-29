@@ -86,6 +86,21 @@ export function setCharacterColor(characterId: string, color: string | null): vo
   storeCharacterColors(map)
 }
 
+/** Carry a character's colour across an account move (B542). The key holds the
+ *  account, so without this a transferred character loses its colour. An
+ *  existing colour under the new account is left alone. Returns whether
+ *  anything changed, so the caller knows to schedule the shared-profile save. */
+export function moveCharacterColor(fromAccount: string, toAccount: string, character: string): boolean {
+  const map = loadCharacterColors()
+  const from = colorKey(`${fromAccount}::${character}`)
+  const to = colorKey(`${toAccount}::${character}`)
+  if (from === to || !Object.prototype.hasOwnProperty.call(map, from)) return false
+  if (!Object.prototype.hasOwnProperty.call(map, to)) map[to] = map[from]
+  delete map[from]
+  storeCharacterColors(map)
+  return true
+}
+
 // ── Reading it in React ───────────────────────────────────────────────────────
 // A cached snapshot, replaced only when the data changes: useSyncExternalStore
 // re-renders forever if getSnapshot returns a fresh object (pitfall #129).

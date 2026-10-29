@@ -832,6 +832,77 @@ A running record of Lich releases we've reviewed: **what changed, whether it aff
   - `Spell.results_regex` (#1590) and player-supplied custom prep/cast messages (#1528)
   - `Lich::Common::UserDefs`, extracted from DR CustomSubstitutions (#1605). This is scroll/creature name normalization, not display substitutions.
 
+### Lich 5.22.0 (+ unreleased main through 536a373f) — verified 2026-10-26 (no break; the rich-stream stack has landed on main)
+
+**Integration surface, all unchanged:**
+- `--stormfront` still `a =~ /^--stormfront$/i` → `$frontend='stormfront'` (`lib/main/argv_options.rb:344-403`), and `--dragonrealms` / `--test` / `--platinum` / `--fallen` parse as before. #1745 only touched the flag Lich builds for a session IT spawns.
+- **Force-mode handshake:** a stormfront front end still takes the generic proxy branch and sends two lines, the key then its client string (`main.rb:847-861`). What changed is what Lich does with the second line (below).
+- `inventory_boxes_off` and the `_flag Display Inventory Boxes` upstream hook are unchanged (`main.rb:802-844`).
+- `;e`/`;eq` still `command(/^(?:exec|e)(q)? (.+)$/)` (`lib/common/client_commands/builtins.rb:154`). #1628 moved `do_client`'s chain into an ordered registry; the matching is the same.
+- `;listall` output is byte-for-byte the same (`builtins.rb:94-100`: `--- Lich: no active scripts` / `--- Lich: a, b (paused)`).
+- **`vars.rb`:** the Marshal blob is unchanged. Two fixes: the checksum is now over the bytes written, and a failed save stays dirty and is retried (#1763). `;eq Vars[…]; Vars.save` behaves as before.
+- **`xmlparser.rb`:** `parse_assess_line`'s regex and fields are unchanged; it gained an optional third argument, `link_nouns`, and a `noun:` field read from rich-stream assess links. The percWindow and injury rules are unchanged.
+- **`drparser.rb`:** PositionValue, BalanceValue and NameRaceGuild are unchanged. Every DRParser pattern now runs against a link-stripped line (`match_line`, #1702), and several patterns gained a leading `^(?:<[^>]*>|\s)*` anchor so player speech and ESP can't trip them (#1827).
+- **Map JSON** is unchanged: #1797 stopped `to_json` compacting the live list in place, and the saved file is the same rooms in id order.
+
+**What a Lichborne session now receives (the rich-stream stack, #1700–#1733, merged after 5.22.0, unreleased):**
+- **Lich replaces our client string** (#1724, `Frontend.proxy_handshake`). `LichConnection` sends Genie's `FE:WRAYTH /VERSION:1.0.1.22 /P:WIN_UNKNOWN /XML`; Lich sends the game `/FE:WRAYTH /VERSION:saga-0.10.4 /P:SAGA /XML` instead (#1700), so DragonRealms sends the Saga-identity ("rich") stream. `--keep-fe-string` or `Lich.keep_fe_string` forwards the front end's own string. Both strings are now logged (#1731).
+- **Lich rewrites it back for us** (`games.rb` `process_downstream_hooks` → `rich_stream_rewrite`, around line 1210). For a client without the capabilities, which is every stormfront client that declares nothing: `<room>` → the legacy `roomName`/`roomDesc` lines plus a legacy `<compass>` (#1708, #1721); `<a exist>` links stripped, keeping a script's `<a href>`; doubled bold → one pair in room-object listings and none around creatures elsewhere (#1722). Scripts and XMLParser see the unrewritten stream.
+- **So Lichborne on Lich main gets the legacy shape**, and v0.21.0's own `<room>` rebuild and link handling stay idle there. `<crtrStatus exist>` still arrives (it isn't a link), with the names unlinked, so the roster pairs by order as on the legacy stream.
+- **FLAG DESCRIPTION OFF regresses on Lich main unless the player opts in.** DR's rich stream ignores the flag (a game bug), and Lich's rewrite carries the description into the legacy lines. Lich's fix (#1725, `Lich::Common::RoomDescriptionFilter`) is OFF by default: `;display descflag on`. **Tester support: "room descriptions came back though FLAG DESCRIPTION is off" on a Lich after 5.22.0 ⇒ `;display descflag on`.**
+
+**The capability declaration (#1726, `docs/frontends/capability-declaration.md`):**
+- A front end opts out of the rewrites with a control line Lich consumes: `SET_FRONTEND_CAPS room_element game_links double_bold`. On the primary connection, send it after the two handshake lines; on a detachable connection, straight after connecting. Lich sends no reply. Later declarations replace earlier ones. Unknown names are ignored and logged.
+- Precedence: the client's declaration > `--frontend-caps=LIST` at launch > the catalog's set for the session's front end (only Saga has all three).
+- `game_links` and `double_bold` act only on DragonRealms. A GSL (Wizard/Avalon) session ignores declarations.
+- **A Lich without #1726 forwards the line to the GAME as a command.** Main still reads `LICH_VERSION = '5.22.0'` (`lib/version.rb`), so a version number can't tell main from the release. A feature test can: `lib/common/client_capabilities.rb` exists in the install only when the declaration is understood.
+
+**Detachable clients (Attach mode):**
+- **The attach-time push is now game-specific and correct for DR** (#1617, `lib/dragonrealms/detachable_client_init.rb`): vitals as the game sends them (`<progressBar id='health' value='87' text='health 87%'/>`, stamina labelled `fatigue`), the concentration bar, all 13 indicators with `'n'` for unseen, both hands (`Empty` if unseen), and a legacy compass. It waits for the first `<prompt>` (up to 10s). The old `value='0' text='health 100/'` shape (pitfall #135) only comes from older Lich. Still skipped for `--genie` and `--saga`; DR injuries are not sent.
+- #1656 writes the detachable-client session file without `--login`.
+
+**Tester support:**
+- Lich now recommends **Ruby 4.0.9** for security fixes (#1825); 4.0 is still the minimum.
+- `--sentinel` (#1677) turns on the `0x1F` origin marker for any front end. Lichborne never passes it, and must not: every line would gain a byte the parser's `^` rules don't expect.
+
+### Unreleased main 536a373f → 4705150a — verified 2026-10-28 (no break; two changes to what a front end receives)
+
+Three commits: #1856 (CI only), #1857 and #1858. The integration checklist (argv, handshake branch, hooks, `;listall`, `vars.rb`, the parse rules we mirror, map JSON) is untouched.
+
+**#1858: the DR server now picks its stream by the EXACT client string.** Per the PR, DragonRealms sends the rich ("Saga") feed only for `/FE:WRAYTH /VERSION:1.0.1.28 /P:SAGA /XML`; GemStone sends it for either string. So `Frontend::CLIENT_STRING` is now that string (`lib/common/frontend.rb:515`, was `saga-0.10.4`), Saga's per-front-end override is gone (`frontend/saga.rb`), and `proxy_handshake` now replaces even a handshake that already says `/P:SAGA` (the "same platform, forward as sent" branch was removed, `frontend.rb:~670`). For Lichborne:
+- **This answers DESIGN §55.6's open question** of which token selects the dialect: the whole string, version included. `/P:SAGA` with another version no longer gets the rich stream (the PR saw Saga's own `saga-0.10.5` sent unchanged before the fix).
+- **Lich path: nothing changes.** Lich already replaced our `FE:WRAYTH /VERSION:1.0.1.22 /P:WIN_UNKNOWN /XML` and rewrites the rich stream back for us; it now replaces it with the new string.
+- **Direct path: unaffected.** Lichborne sends `1.0.1.22 /P:WIN_UNKNOWN` (`ConnectionManager.ts:40`) and gets the legacy stream, as before. If a direct session is ever switched to the rich stream, the string must be `1.0.1.28` exactly, and the help text warns that DR may change it again (`lib/main/help_text.rb:257-262`).
+
+**#1857: a line cut by a roundtime refusal is rejoined (DR).** DR sometimes puts `...wait N seconds.\r\n` into the middle of a line it is already sending, then sends the rest of that line (its remaining text, or just its line end as an empty line). Mahtra's data: 348 of 348 cuts in a month of logs were followed by their rest; none of 4,808 standalone refusals was followed by an empty line. `buffer_split_line` (`lib/games.rb:~288`, `SPLIT_REFUSAL = /\.\.\.wait \d+ seconds?\.\r\n\z/`) now emits the refusal at once as its own line and holds the text before it for exactly ONE line, then joins it to the next. It replaces #1149's `buffer_room_objs`, which only rejoined `room objs`/`room players` components (and dropped the refusal). The cleaned string is what the front end receives, so:
+- **Lichborne on Lich main** now sees the refusal BEFORE the sentence it interrupted, and the sentence whole.
+- **Lichborne on released Lich (≤5.22) and on a direct connection** still sees the cut: verified by replaying the PR's example through the real `StormFrontParser` (2026-10-28, `tmp-splitline/`): `…his greatsword...wait 1 seconds.` and ` lashing out at everything within reach!` arrive as two main lines. On a direct connection a cut room-objects component carries the refusal into the Room panel text (`…a rock...wait 1 seconds. and a stick.`); released Lich's `buffer_room_objs` already fixes that case. (That was before v0.21.0; Lichborne's parser now does the same rejoin, DESIGN §55.10.)
+
+### Lich 5.23.0 — released 2026-10-27, verified 2026-10-28 (no break; the rich-stream rewrite is now in a release)
+
+- **What it is:** the release commit `16bc7afd` (#1699) only bumps `LICH_VERSION` to `'5.23.0'` and the changelog. Every code change in it is in the two entries above (`4705150a` is an ancestor of `v5.23.0`), so nothing new needed reading. What changes is WHO gets it: until now the rich-stream work was on `main` only, and now every player who updates Lich has it.
+- **What a Lichborne player on 5.23.0 receives:** Lich replaces our `FE:WRAYTH` client string with its own Saga string, now exactly `/FE:WRAYTH /VERSION:1.0.1.28 /P:SAGA /XML` (#1724, #1858; `lib/games.rb:1209`), takes DR's rich stream, and rewrites it back to the legacy shape because Lichborne declares no capabilities (#1708 `<room>` → legacy lines, #1721 legacy compass, #1722 links and doubled bold stripped). Lines cut by a roundtime refusal arrive rejoined (#1857, `lib/games.rb:182`).
+- **Tester support, now for everyone who updates:**
+  - **"My room descriptions came back"** after updating to 5.23.0 with FLAG DESCRIPTION OFF: DR's rich stream ignores the flag and Lich's filter is opt-in (#1725). Fix: `;display descflag on`.
+  - **Ruby 4.0.9 is recommended** for its security fixes (#1825); 4.0 is still the minimum.
+- **The capability declaration is now available in a release.** `lib/common/client_capabilities.rb` ships in 5.23.0: `DECLARABLE = %i[room_element game_links double_bold]`, recognised by `DECLARATION = /\ASET_FRONTEND_CAPS(?:[ \t]+(?<names>[^\r\n]*?))?[ \t]*\r?\n?\z/` (lines 29, 34). A Lich older than 5.23.0 still forwards that line to the game as a command, so it must be gated. `LICH_VERSION >= 5.23.0` is now a valid gate as well as the file's presence (on `main` before the release the version still read 5.22.0, which is why the file check was proposed). Attach mode still can't check either, since the Lich may be on another machine.
+
+### Unreleased main 16bc7afd → 89fa0fd7 — verified 2026-10-29 (no break)
+
+Five commits after the 5.23.0 release. The integration checklist (argv, the force-mode handshake branch, hooks, `;listall`, `vars.rb`, the parse rules we mirror, map JSON) is untouched; ProfanityFE had no new commits since `fba13dd`.
+
+- **#2094 / #2098: the PID a detachable client reports is stored again.** Clients send `SET_FRONTEND_PID <pid>` so Lich can bring their window back to the front after a GTK script window (`Frontend.refocus`, `lib/common/frontend.rb:872`, used through `refocus_callback`). From 5.20.0 (#1459) the handler used `match?` and then read `Regexp.last_match(1)`, which `match?` never sets, so every PID was stored as 0. #2094 fixed it (`lib/global_defs.rb:2239`); #2098 records each client's PID on its socket (`SynchronizedSocket#declared_pid`) and re-applies the current primary's when the primary detaches, falling back to the PID of the front end Lich launched. Only the detachable handler reads this line; Lichborne sends none, so nothing changes for it. If attach mode ever wants GTK refocus, this is the line, and it would need the same gating as `SET_FRONTEND_CAPS`.
+- **#2097: DRInfomon refreshes after a revival.** A character who logs in dead skips `info` at startup (it fails while dead), so `DRStats.guild` stayed nil all session. Lich now watches for dead → alive and re-sends `info` and `exp all 0` through a short quiet ExecScript (`drinfomon_refresh`), with up to 2 retries while the guild is still nil. The game's replies are ordinary output: a revived character may see their info sheet and an experience dump in the game window. Lichborne's guild detection reads its own `info` sheet (pitfall #85), so this helps it.
+- **#2096: DRBanking only moves balances on the game's own bank lines.** Every pattern is anchored to where the game's message starts (`The clerk `, after any markup, or a jar bank's two lead-ins), so speech or a whisper quoting a bank line no longer changes a recorded balance; the jar deposit line's copper balance is now read, and a jar money-changer's exchange no longer counts as a withdraw-all. Catch Me Up's banking totals read Lich's `DRBanking:` lines, so they become more accurate with no change on our side. If we ever parse the game's bank lines ourselves, anchor them the same way.
+- **#2095:** a SlackBot token check (scripts only).
+
+**Fixtures:** lich-5 `spec/fixtures/` now holds 24 DR captures, 14 of them newer than our first replay (room blocks: peer, Locate, no exits, arrival without the exits component; The Heavens; FLAG listings; login; creature shapes; stow; full inventory). Facts they show:
+- **The Heavens** arrives as a `(**)` subtitle with no `<room>` block (`streams/dr_saga_no_room_heavens.xml`).
+- **Peering into another room** ("You peer south and see ...") sends an ordinary `<room>` block for that room (`room_block/dr_saga_peer.xml`).
+- **The 5.21 inventory feed** is one `<inventoryManager>` line of `<i id loc name long weight flags in_max/>` items, `loc` like `worn,player` or `in,<container id>`, `name` comma-separated words (`inventory/dr_full_inventory.xml`).
+
+**The capability line, operational facts** (`docs/frontends/capability-declaration.md`): on a detachable connection send it straight after connecting, since anything the game sends before Lich reads it is rewritten; on the primary connection send it after the two handshake lines. A later declaration replaces an earlier one, from the next server line. Lich sends no reply. The released 5.23.0 install has `lib/common/client_capabilities.rb` (checked on a real install, 2026-10-29), which is how Lichborne decides a Lich supports it (DESIGN §55.11).
+
 ### The Saga extended feed: `inventoryManager` (5.21.0, #1524)
 
 A Simutronics server feature built for Saga, "confirmed live on both GemStone and DragonRealms" (`lib/common/inventory.rb:8-9`). One request returns the player's **whole nested item tree**: every container's contents, weights, container load and closed/locked state. The ordinary stream only shows hands, worn items and whatever container was just opened.
@@ -1103,6 +1174,9 @@ one self-closing tag per creature in the room:
 ```
 
 - `exist` is the creature's id: the same id assess shows in `look #ID`.
+- **DR takes `#ID` as a target** for `look`, `face` and `get` (`get #ID`
+  confirmed by Mahtra/Destahd, 2026-10-16). Targeting by id can't pick the
+  wrong one of several identical things; the v0.21.0 link menus rely on it.
 - **Every tag is a full snapshot** of that creature's flags; an absent flag is
   off. Another `room players` component can sit between the tags and the prompt.
 - **The tags come in the same order as the bold names** in the room list. Lich

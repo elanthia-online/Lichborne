@@ -94,6 +94,7 @@ declare global {
         platform: string
         rubyPath: string | null; lichPath: string | null
         rubyAlreadyValid: boolean; lichAlreadyValid: boolean
+        richStreamSupported: boolean
         baseFolderExists: boolean; rubyVersion: string | null; isWindows: boolean
       }>
       platform: string

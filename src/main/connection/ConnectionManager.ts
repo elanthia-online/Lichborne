@@ -36,6 +36,7 @@ import { LichConnection } from './LichConnection'
 import { AttachConnection } from './AttachConnection'
 import { SGEConnection } from './SGEConnection'
 import type { AttachCredentials, LoginCredentials } from '../../shared/types'
+import { FRONTEND_CAPS_LINE, shouldDeclareRichStream } from './frontendCaps'
 
 const CLIENT_ID = 'FE:WRAYTH /VERSION:1.0.1.22 /P:WIN_UNKNOWN /XML'
 
@@ -156,6 +157,13 @@ export class ConnectionManager extends EventEmitter {
       throw err
     }
 
+    // The rich stream (DESIGN §55.11): after the two handshake lines, which
+    // connect() wrote synchronously, so the socket keeps them in order.
+    if (shouldDeclareRichStream(creds.richStream, creds.lichPath)) {
+      this.lich.send(FRONTEND_CAPS_LINE)
+      this.emit('status', "Connected via Lich, with DragonRealms' rich stream.")
+      return
+    }
     this.emit('status', 'Connected via Lich.')
   }
 
@@ -252,6 +260,12 @@ export class ConnectionManager extends EventEmitter {
     // when the game next sends them — an attached tab would sit blank until
     // the character moves. `look` repaints it now. Sent through the game (not
     // a `;` command), which also confirms end-to-end that our writes dispatch.
+    // The rich stream (DESIGN §55.11). Straight after connecting, as Lich's
+    // doc asks, and before the `look`, so the room comes back rich. A
+    // declaration is per connection, so a re-attach sends it again.
+    if (shouldDeclareRichStream(creds.richStream, creds.lichPath, creds.host)) {
+      this.attach.send(FRONTEND_CAPS_LINE)
+    }
     this.emit('status', step(2, ATTACH_STEPS, 'Attached — requesting a room refresh…'))
     this.attach.send('look')
 

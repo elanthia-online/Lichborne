@@ -20,6 +20,7 @@ import { useState, useEffect } from 'react'
 import {
   type AdvancedSettings,
   ADV_DEFAULTS,
+  richStreamModeText,
   GAMES,
   IS_WINDOWS,
   IS_MAC,
@@ -67,14 +68,14 @@ export default function LichSetupFields({ adv, setAdv, disabled = false, alwaysS
   // discovered candidates, so it cannot imply a path is fine because one was
   // found elsewhere. probeDesktop is off: this runs unprompted, and the Desktop
   // probe raises a macOS privacy dialog that must only ever follow a click.
-  const [pathsExist, setPathsExist] = useState<{ ruby: boolean; lich: boolean } | null>(null)
+  const [pathsExist, setPathsExist] = useState<{ ruby: boolean; lich: boolean; rich: boolean } | null>(null)
   useEffect(() => {
     if (!useLich && !alwaysShowFields) return
     let cancelled = false
     // Debounced: this fires per keystroke while a path is being typed.
     const t = setTimeout(() => {
       window.api.discoverLichPaths(rubyPath, lichPath)
-        .then(r => { if (!cancelled) setPathsExist({ ruby: r.rubyAlreadyValid, lich: r.lichAlreadyValid }) })
+        .then(r => { if (!cancelled) setPathsExist({ ruby: r.rubyAlreadyValid, lich: r.lichAlreadyValid, rich: r.richStreamSupported }) })
         .catch(() => { if (!cancelled) setPathsExist(null) })
     }, 250)
     return () => { cancelled = true; clearTimeout(t) }
@@ -272,6 +273,32 @@ export default function LichSetupFields({ adv, setAdv, disabled = false, alwaysS
           </button>
         </div>
       </label>
+
+      {/* DragonRealms' rich ("Saga") stream (v0.21.0, DESIGN §55.11). The line
+          under it reads the CONFIGURED install, which is what 'auto' checks at
+          connect; it says nothing until the path check has answered. */}
+      <label>
+        Game stream
+        <select
+          value={adv.richStream}
+          onChange={e => setAdv1('richStream', e.target.value as AdvancedSettings['richStream'])}
+          disabled={disabled}
+          title={richStreamModeText(adv.richStream)}
+        >
+          <option value="auto">Rich (Saga) when Lich supports it</option>
+          <option value="on">Rich (Saga) always</option>
+          <option value="off">Legacy</option>
+        </select>
+      </label>
+      <div className="ui-hint lich-stream-hint">
+        {richStreamModeText(adv.richStream)}{' '}
+        {adv.richStream !== 'off' && pathsExist && (pathsExist.rich
+          ? 'Your Lich supports it.'
+          : adv.richStream === 'auto'
+            ? "Your Lich doesn't yet: update Lich to 5.23.0 or later. Until then you get the legacy stream."
+            : "Your Lich doesn't yet: update Lich to 5.23.0 or later, or the game will answer the request once as an unknown command.")}
+        {' '}Direct connections (no Lich) always use the legacy stream. Takes effect on your next connect.
+      </div>
 
       {/* Read-only inventory of the game shards and the Lich front-end port each
           one uses by convention. Surfaced here so users can verify against their

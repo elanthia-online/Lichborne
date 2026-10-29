@@ -26,7 +26,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import ContextMenu from './ContextMenu'
-import type { GameEvent, TextLine, RoomState, InjuryState, FireLogEntry } from '../../shared/types'
+import type { GameEvent, TextLine, RoomState, InjuryState, FireLogEntry, CreatureStatus } from '../../shared/types'
 import { optionShown } from '../experiences'
 import type { HighlightRule } from '../highlights'
 import type { MuteRule } from '../mutes'
@@ -141,6 +141,9 @@ export function expIdFromTab(tab: TabDef): string {
 interface Props {
   streamLines: Record<string, TextLine[]>
   roomState: RoomState
+  // The creature roster (dead/sleeping/prone), so the Room panel can mark
+  // each creature in its objects line (v0.21.0, ProfanityFE #265).
+  creatureRoster?: CreatureStatus[] | null
   expSkills: Record<string, string>
   rankUpSkills?: Set<string>
   expFocus?: string
@@ -247,6 +250,7 @@ export default function PanelFrame({
   onAdoptTab,
   experienceDefs = [], renderExperienceTab,
   getExperienceHidden, onSetExperienceOption,
+  creatureRoster = null,
 }: Props) {
   const [showAddMenu, setShowAddMenu] = useState(false)
   // F55 follow-up: tab-hosted ⚙ popover open state — closed on tab switch so
@@ -543,7 +547,7 @@ export default function PanelFrame({
           onLichPause ?? NOOP, onLichResume ?? NOOP,
           onLichKill ?? NOOP, onLichRefresh ?? NOOP,
           mapAnimations, compactExp,
-          renderExperienceTab, activeFontSize, closeStreamRef.current,
+          renderExperienceTab, activeFontSize, closeStreamRef.current, creatureRoster,
         )}
         {activeTab && (() => {
           // F55 follow-up: an active EXPERIENCE tab with registry options gets
@@ -893,6 +897,7 @@ function renderPanel(
   renderExperienceTab?: (expId: string) => React.ReactNode,
   panelFontSize?: number,
   onCloseStream?: (streamId: string) => void,
+  creatureRoster: CreatureStatus[] | null = null,
 ) {
   // B172: StreamPanel is memoized, so every prop must be referentially
   // stable — onClear/onToggleTimestamp now take the streamId as an argument
@@ -911,7 +916,7 @@ function renderPanel(
       emptyMessage={`Nothing in ${PANEL_LABELS[tab.type]} yet.`} />
   )
   switch (tab.type) {
-    case 'room':          return <RoomPanel room={roomState} onSendCommand={onSendCommand} />
+    case 'room':          return <RoomPanel room={roomState} roster={creatureRoster} onSendCommand={onSendCommand} />
     case 'thoughts':      return sp('thoughts',      streamLines.thoughts      ?? EMPTY_ARRAY)
     case 'arrivals':      return sp('arrivals',      streamLines.arrivals      ?? EMPTY_ARRAY)
     case 'conversation':  return sp('conversation',  streamLines.conversation  ?? EMPTY_ARRAY)

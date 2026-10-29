@@ -4,7 +4,11 @@
 //
 // Step 1 collects account + password + game and calls main's
 // `eaccessFetchCharacters` (no Lich, no game connection); step 2 is a
-// checklist of the roster, with already-added characters disabled. Finish
+// checklist of the roster, with already-added characters disabled. A
+// character whose profile names ANOTHER account was transferred here: it stays
+// selectable and Finish re-files that profile, settings kept (B542). Step 2
+// also lists this account's tiles the game no longer shows, for opt-in
+// removal (archived, never deleted). Finish
 // writes one stub `CharacterProfile` YAML per pick via
 // `window.api.writeCharacterProfile` — or RESTORES an archived profile of
 // that name instead, so remove-and-re-add never clobbers a saved setup — and
@@ -24,6 +28,11 @@ import { createPortal } from 'react-dom'
 import { GAMES, IS_MAC, IS_WINDOWS } from '../lichSettings'
 import { useSessions } from '../SessionsContext'
 import type { CharacterProfile } from '../profile-types'
+import {
+  CHARACTER_PROFILE_VERSION, loadLastSessionCharacters, saveLastSessionCharacters, scheduleSharedProfileSave,
+} from '../profile'
+import { moveCharacterColor } from '../characterColors'
+import { showToast } from '../toasts'
 import '../styles/wizard.css'
 
 // AddCharacterWizard — Add-Account discovery flow (rewritten v0.8.0).
@@ -65,9 +74,113 @@ interface Props {
 
 type Step = 1 | 2
 
-interface DiscoveredCharacter {
+export interface DiscoveredCharacter {
   name: string
-  existing: boolean   // already has a profile YAML — checkbox disabled
+  existing: boolean   // already has a profile under THIS account — checkbox disabled
+  // B542: has a profile, but under ANOTHER account. A profile is filed by the
+  // character's NAME and the account is just a field inside it, so a character
+  // transferred between accounts still has its old profile, naming the old
+  // account. Treating that as "already added" left it impossible to pick up
+  // (Vaddon). Selectable; Finish re-files the existing profile, settings kept.
+  movedFrom?: string
+  file?: string       // the profile's file name, when one exists
+}
+
+// A profile character on THIS account and game that the game no longer lists
+// there: transferred away or deleted. Offered for removal, never removed
+// silently (B542).
+export interface LeftBehind {
+  name: string
+  file: string
+}
+
+export interface ProfileOwner {
+  file: string
+  character: string
+  account: string
+  game: string
+  // False when the file exists but couldn't be read right now (locked, or
+  // damaged and moved aside). Its account is unknown, so it is treated as
+  // "already added" and left alone: guessing would mean writing a stub over
+  // the only copy (pitfall #183).
+  readable: boolean
+}
+
+// Which account (and game) each existing profile is filed under, keyed by the
+// lowercase character name.
+async function readProfileOwners(): Promise<Map<string, ProfileOwner>> {
+  const owners = new Map<string, ProfileOwner>()
+  const files = await window.api.listCharacterProfiles().catch(() => [] as string[])
+  const reads = await Promise.all(files.map(f => window.api.readCharacterProfile(f).catch(() => null)))
+  files.forEach((file, i) => {
+    const raw = reads[i]
+    if (!raw || typeof raw !== 'object') {
+      owners.set(file.toLowerCase(), { file, character: file, account: '', game: 'DR', readable: false })
+      return
+    }
+    const p = raw as Partial<CharacterProfile>
+    const character = p.character ?? file
+    owners.set(character.toLowerCase(), {
+      file, character, account: p.account ?? '', game: p.game ?? 'DR', readable: true,
+    })
+  })
+  return owners
+}
+
+// The badge on a character whose profile names another account (B542).
+// 'attach' is the placeholder account an attach-only tile gets.
+function movedLabel(from: string): string {
+  if (!from) return 'not on an account'
+  if (from.toLowerCase() === 'attach') return 'attach-only tile'
+  return `moved from ${from}`
+}
+
+function movedTitle(from: string, to: string): string {
+  const where = !from ? 'no account' : from.toLowerCase() === 'attach' ? 'the attach-only tiles' : `account ${from}`
+  return `Lichborne has this character under ${where}. Adding it moves the tile to ${to || 'this account'} ` +
+    'and keeps its settings, layout, automations and logs.'
+}
+
+function finishLabel(adds: number, removes: number): string {
+  if (adds + removes === 0) return 'Pick at least one'
+  const parts: string[] = []
+  if (adds > 0) parts.push(`Add ${adds} ${adds === 1 ? 'character' : 'characters'}`)
+  if (removes > 0) parts.push(`${adds > 0 ? 'remove' : 'Remove'} ${removes}`)
+  return parts.join(', ')
+}
+
+// DRT shares DR's characters, so a DRT tile belongs to a DR fetch.
+function gameFamily(code: string): string {
+  return code === 'DRT' ? 'DR' : code
+}
+
+/** Sort a fetched roster against the profiles on disk (B542). Pure, so the
+ *  rules harness can drive it. A profile filed under THIS account is "already
+ *  added"; one under another account was transferred here; an unreadable one
+ *  is left alone. `leftBehind` is this account's profiles in the same game
+ *  family that the roster no longer lists (a DRF fetch says nothing about a
+ *  DR tile). */
+export function classifyRoster(
+  roster: string[],
+  owners: Map<string, ProfileOwner>,
+  account: string,
+  game: string,
+): { annotated: DiscoveredCharacter[]; leftBehind: LeftBehind[] } {
+  const me = account.trim().toLowerCase()
+  const annotated: DiscoveredCharacter[] = roster.map(name => {
+    const owner = owners.get(name.toLowerCase())
+    if (!owner) return { name, existing: false }
+    if (!owner.readable || owner.account.trim().toLowerCase() === me) return { name, existing: true, file: owner.file }
+    return { name, existing: false, movedFrom: owner.account, file: owner.file }
+  })
+  const listed = new Set(roster.map(n => n.toLowerCase()))
+  const leftBehind = [...owners.values()]
+    .filter(o => o.readable && o.account.trim().toLowerCase() === me
+      && gameFamily(o.game) === gameFamily(game)
+      && !listed.has(o.character.toLowerCase()))
+    .map(o => ({ name: o.character, file: o.file }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+  return { annotated, leftBehind }
 }
 
 // An Esc-to-close entry for an inline dialog, registered while it is MOUNTED —
@@ -104,6 +217,10 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
 
   const [discovered, setDiscovered] = useState<DiscoveredCharacter[]>([])
   const [picked,     setPicked]     = useState<Set<string>>(new Set())
+  // B542: characters filed under this account that the game no longer lists
+  // here, and which of them the user ticked to take off the launcher.
+  const [leftBehind,  setLeftBehind]  = useState<LeftBehind[]>([])
+  const [removePicked, setRemovePicked] = useState<Set<string>>(new Set())
 
   const [busy,  setBusy]  = useState(false)
   const [error, setError] = useState('')
@@ -192,20 +309,27 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
     // get saved to DPAPI and auto-fill the wrong value on the next visit.
     if (remember) await window.api.savePassword(account, password)
 
-    // Annotate each discovered character with whether a YAML already exists
-    // — those checkboxes start unchecked and disabled, with a "(already
-    // added)" badge in the row. Avoids accidental overwrite of automations.
-    const existingNames = new Set(
-      (await window.api.listCharacterProfiles()).map(n => n.toLowerCase())
-    )
-    const annotated: DiscoveredCharacter[] = result.characters.map(c => ({
-      name: c.name,
-      existing: existingNames.has(c.name.toLowerCase()),
-    }))
+    // Annotate each discovered character against the profiles on disk. One
+    // filed under THIS account is "already added" (unchecked and disabled, so
+    // its automations can't be overwritten). One filed under ANOTHER account
+    // was transferred here (B542): selectable, and Finish re-files it.
+    const { annotated, leftBehind: gone } = classifyRoster(
+      result.characters.map(c => c.name), await readProfileOwners(), account, game)
     setDiscovered(annotated)
-    // Default selection: every non-existing character.
+    // Default selection: every character not already on this account.
     setPicked(new Set(annotated.filter(c => !c.existing).map(c => c.name)))
+    setLeftBehind(gone)
+    setRemovePicked(new Set())
     setStep(2)
+  }
+
+  function toggleRemove(name: string) {
+    setRemovePicked(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
   }
 
   function togglePick(name: string) {
@@ -219,12 +343,14 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
 
   async function finish() {
     const names = [...picked]
-    if (names.length === 0) {
+    const removals = leftBehind.filter(l => removePicked.has(l.name))
+    if (names.length === 0 && removals.length === 0) {
       setError('Select at least one character to add.')
       return
     }
     setError('')
     setBusy(true)
+    const failed: string[] = []
 
     // Snapshot the set of distinct accounts BEFORE adding new stubs so the
     // auto-expand logic below can detect a 1→2+ transition. We don't care
@@ -260,6 +386,14 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
     // dynamic-state pipeline.
     let added = 0
     for (const name of names) {
+      // B542: a character transferred here from another account. Its profile
+      // already exists, so re-file it rather than writing a stub over it.
+      const found = discovered.find(d => d.name === name)
+      if (found?.movedFrom !== undefined && found.file) {
+        if (await refileProfile(found.file)) added += 1
+        else failed.push(name)
+        continue
+      }
       // Restore wins when there is something to restore. It is deliberately
       // guarded main-side too: restore refuses to clobber a live profile of the
       // same name, so a character recreated while archived keeps its real
@@ -267,6 +401,10 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
       if (archived.has(name.toLowerCase())) {
         try {
           if (await window.api.restoreCharacterProfile(name)) {
+            // The archived copy names whichever account it was removed with,
+            // which is not this one if the character was transferred while
+            // archived (B542).
+            if (!(await refileProfile(name))) failed.push(name)
             added += 1
             continue
           }
@@ -318,8 +456,63 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
       } catch { /* localStorage unavailable — auto-expand silently fails, not a blocker */ }
     }
 
+    // B542: take the characters the user ticked under "No longer on this
+    // account" off the launcher. Archived, not deleted, exactly like removing
+    // an account, so adding the account they moved to restores them.
+    let removed = 0
+    for (const r of removals) {
+      try {
+        if (await window.api.archiveCharacterProfile(r.file)) removed += 1
+        else failed.push(r.name)
+      } catch (err) {
+        console.error(`Failed to archive profile for ${r.name}`, err)
+        failed.push(r.name)
+      }
+    }
+
+    if (failed.length > 0) {
+      showToast({
+        kind: 'error',
+        title: 'Some characters were not updated',
+        message: `${failed.join(', ')}: the saved profile could not be read or moved, so it was left as it was.`,
+      })
+    }
+
     setBusy(false)
-    onCompleted(added)
+    onCompleted(added + removed)
+  }
+
+  // B542: file an existing profile under the account being added, keeping
+  // everything else in it. Read-modify-write, like the launcher's tile helpers
+  // (pitfall #26); a profile that can't be read, or that a newer Lichborne
+  // wrote, is left alone rather than rewritten (pitfall #183, Principle #3).
+  // The character's colour and its Reconnect Last entry are keyed by account,
+  // so they move with it.
+  async function refileProfile(file: string): Promise<boolean> {
+    const raw = await window.api.readCharacterProfile(file).catch(() => null)
+    if (!raw || typeof raw !== 'object') return false
+    const p = raw as CharacterProfile
+    if (typeof p.profileVersion === 'number' && p.profileVersion > CHARACTER_PROFILE_VERSION) return false
+    const from = p.account ?? ''
+    if (from.toLowerCase() === account.trim().toLowerCase()) return true
+    try {
+      await window.api.writeCharacterProfile(file, { ...p, account })
+    } catch (err) {
+      console.error(`Failed to re-file profile ${file}`, err)
+      return false
+    }
+    const name = p.character ?? file
+    let sharedChanged = moveCharacterColor(from, account, name)
+    const last = loadLastSessionCharacters()
+    if (last.some(e => e.account.toLowerCase() === from.toLowerCase() && e.name.toLowerCase() === name.toLowerCase())) {
+      saveLastSessionCharacters(last.map(e =>
+        e.account.toLowerCase() === from.toLowerCase() && e.name.toLowerCase() === name.toLowerCase()
+          ? { ...e, account }
+          : e))
+      sharedChanged = true
+    }
+    if (sharedChanged) scheduleSharedProfileSave()
+    return true
   }
 
   async function continueWithDisconnect() {
@@ -478,6 +671,14 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
                     />
                     <span className="wiz-char-name">{c.name}</span>
                     {c.existing && <span className="wiz-char-existing-badge">already added</span>}
+                    {c.movedFrom !== undefined && (
+                      <span
+                        className="wiz-char-existing-badge wiz-char-moved-badge"
+                        title={movedTitle(c.movedFrom, account)}
+                      >
+                        {movedLabel(c.movedFrom)}
+                      </span>
+                    )}
                   </label>
                 ))}
               </div>
@@ -485,6 +686,35 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
                 <p className="wiz-hint" style={{ marginTop: 8 }}>
                   All characters from this account are already in your launcher.
                 </p>
+              )}
+              {leftBehind.length > 0 && (
+                <>
+                  <div className="wiz-section-label wiz-section-label--gap">
+                    No longer on {account} ({game})
+                  </div>
+                  <p className="wiz-hint">
+                    The game no longer lists these on this account: moved to another account, or deleted.
+                    Tick one to take it off the launcher. Its settings are kept, and adding the account it
+                    moved to brings it back with them.
+                  </p>
+                  <div className="wiz-char-list">
+                    {leftBehind.map(l => (
+                      <label
+                        key={l.file}
+                        className={`wiz-char${removePicked.has(l.name) ? ' wiz-char--active' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={removePicked.has(l.name)}
+                          onChange={() => toggleRemove(l.name)}
+                          disabled={busy}
+                        />
+                        <span className="wiz-char-name">{l.name}</span>
+                        {removePicked.has(l.name) && <span className="wiz-char-existing-badge">will be removed</span>}
+                      </label>
+                    ))}
+                  </div>
+                </>
               )}
             </>
           )}
@@ -539,14 +769,10 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
               type="button"
               className="ui-btn ui-btn--primary"
               onClick={finish}
-              disabled={busy || picked.size === 0}
-              title={picked.size === 0 ? 'Tick at least one character above' : undefined}
+              disabled={busy || picked.size + removePicked.size === 0}
+              title={picked.size + removePicked.size === 0 ? 'Tick at least one character above' : undefined}
             >
-              {busy
-                ? 'Saving…'
-                : picked.size === 0
-                  ? 'Pick at least one'
-                  : `Add ${picked.size} ${picked.size === 1 ? 'character' : 'characters'}`}
+              {busy ? 'Saving…' : finishLabel(picked.size, removePicked.size)}
             </button>
           )}
         </div>
