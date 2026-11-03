@@ -760,6 +760,10 @@ export default function GameWindow({
       setEngagements([])
       setAssessCast([])
       setAssessAt(0)
+      // GS4 timed effects from the dropped connection: each runs down from its
+      // block's `at`, and a dialog the new connection leaves empty may never be
+      // resent to clear it.
+      setEffectsState({})
       setCreatureRoster(null)
       setFaceTurn(null)
       setWalkedOut(prev => (Object.keys(prev).length > 0 ? {} : prev))
@@ -6731,7 +6735,9 @@ export default function GameWindow({
               modeNames: modes.map(m => m.name),
               groupNames: groups.map(g => g.name),
               themeIds: [...THEMES.map(t => t.id), ...myThemes.map(t => t.id)],
-              openableStreams: [...ALL_PANEL_TYPES, ...discoveredStreams],
+              // The same family gate as getOpenableStreams, so the palette never
+              // suggests a panel that /panel open would then refuse.
+              openableStreams: [...filterPanelTypesForFamily(ALL_PANEL_TYPES, gameFamily), ...discoveredStreams],
               openPanels: layoutMode === 'free'
                 ? freeWindows.filter(w => w.kind === 'panel').flatMap(w => (w.tabs ?? []).map(t => t.id))
                 : [
