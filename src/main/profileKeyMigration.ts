@@ -24,8 +24,15 @@
 //
 // The renderer owns localStorage, so the old→new names are written to
 // {userData}/profile-key-renames.json for the primary window to apply (move
-// each `lichborne.{name}.` scope) and acknowledge. A crash between the two
-// keeps the file, and the next start hands it over again.
+// each `lichborne.{name}.` scope) and acknowledge. Each rename is recorded the
+// moment its YAML moves, not after the whole pass: the next start finds no
+// legacy names, so a rename not on record by then would never reach the
+// renderer. A crash before the acknowledgement keeps the file, and the next
+// start hands it over again.
+//
+// A log folder that can't move right now (a day file held open on Windows)
+// stays on {userData}/profile-key-log-moves.json and is retried at every start,
+// file by file, never overwriting a day the new folder already has.
 
 import { app } from 'electron'
 import * as fs from 'fs'
@@ -46,11 +53,45 @@ function move(a: string, b: string): void {
   try { fs.renameSync(a, b) } catch { fs.copyFileSync(a, b); fs.unlinkSync(a) }
 }
 
-function readPending(): ProfileKeyRename[] {
+function logMovesFile(): string {
+  return path.join(app.getPath('userData'), 'profile-key-log-moves.json')
+}
+
+function readList(file: string): ProfileKeyRename[] {
   try {
-    const v = JSON.parse(fs.readFileSync(renamesFile(), 'utf8'))
+    const v = JSON.parse(fs.readFileSync(file, 'utf8'))
     return Array.isArray(v) ? v.filter(r => r && typeof r.from === 'string' && typeof r.to === 'string') : []
   } catch { return [] }
+}
+
+function writeList(file: string, list: ProfileKeyRename[], what: string): boolean {
+  try {
+    if (list.length) fs.writeFileSync(file, JSON.stringify(list, null, 1))
+    else fs.rmSync(file, { force: true })
+    return true
+  } catch (err) {
+    console.error(`[profile-keys] could not record ${what}`, err)
+    return false
+  }
+}
+
+function readPending(): ProfileKeyRename[] {
+  return readList(renamesFile())
+}
+
+/** Put one rename on record for the renderer (localStorage) and the log move.
+ *  False when it can't be: the caller then leaves the YAML where it is. */
+function recordRename(r: ProfileKeyRename): boolean {
+  return writeList(renamesFile(), [...readPending(), r], 'the rename for localStorage')
+    && writeList(logMovesFile(), [...readList(logMovesFile()), r], 'the log folder move')
+}
+
+/** `dir/name`, or a stamped sibling when that is taken: a backup never overwrites a backup. */
+function freeBackupPath(dir: string, name: string): string {
+  const first = path.join(dir, name)
+  if (!fs.existsSync(first)) return first
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  return path.join(dir, name.replace(/\.yaml$/, `.${stamp}.yaml`))
 }
 
 /** Rename one folder's legacy profiles. `backupDir` receives a copy of each. */
@@ -90,9 +131,23 @@ function migrateDir(dir: string, backupDir: string): ProfileKeyRename[] {
       }
       continue
     }
+    // On record BEFORE the move. Once the YAML has its new name the next start
+    // finds nothing legacy, so an unrecorded rename would never reach
+    // localStorage or the log folder. Recorded but not moved (the move below
+    // fails) is harmless: the scope and log folder go where the YAML will land
+    // on the next start, which retries the move and records it again.
+    // The NAME, not the file name: localStorage scopes and log folders were
+    // named after the session's character, which can differ in case.
+    const rename = { from: name.trim(), to: key, file: base }
+    if (!recordRename(rename)) {
+      console.error(`[profile-keys] ${f} left as it is until its rename can be recorded`)
+      continue
+    }
     try {
       fs.mkdirSync(backupDir, { recursive: true })
-      fs.copyFileSync(src, path.join(backupDir, f))
+      // PreKeyBackup/ is the way back from a one-way migration, so a later
+      // run (an older build wrote Name.yaml again) must not overwrite it.
+      fs.copyFileSync(src, freeBackupPath(backupDir, f))
       move(src, dest)
     } catch (err) {
       console.error(`[profile-keys] could not move ${f}`, err)
@@ -104,9 +159,7 @@ function migrateDir(dir: string, backupDir: string): ProfileKeyRename[] {
         try { move(path.join(dir, b), path.join(dir, `${key}.yaml${b.slice(f.length)}`)) } catch { /* best effort */ }
       }
     }
-    // The NAME, not the file name: localStorage scopes and log folders were
-    // named after the session's character, which can differ in case.
-    out.push({ from: name.trim(), to: key, file: base })
+    out.push(rename)
     console.log(`[profile-keys] ${f} → ${key}.yaml`)
   }
   return out
@@ -117,41 +170,67 @@ function logSafe(s: string): string {
   return (s.trim() || 'Unknown').replace(/[/\\:*?"<>|]/g, '_')
 }
 
-function migrateLogs(logsRoot: string, r: ProfileKeyRename): void {
+/** Move one character's log folder. True when nothing is left to retry. */
+function migrateLogs(logsRoot: string, r: ProfileKeyRename): boolean {
   // By the character's name, else the file's (they differ only in case).
   const byName = path.join(logsRoot, logSafe(r.from))
   const byFile = r.file ? path.join(logsRoot, logSafe(r.file)) : byName
   const from = fs.existsSync(byName) ? byName : byFile
+  if (!fs.existsSync(from)) return true
   const oldBase = from === byName ? r.from : (r.file ?? r.from)
-  const to = path.join(logsRoot, logSafe(r.to))
-  if (!fs.existsSync(from) || fs.existsSync(to)) return
-  try { move(from, to) } catch (err) {
-    console.error(`[profile-keys] could not move the log folder for ${r.from}`, err)
-    return
-  }
   const oldPrefix = `${logSafe(oldBase)}_`
-  let entries: string[] = []
-  try { entries = fs.readdirSync(to) } catch { return }
-  for (const e of entries) {
-    if (!e.startsWith(oldPrefix)) continue
-    try { move(path.join(to, e), path.join(to, `${logSafe(r.to)}_${e.slice(oldPrefix.length)}`)) } catch { /* best effort */ }
-  }
-}
+  const newPrefix = `${logSafe(r.to)}_`
+  const to = path.join(logsRoot, logSafe(r.to))
+  const dayName = (e: string) => (e.startsWith(oldPrefix) ? newPrefix + e.slice(oldPrefix.length) : e)
 
-/** Run once at startup. Returns every rename still waiting for the renderer. */
-export function migrateProfileKeys(profilesDir: string, logsRoot: string): ProfileKeyRename[] {
-  const backup = path.join(profilesDir, BACKUP_DIR)
-  const renames = [
-    ...migrateDir(profilesDir, backup),
-    ...migrateDir(path.join(profilesDir, 'Archive'), path.join(backup, 'Archive')),
-  ]
-  for (const r of renames) migrateLogs(logsRoot, r)
-  if (renames.length) {
-    const pending = [...readPending(), ...renames]
-    try { fs.writeFileSync(renamesFile(), JSON.stringify(pending, null, 1)) } catch (err) {
-      console.error('[profile-keys] could not record the renames for localStorage', err)
+  // The whole folder at once when nothing is there yet; then its day files.
+  if (!fs.existsSync(to)) {
+    try {
+      fs.renameSync(from, to)
+      let entries: string[] = []
+      try { entries = fs.readdirSync(to) } catch { /* the folder moved; names stay old */ }
+      for (const e of entries) {
+        if (dayName(e) === e) continue
+        try { fs.renameSync(path.join(to, e), path.join(to, dayName(e))) } catch { /* listDays reads any prefix */ }
+      }
+      return true
+    } catch (err) {
+      console.warn(`[profile-keys] could not move the log folder for ${r.from} as a whole; moving its files`, err)
     }
   }
+
+  // File by file: what can move now moves, the rest is retried next start. A
+  // day the new folder already has is kept where it is, never overwritten.
+  try { fs.mkdirSync(to, { recursive: true }) } catch (err) {
+    console.error(`[profile-keys] could not create ${logSafe(r.to)}/`, err)
+    return false
+  }
+  let entries: string[]
+  try { entries = fs.readdirSync(from) } catch { return false }
+  let failed = 0
+  for (const e of entries) {
+    const dest = path.join(to, dayName(e))
+    if (fs.existsSync(dest)) {
+      console.warn(`[profile-keys] ${path.basename(from)}/${e} kept: ${logSafe(r.to)}/ already has ${dayName(e)}`)
+      continue
+    }
+    try { move(path.join(from, e), dest) } catch (err) {
+      failed++
+      console.warn(`[profile-keys] could not move ${path.basename(from)}/${e}; will retry next start`, err)
+    }
+  }
+  if (failed === 0) { try { fs.rmdirSync(from) } catch { /* a kept day is still in it */ } }
+  return failed === 0
+}
+
+/** Run at every startup (a no-op once nothing is legacy). Returns every rename still waiting for the renderer. */
+export function migrateProfileKeys(profilesDir: string, logsRoot: string): ProfileKeyRename[] {
+  const backup = path.join(profilesDir, BACKUP_DIR)
+  migrateDir(profilesDir, backup)
+  migrateDir(path.join(profilesDir, 'Archive'), path.join(backup, 'Archive'))
+  // Every log move on record, this run's and any an earlier start couldn't finish.
+  const logMoves = readList(logMovesFile())
+  if (logMoves.length) writeList(logMovesFile(), logMoves.filter(r => !migrateLogs(logsRoot, r)), 'the log folder moves left')
   return readPending()
 }
 

@@ -5,7 +5,7 @@
 // ids are meaningful and in game-specific domain systems (skills, spells,
 // combat). `family` is the ONE discriminator everything else branches on.
 // Deliberately NOT stored on LoginCredentials/CharacterProfile — every shard
-// code (DR/DRX/DRT/DRF/GS3/GSX/GST/GSF) already encodes its family in its
+// code (DR/DRX/DRT/DRF/GS3/GST/GSF) already encodes its family in its
 // prefix, so `gameFamilyFromCode` derives it on demand instead of threading a
 // second, redundant field through every connection/profile path.
 export type GameFamily = 'DR' | 'GS4'

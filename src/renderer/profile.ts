@@ -571,9 +571,9 @@ export async function importCharacterProfile(character: string): Promise<Charact
 // ── Profile-key migration, localStorage half (DESIGN §56.7.3) ──────────────
 // Main renamed name-keyed YAMLs to `Name@SHARD` at startup and hands over
 // old→new. Move each `lichborne.{name}.` scope (and the per-character theme
-// record and the boot fallback's last character) to the new key. A scope that
-// already has keys under the new name wins, and the old keys are then left
-// alone rather than deleted (Principle #3). Run once, by the window that
+// record and the boot fallback's last character) to the new key, key by key.
+// A key that already exists under the new name wins, and its old copy is then
+// left alone rather than deleted (Principle #3). Run once, by the window that
 // loads _shared.yaml, before anything reads a character's keys.
 export async function applyProfileKeyRenames(): Promise<void> {
   const renames = await window.api.takeProfileKeyRenames().catch(() => [])
@@ -586,13 +586,18 @@ export async function applyProfileKeyRenames(): Promise<void> {
     for (const { from, to } of renames) {
       const oldPrefix = `lichborne.${normalizeCharacter(from)}.`
       const newPrefix = `lichborne.${normalizeCharacter(to)}.`
-      const olds = all.filter(k => k.startsWith(oldPrefix))
-      if (olds.length && !all.some(k => k.startsWith(newPrefix))) {
-        for (const k of olds) {
-          const v = localStorage.getItem(k)
-          if (v !== null) localStorage.setItem(newPrefix + k.slice(oldPrefix.length), v)
-          localStorage.removeItem(k)
-        }
+      // Key by key, so a run cut short (storage full) resumes where it
+      // stopped: a key already under the new name wins and its old copy is
+      // kept; any other old key is copied, and removed only once the copy
+      // has landed. (A whole-scope "new keys exist → skip" check would read
+      // a half-moved scope as done and acknowledge it.)
+      for (const k of all.filter(k => k.startsWith(oldPrefix))) {
+        const dest = newPrefix + k.slice(oldPrefix.length)
+        if (localStorage.getItem(dest) !== null) continue
+        const v = localStorage.getItem(k)
+        if (v === null) continue
+        localStorage.setItem(dest, v)
+        localStorage.removeItem(k)
       }
       const oldTheme = localStorage.getItem(characterThemeKey(from))
       if (oldTheme !== null && localStorage.getItem(characterThemeKey(to)) === null) {

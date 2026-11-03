@@ -820,8 +820,12 @@ export default function GameWindow({
   // They gate the card menu's window-move entries exactly as they gate the tab's.
   const { updateStatus, updateCharacterName, setActive, sessions: allSessions } = useSessions()
   const { isPrimary } = useRoster()
+  // The NAME, not the profile key: this must equal the id SessionsContext and
+  // main mint (makeCharacterId(account, character, game)), or updateStatus,
+  // setActive and every tab/card action miss this session. The game is already
+  // in the id, so same-name characters on two shards stay distinct.
   const characterId = useMemo(
-    () => makeCharacterId(session.account, profile, session.game),
+    () => makeCharacterId(session.account, session.character, session.game),
     [session.account, session.character, session.game],
   )
 
