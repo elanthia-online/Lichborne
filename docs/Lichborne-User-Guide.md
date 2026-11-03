@@ -87,10 +87,6 @@ A few ideas shape everything:
 
 Lichborne is actively developed. A few things we're heading toward — directional, not promises with dates:
 
-- **The move to Elanthia-Online.** Lichborne's repository is transferring to the
-  community organization that maintains Lich — the client built with the
-  community, stewarded by it. Updates and links carry over seamlessly (v0.19.2
-  installs are already transfer-ready, and GitHub redirects cover the rest).
 - **Windowed Panels becomes the default.** The floating-window layout is the future; the older docked "Static Panels" mode will eventually retire, with an automatic one-time conversion so no layout is ever lost.
 - **The rich stream everywhere.** v0.21.0 takes DragonRealms' rich stream through Lich 5.23 by default (switch back with **Lich Setup → Game stream → Legacy stream**); direct (no-Lich) connections follow once it has soaked with testers. The extra detail it carries (every name linked to the exact thing it names, the whole inventory tree) is what the next Experiences build on.
 - **More Lichborne Experiences.** The graphical scenes (Living Tableau, Moons, Spell Monitor) are the first of a larger set of "graphics for text players" — richer combat instruments, wound/status visuals, and more.
@@ -107,7 +103,7 @@ Three steps and a one-time in-game command, and you're playing.
 
 ### 1. Install
 
-All downloads are on the **[Releases page](https://github.com/SekmehtDR/Lichborne/releases/latest)**.
+All downloads are on the **[Releases page](https://github.com/elanthia-online/Lichborne/releases/latest)**.
 
 **Windows (stable):** run `Lichborne-X.Y.Z-setup.exe` — no admin rights needed. Windows may show a **SmartScreen** warning (no code-signing certificate yet); click **More info → Run anyway**. It's safe. Auto-updates with one click when a new version lands.
 
@@ -699,7 +695,7 @@ Plain `Home`/`End` edit the command box (where your cursor usually is); hold `Ct
 
 - **Discord** — the friendliest place for questions, bug reports, and chat. The invite is inside Lichborne, so download it first, then choose **Help → Discord**.
 - **Help → About Lichborne** — shows your exact version, the credits, and links to the project on GitHub and the Discord. Handy to have open when reporting an issue (mention your version!).
-- **GitHub** — [issues and releases](https://github.com/SekmehtDR/Lichborne) live here.
+- **GitHub** — [issues and releases](https://github.com/elanthia-online/Lichborne) live here.
 
 When something looks off, a quick note with **your version number** and **what you were doing** is gold. Thank you!
 

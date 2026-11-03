@@ -4,7 +4,7 @@ A DragonRealms and GemStone IV client for people who've spent years in StormFron
 
 It connects through [Lich5](https://github.com/elanthia-online/lich-5) (recommended) or straight to the game server, and it's free.
 
-**[Download the latest release →](https://github.com/SekmehtDR/Lichborne/releases/latest)** · Windows · Linux (beta) · macOS (beta)
+**[Download the latest release →](https://github.com/elanthia-online/Lichborne/releases/latest)** · Windows · Linux (beta) · macOS (beta)
 
 <!-- A screenshot belongs here — a client is a visual product, and one image of a
      real layout says more than any paragraph below. Ideally a populated window:
@@ -51,7 +51,7 @@ And if you already run Lich, Lichborne sits alongside it. Same install, same pat
 
 ## Getting started
 
-**1. Download and install.** Grab the [latest release](https://github.com/SekmehtDR/Lichborne/releases/latest).
+**1. Download and install.** Grab the [latest release](https://github.com/elanthia-online/Lichborne/releases/latest).
 
 - **Windows** — run the installer. SmartScreen may warn you (the app isn't code-signed yet): **More info → Run anyway**.
 - **Linux** — download `Lichborne.AppImage`, `chmod +x` it, run it. On Ubuntu 22.04 or newer you may need FUSE 2 first: `sudo apt install libfuse2t64` (24.04) or `libfuse2` (22.04). If you have an older download with a version number in its name, rename it once to `Lichborne.AppImage` so updates keep the same name.
@@ -119,7 +119,7 @@ Thanks also to [Thires](https://github.com/Thires/SimuCoins), whose Genie SimuCo
 
 ## Building from source
 
-Most people want the [releases page](https://github.com/SekmehtDR/Lichborne/releases/latest), not this section.
+Most people want the [releases page](https://github.com/elanthia-online/Lichborne/releases/latest), not this section.
 
 ```bash
 npm install

@@ -3374,7 +3374,7 @@ Defined in `package.json` under the `"build"` key:
 3. Commit both files
 4. Set `GH_TOKEN` env var (fine-grained PAT with Contents: read+write on the Lichborne repo)
 5. Run `node publish.mjs` — builds, packages, uploads, and patches release notes automatically
-6. Go to **github.com/SekmehtDR/Lichborne → Releases** → find the draft → click **Publish release**
+6. Go to **github.com/elanthia-online/Lichborne → Releases** → find the draft → click **Publish release**
 
 `publish.mjs` uploads two files per release:
 - `Lichborne X.Y.Z.exe` — the portable executable
@@ -3424,7 +3424,7 @@ Powered by `electron-updater`. Only runs when the app is packaged (`app.isPackag
 
 ### 18.4.1 Dual-Feed Update Check — the Elanthia-Online Handover
 
-The repository is being **transferred** (GitHub "Transfer ownership", not a fork) from `SekmehtDR/Lichborne` to the **Elanthia-Online** organization (`elanthia-online/Lichborne`) — the community team that maintains Lich. Every shipped install has the old repo baked into its `app-update.yml`, so the updater was taught to look in both places (v0.19.x, `checkForUpdatesDualFeed()` in [main.ts](../src/main/main.ts)) so the transfer never strands an install.
+The repository was **transferred** (GitHub "Transfer ownership", not a fork; done, and `SekmehtDR/Lichborne` now redirects) from `SekmehtDR/Lichborne` to the **Elanthia-Online** organization (`elanthia-online/Lichborne`) — the community team that maintains Lich. Every shipped install has the old repo baked into its `app-update.yml`, so the updater was taught to look in both places (v0.19.x, `checkForUpdatesDualFeed()` in [main.ts](../src/main/main.ts)) so the transfer never strands an install.
 
 **Mechanism.** `UPDATE_FEEDS` lists the new home first, the legacy repo second. Each check walks the list: `autoUpdater.setFeedURL({provider:'github', owner, repo})` (which overrides the baked `app-update.yml` — electron-updater prefers a runtime-set provider over the disk config) then `await checkForUpdates()`. A missing repo (404 on `releases.atom`) and an existing repo with no releases (`ERR_UPDATER_NO_PUBLISHED_VERSIONS`) both REJECT, falling through to the next feed; a feed that ANSWERS is authoritative ("no update" does not fall through). The winning feed's provider also serves the download, so Download/Install ride the same repo. The `updaterProbing` flag suppresses the renderer-facing `ERROR:` line for non-final attempts (`checkForUpdates()` both rejects and emits `error`), so the pre-transfer 404 on the new home is silent; a successful check logs `Update feed: owner/repo` to the updater log so tester reports name the serving repo. Both call sites (the 3s startup check and the menu's Check for Updates) route through the helper; the macOS gates are unchanged. `app-update.yml` must still ship — electron-updater reads `updaterCacheDirName` from it.
 
@@ -3435,7 +3435,7 @@ The repository is being **transferred** (GitHub "Transfer ownership", not a fork
 2. **Phase 2 (transfer day):** transfer the repo on GitHub. Releases/issues/stars move; redirects arm. No release needed that day. Do NOT pre-create the org repo (a partial repo with some releases would answer the check with stale data — the transfer moves everything atomically).
 3. **Phase 3 (first org release):** flip the hardcoded owner strings (checklist below), cut the release from the org via Actions. Dual-feed installs get it from the new feed; older installs via the redirect.
 
-**Phase-3 cut-over checklist (every hardcoded `SekmehtDR`):** `package.json` `build.publish.owner` · `build/app-update.yml` `owner` · `publish.mjs` `owner` · the local-run fallback literals in `.github/scripts/release-prepare.mjs` + `release-verify.mjs` (the Actions path self-corrects via `GITHUB_REPOSITORY`) · main.ts Help-menu links (GitHub Repository / Report a Bug) · ~~`credits.ts` `REPO_URL` + `AI_NOTICE_URL` · `AboutModal.tsx` displayed link text~~ (done early in v0.20.4 at Sekmeht's ask; Help → About now points at `elanthia-online/Lichborne`) · README (3 links) · Lichborne-User-Guide (2 links) · this file's §18.2 table · release-notes.md. Keep `UPDATE_FEEDS` itself unchanged — it already names both homes, and the legacy entry stays as belt-and-braces.
+**Phase-3 cut-over checklist (every hardcoded `SekmehtDR`):** `package.json` `build.publish.owner` · `build/app-update.yml` `owner` · `publish.mjs` `owner` · the local-run fallback literals in `.github/scripts/release-prepare.mjs` + `release-verify.mjs` (the Actions path self-corrects via `GITHUB_REPOSITORY`) · main.ts Help-menu links (GitHub Repository / Report a Bug) · ~~`credits.ts` `REPO_URL` + `AI_NOTICE_URL` · `AboutModal.tsx` displayed link text~~ (done early in v0.20.4 at Sekmeht's ask; Help → About now points at `elanthia-online/Lichborne`) · ~~README (3 links) · Lichborne-User-Guide (2 links)~~ (done with the GS4 stack's docs PR, #12) · this file's §18.2 table · release-notes.md. Keep `UPDATE_FEEDS` itself unchanged — it already names both homes, and the legacy entry stays as belt-and-braces.
 
 **Org-side pre-flight for Phase 3:** the release workflow's `GITHUB_TOKEN` must be able to create releases — check org **Settings → Actions → Workflow permissions** is "Read and write" (many orgs default to read-only, which 403s the draft pre-create in `release-prepare.mjs`).
 
