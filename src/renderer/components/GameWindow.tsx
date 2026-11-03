@@ -897,6 +897,9 @@ export default function GameWindow({
   // Read-only profile access — never write launcher-owned fields from here
   // (pitfall #26). Skipped the moment an explicit choice or detection exists.
   useEffect(() => {
+    // A GS4 profile's field holds a PROFESSION (Edit Profile per family,
+    // DESIGN §56.7.2), which must not pick a DR guild badge.
+    if (gameFamily !== 'DR') return
     if (localStorage.getItem(scopedKey(session.character, 'focus'))) return
     if (localStorage.getItem(scopedKey(session.character, 'detectedGuild'))) return
     let cancelled = false
@@ -922,6 +925,9 @@ export default function GameWindow({
     localStorage.getItem(scopedKey(session.character, 'detectedGuild')))
   useEffect(() => {
     if (characterGuild) return
+    // DR guilds only: a GS4 profession (an "empath" among them) must not
+    // light up DR guild actions such as the Tableau's Touch.
+    if (gameFamily !== 'DR') return
     let cancelled = false
     window.api.readCharacterProfile(session.character).then(raw => {
       const g = (raw as { guild?: string } | null)?.guild

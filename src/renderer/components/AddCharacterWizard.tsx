@@ -26,6 +26,7 @@ import { backdropHandlers } from "../utils/backdropClose"
 import { useEscapeClose } from '../hooks/useEscapeClose'
 import { createPortal } from 'react-dom'
 import { GAMES, IS_MAC, IS_WINDOWS } from '../lichSettings'
+import type { GameFamily } from '../../shared/types'
 import { useSessions } from '../SessionsContext'
 import type { CharacterProfile } from '../profile-types'
 import {
@@ -34,6 +35,11 @@ import {
 import { moveCharacterColor } from '../characterColors'
 import { showToast } from '../toasts'
 import '../styles/wizard.css'
+
+const GAME_GROUPS: { family: GameFamily; label: string }[] = [
+  { family: 'DR',  label: 'DragonRealms' },
+  { family: 'GS4', label: 'GemStone IV' },
+]
 
 // AddCharacterWizard — Add-Account discovery flow (rewritten v0.8.0).
 //
@@ -631,13 +637,22 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
               )}
 
               <div className="wiz-section-label">Game</div>
-              <div className="wiz-game-list">
-                {GAMES.filter(g => g.code !== 'DRT').map(g => (
-                  <label key={g.code} className={`wiz-game${game === g.code ? ' wiz-game--active' : ''}`}>
-                    <input type="radio" checked={game === g.code} onChange={() => setGame(g.code)} disabled={busy} />
-                    <span className="wiz-game-name">{g.name}</span>
-                    <span className="wiz-game-code">{g.code}</span>
-                  </label>
+              {/* Grouped by game (DESIGN §56.7.2); within a group the shard
+                  is named without the game's name, which the group carries. */}
+              <div className="wiz-game-groups">
+                {GAME_GROUPS.map(grp => (
+                  <div key={grp.family} className="wiz-game-group" role="radiogroup" aria-label={grp.label}>
+                    <div className="wiz-game-group-label">{grp.label}</div>
+                    <div className="wiz-game-list">
+                      {GAMES.filter(g => g.family === grp.family && g.code !== 'DRT').map(g => (
+                        <label key={g.code} className={`wiz-game${game === g.code ? ' wiz-game--active' : ''}`} title={g.name}>
+                          <input type="radio" checked={game === g.code} onChange={() => setGame(g.code)} disabled={busy} />
+                          <span className="wiz-game-name">{g.name.slice(grp.label.length).trim() || g.name}</span>
+                          <span className="wiz-game-code">{g.code}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
               <p className="wiz-hint" style={{ marginTop: 8 }}>

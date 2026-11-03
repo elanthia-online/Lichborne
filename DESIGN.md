@@ -11579,10 +11579,10 @@ A plan, built in the order at the end. Sections get marked as they land.
 #### 56.7.2 Organising the login screen by game
 
 - **An All / DR / GS filter** (BUILT: `GameFilterBar` / `effectiveGameFilter` in Launcher.tsx, the shared `ui-tabs` chips with a per-game count) on the launcher (both the full screen and the + modal). It shows only when the saved characters span both games (UX #1), and narrows the account sections, Favorites and Teams (a team shows when any of its members is in that game). An account with no character in that game drops out. The choice is a per-viewer convenience in `lichborne.launcher.gameFilter`. A stale choice whose game no longer has characters reads as All. **No slash command:** the launcher is the pre-session screen, where the command bar doesn't exist.
-- **Tile meta shows the shard name** ("GemStone IV Prime") rather than the code; the code stays in the tooltip.
-- **The wizard's game step is grouped** into DragonRealms and GemStone IV blocks.
-- **Edit Profile per family.** GS4 professions replace DR guilds, and "Level" replaces "Circle". The stored fields stay `guild`/`circle`; only labels and the list change.
-- **The hero says what the client is for** when both games are present.
+- **Tile meta shows the shard name** ("GemStone IV Prime") rather than the code; the code stays in the tooltip. (BUILT; an unknown code shows as itself.)
+- **The wizard's game step is grouped** into DragonRealms and GemStone IV columns, each shard named without the game's name (BUILT, `GAME_GROUPS` in AddCharacterWizard.tsx).
+- **Edit Profile per family** (BUILT, `guildTerms(game)` in CharacterNotesEditor.tsx). GS4 professions (`GS4_PROFESSIONS`) replace DR guilds, "Profession" and "Level" replace "Guild" and "Circle", and the tile and Team Login pills follow. The stored fields stay `guild`/`circle`. A stored key the game's list doesn't know stays selectable, so opening the editor never drops it. GameWindow reads the profile's guild as a DR guild ONLY for a DR character: a GS4 "empath" must not pick the DR badge or the Tableau's Touch.
+- **The hero says what the client is for** (BUILT, `heroTagline`): "DragonRealms Client" or "GemStone IV Client" when every saved character is in one game, "DragonRealms & GemStone IV Client" when both are present and on first run.
 
 #### 56.7.3 Same-name characters across games
 
@@ -11591,8 +11591,8 @@ Profiles become keyed by `(name, family)` for a GS4 character that collides with
 #### 56.7.4 Order of work
 
 1. The resolver, the session-carried install and the three readers.
-2. Lich Setup per-game rows, the Edit Profile override and `/lich install`.
-3. The launcher filter, shard names, the grouped wizard and Edit Profile per family.
+2. Lich Setup per-game rows, the Edit Profile override and `/lich install`. (BUILT.)
+3. The launcher filter, shard names, the grouped wizard and Edit Profile per family. (BUILT.)
 4. Same-name collision.
 
 **Tests:** a harness for `resolveLichInstall` and the `_shared.yaml` round-trip (including a file without `installs`); a GS4 session whose Dashboard, script list and map read the GS4 install; a DR-only profile set that loads unchanged.

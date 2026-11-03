@@ -36,7 +36,7 @@ import { loadLastSessionCharacters, exportSharedProfile, reportUnreadableProfile
 import { loadBulkSets, saveBulkSets, removeBulkSet, upsertBulkSet, BULK_SET_NAME_MAX, BULK_SETS_KEY, BULK_SETS_CHANGED_EVENT } from '../bulkSets'
 import ContextMenu, { type CtxItem } from './ContextMenu'
 import CharacterNotesEditor, { guildLabel, type ProfilePatch } from './CharacterNotesEditor'
-import { type LichInstall, coerceLichInstall, announceCharacterLichChanged } from '../lichSettings'
+import { type LichInstall, coerceLichInstall, announceCharacterLichChanged, gameOptionByCode } from '../lichSettings'
 import { differs } from '../hooks/useUnsaved'
 import { makeCharacterId } from '../../shared/characterId'
 import { gameFamilyFromCode, type GameFamily } from '../../shared/types'
@@ -465,6 +465,14 @@ function TeamEditor({ team, existingNames, onCancel, onSave }: {
   )
 }
 
+// What the hero says the client is for (DESIGN §56.7.2): the game(s) of the
+// saved characters, and both games on first run, before there are any.
+export function heroTagline(characters: { game: string }[]): string {
+  const fams = new Set(characters.map(c => gameFamilyFromCode(c.game)))
+  if (fams.size === 1) return fams.has('GS4') ? 'GemStone IV Client' : 'DragonRealms Client'
+  return 'DragonRealms & GemStone IV Client'
+}
+
 export async function loadCharacterCards(): Promise<LauncherCharacter[]> {
   const names = await window.api.listCharacterProfiles()
   const profiles = await Promise.all(names.map(async name => {
@@ -694,7 +702,8 @@ interface CardProps {
 function CharacterCard({ character: c, busy, onConnect, onMenu, onToggleTest, onToggleMode, onToggleFavorite, showAccount = true }: CardProps) {
   const isDR = c.game === 'DR' || c.game === 'DRT'
   const isTest = c.game === 'DRT'
-  const guild = guildLabel(c.guild)
+  const guild = guildLabel(c.guild, c.game)
+  const shard = gameOptionByCode(c.game)
   const circleText = (typeof c.circle === 'number' && !Number.isNaN(c.circle)) ? String(c.circle) : null
   const guildLine = [guild, circleText].filter(Boolean).join(' ')
   const hasNotes = !!(c.notes && c.notes.trim())
@@ -739,7 +748,10 @@ function CharacterCard({ character: c, busy, onConnect, onMenu, onToggleTest, on
           name is appended only when rendering outside an account section
           (e.g. Favorites). v0.8.0 UX pass. */}
       <div className="launcher-card-meta">
-        {showAccount && <>{c.account} · </>}{c.game}
+        {/* The shard's name, not its code (DESIGN §56.7.2); the code is
+            in the tooltip. An unknown code shows as itself. */}
+        {showAccount && <>{c.account} · </>}
+        <span title={`${shard.code === c.game ? shard.name : c.game} (${c.game})`}>{shard.code === c.game ? shard.name : c.game}</span>
         {guildLine && <> · <span className="launcher-card-guildline">{guildLine}</span></>}
         {hasNotes && (
           <span className="launcher-card-notes-indicator" title="Has notes — open Edit Profile to view"> ✎</span>
@@ -1185,7 +1197,7 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
               <img src={LOGO_SRC} alt="Lichborne" draggable={false} />
             </div>
             <div className="launcher-logo-text">
-              <p className="launcher-tagline">DragonRealms Client</p>
+              <p className="launcher-tagline">{heroTagline([])}</p>
               <p className="launcher-version">v{__APP_VERSION__}</p>
             </div>
           </div>
@@ -1263,7 +1275,7 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
             <img src={LOGO_SRC} alt="Lichborne" draggable={false} />
           </div>
           <div className="launcher-logo-text">
-            <p className="launcher-tagline">DragonRealms Client</p>
+            <p className="launcher-tagline">{heroTagline(characters)}</p>
             <p className="launcher-version">v{__APP_VERSION__}</p>
             {/* The instruction is the THIRD LINE OF THE LOCKUP (Sekmeht's
                 mockup), not a separate row beneath it — so the hero reads as

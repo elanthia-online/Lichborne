@@ -29,7 +29,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { LauncherCharacter } from './Launcher'
 import type { CharacterId } from '../SessionsContext'
 import { useDigests } from '../overviewStore'
-import { guildLabel } from './CharacterNotesEditor'
+import { guildLabel, guildTerms } from './CharacterNotesEditor'
 import { useEscapeClose } from '../hooks/useEscapeClose'
 import { characterColor, useCharacterColors } from '../characterColors'
 import { makeCharacterId } from '../../shared/characterId'
@@ -158,8 +158,8 @@ function Tile({ m, playing, closed, selected, canRetry, onSelect, onPlay, onRetr
   onRetry: () => void
   tileRef: (el: HTMLButtonElement | null) => void
 }) {
-  const guild = guildLabel(m.pick.guild)
-  const sub = [guild, m.pick.circle ? `Circle ${m.pick.circle}` : ''].filter(Boolean).join(' · ')
+  const guild = guildLabel(m.pick.guild, m.pick.game)
+  const sub = [guild, m.pick.circle ? `${guildTerms(m.pick.game).circle} ${m.pick.circle}` : ''].filter(Boolean).join(' · ')
   const playable = m.status === 'ready' && !m.inOwnWindow && !closed
   // The colour picked for this character in Edit Profile (v0.20.0): its badge,
   // and the ring when it's the chosen tile. Absent → the automatic colour and
