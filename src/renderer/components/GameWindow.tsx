@@ -5401,7 +5401,7 @@ export default function GameWindow({
         sessionPath: lichPath,
         next: resolveLichInstall(loadAdvanced(), session.game, lichOverrideRef.current),
         viaLich: session.useLich,
-        gameName: gameFamily === 'GS4' ? 'GemStone IV' : 'DragonRealms',
+        gameName: gameFamilyName(gameFamily),
       }),
       setRichStream: (mode: RichStreamMode | undefined) => {
         // undefined removes the key (JSON.stringify drops it), so "default"

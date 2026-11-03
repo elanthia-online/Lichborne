@@ -19,6 +19,7 @@
 import { useState, useEffect } from 'react'
 import { type AdvancedSettings, type LichInstall, ADV_DEFAULTS, GAMES, IS_WINDOWS, IS_MAC, richStreamSettingText, effectiveRichStream, RICH_STREAM_DEFAULT_LABEL } from '../lichSettings'
 import type { GameFamily, RichStreamMode } from '../../shared/types'
+import { gameFamilyName } from '../../shared/types'
 import LichInstallFields from './LichInstallFields'
 
 // Platform-aware copy (v0.18.0): where the canonical Lich install lives and
@@ -26,8 +27,6 @@ import LichInstallFields from './LichInstallFields'
 // installer; Linux/Mac = the elanthia-online wiki layout (~/Lich5, rbenv).
 const LICH_HOME_LABEL = IS_WINDOWS ? 'C:\\Ruby4Lich5' : IS_MAC ? '~/Lich5 (or ~/Desktop/Lich5)' : '~/Lich5'
 const RUBY_FILE_LABEL = IS_WINDOWS ? 'ruby.exe' : 'ruby'
-
-const FAMILY_NAMES: Record<GameFamily, string> = { DR: 'DragonRealms', GS4: 'GemStone IV' }
 
 // One game's install row (DESIGN §56.7.1). Module scope, so its open state
 // survives the parent's re-renders (UX #4). "Same as above" REMOVES the entry
@@ -41,7 +40,13 @@ function GameInstallRow({ family, adv, setAdv, disabled }: {
 }) {
   const stored = adv.installs?.[family]
   const [own, setOwn] = useState(stored !== undefined)
+  // The last install this row held. "Same as above" deletes the entry and
+  // Lich Setup saves every edit at once, so without this a Same → Its own
+  // round trip came back blank; Edit Profile's row restores its value the
+  // same way.
+  const [lastOwn, setLastOwn] = useState<LichInstall | undefined>(stored)
   function setInstall(next: LichInstall | undefined) {
+    if (next) setLastOwn(next)
     setAdv(prev => {
       const installs = { ...prev.installs }
       if (next) installs[family] = next
@@ -52,14 +57,14 @@ function GameInstallRow({ family, adv, setAdv, disabled }: {
   return (
     <div className="lich-game-install">
       <label>
-        {FAMILY_NAMES[family]}
+        {gameFamilyName(family)}
         <select
           value={own ? 'own' : 'same'}
           disabled={disabled}
           onChange={e => {
             const o = e.target.value === 'own'
             setOwn(o)
-            setInstall(o ? (stored ?? { lichPath: '', rubyPath: '' }) : undefined)
+            setInstall(o ? (stored ?? lastOwn ?? { lichPath: '', rubyPath: '' }) : undefined)
           }}
         >
           <option value="same">Same as the install above</option>

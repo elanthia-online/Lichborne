@@ -1430,7 +1430,10 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
         : next.source === 'game'
           ? `the ${gameName} install (Lich Setup → Lich install by game)`
           : 'the default install (Lich Setup)'
-      const ruby = next.rubyPath ? ` Ruby: ${next.rubyPath}.` : ''
+      // The session doesn't record the Ruby it started with, only its Lich
+      // path, so the Ruby is reported as the NEXT connect's, never as this
+      // session's: a Ruby changed mid-session must not read as the running one.
+      const ruby = next.rubyPath ? ` The next connect uses Ruby ${next.rubyPath}.` : ''
       if (!viaLich) {
         return ok(`This character connects directly (no Lich), so it runs no Lich install. Through Lich it would use ${next.lichPath || '(no path set)'}, ${from}.`)
       }
@@ -1438,7 +1441,7 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
       if (sessionPath === next.lichPath) return ok(`This session runs Lich from ${sessionPath}, ${from}.${ruby}`)
       return ok(
         `This session runs Lich from ${sessionPath || '(unknown)'}.`,
-        `The settings have changed since it connected: the next connect uses ${next.lichPath || '(no path set)'}, ${from}.${ruby}`,
+        `The settings have changed since it connected: the next connect uses ${next.lichPath || '(no path set)'}, ${from}.${next.rubyPath ? ` Ruby: ${next.rubyPath}.` : ''}`,
       )
     },
   },

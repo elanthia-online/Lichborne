@@ -38,7 +38,7 @@ import { monogramStyle, nameColorHex, nameInitials } from '../utils/nameColor'
 import { createPortal } from 'react-dom'
 import LichInstallFields from './LichInstallFields'
 import { type LichInstall, loadAdvanced, resolveLichInstall } from '../lichSettings'
-import { gameFamilyFromCode } from '../../shared/types'
+import { gameFamilyFromCode, gameFamilyName } from '../../shared/types'
 import '../styles/login.css'
 import '../styles/character-notes-editor.css'
 
@@ -114,7 +114,7 @@ export default function CharacterNotesEditor({
   const [busy,   setBusy]   = useState(false)
   // What "the game's install" means for this character right now.
   const [inherited] = useState(() => resolveLichInstall(loadAdvanced(), game))
-  const familyName = gameFamilyFromCode(game) === 'GS4' ? 'GemStone IV' : 'DragonRealms'
+  const familyName = gameFamilyName(gameFamilyFromCode(game))
   // '' = no colour of your own (the automatic one shows instead).
   const [initialColor] = useState(() => characterColor(loadCharacterColors(), { characterId }) ?? '')
   const [color,  setColor]  = useState(initialColor)

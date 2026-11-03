@@ -2349,6 +2349,8 @@ function AppShell() {
                       character: s.character,
                       game: s.game,
                       useLich: s.useLich,
+                      // The install this session launched from (DESIGN §56.7.1).
+                      lichPath: s.lichPath,
                     }}
                     isActive={s.characterId === activeId}
                     ownsTheme={s.characterId === themeOwnerId}
