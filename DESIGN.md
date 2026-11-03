@@ -11468,6 +11468,7 @@ Found by replaying the 184 GS4 captures through the parser and checking each str
 - **`Spells` stays discoverable on GS4.** Discovery drops an id whose lowercase matches a builtin type, and `Spells` matches DR's `spells`. The drop now applies only where that type is available, so GS4's declared Spells window can still be found. No capture has pushed text to it yet.
 - **The rich-stream declaration is DR-only** (`ConnectionManager`, both connect paths). GemStone's `adapt_for_frontend` is a no-op in lich-5 (`games.rb`), so the line did nothing on GS4 except print "Connected via Lich, with DragonRealms' rich stream". `/richstream` on a GS4 character now says the setting is DR-only.
 - **DR-only Experiences are gated.** `ExperienceDef.games`: Moons (DR's sky) and Spell Monitor (DR's `percWindow`) are `['DR']`, so they are left out of a GS4 character's shelf and + menu. An instance carried over by Profile Transfer shows a one-line placeholder. The Tableau reads room components, which GS4 sends too, so it stays.
+- **The Lich Dashboard's DR Infomon tab is DR-only.** It catalogues drinfomon's `DRStats` / `DRSkill` / `DRSpells` / `DRRoom`, which Lich loads only for DragonRealms, so a GS4 session's dashboard leaves the tab out (`TABS[].games`), and an `initialTab` of `drinfomon` falls back to Scripts. Nothing persists the open tab, so no saved state points at it.
 
 ### 56.4 GS4 Experience and Encumbrance panels
 
