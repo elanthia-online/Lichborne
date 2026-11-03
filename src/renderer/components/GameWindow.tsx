@@ -5832,8 +5832,8 @@ export default function GameWindow({
       // B120 (Binu): clamp at -1 so pressing Down past the "current empty"
       // state doesn't accumulate negative counts. Without the clamp,
       // three Downs took the ref to -4 and the user had to press Up
-      // four times to climb back to history[0]. Matches Wrayth /
-      // Wrayth behavior where pressing Down at the bottom is a no-op.
+      // four times to climb back to history[0]. Matches Wrayth's behavior,
+      // where pressing Down at the bottom is a no-op.
       const next = Math.max(-1, historyIdxRef.current - 1)
       historyIdxRef.current = next
       // F57: index -1 restores the stashed draft (was '' — the half-typed

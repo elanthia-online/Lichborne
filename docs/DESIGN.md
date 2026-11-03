@@ -33,17 +33,6 @@
 17. [Automations, Groups & Modes](#17-automations-groups--modes)
 18. [Packaging & Distribution](#18-packaging--distribution)
 19. [Map System](#19-map-system)
-20. [Profile System](#20-profile-system)
-   - 20.1 Overview
-   - 20.2 Storage Structure
-   - 20.3 File Responsibilities
-   - 20.4 Authority Rules
-   - 20.5 Write Flow
-   - 20.6 Startup / Login Flow
-   - 20.7 Game Code and Authentication
-   - 20.8 Implementation Files
-   - 20.9 Portability
-   - 20.10 Implementation Phases
    - 19.1 Overview
    - 19.2 Map File Format
    - 19.3 Coordinate System
@@ -57,6 +46,19 @@
    - 19.11 Label Modes
    - 19.12 Future Work
    - 19.14 Map Panel UI Layout
+20. [Profile System](#20-profile-system)
+   - 20.1 Overview
+   - 20.2 Storage Structure
+   - 20.3 File Responsibilities
+   - 20.4 Authority Rules
+   - 20.5 Write Flow
+   - 20.6 Startup / Login Flow
+   - 20.7 Game Code and Authentication
+   - 20.8 Implementation Files
+   - 20.9 Portability
+   - 20.10 Implementation Phases
+21. [Stream Name Normalization](#21-stream-name-normalization)
+22. [Debug — Fires Tab](#22-debug--fires-tab)
 23. [Virtual Scrolling — Main Window](#23-virtual-scrolling--main-window)
 24. [Lich Integration Architecture](#24-lich-integration-architecture)
     - 24.1 Product Philosophy
@@ -11697,7 +11699,7 @@ Planned in PR #7 and built in the order at the end (§56.7.4): the filter in #7,
 
 **Guards against a missed call site:** `writeCharacterProfile` and `session-log:append` refuse a non-key in main, and `scopedKey` logs a bare scope once.
 
-**Attach:** an attach knows only the character's name, so it uses that character's profile only when exactly one shard has one (`findProfileKeysByName` in App.tsx), and otherwise keeps its placeholders.
+**Attach:** the Attach dialog names the character AND its game (review of #4), so an attach reads exactly that `Name@SHARD` profile for its account; a namesake on another shard or game lends neither its account nor its files (review of #10). The dialog autofills a name filed on two shards only when one tile is clearly meant: the only one, or the only one with a saved attach target. Tile, team and reconnect attaches pass their own game and account.
 
 **The wizard:** a fetched character matches a profile by name AND shard. The same name on another shard is a new character, which retires B614's cross-game rule. A re-file (B542) is the same key under another account.
 
