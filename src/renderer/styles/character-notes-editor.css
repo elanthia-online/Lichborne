@@ -295,3 +295,16 @@
 /* The name field + Save sit under the ticked checkbox — indented so they read
    as belonging to it rather than as a new row of the form. */
 .tl-saveteam + .tl-saverow { margin-left: 1.55em; }
+
+/* DESIGN §56.7.1: a character's own Lich install. The path pair is the shared
+   LichInstallFields, which leans on `.login-form` for its inputs and browse
+   buttons; its labels are brought back to this dialog's own label type. */
+.cne-lich-fields {
+  gap: 8px;
+  margin: 4px 0 0 12px;
+}
+.cne-lich-fields label {
+  font-size: 0.74rem;
+  text-transform: none;
+  letter-spacing: 0;
+}

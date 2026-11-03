@@ -17,6 +17,10 @@
 // Save writes it there directly (plus the shared-profile save) before handing
 // the three profile fields to `onSave`. It counts toward `dirty` like the rest.
 //
+// DESIGN §56.7.1: also the character's own Lich INSTALL (`lich`), a
+// launcher-owned profile field like the three above. "The game's install"
+// stores nothing (B544); "Its own install" needs a Lich path before Save.
+//
 // B368: closing with an unsaved edit (✕, Cancel, backdrop, Esc) asks first —
 // `dirty` compares the patch Save WOULD write against the same normalisation
 // of the initial values, so it means exactly "Save would change something".
@@ -32,6 +36,10 @@ import { normalizeColorInput } from '../colors'
 import { scheduleSharedProfileSave } from '../profile'
 import { monogramStyle, nameColorHex, nameInitials } from '../utils/nameColor'
 import { createPortal } from 'react-dom'
+import LichInstallFields from './LichInstallFields'
+import { type LichInstall, loadAdvanced, resolveLichInstall } from '../lichSettings'
+import { gameFamilyFromCode } from '../../shared/types'
+import '../styles/login.css'
 import '../styles/character-notes-editor.css'
 
 // Canonical guild list — keys match themes.ts so picking "Empath" here
@@ -57,18 +65,20 @@ export function guildLabel(key: string | undefined): string | null {
   return GUILDS.find(g => g.key === key)?.label ?? null
 }
 
-type ProfilePatch = { guild: string | undefined; circle: number | undefined; notes: string | undefined }
+export type ProfilePatch = { guild: string | undefined; circle: number | undefined; notes: string | undefined; lich: LichInstall | undefined }
 
 // The form fields → what gets written. Empty string → undefined for guild and
 // notes so the YAML doesn't accumulate empty fields. Circle parses as a
 // number; non-numeric or empty stays undefined. Shared by Save and the dirty
 // check, so the two can't disagree about what counts as a change.
-function toPatch(guild: string, circle: string, notes: string): ProfilePatch {
+function toPatch(guild: string, circle: string, notes: string, lich: LichInstall | null): ProfilePatch {
   const circleNum = circle.trim() === '' ? undefined : Number(circle)
   return {
     guild:  guild.trim() === '' ? undefined : guild,
     circle: typeof circleNum === 'number' && !Number.isNaN(circleNum) ? circleNum : undefined,
     notes:  notes.trim() === '' ? undefined : notes,
+    // null = "the game's install". A blank Ruby stays blank: it inherits.
+    lich:   lich && lich.lichPath.trim() ? { lichPath: lich.lichPath.trim(), rubyPath: lich.rubyPath.trim() } : undefined,
   }
 }
 
@@ -76,6 +86,9 @@ interface Props {
   characterName: string
   /** account::character::game — what the colour is keyed by. */
   characterId: string
+  /** The character's game code, for the install it inherits. */
+  game: string
+  initialLich: LichInstall | undefined
   initialGuild: string | undefined
   initialCircle: number | undefined
   initialNotes: string | undefined
@@ -86,6 +99,8 @@ interface Props {
 export default function CharacterNotesEditor({
   characterName,
   characterId,
+  game,
+  initialLich,
   initialGuild,
   initialCircle,
   initialNotes,
@@ -95,7 +110,11 @@ export default function CharacterNotesEditor({
   const [guild,  setGuild]  = useState(initialGuild ?? '')
   const [circle, setCircle] = useState<string>(initialCircle == null ? '' : String(initialCircle))
   const [notes,  setNotes]  = useState(initialNotes ?? '')
+  const [lich,   setLich]   = useState<LichInstall | null>(initialLich ?? null)
   const [busy,   setBusy]   = useState(false)
+  // What "the game's install" means for this character right now.
+  const [inherited] = useState(() => resolveLichInstall(loadAdvanced(), game))
+  const familyName = gameFamilyFromCode(game) === 'GS4' ? 'GemStone IV' : 'DragonRealms'
   // '' = no colour of your own (the automatic one shows instead).
   const [initialColor] = useState(() => characterColor(loadCharacterColors(), { characterId }) ?? '')
   const [color,  setColor]  = useState(initialColor)
@@ -104,7 +123,7 @@ export default function CharacterNotesEditor({
   // The baseline, captured once at open. Save unmounts the editor on success
   // (Launcher clears `editingNotes`), so it never needs re-basing.
   const [baseline] = useState(() =>
-    toPatch(initialGuild ?? '', initialCircle == null ? '' : String(initialCircle), initialNotes ?? ''))
+    toPatch(initialGuild ?? '', initialCircle == null ? '' : String(initialCircle), initialNotes ?? '', initialLich ?? null))
   // What Save would store: typed text resolved the way the field resolves it on
   // blur, so Enter straight after typing `ember` or `3fb950` saves the link or
   // the hex, not the raw text (ColorField calls onEnter before its own onChange
@@ -113,7 +132,9 @@ export default function CharacterNotesEditor({
   // A colour nothing can paint (a half-typed name) is refused rather than
   // stored: every surface's color-mix() would go invalid.
   const colorBad = resolvedColor !== '' && !isPaintableColor(resolvedColor)
-  const dirty = differs(toPatch(guild, circle, notes), baseline) || resolvedColor !== initialColor
+  const dirty = differs(toPatch(guild, circle, notes, lich), baseline) || resolvedColor !== initialColor
+  // "Its own install" with no Lich path would save as the game's install.
+  const lichBad = lich !== null && !lich.lichPath.trim()
 
   // Every way out goes through here. While a save is in flight it does
   // nothing, like the disabled ✕.
@@ -129,10 +150,10 @@ export default function CharacterNotesEditor({
   useEscapeClose(requestClose)
 
   async function handleSave() {
-    if (busy || colorBad) return
+    if (busy || colorBad || lichBad) return
     setBusy(true)
     try {
-      await onSave(toPatch(guild, circle, notes))
+      await onSave(toPatch(guild, circle, notes, lich))
       // AFTER the profile save: if that throws, the editor stays open and dirty,
       // and a Cancel then really does discard the colour too.
       if (resolvedColor !== initialColor) {
@@ -221,6 +242,32 @@ export default function CharacterNotesEditor({
             </span>
           </div>
 
+          <div className="cne-label">
+            <label className="cne-label">
+              Lich install
+              <select
+                value={lich ? 'own' : 'game'}
+                onChange={e => setLich(e.target.value === 'own' ? (initialLich ?? { lichPath: '', rubyPath: '' }) : null)}
+                onKeyDown={onFieldKeyDown}
+                disabled={busy}
+                className="cne-input"
+              >
+                <option value="game">{inherited.source === 'game' ? `The ${familyName} install` : 'The default install'}</option>
+                <option value="own">Its own install</option>
+              </select>
+            </label>
+            {lich && (
+              <div className="login-form cne-lich-fields">
+                <LichInstallFields value={lich} onChange={setLich} inheritedRuby={inherited.rubyPath} disabled={busy} />
+              </div>
+            )}
+            <span className="ui-hint">
+              {lich
+                ? `${characterName} connects through this Lich instead of ${inherited.lichPath || 'the default install'}. Takes effect on the next connect.`
+                : `${characterName} connects through ${inherited.lichPath || 'the default install (not set yet)'}${inherited.source === 'game' ? `, the ${familyName} install from Lich Setup` : ', the default install from Lich Setup'}. Choose "Its own install" to use a different Lich folder for this character only.`}
+            </span>
+          </div>
+
           <label className="cne-label cne-label--notes">
             Notes
             <textarea
@@ -241,8 +288,9 @@ export default function CharacterNotesEditor({
           {/* B345: both labels are always rendered in one grid cell, so the
               button keeps the wider one's width and Save → Saving… never
               resizes it (character-notes-editor.css). */}
-          <button type="button" className="ui-btn ui-btn--primary ui-btn--stable" onClick={handleSave} disabled={busy || colorBad}
-            title={colorBad ? "Fix the color first, or clear it for Automatic" : undefined}>
+          <button type="button" className="ui-btn ui-btn--primary ui-btn--stable" onClick={handleSave} disabled={busy || colorBad || lichBad}
+            title={colorBad ? "Fix the color first, or clear it for Automatic"
+              : lichBad ? "Choose this character's lich.rbw, or set Lich install back to the game's" : undefined}>
             <span className={`ui-btn-label${busy ? ' ui-btn-label--off' : ''}`}>Save</span>
             <span className={`ui-btn-label${busy ? '' : ' ui-btn-label--off'}`} aria-hidden={!busy}>Saving…</span>
           </button>

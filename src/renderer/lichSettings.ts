@@ -123,6 +123,17 @@ export function resolveLichInstall(
   return { lichPath: adv.lichPath, rubyPath: adv.rubyPath, source: 'default' }
 }
 
+/** Dispatched on `window` (detail: the character's name) when Edit Profile
+ *  saves a character's own install, so an open session re-reads it. Other
+ *  windows hear it through CHARACTER_LICH_CHANGED_KEY's `storage` event. */
+export const CHARACTER_LICH_CHANGED_EVENT = 'lichborne:character-lich-changed'
+export const CHARACTER_LICH_CHANGED_KEY = 'lichborne.characterLichChanged'
+
+export function announceCharacterLichChanged(character: string): void {
+  window.dispatchEvent(new CustomEvent(CHARACTER_LICH_CHANGED_EVENT, { detail: character }))
+  try { localStorage.setItem(CHARACTER_LICH_CHANGED_KEY, `${character}:${Date.now()}`) } catch { /* same window still heard it */ }
+}
+
 /** resolveLichInstall for a saved character, reading its override from its
  *  profile at connect time. Read fresh rather than taken from a launcher card,
  *  because a tab's Reconnect builds its card from the session record. */

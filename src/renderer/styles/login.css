@@ -450,3 +450,15 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* One game's install in Lich Setup (DESIGN §56.7.1): its select, and the
+   path pair under it when it has its own install, indented so the pair reads
+   as belonging to that game. */
+.lich-game-install {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lich-game-install > label ~ label {
+  margin-left: 12px;
+}

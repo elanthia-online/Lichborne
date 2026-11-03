@@ -11600,7 +11600,7 @@ A plan, built in the order at the end. Sections get marked as they land.
 
 #### 56.7.1 Which Lich install a character uses
 
-**Status:** resolution, storage and the session-carried path are BUILT (step 1); the Lich Setup rows, the Edit Profile override and `/lich install` are step 2.
+**Status:** BUILT. Resolution, storage and the session-carried path in step 1; the Lich Setup rows, the Edit Profile override and `/lich install` in step 2.
 
 **Resolution, most specific first:** the character's own override; else the game family's default (DR or GS4); else the global install.
 - **By family, not by shard.** GS3/GSX/GST/GSF share one install, as do DR/DRX/DRT/DRF.
@@ -11621,9 +11621,10 @@ A plan, built in the order at the end. Sections get marked as they land.
 - **Launch serialization stays one queue.** Every Lich binds 11024 and serves one front-end, whichever folder it runs from.
 
 **UI:**
-- **Lich Setup** gets per-game rows (DragonRealms, GemStone IV) under the default install. Each defaults to "Same as default" and expands to the path fields when changed.
-- **Edit Profile** gets a "Lich install" row: the game default, or this character's own paths.
-- **Slash command (Principle #11):** `/lich install` reports which install the session uses and where that came from. Setting paths stays a dialog: it is one-time setup with file browsing.
+- **Lich Setup** has a "Lich install by game" section under the default install (`GameInstallRow` in LichSetupFields.tsx; Lich Setup only, not the legacy LoginScreen). Each game reads "Same as the install above" (no entry stored) or "Its own install", which opens the path pair. An entry left without a Lich path is dropped by `loadAdvanced`.
+- **Edit Profile** has a "Lich install" row: the game's install (named, with its path in the hint) or "Its own install". Save is refused while "Its own install" has no Lich path, rather than silently saving the game's. Saving dispatches `CHARACTER_LICH_CHANGED_EVENT` so an open session re-reads it.
+- **The path pair is one component,** [LichInstallFields.tsx](src/renderer/components/LichInstallFields.tsx): Lich and Ruby paths, Browse, the same debounced ✓/✕ existence check as the default install. A blank Ruby shows the Ruby it inherits as its placeholder and gets no ✓/✕. The default install keeps LichSetupFields (Auto-detect, the Ruby advisory).
+- **Slash command (Principle #11):** `/lich install` (BUILT) reports the folder this session runs from and where that choice comes from (character / game / default). When the settings have changed since the session connected, it also says what the next connect will use. Setting paths stays a dialog: it is one-time setup with file browsing.
 
 #### 56.7.2 Organising the login screen by game
 

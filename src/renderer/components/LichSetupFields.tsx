@@ -17,14 +17,66 @@
 // is phrased conditionally because it reads the RUBY version, not Lich's.
 
 import { useState, useEffect } from 'react'
-import { type AdvancedSettings, ADV_DEFAULTS, GAMES, IS_WINDOWS, IS_MAC, richStreamSettingText, effectiveRichStream, RICH_STREAM_DEFAULT_LABEL } from '../lichSettings'
-import type { RichStreamMode } from '../../shared/types'
+import { type AdvancedSettings, type LichInstall, ADV_DEFAULTS, GAMES, IS_WINDOWS, IS_MAC, richStreamSettingText, effectiveRichStream, RICH_STREAM_DEFAULT_LABEL } from '../lichSettings'
+import type { GameFamily, RichStreamMode } from '../../shared/types'
+import LichInstallFields from './LichInstallFields'
 
 // Platform-aware copy (v0.18.0): where the canonical Lich install lives and
 // what the interpreter file is called — Windows = the Ruby4Lich5 one-click
 // installer; Linux/Mac = the elanthia-online wiki layout (~/Lich5, rbenv).
 const LICH_HOME_LABEL = IS_WINDOWS ? 'C:\\Ruby4Lich5' : IS_MAC ? '~/Lich5 (or ~/Desktop/Lich5)' : '~/Lich5'
 const RUBY_FILE_LABEL = IS_WINDOWS ? 'ruby.exe' : 'ruby'
+
+const FAMILY_NAMES: Record<GameFamily, string> = { DR: 'DragonRealms', GS4: 'GemStone IV' }
+
+// One game's install row (DESIGN §56.7.1). Module scope, so its open state
+// survives the parent's re-renders (UX #4). "Same as above" REMOVES the entry
+// (B544: only an explicit choice is stored); "Its own install" seeds an empty
+// one, which loadAdvanced drops again if it is closed without a Lich path.
+function GameInstallRow({ family, adv, setAdv, disabled }: {
+  family: GameFamily
+  adv: AdvancedSettings
+  setAdv: Props['setAdv']
+  disabled: boolean
+}) {
+  const stored = adv.installs?.[family]
+  const [own, setOwn] = useState(stored !== undefined)
+  function setInstall(next: LichInstall | undefined) {
+    setAdv(prev => {
+      const installs = { ...prev.installs }
+      if (next) installs[family] = next
+      else delete installs[family]
+      return { ...prev, installs: Object.keys(installs).length ? installs : undefined }
+    })
+  }
+  return (
+    <div className="lich-game-install">
+      <label>
+        {FAMILY_NAMES[family]}
+        <select
+          value={own ? 'own' : 'same'}
+          disabled={disabled}
+          onChange={e => {
+            const o = e.target.value === 'own'
+            setOwn(o)
+            setInstall(o ? (stored ?? { lichPath: '', rubyPath: '' }) : undefined)
+          }}
+        >
+          <option value="same">Same as the install above</option>
+          <option value="own">Its own install</option>
+        </select>
+      </label>
+      {own && (
+        <LichInstallFields
+          value={stored ?? { lichPath: '', rubyPath: '' }}
+          onChange={setInstall}
+          inheritedRuby={adv.rubyPath}
+          disabled={disabled}
+        />
+      )}
+    </div>
+  )
+}
 
 type DiscoveryResult = Awaited<ReturnType<typeof window.api.discoverLichPaths>> | null
 
@@ -292,12 +344,26 @@ export default function LichSetupFields({ adv, setAdv, disabled = false, alwaysS
       <div className="ui-hint lich-stream-hint">
         {richStreamSettingText(adv)}{' '}
         {effectiveRichStream(adv) !== 'off' && pathsExist && (pathsExist.rich
-          ? 'Your Lich supports it.'
+          ? 'Your default Lich supports it.'
           : effectiveRichStream(adv) === 'auto'
-            ? "Your Lich doesn't yet: update Lich to 5.23.0 or later. Until then you get the legacy stream."
-            : "Your Lich doesn't yet: update Lich to 5.23.0 or later, or the game will answer the request once as an unknown command.")}
+            ? "Your default Lich doesn't yet: update Lich to 5.23.0 or later. Until then you get the legacy stream."
+            : "Your default Lich doesn't yet: update Lich to 5.23.0 or later, or the game will answer the request once as an unknown command.")}
         {' '}Direct connections (no Lich) always use the legacy stream. Takes effect on your next connect.
       </div>
+
+      {/* Per-game installs (DESIGN §56.7.1): Lich Setup only, never the
+          legacy LoginScreen, which connects from the default install. */}
+      {alwaysShowFields && (
+        <>
+          <div className="ui-section-label ui-section-label--rule">Lich install by game</div>
+          <div className="ui-hint lich-stream-hint">
+            Every character uses the install above unless its game has its own. Give a game its own install to run its characters from a different Lich folder; a single character can have its own in Edit Profile. Takes effect on the next connect.
+          </div>
+          {(['DR', 'GS4'] as const).map(f => (
+            <GameInstallRow key={f} family={f} adv={adv} setAdv={setAdv} disabled={disabled} />
+          ))}
+        </>
+      )}
 
       {/* Read-only inventory of the game shards and the Lich front-end port each
           one uses by convention. Surfaced here so users can verify against their
