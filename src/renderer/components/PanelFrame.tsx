@@ -79,9 +79,14 @@ export type PanelType = 'room' | 'thoughts' | 'arrivals' | 'conversation' | 'dea
 // the whole Map panel stays available to both. `effects` is the reverse case:
 // <EffectsPanel/> reads GS4's Active Spells / Buffs / Debuffs / Cooldowns
 // dialogs, which DR never sends (DR's spells are the `spells` percWindow
-// stream), so on a DR character it could only ever be empty.
+// stream), so on a DR character it could only ever be empty. And `spells`
+// the other way: it is DR's `percWindow` stream ("Active Spells"), which no
+// GS4 capture has ever carried (0 of 184 sessions) — GS4's active spells are
+// a section of `effects`, so offering both put two "Active Spells" in a GS4
+// character's + menu, one always empty.
 export const PANEL_GAMES: Partial<Record<PanelType, GameFamily[]>> = {
   exp: ['DR'],
+  spells: ['DR'],
   effects: ['GS4'],
 }
 
@@ -972,7 +977,13 @@ function renderPanel(
     case 'arrivals':      return sp('arrivals',      streamLines.arrivals      ?? EMPTY_ARRAY)
     case 'conversation':  return sp('conversation',  streamLines.conversation  ?? EMPTY_ARRAY)
     case 'deaths':        return sp('deaths',        streamLines.deaths        ?? EMPTY_ARRAY)
-    case 'spells':        return sp('spells',        streamLines.spells        ?? EMPTY_ARRAY)
+    case 'spells':
+      // Same defense-in-depth as `exp` below: a transferred DR layout can carry
+      // this tab onto a GS4 character. Point at where the data really is.
+      if (gameFamily === 'GS4') {
+        return <div className="stream-panel-empty">GemStone IV's active spells are in the Effects panel.</div>
+      }
+      return sp('spells',        streamLines.spells        ?? EMPTY_ARRAY)
     case 'exp':
       // GS4 defense-in-depth: this tab TYPE is hidden from every add-menu for
       // a GS4 session (PANEL_GAMES above), but an already-open tab isn't

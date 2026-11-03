@@ -660,6 +660,12 @@ function defaultBottomTabs(family: GameFamily): TabDef[] {
 function defaultBottomActiveId(family: GameFamily): string {
   return family === 'GS4' ? 'effects' : 'exp'
 }
+// GS4: no `spells` — that is DR's percWindow stream (PANEL_GAMES); GS4's
+// active spells are a section of the Effects panel in the bottom zone.
+function defaultMidTabs(family: GameFamily): TabDef[] {
+  const tabs = [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths')]
+  return family === 'GS4' ? tabs : [...tabs, makeTab('spells')]
+}
 // Same creatures, same names, same states, in the same order.
 function sameRoster(a: readonly CreatureStatus[], b: readonly CreatureStatus[]): boolean {
   if (a.length !== b.length) return false
@@ -1177,7 +1183,7 @@ export default function GameWindow({
   // Panel tabs — 3 right-column zones + 1 main-top zone, persisted to localStorage (per-character)
   const [topTabs, setTopTabs]       = useState<TabDef[]>(() => loadTabs(scopedKey(session.character, 'topTabs'),    [makeTab('conversation')]))
   const [topActiveId, setTopActiveId]   = useState(() => loadStr(scopedKey(session.character, 'topActiveId'),    'conversation'))
-  const [midTabs, setMidTabs]       = useState<TabDef[]>(() => loadTabs(scopedKey(session.character, 'midTabs'),    [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths'), makeTab('spells')]))
+  const [midTabs, setMidTabs]       = useState<TabDef[]>(() => loadTabs(scopedKey(session.character, 'midTabs'),    defaultMidTabs(gameFamily)))
   const [midActiveId, setMidActiveId]   = useState(() => loadStr(scopedKey(session.character, 'midActiveId'),    'thoughts'))
   const [bottomTabs, setBottomTabs] = useState<TabDef[]>(() => loadTabs(scopedKey(session.character, 'bottomTabs'), defaultBottomTabs(gameFamily)))
   const [bottomActiveId, setBottomActiveId] = useState(() => loadStr(scopedKey(session.character, 'bottomActiveId'), defaultBottomActiveId(gameFamily)))
@@ -3098,7 +3104,7 @@ export default function GameWindow({
   useEffect(() => {
     if (layoutMode === 'free' && !freeInitRef.current && freeWindows.length === 0) {
       freeInitRef.current = true
-      setFreeWindows(seedDefaultWindows())
+      setFreeWindows(seedDefaultWindows(gameFamily))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -4731,7 +4737,7 @@ export default function GameWindow({
     // zone; right-column top default is just Conversations now.
     const defaultMainTop = [makeTab('room'), makeTab('combat')]
     const defaultTop = [makeTab('conversation')]
-    const defaultMid = [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths'), makeTab('spells')]
+    const defaultMid = defaultMidTabs(gameFamily)
     const defaultBot = defaultBottomTabs(gameFamily)
     setMainTopTabs(defaultMainTop); setMainTopActiveId('room')
     setTopTabs(defaultTop);         setTopActiveId('conversation')
@@ -6007,9 +6013,9 @@ export default function GameWindow({
 
   function buildWindowsFromCurrentLayout(): FloatWindow[] {
     const layoutEl = gameLayoutRef.current
-    if (!layoutEl) return seedDefaultWindows()
+    if (!layoutEl) return seedDefaultWindows(gameFamily)
     const C = layoutEl.getBoundingClientRect()
-    if (C.width <= 0 || C.height <= 0) return seedDefaultWindows()
+    if (C.width <= 0 || C.height <= 0) return seedDefaultWindows(gameFamily)
 
     // The window header is an OVERLAY as of v0.18.1 (see free-layout.css), so a
     // converted window reserves NO room for a title bar — the strip it hosts
@@ -6059,7 +6065,7 @@ export default function GameWindow({
     addChrome('icon',    measureH('.icon-bar', 36),     'Status')
     addChrome('command', measureH('.command-bar', 40),  'Command')
 
-    if (wins.length === 0) return seedDefaultWindows()
+    if (wins.length === 0) return seedDefaultWindows(gameFamily)
     return wins
   }
 
