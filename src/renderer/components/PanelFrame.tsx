@@ -36,6 +36,8 @@ import StreamPanel, { joinMenuGroups } from './panels/StreamPanel'
 import ExpPanel from './panels/ExpPanel'
 import InjuriesPanel from './panels/InjuriesPanel'
 import EffectsPanel from './panels/EffectsPanel'
+import GsExperiencePanel, { type GsExperienceState } from './panels/GsExperiencePanel'
+import EncumbrancePanel, { type GsEncumbranceState } from './panels/EncumbrancePanel'
 import type { EffectsState } from '../gsEffects'
 import DebugPanel from './DebugPanel'
 import MapPanel from './panels/MapPanel'
@@ -61,20 +63,18 @@ import '../styles/panel-frame.css'
 // stream/tab id space bare — the §34.1 collision-safety guarantee holds.
 // Deliberately NOT in ALL_PANEL_TYPES (it's parameterized — added via the
 // + menu's [e] section, never as a generic builtin row).
-export type PanelType = 'room' | 'thoughts' | 'arrivals' | 'conversation' | 'deaths' | 'spells' | 'exp' | 'familiar' | 'inv' | 'injuries' | 'effects' | 'debug' | 'log' | 'map' | 'lichScripts' | 'combat' | 'custom' | 'experience'
+export type PanelType = 'room' | 'thoughts' | 'arrivals' | 'conversation' | 'deaths' | 'spells' | 'exp' | 'familiar' | 'inv' | 'injuries' | 'effects' | 'encumbrance' | 'debug' | 'log' | 'map' | 'lichScripts' | 'combat' | 'custom' | 'experience'
 
 // GS4 support: which built-in panel TYPES are meaningful for which game
 // family. A type absent from this map is available to BOTH families (the
 // Saga TAB_REGISTRY pattern — opt-OUT, not opt-in, so adding a new generic
 // builtin never needs an entry here). Checked against `renderPanel` below:
-// every entry EXCEPT `exp` renders via the generic `sp(streamId, lines)`
-// StreamPanel helper (or is otherwise game-agnostic — debug/log/lichScripts/
-// map) and just shows whatever real text the server routes to that stream,
-// so it's already safe for both families with zero UI changes. `exp` alone
-// renders <ExpPanel/>, which is built entirely around DR's 34-rung mindstate
-// ladder / guild list / skillset skills (focusTemplates.ts) — meaningless (not
-// just empty, actively wrong) for a GS4 character until a GS4-native
-// experience panel exists. `map`'s Genie sub-view is gated separately inside
+// most entries render via the generic `sp(streamId, lines)` StreamPanel
+// helper (or are otherwise game-agnostic — debug/log/lichScripts/map) and
+// just show whatever real text the server routes to that stream, so they are
+// safe for both families with zero UI changes. `exp` is offered to both but
+// renders per family (DR's <ExpPanel/> skill ladder, GS4's
+// <GsExperiencePanel/>), so it needs no entry. `map`'s Genie sub-view is gated separately inside
 // MapPanel (Lich Map itself works for both families) rather than here, since
 // the whole Map panel stays available to both. `effects` is the reverse case:
 // <EffectsPanel/> reads GS4's Active Spells / Buffs / Debuffs / Cooldowns
@@ -86,10 +86,12 @@ export type PanelType = 'room' | 'thoughts' | 'arrivals' | 'conversation' | 'dea
 // character's + menu, one always empty. A hidden type's id can still become a
 // discovered stream, but only once text is pushed to it (GameWindow's
 // discovery filter): GS4 declares a `Spells` window at login and never fills it.
+// (`exp` is offered to both: on GS4 it renders GsExperiencePanel — see
+// renderPanel.)
 export const PANEL_GAMES: Partial<Record<PanelType, GameFamily[]>> = {
-  exp: ['DR'],
   spells: ['DR'],
   effects: ['GS4'],
+  encumbrance: ['GS4'],   // GS4's `encum` dialog; DR has no encumbrance readout
 }
 
 export function panelTypeAvailable(type: PanelType, family: GameFamily | undefined): boolean {
@@ -120,6 +122,7 @@ export const PANEL_LABELS: Record<PanelType, string> = {
   inv:           'Inventory',
   injuries:      'Injuries',
   effects:       'Effects',
+  encumbrance:   'Encumbrance',
   debug:         'Debug',
   log:           'Log',
   map:           'Map',
@@ -130,7 +133,7 @@ export const PANEL_LABELS: Record<PanelType, string> = {
 }
 
 export const ALL_PANEL_TYPES: PanelType[] = [
-  'room', 'thoughts', 'arrivals', 'conversation', 'deaths', 'spells', 'exp', 'familiar', 'inv', 'injuries', 'effects', 'debug', 'log', 'map', 'lichScripts', 'combat',
+  'room', 'thoughts', 'arrivals', 'conversation', 'deaths', 'spells', 'exp', 'familiar', 'inv', 'injuries', 'effects', 'encumbrance', 'debug', 'log', 'map', 'lichScripts', 'combat',
 ]
 
 // B172: referentially STABLE fallbacks for renderPanel's optional props.
@@ -221,6 +224,9 @@ interface Props {
   injuryState?: InjuryState
   // GS4's timed effects, one block per dialog (EffectsPanel).
   effectsState?: EffectsState
+  // GS4's experience (the `exp` tab on GS4) and encumbrance readouts.
+  gsExperience?: GsExperienceState | null
+  gsEncumbrance?: GsEncumbranceState | null
   tabs: TabDef[]
   activeId: string
   onTabsChange: (tabs: TabDef[]) => void
@@ -305,6 +311,8 @@ export default function PanelFrame({
   creatureRoster = null,
   gameFamily,
   effectsState = EMPTY_EFFECTS,
+  gsExperience = null,
+  gsEncumbrance = null,
 }: Props) {
   const [showAddMenu, setShowAddMenu] = useState(false)
   // F55 follow-up: tab-hosted ⚙ popover open state — closed on tab switch so
@@ -602,7 +610,7 @@ export default function PanelFrame({
           onLichKill ?? NOOP, onLichRefresh ?? NOOP,
           mapAnimations, compactExp,
           renderExperienceTab, activeFontSize, closeStreamRef.current, creatureRoster,
-          gameFamily, effectsState,
+          gameFamily, effectsState, gsExperience, gsEncumbrance,
         )}
         {activeTab && (() => {
           // F55 follow-up: an active EXPERIENCE tab with registry options gets
@@ -956,6 +964,8 @@ function renderPanel(
   creatureRoster: CreatureStatus[] | null = null,
   gameFamily?: GameFamily,
   effectsState: EffectsState = EMPTY_EFFECTS,
+  gsExperience: GsExperienceState | null = null,
+  gsEncumbrance: GsEncumbranceState | null = null,
 ) {
   // B172: StreamPanel is memoized, so every prop must be referentially
   // stable — onClear/onToggleTimestamp now take the streamId as an argument
@@ -980,33 +990,37 @@ function renderPanel(
     case 'conversation':  return sp('conversation',  streamLines.conversation  ?? EMPTY_ARRAY)
     case 'deaths':        return sp('deaths',        streamLines.deaths        ?? EMPTY_ARRAY)
     case 'spells':
-      // Same defense-in-depth as `exp` below: a transferred DR layout can carry
-      // this tab onto a GS4 character. Point at where the data really is.
+      // Defense-in-depth: a transferred DR layout can carry this tab onto a
+      // GS4 character (PANEL_GAMES only gates the add menus). Point at where
+      // the data really is.
       if (gameFamily === 'GS4') {
         return <div className="ui-empty">GemStone IV's active spells are in the Effects panel.</div>
       }
       return sp('spells',        streamLines.spells        ?? EMPTY_ARRAY)
     case 'exp':
-      // GS4 defense-in-depth: this tab TYPE is hidden from every add-menu for
-      // a GS4 session (PANEL_GAMES above), but an already-open tab isn't
-      // touched by that gate — e.g. a Panel Layout transferred from a DR
-      // character onto a GS4 one (Profile Transfer's Panel Layout category
-      // copies the raw tab array). <ExpPanel/> is built entirely around DR's
-      // mindstate ladder/guild list, so render an honest placeholder instead
-      // of a misleadingly-DR-shaped panel with meaningless data.
+      // One tab id, two games: GS4's `expr` dialog (level, field experience,
+      // totals, boosts) and encumbrance render <GsExperiencePanel/>; DR keeps
+      // <ExpPanel/>, which is built around its skill/mindstate ladder. Same
+      // id so `/panel open exp` and a transferred layout work in both.
       if (gameFamily === 'GS4') {
-        return <div className="ui-empty">Experience tracking for GemStone IV isn't built yet.</div>
+        return <GsExperiencePanel exp={gsExperience} />
       }
       return <ExpPanel skills={expSkills} rankUpSkills={rankUpSkills} focus={expFocus} pinnedSkills={pinnedSkills} onFocusChange={onFocusChange} onTogglePin={onTogglePin} compactExp={compactExp} />
     case 'injuries':      return <InjuriesPanel parts={injuryState} />
     case 'effects':
-      // The `exp` guard's mirror: a Panel Layout transferred from a GS4
+      // The `spells` guard's mirror: a Panel Layout transferred from a GS4
       // character can carry this tab onto a DR one, where the dialogs it
       // reads never arrive — say so rather than wait forever.
       if (gameFamily === 'DR') {
         return <div className="ui-empty">Effects is a GemStone IV panel. DragonRealms spells are in Active Spells.</div>
       }
       return <EffectsPanel effects={effectsState} />
+    case 'encumbrance':
+      // Same carried-over-tab guard as `effects`.
+      if (gameFamily === 'DR') {
+        return <div className="stream-panel-empty">Encumbrance is a GemStone IV panel.</div>
+      }
+      return <EncumbrancePanel enc={gsEncumbrance} />
     case 'familiar':      return sp('familiar',      streamLines.familiar      ?? EMPTY_ARRAY)
     case 'inv':           return sp('inv',           streamLines.inv           ?? EMPTY_ARRAY)
     // B391: onCloseTab gives the Debug panel's right-click menu a Close when

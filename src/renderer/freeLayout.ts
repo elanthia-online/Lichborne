@@ -147,7 +147,7 @@ export function seedDefaultWindows(family: GameFamily = 'DR'): FloatWindow[] {
         : [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths'), makeTab('spells')], activeId: 'thoughts' },
     { id: nanoid(), kind: 'panel', z: 3, showTitle: true, title: 'Panel 3',
       rect: { x: 0.60, y: 0.68, w: 0.36, h: 0.28 },
-      tabs: gs4 ? [makeTab('effects'), makeTab('log')] : [makeTab('exp'), makeTab('log')], activeId: gs4 ? 'effects' : 'exp' },
+      tabs: gs4 ? [makeTab('effects'), makeTab('exp'), makeTab('encumbrance'), makeTab('log')] : [makeTab('exp'), makeTab('log')], activeId: gs4 ? 'effects' : 'exp' },
   ]
 }
 

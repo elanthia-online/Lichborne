@@ -83,7 +83,7 @@
 //    Don't add gates speculatively; extend the recognized-id lists instead,
 //    the same way the progressbar/vitals case does.
 
-import type { GameEvent, StreamTarget, TextSegment, EffectsDialog, EffectsUpdateEvent, GameFamily } from '../../shared/types'
+import type { GameEvent, StreamTarget, TextSegment, EffectsDialog, EffectsUpdateEvent, GsExperienceEvent, GsEncumbranceEvent, GameFamily } from '../../shared/types'
 import { STREAM_ID_ALIASES, normalizeStreamId } from '../../shared/streamAliases'
 import { runSceneCapturers } from './sceneCapturers'
 import { TAG_PATTERN, stripTags } from '../../shared/xmlTag'
@@ -92,6 +92,36 @@ import { boldRuns, type RosterName } from '../../shared/sceneExtract'
 // GS4's timed-effect dialogs, exact case (verified against real captured GS4
 // session fixtures — VellumFE's tests/fixtures/active_*.xml, buffs_progress.xml).
 const EFFECTS_DIALOG_IDS = new Set<string>(['Active Spells', 'Buffs', 'Debuffs', 'Cooldowns'])
+
+// GS4 `expr` bars into the experience buffer. Attribute names verified in the
+// 184 GS4 captures: `mindState` carries field_exp / max_field_exp / exp /
+// ascension_exp / until_next on every block, `rpa` (1.5, 2, 3) and `lumnis`
+// (stage 2-5) only while active; `nextLvlPB`'s value is the percent toward
+// the next level. Same reading as Saga 0.10.7's `expr` case.
+const GS_TP_LABELS: Record<string, 'ptps' | 'mtps' | 'atps' | 'p2m' | 'm2p'> = {
+  PTPs: 'ptps', MTPs: 'mtps', ATPs: 'atps', p2m: 'p2m', m2p: 'm2p',
+}
+
+function gsExpFromBar(buf: Omit<GsExperienceEvent, 'type'>, id: string, attrs: Record<string, string>, value: number, text: string) {
+  const num = (k: string) => {
+    if (attrs[k] === undefined) return undefined
+    const n = Number(attrs[k])
+    return Number.isFinite(n) ? n : undefined
+  }
+  if (id === 'mindstate') {
+    if (Number.isFinite(value)) buf.mindValue = value
+    if (text) buf.mindText = text
+    buf.fieldExp     = num('field_exp')
+    buf.fieldExpMax  = num('max_field_exp')
+    buf.totalExp     = num('exp')
+    buf.ascensionExp = num('ascension_exp')
+    buf.untilNext    = num('until_next')
+    buf.rpa          = num('rpa') ?? 0
+    buf.lumnis       = num('lumnis') ?? 0
+  } else if (id === 'nextlvlpb') {
+    if (Number.isFinite(value)) buf.nextLvlPercent = value
+  }
+}
 
 function decodeEntities(text: string): string {
   return text
@@ -409,6 +439,15 @@ export class StormFrontParser {
   // this ALWAYS emits on close (including empty — a `clear='t'` dialog with
   // no children is a real state change: the list just cleared).
   private inEffectsDialog: EffectsDialog | null = null
+  // GS4's `expr` (experience) and `encum` (encumbrance) dialogs. Their bars
+  // still emit the mindstate/encumbrance vital-updates (trigger variables);
+  // the rest of each dialog — the level label, the mind bar's field/total/
+  // ascension attributes, the next-level bar, the encumbrance description —
+  // is gathered here and emitted once per dialog at </dialogData>, the way
+  // Saga's `experience-pulse` / `encumbrance` events are.
+  private gsDialog: 'expr' | 'encum' | null = null
+  private gsExpBuf: Omit<GsExperienceEvent, 'type'> = {}
+  private gsEncBuf: Omit<GsEncumbranceEvent, 'type'> = { level: 0, text: '', description: '' }
   private effectsBuf: EffectsUpdateEvent['entries'] = []
 
   private pendingSegments: TextSegment[] = []
@@ -623,6 +662,9 @@ export class StormFrontParser {
     this.injuryBuf         = []
     this.inEffectsDialog   = null
     this.effectsBuf        = []
+    this.gsDialog          = null
+    this.gsExpBuf          = {}
+    this.gsEncBuf          = { level: 0, text: '', description: '' }
     this.lastPromptText    = ''
     this.lastEmitWasPrompt = false
     this.lastRoomTitle     = ''
@@ -1220,6 +1262,14 @@ export class StormFrontParser {
         const value      = parseInt(attrs.value ?? '0', 10)
         const customText = attrs.customText === 't' || attrs.customtext === 't'
 
+        // GS4 experience/encumbrance detail (gsDialog above). Recorded here and
+        // then falls through, so the bars' vital-updates are unchanged.
+        if (this.gsDialog === 'expr') gsExpFromBar(this.gsExpBuf, id, attrs, value, text)
+        if (this.gsDialog === 'encum' && id === 'encumlevel') {
+          this.gsEncBuf.level = Number.isFinite(value) ? value : 0
+          this.gsEncBuf.text  = text
+        }
+
         if (id === 'pbarstance') {
           // GS4's defense-% bar (id confirmed against VellumFE's
           // GemStoneIV-XML-Elements.md, empirically derived from real GS4
@@ -1540,6 +1590,11 @@ export class StormFrontParser {
         break
 
       case 'dialogdata':
+        if ((attrs.id === 'expr' || attrs.id === 'encum') && !selfClosing) {
+          this.gsDialog = attrs.id
+          this.gsExpBuf = {}
+          this.gsEncBuf = { level: 0, text: '', description: '' }
+        }
         if (attrs.id === 'injuries') {
           this.inInjuriesDialog = true
           this.injuryBuf = []
@@ -1648,6 +1703,33 @@ export class StormFrontParser {
         break
       }
 
+      case 'label':
+        // GS4's `expr` level ("Level 100") and `encum` description. Every
+        // other label (the effects dialogs' duration captions, the quickbar's)
+        // stays unhandled below.
+        if (this.gsDialog === 'expr' && attrs.id === 'yourLvl') {
+          const m = /\b(\d+)\b/.exec(attrs.value ?? '')
+          if (m) this.gsExpBuf.level = parseInt(m[1], 10)
+          break
+        }
+        // Training points ride a SEPARATE `expr` block sent once at login
+        // ("36 PTPs", "0 MTPs", "10998 P2M", "0 M2P", "5 ATPs" — lich-5's
+        // spec/fixtures/streams/gs_saga_login.xml; steady-state pulses never
+        // resend them), which is why the renderer merges expr events.
+        if (this.gsDialog === 'expr' && attrs.id && GS_TP_LABELS[attrs.id]) {
+          const m = /([\d,]+)/.exec(attrs.value ?? '')
+          if (m) this.gsExpBuf[GS_TP_LABELS[attrs.id]] = parseInt(m[1].replace(/,/g, ''), 10)
+          break
+        }
+        if (this.gsDialog === 'encum' && attrs.id === 'encumblurb') {
+          this.gsEncBuf.description = attrs.value ?? ''
+          break
+        }
+        if (!this.captureCtx && !this.inEffectsDialog && !this.gsDialog) {
+          this.emit({ type: 'unknown', raw: `TAG:${name} ${JSON.stringify(attrs)}` })
+        }
+        break
+
       default:
         // Silently drop known protocol tags that carry no display content.
         // Also suppressed inside an effects dialog: real GS4 captures (the
@@ -1694,6 +1776,11 @@ export class StormFrontParser {
       }
       this.inInjuriesDialog = false
       this.injuryBuf = []
+      // Only a block that carried something: the login's third `expr` block
+      // holds just two command links (Details, Skill Goals).
+      if (this.gsDialog === 'expr' && Object.keys(this.gsExpBuf).length > 0) this.emit({ type: 'gs-experience', ...this.gsExpBuf })
+      if (this.gsDialog === 'encum') this.emit({ type: 'gs-encumbrance', ...this.gsEncBuf })
+      this.gsDialog = null
       if (this.inEffectsDialog) {
         // Unlike injuries, ALWAYS emit — an empty entries[] (the clear='t'
         // shape, or a dialog that genuinely has nothing active) is itself a

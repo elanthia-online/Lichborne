@@ -448,6 +448,8 @@ export type GameEvent =
   | RoomExitsTextEvent
   | InjuryUpdateEvent
   | EffectsUpdateEvent
+  | GsExperienceEvent
+  | GsEncumbranceEvent
   | PlayerInfoEvent
   | LaunchUrlEvent
   | GameExitEvent
@@ -694,6 +696,40 @@ export interface EffectsUpdateEvent {
   dialog: EffectsDialog
   entries: EffectEntry[]
   at: number  // epoch ms the block was parsed
+}
+
+// GS4's `expr` dialog, one event per block (StormFrontParser.gsExpFromBar).
+// Every field is what the wire carried; absent = not in this block. rpa 0 /
+// lumnis 0 = not active. `untilNext` is experience to the next LEVEL below
+// 100 and to the next training point at 100+ (Saga labels it TP↑ there).
+export interface GsExperienceEvent {
+  type: 'gs-experience'
+  level?: number
+  mindText?: string        // "must rest", "saturated", "clear", …
+  mindValue?: number       // the bar's 0-100
+  fieldExp?: number
+  fieldExpMax?: number
+  totalExp?: number
+  ascensionExp?: number
+  untilNext?: number
+  rpa?: number             // absorption multiplier: 1.5, 2, 3
+  lumnis?: number          // Gift of Lumnis stage
+  nextLvlPercent?: number
+  // Training points, from the separate login-time `expr` block.
+  ptps?: number            // physical
+  mtps?: number            // mental
+  atps?: number            // available ascension training points
+  p2m?: number             // physical converted to mental
+  m2p?: number             // mental converted to physical
+}
+
+// GS4's `encum` dialog: the level bar (0-100) with its name, and the
+// description label ("You are not encumbered enough to notice.").
+export interface GsEncumbranceEvent {
+  type: 'gs-encumbrance'
+  level: number
+  text: string
+  description: string
 }
 
 export interface PlayerInfoEvent {

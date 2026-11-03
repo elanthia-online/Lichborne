@@ -148,6 +148,14 @@ Beside Lich-launch and Direct, Lichborne can **attach to a Lich already running 
 
 The target persists as an optional launcher-owned `CharacterProfile.attach {host, port}` via the read-modify-write path (pitfall #26 — never GameWindow's debounced save). **No slash command, by decision** (one-time setup, not an in-play verb — recorded in DESIGN §48.6 per Principle #11). **Verified Lich-side protocol facts live in Knowledge.md §19** — read those before changing anything here, and note the DR-vs-GS resync shape (pitfall #135) and the flag-vs-message rule (pitfall #134) that this feature surfaced. Known edges (attach-only stub profiles, `--genie` sending no resync, session-file auto-discovery not attempted) are enumerated in DESIGN §48.7. **B310 (fixed v0.21.0): auto re-attach REUSES the Session and therefore the parser**, so `scheduleReattach` calls `s.parser.reset({ keepGameFlags: true })` before re-attaching (only FLAG DESCRIPTION survives; it is the game's setting) and passes `s.attachRich` so the rich-stream request is sent again. Any new per-connection parser state must be cleared by `reset()`, or a re-attach carries it over.
 
+### GemStone IV support (gs4-support PR; DESIGN §56)
+GS4 is a second game family (`GameFamily`, from the shard code). Game-specific surfaces are gated, never forked:
+- panels through `PANEL_GAMES` (`effects`/`encumbrance` GS4-only, `spells` DR-only; `exp` renders per family);
+- Experiences through `ExperienceDef.games`;
+- fresh layouts through the family-aware `defaultMidTabs`/`defaultBottomTabs`/`seedDefaultWindows`.
+
+**A new game-specific surface needs its gate AND a placeholder for a tab carried over by Profile Transfer.** The parser stays family-agnostic: each game's ids never appear on the other's wire. Check a GS4 claim against the captures in DESIGN §56 before relying on it.
+
 ### Game-text pipeline
 `SGEConnection`/`LichConnection` → `ConnectionManager` (line events) → `LichBridge.interceptLine` → `StormFrontParser.parse` (stateful XML tokenizer) → `GameEvent[]` → batched IPC → `GameWindow`.
 
