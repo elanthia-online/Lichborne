@@ -74,8 +74,9 @@ const speechSay: SceneCapturer = {
     if (ctx.stream !== 'conversation') return null
     // Optional directed target ("You say to Agan,") captured BEFORE the
     // manner-clause wildcard would otherwise swallow it.
-    let m = line.match(/^(?<speaker>You|[A-Z][\w']*) (?:[a-z]+ )?(?:says?|asks?|exclaims?)(?: to (?<target>[A-Z][\w']*))?[^,"]*, "(?<text>[^"]*)"/)
-    if (m?.groups) return speech('say', m.groups.speaker, m.groups.text, undefined, m.groups.target)
+    // `You ask Elleara, "…"` names the target with no "to" (B577).
+    let m = line.match(/^(?<speaker>You|[A-Z][\w']*) (?:[a-z]+ )?(?:(?:says?|exclaims?)(?: to (?<to>[A-Z][\w']*))?|asks?(?: (?:to )?(?<asked>[A-Z][\w']*))?)[^,"]*, "(?<text>[^"]*)"/)
+    if (m?.groups) return speech('say', m.groups.speaker, m.groups.text, undefined, m.groups.to ?? m.groups.asked)
     // Disembodied speakers (Sekmeht corpus 2026-06-12): hidden/invisible —
     // `You hear the voice of Agan say, "Ello."` (no room-list entry → the
     // Tableau's unseen-presence rule manifests a shadowed figure) — and DEAD
@@ -135,9 +136,23 @@ const speechThought: SceneCapturer = {
   gate: '"',
   match(line, ctx) {
     if (ctx.stream === 'thoughts') {
-      let m = line.match(/^Your mind hears (?<speaker>[A-Z][\w']*) thinking,?\s*"(?<text>[^"]*)"/)
-      if (m?.groups) return speech('thought', m.groups.speaker, m.groups.text)
-      m = line.match(/^\[(?<speaker>[A-Z][\w']*)\]\s*(?<rest>.*)$/)
+      // The relay usually carries a channel in front, and the speaker may wear
+      // a title: `[General] Your mind hears Chauntille thinking, "…"` (B568,
+      // all 22 thoughts in the 2026-11-01 captures). The speaker is the name
+      // before "thinking", never the channel.
+      let m = line.match(/^(?:\[[^\]]+\]\s*)?Your mind hears (?<who>.+?) thinking,?\s*(?<dir>"<to you>"\s*)?"(?<text>.*?)"?\s*$/)
+      if (m?.groups) {
+        const speaker = m.groups.who.trim().split(/\s+/).pop() as string
+        return speech('thought', speaker, m.groups.text, !!m.groups.dir)
+      }
+      // LNet through Lich: `[DRPrime]-DR:Rairk: "what time…"`.
+      m = line.match(/^\[[^\]]+\]-[^:\s]+:(?<speaker>[A-Z][\w']*):\s*"(?<text>.*?)"?\s*$/)
+      // `[PrivateTo]` is your own outgoing message (lnet.lic), and the name is
+      // who you sent it to, so it has no speaker to credit (B605).
+      if (m?.groups) return line.startsWith('[PrivateTo]') ? null : speech('thought', m.groups.speaker, m.groups.text)
+      // ESP bracket: `[Frodo] "…"`. Anything else in brackets is a channel with
+      // a shape we don't know, so no speaker rather than a wrong one.
+      m = line.match(/^\[(?<speaker>[A-Z][\w']*)\]\s*(?<rest>".*)$/)
       if (m?.groups) {
         let rest = m.groups.rest.trim()
         let toYou = false

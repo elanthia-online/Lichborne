@@ -73,8 +73,9 @@ A few ideas shape everything:
 
 **v0.21.0**
 
-- **DragonRealms' rich stream, on by default with Lich 5.23.** The newer
-  stream the Saga client uses, passed through by Lich 5.23.0 or later. You
+- **DragonRealms' rich stream, on by default with Lich 5.23.** The newer stream the
+  Saga client uses, passed through by Lich 5.23.0 or later (to switch back:
+  **Lich Setup → Game stream → Legacy stream**). You
   get clickable names (click a creature, item or player in game text for
   Look, Face, Get, Say to and more, aimed at exactly that one), creatures
   matched to their state by the game's own id, and Lichborne following your
@@ -86,6 +87,21 @@ A few ideas shape everything:
 - **Lines cut by "...wait N seconds."** show whole again.
 - **The Living Tableau names every creature after a LOOK**, and the spell
   panels no longer blink empty mid-combat.
+- **The pauses while you play are gone.** Lichborne saved your profile every
+  few seconds during ordinary play (clicking between floating windows, a
+  contact in the room), and each save froze the text for a tenth of a second.
+  It now saves only when something you set actually changed.
+- **A quieter map and Spell Monitor.** The Genie map animated every lime room
+  in the zone whether you could see it or not; now only the ones in view do.
+  The Spell Monitor stopped re-starting an animation on every tick.
+- **Doors, signs and moons are not people.** On the rich stream they offer
+  **Look** only. Contacts: no Touch/Look for someone not in the room, no
+  duplicate from a stray space, no add or delete undone by the room tracker,
+  and the Tableau's right-click menu has the same contact items as the text.
+- **Capture XML, for bug reports.** Debug panel → **Capture XML** (or
+  `/log xml on`) writes everything the game sends, time-stamped, to
+  `Logs/raw` until you stop it or log out. Commands you send show only as their first word, so the file can tell a slow reply from a late send. See
+  [Troubleshooting](#appendix-d--troubleshooting--known-limits).
 
 ## On the Horizon (Roadmap)
 
@@ -96,6 +112,7 @@ Lichborne is actively developed. A few things we're heading toward — direction
   community, stewarded by it. Updates and links carry over seamlessly (v0.19.2
   installs are already transfer-ready, and GitHub redirects cover the rest).
 - **Windowed Panels becomes the default.** The floating-window layout is the future; the older docked "Static Panels" mode will eventually retire, with an automatic one-time conversion so no layout is ever lost.
+- **The rich stream everywhere.** v0.21.0 takes DragonRealms' rich stream through Lich 5.23 by default (switch back with **Lich Setup → Game stream → Legacy stream**); direct (no-Lich) connections follow once it has soaked with testers. The extra detail it carries (every name linked to the exact thing it names, the whole inventory tree) is what the next Experiences build on.
 - **More Lichborne Experiences.** The graphical scenes (Living Tableau, Moons, Spell Monitor) are the first of a larger set of "graphics for text players" — richer combat instruments, wound/status visuals, and more.
 - **More AI helpers.** Catch Me Up is the first BYOK ("bring your own key") AI feature. Others are designed and on the way — always optional, always with a working non-AI baseline, and always privacy-first.
 - **A proper Discord community** for feedback and bug reports (join from **Help → Discord** in the app).
@@ -399,7 +416,7 @@ The **compass** in the corner of the game window lights up the exits from your r
 DragonRealms has two versions of its game stream: the **legacy** one every client has always read, and a newer **rich** one, made for the Saga client. Lich 5.23.0 takes the rich one from the game. Lichborne reads both, and with Lich 5.23.0 or later it asks Lich to pass the rich one through.
 
 **What the rich stream adds:**
-- **Clickable names.** Click a creature, an item or a player in game text (main window, stream panels, the Room panel) for a small menu: **Look** and **Face** for creatures, **Look** and **Get** for items, and **Say to…**, **Whisper to…**, **Look** and the **contact card** for players (plus **Touch** for empaths). Each one targets exactly what you clicked, even with several identical creatures in the room. Right-click a name for the same items above the usual text menu. Names stay their usual colour; a dotted underline appears on hover.
+- **Clickable names.** Click a creature, an item or a player in game text (main window, stream panels, the Room panel) for a small menu: **Look** and **Face** for creatures, **Look** and **Get** for items, and **Say to…**, **Whisper to…** and **Look** for players (plus **Touch** for empaths), then **View contact card**, **Edit contact** and **Delete contact…** for a contact, or **Add as a contact** for anyone else. On the rich stream a contact's name opens this menu too; on the older stream it opens the contact card, as before. Each one targets exactly what you clicked, even with several identical creatures in the room. Right-click a name for the same items above the usual text menu. Names stay their usual colour; a dotted underline appears on hover.
 - **Creatures matched by the game's own id**, so the Living Tableau and the Room panel always know which creature is dead, asleep or engaged.
 - **Creature names in bold** in combat and action lines.
 - **Room descriptions follow your `FLAG DESCRIPTION` setting**, handled by Lichborne.
@@ -407,11 +424,11 @@ DragonRealms has two versions of its game stream: the **legacy** one every clien
 Room views, the compass, click-to-walk, the maps, your highlights, mutes, substitutes and triggers all work the same on either stream.
 
 **Choosing it:** **Lich Setup → Game stream** (the ⚙ on the launcher, or **Settings → Open Lich Setup…**):
-- **Rich (Saga) when Lich supports it** (default): on whenever your Lich is 5.23.0 or later. The line under the setting says whether yours is.
+- **Rich (Saga) stream (default)**: on whenever your Lich is 5.23.0 or later; an older Lich keeps the legacy stream. The line under the setting says whether yours supports it.
+- **Legacy stream**: the older stream, as before v0.21.0. Pick this if you want to switch back.
 - **Rich (Saga) always**: also for an attach to a Lich on another machine, which Lichborne can't check. On an older Lich the game answers the request once as an unknown command.
-- **Legacy**: the older stream, as before v0.21.0.
 
-A change applies from your next connect (or **Reconnect**). **`/richstream`** shows the setting and which stream your current session is getting; `/richstream auto|on|off` changes it. Direct connections (no Lich) always use the legacy stream for now.
+A change applies from your next connect (or a manual **Reconnect** — an attached session that re-attaches by itself keeps the setting it connected with). **`/richstream`** shows the setting and which stream your current session is getting; `/richstream auto|on|off|default` changes it. Direct connections (no Lich) always use the legacy stream for now.
 
 ### Vitals & timers
 
@@ -706,7 +723,8 @@ Type `/` for the live palette; type `/help` in-game for the always-current list,
 - `/timestamps on|off` · `/log search "text"`
 - `/compass` (settings) · `/compass on|off` · `/compass size small|medium|large` · `/compass corner br|bl|tr|tl` · `/compass backing none|subtle|solid` · `/compass dim 25` · `/compass click on|off`
 - `/notices on|off` (toasts when your other characters come in, drop, or reconnect)
-- `/richstream` (which game stream you're getting) · `/richstream auto|on|off` (from your next connect)
+- `/richstream` (which game stream you're getting) · `/richstream auto|on|off|default` (from your next connect)
+- `/log xml on|off` (write everything the game sends, time-stamped, to `Logs/raw` for a bug report; stops at logout) · `/log xml` (status)
 - `/colors` (shows every named color) · `/colors add "Buff drop" #ff9040` · `/colors rename "Buff drop" "Buffs"` · `/colors remove "Buffs"` · `/colors manage` (opens the Colors tab)
 
 **AI**
@@ -795,14 +813,22 @@ Lichborne keeps a clean, dated **plain-text log** of every session — the game 
 - **First-install warnings** — expected on two platforms (no code-signing certs): Windows SmartScreen → **More info → Run anyway**. On macOS the download is quarantined, and Apple Silicon words that as **"Lichborne is damaged and can't be opened"** — it isn't damaged, that's Apple's phrasing for "not notarized". Clear it once with `xattr -cr /Applications/Lichborne.app` (or use **System Settings → Privacy & Security → Open Anyway** if macOS offers that instead).
 - **Mac: no auto-update.** Unsigned builds can't self-update (an Apple rule) — grab new versions from the Releases page. Windows and Linux auto-update normally.
 - **Mac: "Lichborne wants to access your Desktop"?** That's the Lich **Auto-detect** looking for the wiki-standard `~/Desktop/Lich5` install — allow it (or browse to Lich manually).
+- **Mac: the Keychain keeps asking for your password?** Choose **Always Allow**. It can ask again after an update, because Lichborne has no Apple certificate to prove the new version is the same app. If you deny it, Lichborne still connects, but your password isn't saved and you type it each time.
+- **Linux: the Lich Dashboard shows "Couldn't read Lich's database"?** The message gives the reason. If it mentions `GLIBC`, your Linux is older than this build supports (Ubuntu 22.04, Debian 12 and Mint 21 are fine from v0.21.0 on).
 - **Linux: "Remember password" greyed out?** No keyring service found — install GNOME Keyring or KWallet; until then, type the password each session.
 - **Linux/Mac: Lich won't launch from Lichborne but runs in a terminal?** Point the Ruby path at the **full rbenv path** (`~/.rbenv/shims/ruby`) — apps launched from the desktop don't see your shell's PATH. Auto-detect does this for you.
 - **Map marker stuck?** The Lich Map tracks by room id and is most reliable — turn on DR's room-number display so titles show a number like `[Town Square] (12345)`. The Genie Map matches by room name + description (its data has no ids), so in areas full of identically-named rooms it can briefly lag. A **`LOOK`** resyncs either map.
 - **Hand bar says "Empty" but you're holding something?** The common cause was fixed in v0.13.3. For rare genuine gaps (e.g. spell-summoned items DR doesn't announce), a **`GLANCE`** always resyncs your hands.
-- **Room descriptions came back after updating Lich to 5.23.0?** If **Lich Setup → Game stream** is on (the default), reconnect: Lichborne follows your `FLAG DESCRIPTION` setting itself. On **Legacy**, type `;display descflag on` once.
-- **Something looks wrong since Lich 5.23.0?** Set **Lich Setup → Game stream** to **Legacy** (or type `/richstream off`) and reconnect, then tell us on Discord. `/richstream` says which stream you're on.
+- **Room descriptions came back after updating Lich to 5.23.0?** Lichborne follows your `FLAG DESCRIPTION` setting on either stream, but it learns it from the game's answer — type `FLAG` (or `FLAG DESCRIPTION OFF`) once after logging in and they stay off. Lich's `;display descflag on` also works, and the two don't fight.
+- **A door, a sign or a moon offered "Add as a contact"?** Fixed in v0.21.0: only players get the people items; everything else gets Look.
+- **Names aren't clickable?** `/richstream` tells you the setting and which stream this session is actually getting. Lich started with `--keep-fe-string` sends the older stream whatever you set.
+- **Something looks wrong and you want to report it well?** Open the Debug panel and press **Capture XML** (or type `/log xml on`), reproduce the problem, note the time, then send the file from the `Logs/raw` folder (**File → Open Data Folder**, then `Logs/raw`) with that time. It records exactly what the game sent, time-stamped, plus the first word of each command you send (so `health`, never what follows it). It includes your whispers and anything else the game showed you and isn't redacted, so look it over before sharing it; it stops when you log out or press the button again.
+- **Something looks wrong on the rich stream?** Set **Lich Setup → Game stream** back to **Legacy stream** (or type `/richstream off`) and reconnect, then tell us on Discord. `/richstream` says which stream you're on.
 - **Lich won't start after updating Lich?** Recent Lich versions require a newer **Ruby** — check your Ruby version first. And if a very recent Lich shows raw protocol "garbage" instead of the normal game feed, update Lich to its latest patch (a known Lich-side hiccup fixed upstream).
 - **A message says a file "was kept as `….unreadable-…`"?** Lichborne found a settings file it couldn't read (damaged by a crash, or edited by hand) and set it aside in the same folder instead of overwriting it. If it was a character's file, that character leaves the launcher until you add it again (**+ Add account**); when you then connect, its settings come back from the copy Lichborne keeps while you play. If you'd rather restore the old file, fix it (or rename the copy back) while Lichborne is closed. Saved passwords and AI keys work the same way; you may need to enter them again.
+- **"No reply from the game for 20 seconds"?** The game answers every command, so this usually means the connection has dropped. Lich takes up to about a minute to shut down after that, and the tab stays connected until it does. Use **Disconnect**, then **Reconnect**.
+- **A command seems to hang while other text keeps coming, every so often?** If you use a VPN, try a session with it off. With NordVPN's NordLynx connected, one player's text stalled for 3–4 seconds about every 20 seconds, and the stalls stopped with it off. A reply is often just queued behind the stall, so `health` can look slow when it's the connection. Capture XML can measure this if you send us a file.
+- **The Injuries panel doesn't match `health`?** Two things are normal. The game updates the panel on its own schedule, so it can take about 10 seconds to catch up after healing. And `health` can list faint scars that the game doesn't send to the panel. If a wound is still wrong about 15 seconds later, send a Capture XML with the time.
 - **Ruby GTK script windows** (e.g. `kill-counter.lic`, `;vars setup`) are supported as of v0.9.1 (Lichborne now launches Lich the way Frostbite/Genie do). For variables specifically, the **Lich Dashboard → Variables** editor does the job in-app with no script window needed.
 
 Still stuck? **Join us on Discord** (**Help → Discord** in the app) — we're happy to help.

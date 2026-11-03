@@ -48,7 +48,7 @@ export interface LoginCredentials {
   lichPort: number
   lichMode: '--stormfront' | '--genie' | '--wizard' | '--avalon' | '--frostbite'
   // Ask Lich for DragonRealms' rich ("Saga") stream (v0.21.0, DESIGN §55.11).
-  // Absent = 'auto'. Ignored on a direct connection, which stays legacy.
+  // Absent = RICH_STREAM_DEFAULT (rich when Lich supports it). Ignored on a direct connection, which stays legacy.
   richStream?: RichStreamMode
 }
 
@@ -62,6 +62,13 @@ export interface LoginCredentials {
 //          the line to the game, which answers it once as an unknown command);
 //   off  — never: the legacy shape, as before v0.21.0.
 export type RichStreamMode = 'auto' | 'on' | 'off'
+// What a player who has made no choice gets: the rich stream whenever the
+// Lich supports it (Sekmeht's decision, 2026-11-01; Legacy was the default
+// until then). 'auto', not 'on', so an older Lich is never sent a line it
+// would pass to the game. The setting is stored ONLY when chosen (B544), so a
+// later change here reaches everyone who never picked a mode; main and the
+// renderer both read this one constant.
+export const RICH_STREAM_DEFAULT: RichStreamMode = 'auto'
 
 // Attach to an ALREADY-RUNNING, detachable Lich session.
 //
@@ -155,6 +162,9 @@ export const IPC = {
   // because the target may live in a DECOUPLED window, which a renderer-side
   // DOM event could never reach.
   SEND_USER_TEXT:    'send-user-text',
+  // v0.21.0: "Capture XML" — the received stream to Logs/raw, per session.
+  RAW_CAPTURE_SET:   'raw-capture:set',
+  RAW_CAPTURE_GET:   'raw-capture:get',
   USER_TEXT:         'user-text',
   // v0.20.5: a <LaunchURL> from the game or a Lich script, sent to the owning
   // window so its GameWindow can apply the character's link-safety setting
@@ -408,6 +418,19 @@ export type GameEvent =
   | CharacterGuildEvent
   | CreatureRosterEvent
   | RichStreamEvent
+  | RoomDescEvent
+
+// v0.21.0 (B548/C5): the player's own room's description when FLAG
+// DESCRIPTION OFF made the parser drop it from the displayed line — on the
+// rich stream (the <room> rebuild) and on legacy-shaped input alike. The map
+// matchers (Genie: title + description + exits; the Lich map's title+desc
+// fallback) read roomState.desc, which used to come only from the displayed
+// `roomdesc` preset; without this they went dark for every flag-OFF player.
+// Display never shows it. Sticky room state (snapshotKey), like `exits`.
+export interface RoomDescEvent {
+  type: 'room-desc'
+  text: string
+}
 
 // The first rich-stream shape of the session (a <room> block or an
 // <a exist> game link): Lich is passing DragonRealms' rich stream through
@@ -551,6 +574,8 @@ export interface StreamPopEvent {
 export interface ClearStreamEvent {
   type: 'clear-stream'
   stream: StreamTarget
+  /** This clear comes from `<nav>`: the character is moving (SceneParser, B566). */
+  move?: boolean
 }
 
 // Emitted when the server declares a stream via <streamWindow> — carries the

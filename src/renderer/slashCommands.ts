@@ -14,12 +14,12 @@
 
 import { newHighlight, type HighlightRule, HIGHLIGHT_EFFECTS, effectiveEffect } from './highlights'
 import { CMD_HISTORY_MIN_MAX } from './commandHistorySettings'
-import { richStreamModeText } from './lichSettings'
+import { richStreamSettingText } from './lichSettings'
 import type { RichStreamMode } from '../shared/types'
 import type { CompassOptions } from './settings'
 import { newMute, type MuteRule } from './mutes'
 import { newSubstitute, type SubstituteRule } from './substitutes'
-import { newContact, newTemplate, formatLastSeen, DR_GUILDS, type Contact, type ContactTemplate } from './contacts'
+import { newContact, newTemplate, formatLastSeen, DR_GUILDS, type Contact, type ContactTemplate, findContactByName } from './contacts'
 import { newAlias, type AliasRule } from './macros'
 import { newTrigger, actionWaitsForRt, type TriggerRule, type TriggerAction } from './triggers'
 
@@ -58,8 +58,9 @@ export interface SlashContext {
   setCommandHistoryMinLength: (n: number) => void
   // v0.21.0 — DragonRealms' rich stream: the app-wide request (Lich Setup) and
   // what this session is receiving. A change applies from the next connect.
-  getRichStream: () => { mode: RichStreamMode; receiving: boolean; viaLich: boolean }
-  setRichStream: (mode: RichStreamMode) => void
+  // mode: the player's choice, or undefined for Lichborne's default (B544).
+  getRichStream: () => { mode: RichStreamMode | undefined; receiving: boolean; viaLich: boolean }
+  setRichStream: (mode: RichStreamMode | undefined) => void
   // v0.20.0 — character status notifications (app-wide).
   getCharacterNotices: () => boolean
   setCharacterNotices: (on: boolean) => void
@@ -96,6 +97,11 @@ export interface SlashContext {
   openPanel: (id: string) => 'opened' | 'focused'
   closePanel: (id: string) => boolean                 // false = wasn't open
   openLogSearch: (query: string) => void
+  // v0.21.0 "Capture XML": the received stream to Logs/raw, per session, in
+  // main. ASYNC (an IPC round-trip) while executors are synchronous, so the
+  // executor only says it asked and GameWindow appends the outcome line when
+  // it lands (the /simucoin shape).
+  rawCapture: (action: 'status' | 'on' | 'off') => void
   clearMain: () => void
   // Managed named colors (v0.14.6): customs are APP-WIDE (a color vocabulary
   // is shared, like themes) — apply = saveCustomColors + scheduleSharedProfileSave.
@@ -735,7 +741,7 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
         if (!guild) return err(`"${p.options.guild}" isn't a DR guild (${DR_GUILDS.join(', ')}).`)
       }
       const contacts = ctx.getContacts()
-      const existing = contacts.find(c => c.name.toLowerCase() === name.toLowerCase())
+      const existing = findContactByName(contacts, name)
       if (existing) {
         // "Add Bob to Enemies" is the same gesture whether or not he's already a
         // contact — with a template (or guild/notes) given, UPDATE those fields.
@@ -1021,6 +1027,19 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
       const q = p.args[0] ?? ''
       ctx.openLogSearch(q)
       return ok(q ? `Searching the Session Log for "${q}"…` : 'Session Log search opened.')
+    },
+  },
+  {
+    noun: 'log', nounAliases: ['logs'], verb: 'xml',
+    args: [{ name: 'on|off', required: false, kind: 'word', hint: 'omit for status' }],
+    options: [], flags: [],
+    description: "Write every line the game sends, time-stamped, to Lichborne's Logs/raw folder (for diagnosing something you see); stops at logout",
+    example: '/log xml on',
+    run: (ctx, p) => {
+      const want = p.args[0]?.toLowerCase()
+      if (want && want !== 'on' && want !== 'off') return err(`/log xml takes "on", "off", or nothing (status) — not "${p.args[0]}".`)
+      ctx.rawCapture(want === 'on' ? 'on' : want === 'off' ? 'off' : 'status')
+      return ok(want === 'on' ? 'Starting XML capture…' : want === 'off' ? 'Stopping XML capture…' : 'Checking…')
     },
   },
   {
@@ -1364,18 +1383,19 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
   // bare toggle. The setting is app-wide and read at connect.
   {
     noun: 'richstream', nounAliases: ['saga'], verb: '',
-    args: [{ name: 'auto|on|off', required: false, kind: 'word', hint: 'omit for status' }],
+    args: [{ name: 'auto|on|off|default', required: false, kind: 'word', hint: 'omit for status; "default" = no choice, Lichborne decides (the rich stream when your Lich supports it); "off" = the Legacy stream' }],
     options: [], flags: [],
     description: "Ask Lich for DragonRealms' rich (Saga) stream, or show which stream you're getting",
     example: '/richstream auto',
     run: (ctx, p) => {
       const want = p.args[0]?.toLowerCase()
-      if (want && want !== 'auto' && want !== 'on' && want !== 'off') {
-        return err(`/richstream takes "auto", "on", "off", or nothing (status) — not "${p.args[0]}".`)
+      if (want && want !== 'auto' && want !== 'on' && want !== 'off' && want !== 'default') {
+        return err(`/richstream takes "auto", "on", "off", "default", or nothing (status) — not "${p.args[0]}".`)
       }
       if (want) {
-        ctx.setRichStream(want as RichStreamMode)
-        return ok(`Rich stream: ${richStreamModeText(want as RichStreamMode)} Applies from your next connect (or Reconnect).`)
+        const mode = want === 'default' ? undefined : (want as RichStreamMode)
+        ctx.setRichStream(mode)
+        return ok(`Rich stream: ${richStreamSettingText({ richStream: mode })} Applies from your next connect or a manual Reconnect (an automatic re-attach keeps the setting it connected with).`)
       }
       const r = ctx.getRichStream()
       const now = !r.viaLich
@@ -1383,7 +1403,7 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
         : r.receiving
           ? 'This session is receiving the rich stream.'
           : 'This session is receiving the legacy stream (Lich is converting it, or the game has not sent a room or link yet).'
-      return ok(`Rich stream setting: ${richStreamModeText(r.mode)} ${now}`)
+      return ok(`Rich stream setting: ${richStreamSettingText({ richStream: r.mode })} ${now}`)
     },
   },
 
@@ -1687,7 +1707,7 @@ const NOUN_HELP: Record<string, string> = {
   group:      'Turn a single rule group on or off',
   panel:      'Open or close stream panels (thoughts, deaths, combat, …)',
   theme:      'Change how the whole app looks',
-  log:        'Search everything that happened in your saved session history',
+  log:        "Search everything that happened in your saved session history; /log xml on|off writes the game's raw stream to disk for diagnosis",
   timestamps: 'Show the time next to each line in the main window',
   compass:    'The floating compass — show or hide it, resize it, move it, give it a backing',
   notices:    'Turn the "character is in the game / disconnected" notifications on or off',

@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { GameEvent, FireLogEntry } from '../../shared/types'
 import { scopedKey } from '../characterScope'
+import { showToast } from '../toasts'
 import '../styles/debug.css'
 import ContextMenu from './ContextMenu'
 
@@ -40,6 +41,10 @@ interface Props {
   // Debug window had no Close at all: this panel's menu claims the right-click
   // before FloatingWindow's own Close menu can.
   onCloseTab?: () => void
+  // v0.21.0: the session this panel belongs to, for "Capture XML" (the
+  // received stream to Logs/raw, switched per session in main). Absent on a
+  // surface with no session; the button then isn't offered.
+  sessionId?: string
   // v0.11.5: when docked as the bottom strip (GameWindow), the panel is
   // drag-resizable and its height persists per-character. When rendered inside
   // a panel zone (PanelFrame) it fills the zone instead — `resizable` is false
@@ -52,7 +57,37 @@ const MIN_HEIGHT = 150
 const DEFAULT_HEIGHT = 300
 const maxHeight = () => Math.round(window.innerHeight * 0.7)
 
-export default function DebugPanel({ events, onClear, rawXmlLines, onClearRawXml, fireLog, onClearFireLog, onGotoFireRule, onClose, onCloseTab, resizable = false, character = '' }: Props) {
+export default function DebugPanel({ events, onClear, rawXmlLines, onClearRawXml, fireLog, onClearFireLog, onGotoFireRule, onClose, onCloseTab, resizable = false, character = '', sessionId }: Props) {
+  // "Capture XML" state lives in MAIN (per session); read it on mount and on a
+  // reconnect-in-place (the sessionId changes, pitfall #69), so the button
+  // never claims a capture the new session doesn't have.
+  const [capturing, setCapturing] = useState(false)
+  useEffect(() => {
+    let live = true
+    if (sessionId) window.api.getRawCapture(sessionId).then(on => { if (live) setCapturing(on) }).catch(() => {})
+    else setCapturing(false)
+    return () => { live = false }
+  }, [sessionId])
+  // `/log xml` and any other Debug host change it too (B585).
+  useEffect(() => {
+    const onChanged = (e: Event) => {
+      const d = (e as CustomEvent<{ sessionId: string; on: boolean }>).detail
+      if (d.sessionId === sessionId) setCapturing(d.on)
+    }
+    document.addEventListener('lichborne:raw-capture-changed', onChanged)
+    return () => document.removeEventListener('lichborne:raw-capture-changed', onChanged)
+  }, [sessionId])
+  const toggleCapture = async () => {
+    if (!sessionId) return
+    const next = !capturing
+    const file = await window.api.setRawCapture(sessionId, next).catch(() => null)
+    const on = next && file !== null
+    setCapturing(on)
+    document.dispatchEvent(new CustomEvent('lichborne:raw-capture-changed', { detail: { sessionId, on } }))
+    if (on) showToast({ kind: 'info', title: 'Capturing XML', message: `${file}\nIt isn't redacted, so look it over before sharing it.`, durationMs: 6000 })
+    else if (next) showToast({ kind: 'warning', message: "XML capture couldn't start: the file couldn't be written.", durationMs: 6000 })
+    else showToast({ kind: 'info', message: 'XML capture stopped.', durationMs: 3000 })
+  }
   const [tab, setTab] = useState<'fires' | 'events' | 'rawxml'>('fires')
 
   // v0.11.5: drag-resizable height, persisted per-character. A scopedKey write
@@ -259,6 +294,13 @@ export default function DebugPanel({ events, onClear, rawXmlLines, onClearRawXml
           {exportedTick ? 'Saved ✓' : 'Export CSV…'}</button>
         <button className="debug-clear" onClick={activeOnClear}
           title="Empty the active tab">Clear</button>
+        {sessionId && (
+          <button className={`debug-copy debug-capture${capturing ? ' debug-capture--on' : ''}`} onClick={toggleCapture}
+            title={capturing
+              ? 'Stop writing the received game stream to disk'
+              : "Write every line the game sends, time-stamped, to Lichborne's Logs/raw folder until you stop it or log out — for diagnosing something you see"}>
+            {capturing ? '● Capturing XML…' : 'Capture XML'}</button>
+        )}
         {onClose && (
           <button className="debug-close" onClick={onClose} title="Close" aria-label="Close">✕</button>
         )}

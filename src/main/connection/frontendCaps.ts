@@ -22,7 +22,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { expandHome } from '../homePath'
-import type { RichStreamMode } from '../../shared/types'
+import { RICH_STREAM_DEFAULT, type RichStreamMode } from '../../shared/types'
 
 export const FRONTEND_CAPS_LINE = 'SET_FRONTEND_CAPS room_element game_links double_bold'
 
@@ -49,7 +49,7 @@ export function shouldDeclareRichStream(
   attachHost?: string,
   supports: (p: string | undefined) => boolean = lichSupportsFrontendCaps,
 ): boolean {
-  const m = mode ?? 'auto'
+  const m = mode ?? RICH_STREAM_DEFAULT   // absent = no choice made
   if (m === 'off') return false
   if (m === 'on') return true
   if (attachHost !== undefined && !isLoopbackHost(attachHost)) return false

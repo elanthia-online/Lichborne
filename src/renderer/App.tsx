@@ -85,9 +85,9 @@ import { SessionsProvider, useSessions, makeCharacterId, type CharacterId } from
 import { TeamLoginPanel, SoloConnectPanel, TeamLoginPill, teamCounts, trackConnectSteps, type TeamRun, type TeamMember } from './components/TeamLoginPanel'
 import { RosterProvider, useRoster } from './RosterContext'
 import { CharacterProvider } from './CharacterContext'
-import { flushPendingProfileSaves, exportCharacterProfile, importCharacterProfile, clearCharacterLocalStorage, importSharedProfile, exportSharedProfile, saveLastSessionCharacters, scheduleSharedProfileSave } from './profile'
+import { forgetSavedSignature, flushPendingProfileSaves, exportCharacterProfile, importCharacterProfile, clearCharacterLocalStorage, importSharedProfile, exportSharedProfile, saveLastSessionCharacters, scheduleSharedProfileSave } from './profile'
 import { planReconnect } from './reconnectPlan'
-import { loadAdvanced, saveAdvanced, gameOptionByCode, IS_MAC } from './lichSettings'
+import { loadAdvanced, saveAdvanced, gameOptionByCode, IS_MAC, effectiveRichStream } from './lichSettings'
 import { initTheme } from './themes'
 import type { LoginCredentials, SessionId, RosterEntry, SimuCoinStatus } from '../shared/types'
 import { isSessionAction } from '../shared/menuActions'
@@ -303,6 +303,9 @@ function AppShell() {
   useEffect(() => {
     const addOwned = (e: RosterEntry) => {
       if (sessionsRef.current.some(s => s.sessionId === e.sessionId)) return
+      // Coming back to this window: what it remembers writing may be older
+      // than the file another window has written since (B616).
+      forgetSavedSignature(e.character)
       const cid = addSession({
         sessionId: e.sessionId, account: e.account,
         character: e.character, game: e.game, useLich: e.useLich,
@@ -316,7 +319,12 @@ function AppShell() {
     const unsubAcquire = window.api.onSessionAcquire(addOwned)
     const unsubRelease = window.api.onSessionRelease(sessionId => {
       const rec = sessionsRef.current.find(s => s.sessionId === sessionId)
-      if (rec) removeSession(rec.characterId)
+      if (rec) {
+        // Another window writes this character's file from now on, so this
+        // window's memory of what it last wrote is no longer true (B609).
+        forgetSavedSignature(rec.character)
+        removeSession(rec.characterId)
+      }
     })
     return () => { unsubAcquire(); unsubRelease() }
   }, [addSession, removeSession, updateStatus])
@@ -473,7 +481,7 @@ function AppShell() {
       for (const c of switched) {
         // Awaited (NOT fire-and-forget) so SGE sees the slot free — the
         // continueWithDisconnect rationale. The disconnected tab stays open.
-        await window.api.disconnectAwait(c.connectedSessionId)
+        await window.api.disconnectAwait(c.connectedSessionId, true)
       }
       // DR's server-side slot release can lag the disconnect ack by a beat;
       // one grace pause before the batch instead of per-character retries.
@@ -1349,7 +1357,7 @@ function AppShell() {
     const { incoming, conflict } = pendingConflict
     setConflictBusy(true)
     try {
-      await window.api.disconnectAwait(conflict.sessionId)
+      await window.api.disconnectAwait(conflict.sessionId, true)
       // The disconnected tab stays in the bar (in disconnected state) — we
       // intentionally don't destroy/remove it. User decides whether to close
       // it via X or re-login to it later. Matches the in-tab Disconnect
@@ -1549,7 +1557,7 @@ function AppShell() {
       rubyPath:      adv.rubyPath,
       lichPort:      gameOpt.port,
       lichMode:      adv.lichMode,
-      richStream:    adv.richStream,
+      richStream:    effectiveRichStream(adv),
     }
 
     // CANCEL, honoured for real (Sekmeht: "there's no way to stop it until you
@@ -1685,7 +1693,7 @@ function AppShell() {
 
     const adv = loadAdvanced()
     const result = await window.api.loginAttach({
-      account, character, game, host, port, richStream: adv.richStream, lichPath: adv.lichPath,
+      account, character, game, host, port, richStream: effectiveRichStream(adv), lichPath: adv.lichPath,
     })
     if (!result.ok) return result.error ?? 'Attach failed'
 
@@ -1944,7 +1952,7 @@ function AppShell() {
         account: c.account, password, character: c.name,
         game: c.game, lichArguments: gameOpt.lichArguments,
         useLich: c.useLich, lichPath: adv.lichPath, rubyPath: adv.rubyPath,
-        lichPort: gameOpt.port, lichMode: adv.lichMode, richStream: adv.richStream,
+        lichPort: gameOpt.port, lichMode: adv.lichMode, richStream: effectiveRichStream(adv),
       }
       const result = await window.api.login(creds)
       if (!result.ok) return { error: result.error ?? 'Connection failed' }

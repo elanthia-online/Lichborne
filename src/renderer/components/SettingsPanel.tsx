@@ -510,12 +510,13 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
     // Keyring / KWallet) that meant a green "✓ Key saved" for a key that was
     // never written, and every later AI call reporting "no key configured"
     // with no way to find out why. Trusting the write is the bug; this is
-    // honest on every platform (Windows/macOS always have a store, so their
-    // behaviour is unchanged).
+    // honest on every platform (a Mac player can deny the Keychain prompt).
     const present = await window.api.aiKeyStatus().then(s => s.text).catch(() => false)
     setAiKeyPresent(present)
     if (!present) {
-      setAiTestMsg({ ok: false, text: "Couldn't save the key — no OS credential store is available. On Linux, install GNOME Keyring or KWallet, then try again." })
+      setAiTestMsg({ ok: false, text: IS_MAC
+        ? "Couldn't save the key — the macOS Keychain refused it. Try again and choose Always Allow when it asks."
+        : "Couldn't save the key — no OS credential store is available. On Linux, install GNOME Keyring or KWallet, then try again." })
       return
     }
     setAiKeyInput('')

@@ -26,7 +26,7 @@ import { newMute, type MuteRule } from '../../mutes'
 import { newSubstitute, type SubstituteRule } from '../../substitutes'
 import { TextLineRow } from '../TextLineRow'
 import ContextMenu, { type CtxItem } from '../ContextMenu'
-import { GameLinkContext, hasOwnClick } from '../../gameLinks'
+import { GameLinkContext, hasOwnClick, selectionJustEnded } from '../../gameLinks'
 
 // ── The one text context-menu shape (B391) ───────────────────────────────────
 // Every right-click menu over text — the main game window (GameWindow), every
@@ -200,7 +200,7 @@ export default memo(function StreamPanel({ streamId, lines, emptyMessage, onClea
   // nor a command link or contact name, which have their own click).
   function handleClick(e: React.MouseEvent) {
     const t = e.target as Element
-    if (!linkMenu || hasOwnClick(t) || window.getSelection()?.toString()) return
+    if (!linkMenu || hasOwnClick(t) || selectionJustEnded()) return
     const items = linkMenu(t, e.clientX, e.clientY)
     if (items.length) setLinkMenuAt({ x: e.clientX, y: e.clientY, items })
   }

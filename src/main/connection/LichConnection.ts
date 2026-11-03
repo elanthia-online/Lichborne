@@ -34,7 +34,10 @@ import { expandHome } from '../homePath'
 
 // Client ID string — Lich with --genie flag expects this format
 const CLIENT_ID = 'FE:WRAYTH /VERSION:1.0.1.22 /P:WIN_UNKNOWN /XML'
-const DEFAULT_HOST = 'localhost'
+// The address itself, not 'localhost' (B592): force-mode Lich listens on
+// 127.0.0.1, and a machine with IPv6 turned off can fail to resolve the name
+// with an error the retry loop doesn't treat as "not ready yet".
+const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 11024
 
 // Connect-with-retry tuning. Lich's startup time is variable (Ruby init, ~40
@@ -86,10 +89,17 @@ export interface ConnectRetryOptions {
 // Which locale (B366a): `C.UTF-8` on Linux, because a minimal system may never
 // have generated en_US.UTF-8, while C.UTF-8 ships with current distributions
 // (glibc builds it in from 2.35). macOS always has en_US.UTF-8.
-function spawnEnv(): NodeJS.ProcessEnv | undefined {
-  if (process.platform === 'win32') return undefined   // inherit unchanged
-  if (process.env.LANG || process.env.LC_ALL) return undefined
-  return { ...process.env, LANG: process.platform === 'linux' ? 'C.UTF-8' : 'en_US.UTF-8' }
+//
+// B593: `LANG=C` or POSIX (common in a minimal session, or a launcher that sets
+// it) is the same failure with the variable present, so it counts as no locale.
+// LC_ALL then has to carry the fix, because it outranks LANG. Any other locale,
+// ISO-8859-1 included, is a deliberate choice and is left alone.
+export function spawnEnv(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv | undefined {
+  if (platform === 'win32') return undefined   // inherit unchanged
+  const utf8 = platform === 'linux' ? 'C.UTF-8' : 'en_US.UTF-8'
+  const effective = env.LC_ALL || env.LC_CTYPE || env.LANG
+  if (!effective) return { ...env, LANG: utf8 }
+  return /^(C|POSIX)$/i.test(effective) ? { ...env, LC_ALL: utf8 } : undefined
 }
 
 export class LichConnection extends EventEmitter {
@@ -319,7 +329,17 @@ export class LichConnection extends EventEmitter {
         this.connected = true
 
         socket.on('error', (err) => this.emit('error', err))
+        // Answer the game's first bytes ("Please wait…") with two blank lines, as
+        // Genie does and our direct path does. Without them the game waits, Lich's
+        // watchdog sends `look` after 6 s (games.rb, start_wrap_thread), and every
+        // login stalls with `[(unknown script)]>look` in the window (B570). Lich
+        // forwards a blank client line to the game.
+        let readySent = false
         socket.on('data', (data: string) => {
+          if (!readySent) {
+            readySent = true
+            setTimeout(() => { if (this.connected && !socket.destroyed) socket.write('\n\n') }, 500)
+          }
           this.buffer += data
           this.flush()
         })
@@ -365,8 +385,20 @@ export class LichConnection extends EventEmitter {
   // dead/hung Lich doesn't squat the front-end port for the next character in
   // the launch queue. After a SUCCESSFUL connection Lich is deliberately left
   // running — it's the proxy, and it's meant to outlive us.
-  killProcess() {
-    try { this.lichProcess?.kill() } catch { /* already gone */ }
+  //
+  // B594: off Windows kill() only ASKS (SIGTERM), and a hung Ruby may ignore it,
+  // so it is forced after 2 s. Resolves when the process has gone, so the launch
+  // queue doesn't hand the port to the next character while this one holds it.
+  killProcess(): Promise<void> {
+    const p = this.lichProcess
+    if (!p || p.pid === undefined || p.exitCode !== null || p.signalCode !== null) return Promise.resolve()
+    return new Promise(resolve => {
+      const done = () => { clearTimeout(force); clearTimeout(giveUp); p.removeListener('exit', done); resolve() }
+      const force = setTimeout(() => { try { p.kill('SIGKILL') } catch { /* already gone */ } }, 2000)
+      const giveUp = setTimeout(done, 3000)
+      p.once('exit', done)
+      try { p.kill() } catch { /* already gone */ }
+    })
   }
 
   // v0.8.0 (B99 quickClose path): graceful TCP half-close. Calls socket.end()

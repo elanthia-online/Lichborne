@@ -51,7 +51,10 @@ export function setAIKey(cap: AICapability, key: string): void {
   if (!safeStorage.isEncryptionAvailable()) return
   const store = readStore()
   if (!store) { console.error('[persist] not saving: the store file can\'t be read right now'); return }
-  store[cap] = safeStorage.encryptString(key).toString('base64')
+  // B595: a denied Keychain prompt throws; the Settings panel re-queries and
+  // reports that the key wasn't saved.
+  try { store[cap] = safeStorage.encryptString(key).toString('base64') }
+  catch (err) { console.error('[persist] AI key not saved:', err); return }
   writeStore(store)
 }
 

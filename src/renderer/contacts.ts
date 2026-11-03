@@ -154,6 +154,19 @@ export function saveContactTemplates(character: string, templates: ContactTempla
   safeSetItem(storageTemplates(character), JSON.stringify(templates))
 }
 
+// B546: every "is this name a contact?" check goes through here. The contact
+// highlighter matches `c.name.trim()` (buildNameRegex), so a name stored with
+// a stray space was PAINTED as a contact while five hand-written compares said
+// it wasn't — and the player menu then minted a duplicate from "Add as a
+// contact". Trim and case-fold both sides, nowhere else.
+export function sameContactName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase()
+}
+
+export function findContactByName(list: readonly Contact[], name: string): Contact | undefined {
+  return list.find(c => sameContactName(c.name, name))
+}
+
 export function newContact(): Contact {
   return {
     id: crypto.randomUUID(),

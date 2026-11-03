@@ -62,6 +62,12 @@ const fromMatrix = osEntries.map(o => OS_TOKEN[o]).filter(Boolean).sort()
 ok(JSON.stringify(fromMatrix) === JSON.stringify([...expected].sort()),
    `matrix [${fromMatrix}] matches EXPECTED_PLATFORMS [${expected}]`)
 
+// 4b. B590: the Linux build stays on the old base, and the gate stays armed.
+ok(/- os: ubuntu-latest\s+args: --linux\s+container: ubuntu:22\.04/.test(yml), 'Linux builds in the ubuntu:22.04 container')
+ok(/^\s+container: \$\{\{ matrix\.container \}\}/m.test(yml), 'build job uses the matrix container')
+ok(/npm_config_build_from_source=true/.test(yml), 'Linux build compiles native modules from source')
+ok(readFileSync('build/afterPack.cjs', 'utf-8').includes('checkLinuxLibraries(context.appOutDir)'), 'afterPack checks the Linux native module')
+
 // 5. Never build on a plain push.
 ok(!/^\s*push:/m.test(yml.split('jobs:')[0]), 'release is manual-only (no push trigger)')
 

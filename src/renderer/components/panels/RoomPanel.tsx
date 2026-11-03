@@ -25,7 +25,7 @@ import { DIR_WORDS } from '../../exitWords'
 import { presetEffectContent } from '../../utils/renderSegment'
 import { useTextStylesVersion } from '../../textStyles'
 import { boldRuns } from '../../../shared/sceneExtract'
-import { GameLinkContext, hasOwnClick } from '../../gameLinks'
+import { GameLinkContext, hasOwnClick, selectionJustEnded } from '../../gameLinks'
 import ContextMenu, { type CtxItem } from '../ContextMenu'
 
 interface Props {
@@ -161,7 +161,7 @@ export default memo(function RoomPanel({ room, roster, onSendCommand }: Props) {
     // A right-click inside the (portaled) menu bubbles here through React and
     // was already claimed by it (pitfall #164).
     if (e.defaultPrevented) return
-    if (!linkMenu || (!contextMenu && (hasOwnClick(t) || window.getSelection()?.toString()))) return
+    if (!linkMenu || (!contextMenu && (hasOwnClick(t) || selectionJustEnded()))) return
     const items = linkMenu(t, e.clientX, e.clientY)
     if (!items.length) return
     if (contextMenu) e.preventDefault()

@@ -18,7 +18,9 @@
     "appId": "com.lichborne.app",
     "productName": "Lichborne",
     "files": [
-      "dist/**/*"
+      "dist/main/main.js",
+      "dist/main/preload.js",
+      "dist/renderer/**/*"
     ],
     "directories": {
       "buildResources": "build",

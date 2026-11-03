@@ -107,8 +107,10 @@ export function extractSceneCreaturesFromText(segs: TextSegment[]): SceneCreatur
 
 function pushCreature(out: SceneCreature[], raw: string, deadHint: boolean) {
   const dead = deadHint || DEAD_NPC.test(raw)
+  // The rich stream can double a space inside a name (`lava  drake`), which
+  // would otherwise tally apart from `lava drake` (B575).
   const cleaned = raw.replace(DEAD_NPC, '').replace(/[.,]\s*$/, '').trim()
-    .replace(LEADING_ARTICLE, '')
+    .replace(LEADING_ARTICLE, '').replace(/\s{2,}/g, ' ')
   if (!cleaned) return
   // Identical creatures COUNT instead of collapsing (Sekmeht corpus: five
   // "a lava drake" spans in one room — Lich ordinals them; we tally, and

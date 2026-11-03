@@ -24,6 +24,7 @@ import {
   saveAdvanced,
   gameCodeFromPort,
   gameOptionByCode,
+  effectiveRichStream,
 } from '../lichSettings'
 import LichSetupFields from './LichSetupFields'
 import '../styles/login.css'
@@ -157,7 +158,7 @@ export default function LoginScreen({ onConnected, isModal = false }: Props) {
       rubyPath,
       lichPort: gameOpt.port,
       lichMode,
-      richStream: adv.richStream,
+      richStream: effectiveRichStream(adv),
     }
 
     const result = await window.api.login(creds)

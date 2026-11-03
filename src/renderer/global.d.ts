@@ -38,7 +38,7 @@ declare global {
       onUserText: (cb: (p: import('../shared/types').UserTextPayload) => void) => () => void
       onLaunchUrl: (cb: (p: import('../shared/types').LaunchUrlPayload) => void) => () => void
       disconnect: (sessionId: SessionId) => void
-      disconnectAwait: (sessionId: SessionId) => Promise<void>
+      disconnectAwait: (sessionId: SessionId, waitForRelease?: boolean) => Promise<void>
       destroySession: (sessionId: SessionId) => void
 
       // ── Session roster (multi-window) ─────────────────────────────────────────
@@ -122,6 +122,8 @@ declare global {
       quitConfirmRespond: (id: number, ok: boolean) => void
       openUrl: (url: string) => void
       getAppVersion: () => Promise<string>
+      setRawCapture: (sessionId: string, on: boolean) => Promise<string | null>
+      getRawCapture: (sessionId: string) => Promise<boolean>
       writeClipboard: (text: string) => void
       saveTextFile: (opts: { defaultName: string; content: string; filterName?: string; extensions?: string[] }) => Promise<{ ok: boolean; canceled?: boolean; path?: string }>
       flashWindow: () => void

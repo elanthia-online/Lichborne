@@ -51,7 +51,8 @@ import { buildNameRegex } from '../utils/renderWithContacts'
 import { wrapExternalLink } from '../utils/renderSegment'
 import { ContactsContext } from '../ContactsContext'
 import { HighlightsContext, useCompiledHighlights } from '../HighlightsContext'
-import { loadContacts, loadContactTemplates, saveContacts, saveContactTemplates, type Contact } from '../contacts'
+import { loadContacts, loadContactTemplates, saveContacts, saveContactTemplates, newContact, findContactByName, type Contact } from '../contacts'
+import { confirmDelete } from '../confirm'
 import { loadHighlights, saveHighlights, type HighlightRule } from '../highlights'
 import { loadMutes, saveMutes, compileMutes, applyMutesToSegments, type MuteRule, type CompiledMute } from '../mutes'
 import { loadSubstitutes, saveSubstitutes, compileSubstitutes, applySubstitutesToSegments, type SubstituteRule, type CompiledSubstitute } from '../substitutes'
@@ -86,13 +87,13 @@ import { parseCombatPosition, parseCombatBalance, parseCombatRange, parseAssessL
 import { guildToFocusOption } from '../focusTemplates'
 import { showToast } from '../toasts'
 import { nanoid } from 'nanoid'
-import { loadFreeWindows, saveFreeWindows, seedDefaultWindows, newFloatWindow, defaultWindowTitle, isDebugWindow, type FloatWindow, type FloatRect, type WinKind, type LayoutMode } from '../freeLayout'
+import { loadFreeWindows, saveFreeWindows, freeLayoutSignatures, seedDefaultWindows, newFloatWindow, defaultWindowTitle, isDebugWindow, type FloatWindow, type FloatRect, type WinKind, type LayoutMode } from '../freeLayout'
 import '../styles/free-layout.css'
 import ThemePicker from './ThemePicker'
 import SettingsPanel from './SettingsPanel'
 import SessionLogModal from './SessionLogModal'
 import ContextMenu, { type CtxItem } from './ContextMenu'
-import { GameLinkContext, buildLinkMenu, linkAtElement, hasOwnClick, type GameLinkActions, type GameLinkMenu } from '../gameLinks'
+import { GameLinkContext, buildLinkMenu, buildPlayerMenu, linkAtElement, hasOwnClick, noteSelectionEnded, selectionJustEnded, type GameLinkActions, type GameLinkMenu } from '../gameLinks'
 // B391: the one text context-menu builder, shared with every stream panel.
 import { buildTextMenu, joinMenuGroups } from './panels/StreamPanel'
 import ContactsPanel from './ContactsPanel'
@@ -106,7 +107,7 @@ import { loadMyThemes, saveMyThemes, MY_THEMES_KEY, MY_THEMES_CHANGED_EVENT, typ
 import { loadSettings, saveSettings, applySettingsToDOM, clampFontSize, DEFAULT_SETTINGS, LAST_DISPLAY_CHARACTER_KEY, type AppSettings } from '../settings'
 import { loadSessionLogSettings } from '../sessionLogSettings'
 import { THEMES, applyTheme, applyCustomTheme, registerThemeAppliedHook } from '../themes'
-import { exportCharacterProfile, scheduleProfileSave, scheduleSharedProfileSave, rememberCharacterTheme, rememberedCharacterTheme } from '../profile'
+import { exportCharacterProfile, scheduleProfileSave, scheduleProfileSaveIfIdle, scheduleSharedProfileSave, rememberCharacterTheme, rememberedCharacterTheme } from '../profile'
 import { scopedKey, GLOBAL_RULES_SCOPE, asGlobalRules } from '../characterScope'
 import { loadCommandHistory, saveCommandHistory, COMMAND_HISTORY_MAX } from '../commandHistory'
 import { loadCommandHistorySettings, saveCommandHistorySettings, shouldRememberCommand } from '../commandHistorySettings'
@@ -191,7 +192,9 @@ interface Props {
 // full contact list (v0.18.0 perf audit). Names change rarely; the cache is
 // bounded by the contact count.
 const contactNameReCache = new Map<string, RegExp>()
-function contactNameRe(name: string): RegExp {
+function contactNameRe(rawName: string): RegExp {
+  // The highlighter trims, and `\bBob \b` never matches "Bob," (B607).
+  const name = rawName.trim()
   let re = contactNameReCache.get(name)
   if (!re) {
     // `'\\$&'` = "backslash + the matched metacharacter" — the standard escape
@@ -702,7 +705,7 @@ export default function GameWindow({
       // sync arm-flag or an armed weather-glance would otherwise carry over and
       // over-suppress or mis-capture the first main line of the new connection.
       // The persistent weather/calendar STATE is intentionally kept (same char).
-      silentSyncRef.current = { time: false, weather: false, at: 0 }
+      silentSyncRef.current = { time: 0, weather: 0, at: 0 }
       awaitingWeatherRef.current = false
       // The Tableau's strikes and moments belong to the old connection — and so
       // does the fight (bug check): the engagements and the assess snapshot are
@@ -1268,7 +1271,8 @@ export default function GameWindow({
   // true until OUR reply block's LAST line is consumed (cleared in-loop, batch-
   // agnostic), so ONLY the click's replies are hidden — a TIME/WEATHER you type
   // yourself always shows (Sekmeht). `at` backstops a missing reply via SKY_SYNC_WINDOW_MS.
-  const silentSyncRef = useRef<{ time: boolean; weather: boolean; at: number }>({ time: false, weather: false, at: 0 })
+  const silentSyncRef = useRef<{ time: number; weather: number; at: number }>({ time: 0, weather: 0, at: 0 })
+  const exitsWatchKeyRef = useRef('')
   // Sun anchors: the last OBSERVED sunrise/sunset moments. The sun cycle is
   // periodic in real time (SUN_CYCLE_MINUTES — moonwatch's own 360-minute
   // constant), so an anchor keeps positioning the sun indefinitely — which is
@@ -1428,10 +1432,19 @@ export default function GameWindow({
     if (spellLines && spellLines.length > 0) {
       const next = deriveSpellState(spellLines, spellMaxRef.current, spellPrevRef.current)
       if (!next) return                       // same reading — keep prev's identity
-      spellMaxRef.current = next.maxByName
-      spellPrevRef.current = next.state
-      setSpellsState(next.state)
-      return
+      const commit = () => {
+        spellMaxRef.current = next.maxByName
+        spellPrevRef.current = next.state
+        setSpellsState(next.state)
+      }
+      // A block can split across flushes, and "ended" means absent from the block,
+      // so a part-way reading would grey out spells still listed further down
+      // (B620). Anything that drops an effect waits for the rest; the next lines
+      // cancel this and re-read the whole block.
+      const listed = new Set(next.state.effects.map(e => e.name))
+      if (!spellPrevRef.current?.effects.some(e => !listed.has(e.name))) { commit(); return }
+      const t = setTimeout(commit, 400)
+      return () => clearTimeout(t)
     }
     // Empty buffer = the game cleared the block with nothing to replace it, i.e.
     // everything dropped. That must clear the display (each effect's own timer
@@ -2695,15 +2708,19 @@ export default function GameWindow({
       selAnchorLineRef.current = inMain ? rowIdAt(e.target as Node | null) : null
     }
 
-    function onMouseUp() {
+    function onMouseUp(e: MouseEvent) {
       // Multi-character: every mounted GameWindow attaches this listener but
       // only the active tab should own the auto-copy. Without this gate, N tabs
       // would each call writeClipboard with the same selection on every mouseup.
       if (!isActiveRef.current) return
+      // B591: macOS selects the word under a right-click (or Ctrl+click), and
+      // that is not a request to copy it. Only a left-button drag copies.
+      if (e.button !== 0 || (IS_MAC && e.ctrlKey)) return
       const sel = window.getSelection()
       if (!sel || sel.isCollapsed) return
       const text = sel.toString()
       if (!text) return
+      noteSelectionEnded()
       const anchor = sel.anchorNode
       const el = anchor instanceof Element ? anchor : anchor?.parentElement
       if (el?.closest('input, textarea')) return
@@ -2790,6 +2807,37 @@ export default function GameWindow({
       lastSeenTimerRef.current = null
     }
   }, [contacts])
+  // The ONE way to write contacts (B545; pitfall #36). The B119 effect above
+  // drops the tracking buffer only AFTER React commits, so a writer that ran
+  // outside an event (deleteContact resumes after an awaited confirm) could
+  // see the 2 s flush fire in between and save the stale buffer back: the
+  // deleted contact returned. Drop the buffer and its timer FIRST, then save
+  // and set together. `lazy` is for the tracking writers themselves (last
+  // seen, time together): telemetry rides the 60 s idle save, not the 2.5 s
+  // one, because each save blocks main (B550).
+  const commitContacts = useCallback((next: Contact[], opts: { lazy?: boolean } = {}) => {
+    pendingContactsRef.current = null
+    if (lastSeenTimerRef.current) {
+      clearTimeout(lastSeenTimerRef.current)
+      lastSeenTimerRef.current = null
+    }
+    saveContacts(session.character, next)
+    setContacts(next)
+    if (opts.lazy) scheduleProfileSaveIfIdle(session.account, session.character, session.game, session.useLich)
+    else saveProfile()
+  }, [session.character, session.account, session.game, session.useLich, saveProfile])
+  // For a panel that has already saved the list itself: the same rule applies,
+  // or the 2 s flush can put back a contact it just deleted (B615).
+  const reloadSavedContacts = useCallback(() => {
+    pendingContactsRef.current = null
+    if (lastSeenTimerRef.current) {
+      clearTimeout(lastSeenTimerRef.current)
+      lastSeenTimerRef.current = null
+    }
+    setContacts(loadContacts(session.character))
+  }, [session.character])
+  const commitContactsRef = useRef(commitContacts)
+  useEffect(() => { commitContactsRef.current = commitContacts }, [commitContacts])
   useEffect(() => { roomStateRef.current = roomState }, [roomState])
 
   useEffect(() => {
@@ -2829,11 +2877,7 @@ export default function GameWindow({
         return c
       })
 
-      if (changed) {
-        saveContacts(session.character, updated)
-        setContacts(updated)
-        scheduleProfileSave(session.account, session.character, session.game, session.useLich)
-      }
+      if (changed) commitContactsRef.current(updated, { lazy: true })
     }, 60_000)
     return () => clearInterval(interval)
   }, [session.character, session.account, session.game, session.useLich])
@@ -2895,11 +2939,11 @@ export default function GameWindow({
       pendingContactsRef.current = updated
       if (lastSeenTimerRef.current) clearTimeout(lastSeenTimerRef.current)
       lastSeenTimerRef.current = setTimeout(() => {
-        const toSave = pendingContactsRef.current!
-        saveContacts(session.character, toSave)
-        setContacts([...toSave])
-        pendingContactsRef.current = null
-        scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+        // Null-safe: a commitContacts in between has already dropped the
+        // buffer (and cleared this timer, but a fired callback still runs).
+        const toSave = pendingContactsRef.current
+        if (!toSave) return
+        commitContactsRef.current([...toSave], { lazy: true })
       }, 2000)
     }
   }, [roomState.players]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -2986,10 +3030,19 @@ export default function GameWindow({
   // Persist freeWindows only once the layout has been initialized (seeded or
   // loaded from a real array) — otherwise the initial `[]` would write the key
   // and break the undefined-vs-[] seed contract (§33.3).
+  // B550: localStorage always; the YAML only for a real change. A z-only change
+  // (click-to-front) rides the lazy idle save; the mount echo (the loaded
+  // value re-saved) schedules nothing. See freeLayoutSignatures.
+  const freeSavedSigRef = useRef<{ geom: string; z: string } | null>(null)
   useEffect(() => {
     if (!freeInitRef.current) return
-    saveFreeWindows(scopedKey(session.character, 'freeWindows'), freeWindows); saveProfile()
-  }, [session.character, freeWindows, saveProfile])
+    const prev = freeSavedSigRef.current ?? freeLayoutSignatures(loadFreeWindows(freeWindowsKey) ?? [])
+    saveFreeWindows(freeWindowsKey, freeWindows)
+    const next = freeLayoutSignatures(freeWindows)
+    freeSavedSigRef.current = next
+    if (next.geom !== prev.geom) saveProfile()
+    else if (next.z !== prev.z) scheduleProfileSaveIfIdle(session.account, session.character, session.game, session.useLich)
+  }, [session.character, session.account, session.game, session.useLich, freeWindows, freeWindowsKey, saveProfile])
   // Persist Experiences (§34.6). Skip the mount echo — the initial state IS
   // the loaded value, so writing it back would only churn the profile saver.
   const expDidMountRef = useRef(false)
@@ -3194,13 +3247,15 @@ export default function GameWindow({
             let suppressSync = false
             if (stream === 'main') {
               // Suppress ONLY the reply block from a ⟳ click — never a TIME/WEATHER
-              // you type yourself. Each flag is armed by the click and cleared
-              // AFTER the batch that consumed its reply (see post-loop), so a later
-              // typed command always shows. `live` backstops a reply that never comes.
+              // you type yourself. Each click arms one reply of each, counted off at
+              // that reply's last line, so a later typed command always shows. `live`
+              // backstops a reply that never comes.
               const s = silentSyncRef.current
               const live = Date.now() - s.at < SKY_SYNC_WINDOW_MS
-              const silentTime = s.time && live
-              const silentWeather = s.weather && live
+              // A reply that never came shouldn't stay armed for the next click.
+              if (!live) { s.time = 0; s.weather = 0 }
+              const silentTime = s.time > 0
+              const silentWeather = s.weather > 0
               let hit = false
               // Weather: CAPTURE always (a passive sky-glance shows AND updates the
               // chip); suppress only our silent reply. Block = glance + desc, or
@@ -3208,12 +3263,12 @@ export default function GameWindow({
               // NOT post-batch, so a glance+desc split across flushes still hides both.
               if (awaitingWeatherRef.current && lineText.trim()) {
                 batchWeather = lineText.trim(); awaitingWeatherRef.current = false
-                if (silentWeather) { hit = true; s.weather = false }
+                if (silentWeather) { hit = true; s.weather-- }
               } else if (lineText.includes('glance') && WEATHER_GLANCE_RE.test(lineText)) {
                 awaitingWeatherRef.current = true
                 if (silentWeather) hit = true   // glance; block continues to the desc
               } else if (silentWeather && lineText.includes('hard to do while inside')) {
-                batchWeatherIndoor = true; hit = true; s.weather = false
+                batchWeatherIndoor = true; hit = true; s.weather--
               }
               // Calendar: parse + suppress ONLY our silent TIME reply (line 3's "It
               // is currently…" isn't unique enough to trust from arbitrary prose, so
@@ -3225,8 +3280,11 @@ export default function GameWindow({
               if (silentTime && lineText.startsWith('It ')) {
                 const cal = parseTimeLine(lineText)
                 if (cal) { batchCalendar = { ...(batchCalendar ?? {}), ...cal }; hit = true }
-              } else if (silentTime && (lineText.includes('roisaen') || lineText.includes('the Anlas of'))) {
-                hit = true; s.time = false   // L4 = block end
+              } else if (silentTime && (lineText.includes('the Anlas of')
+                // A script's spell row (`DRC: > Gauge Flow  (50 roisaen)`) is not the
+                // fourth line of TIME.
+                || (lineText.includes('roisaen') && !lineText.includes('(') && !lineText.includes(': > ')))) {
+                hit = true; s.time--   // L4 = block end
               }
               if (hit) suppressSync = true
             }
@@ -3243,7 +3301,9 @@ export default function GameWindow({
             // branch. Cheap substring pre-gates (pitfall #82a) before each regex.
             // A combat-stream line is combat happening (v0.20.2) — never from a replay.
             if (stream === 'combat' && lineText.trim() && !replayingRef.current) batchCombatPulse = true
-            if (stream !== 'raw') {
+            // A script echoing a game line (`DRC: > The lava drake closes…`) is not
+            // the game telling us something (B578).
+            if (stream !== 'raw' && !/^[A-Za-z][\w-]*: > /.test(lineText)) {
               if (lineText.includes('balanc')) {
                 const p = parseCombatPosition(lineText)
                 if (p !== null) batchPosition = p
@@ -3445,7 +3505,18 @@ export default function GameWindow({
             setExits(evt.directions)
             roomUpdates.exits = evt.directions
             triggerCtxRef.current.exits = evt.directions
-            processVariableChangeRef.current('exits', evt.directions.join(', '))
+            // Once per room reading (B619): an arrival now reports exits twice,
+            // from the room-exits component and then the compass (B549), and a
+            // watcher that sends a command would send it twice. The room is in
+            // the key so walking between rooms with the same exits still fires.
+            {
+              const ctx = triggerCtxRef.current
+              const key = `${ctx.roomTitle}#${ctx.roomId ?? ''}|${[...evt.directions].sort().join(',')}`
+              if (key !== exitsWatchKeyRef.current) {
+                exitsWatchKeyRef.current = key
+                processVariableChangeRef.current('exits', evt.directions.join(', '))
+              }
+            }
             break
           // v0.14.7 (F52): the game's own exits SENTENCE from the room exits
           // component ("Obvious exits: none.") — Genie shows this verbatim in
@@ -3454,16 +3525,28 @@ export default function GameWindow({
           case 'room-exits-text':
             roomUpdates.exitsText = evt.text
             break
+          // B548/C5: the description FLAG DESCRIPTION OFF kept off the screen.
+          // Same slot as the displayed one, so the Genie matcher's description
+          // tiers keep working for a flag-OFF player (applied after the loop).
+          case 'room-desc':
+            batchRoomDesc = evt.text
+            break
           case 'room-title': {
             if (evt.title !== streamRoomRef.current.title) noteRoomChange()
             streamRoomRef.current = { ...streamRoomRef.current, title: evt.title }
             roomUpdates.title = evt.title
             roomUpdates.roomId = evt.roomId
+            // Only on a real change (B619): with Lich's room-number display on,
+            // the game's subtitle and Lich's repeat arrive on every move.
+            const titleChanged = evt.title !== triggerCtxRef.current.roomTitle
+            const idChanged = evt.roomId != null && evt.roomId !== triggerCtxRef.current.roomId
             triggerCtxRef.current.roomTitle = evt.title
             if (evt.roomId != null) triggerCtxRef.current.roomId = evt.roomId
-            processVariableChangeRef.current('room', evt.title)
-            processVariableChangeRef.current('roomname', evt.title)
-            if (evt.roomId != null) processVariableChangeRef.current('roomid', String(evt.roomId))
+            if (titleChanged) {
+              processVariableChangeRef.current('room', evt.title)
+              processVariableChangeRef.current('roomname', evt.title)
+            }
+            if (idChanged) processVariableChangeRef.current('roomid', String(evt.roomId))
             break
           }
           case 'server-clock':
@@ -3485,8 +3568,10 @@ export default function GameWindow({
             if (streamRoomRef.current.navId != null && evt.roomId !== streamRoomRef.current.navId) noteRoomChange()
             streamRoomRef.current = { ...streamRoomRef.current, navId: evt.roomId }
             roomUpdates.roomId = evt.roomId
-            triggerCtxRef.current.roomId = evt.roomId
-            processVariableChangeRef.current('roomid', String(evt.roomId))
+            if (evt.roomId !== triggerCtxRef.current.roomId) {
+              triggerCtxRef.current.roomId = evt.roomId
+              processVariableChangeRef.current('roomid', String(evt.roomId))
+            }
             break
           case 'exp-component':
             expUpdates[evt.skill] = evt.text
@@ -5167,7 +5252,7 @@ export default function GameWindow({
       // Contacts go through the pitfall-#36 blessed path — save + set TOGETHER,
       // so the B119 cleanup effect drops any in-flight room-tracking buffer.
       getContacts: () => contacts,
-      applyContacts: next => { saveContacts(session.character, next); setContacts(next); saveProfile() },
+      applyContacts: next => commitContacts(next),
       getContactTemplates: () => contactTemplates,
       applyContactTemplates: next => { saveContactTemplates(session.character, next); setContactTemplates(next); saveProfile() },
       getAliases: () => aliases,
@@ -5186,11 +5271,13 @@ export default function GameWindow({
       // v0.21.0 — the rich-stream request (app-wide, Lich Setup's setting) and
       // what THIS session is actually receiving.
       getRichStream: () => ({
-        mode: loadAdvanced().richStream,
+        mode: loadAdvanced().richStream,   // undefined = Lichborne's default (B544)
         receiving: richStreamSeenRef.current,
         viaLich: session.useLich,
       }),
-      setRichStream: (mode: RichStreamMode) => {
+      setRichStream: (mode: RichStreamMode | undefined) => {
+        // undefined removes the key (JSON.stringify drops it), so "default"
+        // is stored as absent and follows a later change of the default.
         saveAdvanced({ ...loadAdvanced(), richStream: mode })
         scheduleSharedProfileSave()
       },
@@ -5288,6 +5375,24 @@ export default function GameWindow({
       closePanel: slashClosePanel,
       // The "Show in Log" / find-in-log pattern: query + remount nonce + open.
       openLogSearch: q => { setSessionLogSearch(q); setSessionLogKey(k => k + 1); setShowSessionLog(true) },
+      // v0.21.0 "Capture XML" (rawRecorder.ts in main; the Debug panel's button
+      // drives the same flag). Reports when the IPC lands, via the live
+      // sessionId (pitfall #86).
+      rawCapture: action => {
+        const id = sessionIdRef.current
+        if (action === 'status') {
+          window.api.getRawCapture(id).then(on => emitClientLines([on
+            ? 'XML capture is ON for this character (Debug panel → Capture XML, or /log xml off).'
+            : "XML capture is off. /log xml on writes everything the game sends, time-stamped, to Lichborne's Logs/raw folder until you stop it or log out."])).catch(() => {})
+          return
+        }
+        window.api.setRawCapture(id, action === 'on').then(file => {
+          document.dispatchEvent(new CustomEvent('lichborne:raw-capture-changed', { detail: { sessionId: id, on: !!file } }))
+          emitClientLines([file
+            ? `Capturing XML to ${file} — /log xml off to stop; it also stops at logout. It isn't redacted, so look it over before sharing it.`
+            : action === 'on' ? "XML capture couldn't start: the file couldn't be written." : 'XML capture stopped.'])
+        }).catch(() => emitClientLines(['XML capture: the request failed.']))
+      },
       clearMain: clearLines,
       // Custom named colors are APP-WIDE (like themes) → _shared.yaml.
       getCustomColors: loadCustomColors,
@@ -5702,7 +5807,7 @@ export default function GameWindow({
     mapAnimations: settings.mapAnimations,
     compactExp: settings.compactExp,
     debugEvents, onClearDebug: clearDebugEvents,
-    rawXmlLines, onClearRawXml: clearRawXmlLines,
+    rawXmlLines, onClearRawXml: clearRawXmlLines, sessionId: session.sessionId,
     fireLog, onClearFireLog: clearFireLog, onGotoFireRule: gotoFireRule,
     onClearStream: clearStream,
     onHighlight: openHighlightEditor,
@@ -6051,7 +6156,14 @@ export default function GameWindow({
   // suppressSync window keyed off silentSyncRef. Uses sessionIdRef.current
   // for the live id (pitfall #86). Stable for memo ([] — refs/api are stable).
   const syncSky = useCallback(() => {
-    silentSyncRef.current = { time: true, weather: true, at: Date.now() }
+    // One armed reply per click: a second click before the first reply came back
+    // used to re-arm one flag, which the first reply cleared, so the second reply
+    // showed in the window (B589).
+    // A click long after one that was never answered starts over, or the old
+    // count could hide a TIME you type yourself.
+    const old = silentSyncRef.current
+    const s = Date.now() - old.at < SKY_SYNC_WINDOW_MS ? old : { time: 0, weather: 0 }
+    silentSyncRef.current = { time: s.time + 1, weather: s.weather + 1, at: Date.now() }
     window.api.sendCommand(sessionIdRef.current, 'time')
     window.api.sendCommand(sessionIdRef.current, 'weather')
   }, [])
@@ -6085,18 +6197,55 @@ export default function GameWindow({
     send: sendCommand,
     direct: directTo,
     guild: characterGuild ?? undefined,
-    isContact: name => contactsRef.current.some(c => c.name.toLowerCase() === name.toLowerCase()),
+    isContact: name => !!findContactByName(contactsRef.current, name),
     openContact: (name, x, y) => {
-      const c = contactsRef.current.find(c => c.name.toLowerCase() === name.toLowerCase())
+      const c = findContactByName(contactsRef.current, name)
       if (!c) return false
       openContactPopover(c.id, x, y)
       return true
+    },
+    // Add as a contact (no template), then open the new card so Edit contact
+    // is one click away. The pitfall-#36 path: start from the in-flight
+    // tracking buffer if there is one, and save + set together.
+    addContact: (name, x, y) => {
+      const base = pendingContactsRef.current ?? contactsRef.current
+      const existing = findContactByName(base, name)
+      if (existing) { openContactPopover(existing.id, x, y); return }
+      const c = newContact()
+      c.name = name.trim()
+      commitContacts([...base, c])
+      openContactPopover(c.id, x, y)
+    },
+    // Edit contact: the card's own Edit contact button, without the card.
+    editContact: name => {
+      const c = findContactByName(contactsRef.current, name)
+      if (!c) return
+      setContactPopover(null)
+      setOpenContactId(c.id)
+      setShowContacts(true)
+    },
+    // Delete contact… (asks first, like the Contacts panel's row ✕). Same
+    // pitfall-#36 path as addContact; a card still open for them closes.
+    deleteContact: async name => {
+      const found = findContactByName(contactsRef.current, name)
+      if (!found) return
+      if (!(await confirmDelete('contact', found.name.trim() || undefined))) return
+      // We resume OUTSIDE a React event, so the 2 s flush could land between
+      // our setContacts and the B119 effect — commitContacts drops it first.
+      const base = pendingContactsRef.current ?? contactsRef.current
+      commitContactsRef.current(base.filter(c => c.id !== found.id))
+      setContactPopover(p => (p?.contactId === found.id ? null : p))
     },
   }
   const linkMenu = useCallback<GameLinkMenu>((el, x, y) => {
     const link = linkAtElement(el)
     return link ? buildLinkMenu(link, linkActionsRef.current, { x, y }) : []
   }, [])
+  // Stable wrappers for the Tableau's person menu (B553): the ref holds the
+  // live actions, the wrappers never change identity (pitfall #82c).
+  const editContactByName   = useCallback((name: string) => linkActionsRef.current.editContact?.(name), [])
+  const deleteContactByName = useCallback((name: string) => linkActionsRef.current.deleteContact?.(name), [])
+  const addContactByName    = useCallback((name: string, x: number, y: number) => linkActionsRef.current.addContact?.(name, x, y), [])
 
   function renderExperienceContent(expId: string, hidden?: Record<string, boolean>): React.ReactNode {
     const def = experienceById(expId)
@@ -6116,6 +6265,9 @@ export default function GameWindow({
         settings={settings}
         isActive={isActive}
         onOpenContact={openContactPopover}
+        onEditContact={editContactByName}
+        onDeleteContact={deleteContactByName}
+        onAddContact={addContactByName}
         onCommand={sendCommand}
         onDirect={directTo}
         guild={characterGuild}
@@ -6192,7 +6344,22 @@ export default function GameWindow({
     }
   }
 
+  // On a session receiving the rich stream, a contact's name opens the same
+  // player menu a linked name does (game actions first, View contact last),
+  // even where DR sent the name without a link ("Paff goes out."). On the
+  // legacy stream it opens the card, as it always has.
   const handleContactClick = useCallback((contactId: string, x: number, y: number) => {
+    // A drag across the name copied it; it isn't a click on the name (B608).
+    if (selectionJustEnded()) return
+    const c = richStreamSeenRef.current ? contactsRef.current.find(c => c.id === contactId) : undefined
+    if (c) {
+      // Unlinked name: Touch/Look only if they are in the room (B554), the
+      // same test the tracking effects use.
+      const playersText = roomStateRef.current.players.map(s => s.text).join('')
+      const present = contactNameRe(c.name).test(playersText)
+      setLinkMenuAt({ x, y, items: buildPlayerMenu(c.name.trim(), undefined, linkActionsRef.current, { x, y }, { present }) })
+      return
+    }
     setContactPopover({ contactId, x, y })
   }, [])
 
@@ -6263,7 +6430,7 @@ export default function GameWindow({
                 // selection (mouseup auto-copies it) or landed on something
                 // with its own click (a command link, a contact name).
                 const t = e.target as Element
-                if (!hasOwnClick(t) && !window.getSelection()?.toString()) {
+                if (!hasOwnClick(t) && !selectionJustEnded()) {
                   const items = linkMenu(t, e.clientX, e.clientY)
                   // Leave focus where it was while the menu is open: in the
                   // command bar, the Esc that closes the menu would also clear
@@ -6796,7 +6963,7 @@ export default function GameWindow({
 
       {/* Docked strip is panels-mode only (B166) — in free mode it would render
           UNDER the WindowLayer; Debug opens as a floating window there. */}
-      {showDebug && layoutMode === 'panels' && <DebugPanel events={debugEvents} onClear={clearDebugEvents} rawXmlLines={rawXmlLines} onClearRawXml={clearRawXmlLines} fireLog={fireLog} onClearFireLog={clearFireLog} onGotoFireRule={gotoFireRule} onClose={() => setShowDebug(false)} resizable character={session.character} />}
+      {showDebug && layoutMode === 'panels' && <DebugPanel events={debugEvents} onClear={clearDebugEvents} rawXmlLines={rawXmlLines} onClearRawXml={clearRawXmlLines} fireLog={fireLog} onClearFireLog={clearFireLog} onGotoFireRule={gotoFireRule} onClose={() => setShowDebug(false)} resizable character={session.character} sessionId={session.sessionId} />}
 
       {showMapOverlay && (
         <MapOverlay onClose={() => setShowMapOverlay(false)}>
@@ -6913,7 +7080,7 @@ export default function GameWindow({
             aimAutomations('colors')
           }}
           onSaved={() => {
-            setContacts(loadContacts(session.character))
+            reloadSavedContacts()
             setContactTemplates(loadContactTemplates(session.character))
             scheduleProfileSave(session.account, session.character, session.game, session.useLich)
           }}
@@ -6970,7 +7137,7 @@ export default function GameWindow({
               setMacros(loadMacros(session.character))
               setMutes(loadMutes(session.character))
               setSubstitutes(loadSubstitutes(session.character))
-              setContacts(loadContacts(session.character))
+              reloadSavedContacts()
               setContactTemplates(loadContactTemplates(session.character))
               scheduleProfileSave(session.account, session.character, session.game, session.useLich)
             }}

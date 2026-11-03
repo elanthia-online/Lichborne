@@ -17,14 +17,8 @@
 // is phrased conditionally because it reads the RUBY version, not Lich's.
 
 import { useState, useEffect } from 'react'
-import {
-  type AdvancedSettings,
-  ADV_DEFAULTS,
-  richStreamModeText,
-  GAMES,
-  IS_WINDOWS,
-  IS_MAC,
-} from '../lichSettings'
+import { type AdvancedSettings, ADV_DEFAULTS, GAMES, IS_WINDOWS, IS_MAC, richStreamSettingText, effectiveRichStream, RICH_STREAM_DEFAULT_LABEL } from '../lichSettings'
+import type { RichStreamMode } from '../../shared/types'
 
 // Platform-aware copy (v0.18.0): where the canonical Lich install lives and
 // what the interpreter file is called — Windows = the Ruby4Lich5 one-click
@@ -280,21 +274,26 @@ export default function LichSetupFields({ adv, setAdv, disabled = false, alwaysS
       <label>
         Game stream
         <select
-          value={adv.richStream}
-          onChange={e => setAdv1('richStream', e.target.value as AdvancedSettings['richStream'])}
+          value={adv.richStream === undefined || adv.richStream === 'auto' ? 'default' : adv.richStream}
+          onChange={e => {
+            // 'default' REMOVES the key (B544): no choice is stored as absent,
+            // so Lichborne's default can change later and reach this machine.
+            const v = e.target.value
+            setAdv1('richStream', v === 'default' ? undefined : (v as RichStreamMode))
+          }}
           disabled={disabled}
-          title={richStreamModeText(adv.richStream)}
+          title={richStreamSettingText(adv)}
         >
-          <option value="auto">Rich (Saga) when Lich supports it</option>
+          <option value="default">{RICH_STREAM_DEFAULT_LABEL}</option>
+          <option value="off">Legacy stream</option>
           <option value="on">Rich (Saga) always</option>
-          <option value="off">Legacy</option>
         </select>
       </label>
       <div className="ui-hint lich-stream-hint">
-        {richStreamModeText(adv.richStream)}{' '}
-        {adv.richStream !== 'off' && pathsExist && (pathsExist.rich
+        {richStreamSettingText(adv)}{' '}
+        {effectiveRichStream(adv) !== 'off' && pathsExist && (pathsExist.rich
           ? 'Your Lich supports it.'
-          : adv.richStream === 'auto'
+          : effectiveRichStream(adv) === 'auto'
             ? "Your Lich doesn't yet: update Lich to 5.23.0 or later. Until then you get the legacy stream."
             : "Your Lich doesn't yet: update Lich to 5.23.0 or later, or the game will answer the request once as an unknown command.")}
         {' '}Direct connections (no Lich) always use the legacy stream. Takes effect on your next connect.

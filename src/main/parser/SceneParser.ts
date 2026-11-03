@@ -19,6 +19,16 @@ import {
 } from '../../shared/sceneExtract'
 
 export class SceneParser {
+  /**
+   * A new connection on the same session (auto re-attach, B604). The stream
+   * parser's reset makes the room read as new and empties the lists, which is
+   * not everyone leaving, and a repeated title would not otherwise mark it.
+   */
+  noteReconnect() {
+    this.inTransition = true
+    this.lastTitle = ''
+  }
+
   private players = new Map<string, ScenePlayer>()   // key: lowercased name
   private objCreatures: SceneCreature[] = []          // from 'room objs' bold spans
   private compCreatures: SceneCreature[] = []         // from 'room creatures'
@@ -55,6 +65,8 @@ export class SceneParser {
   // While true, cast commits are SILENT (the new room's occupants are the
   // new cast, not "arrivals"). Starts true so the login room is silent too.
   private inTransition = true
+  // The last room title seen, so a repeat of it isn't taken for a move.
+  private lastTitle = ''
 
   derive(events: GameEvent[]): GameEvent[] {
     // Working values: null = untouched this batch. A component close emits
@@ -70,13 +82,22 @@ export class SceneParser {
 
     for (const evt of events) {
       switch (evt.type) {
-        case 'room-title': sawTitle = true; break
+        // Only a title naming ANOTHER room starts a move. With `;display lichid`
+        // or `uid` on, Lich sends a second subtitle for the room you are already
+        // in AFTER its compass, which left the flag stuck on until the next
+        // room, silencing the next real arrival (B567).
+        case 'room-title':
+          if (evt.title !== this.lastTitle) { sawTitle = true; this.lastTitle = evt.title }
+          break
         case 'exits': sawExits = true; break
         case 'scene-move-hint':
           this.hints.push({ name: evt.name.toLowerCase(), kind: evt.kind, direction: evt.direction, ts: Date.now() })
           if (this.hints.length > SceneParser.HINT_MAX) this.hints.shift()
           break
         case 'clear-stream':
+          // `<nav>` empties the room's sections BEFORE the new title arrives, so
+          // that clear is the start of OUR move, not everyone leaving (B566).
+          if (evt.move) sawTitle = true
           if (evt.stream === 'room-players') { wPlayers = []; playersFromText = false }
           else if (evt.stream === 'room-objects') wObj = []
           else if (evt.stream === 'room-creatures') wComp = []

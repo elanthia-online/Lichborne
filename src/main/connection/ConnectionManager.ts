@@ -48,6 +48,9 @@ const CLIENT_ID = 'FE:WRAYTH /VERSION:1.0.1.22 /P:WIN_UNKNOWN /XML'
 // saw step 2 sit there for two different operations and the count never
 // reached what the work actually did (Sekmeht, 2026-07-27). If you add or
 // remove a phase, bump the total here and renumber that path's sites together.
+// The most a QUIT can take on Lich 5.19.2+: a 20 s script drain, a little for hooks
+// and the vars save, then 10 s waiting for the game to hang up (B571).
+const LICH_RELEASE_WAIT_MS = 35_000
 const LICH_STEPS = 5
 const DIRECT_STEPS = 4
 // Attach has almost nothing to narrate — no SGE, no spawn — but the two-phase
@@ -115,8 +118,8 @@ export class ConnectionManager extends EventEmitter {
     const loginKeyPromise = this.authenticateSge(creds)
     void loginKeyPromise.catch(() => { /* surfaced by the awaited task */ })
 
-    try {
-      await serializeLichLaunch(async () => {
+    await serializeLichLaunch(async () => {
+      try {
         // Resolve SGE auth first. If it failed (bad password, unknown
         // character) we bail HERE — before spawning Lich — so a failed login
         // never leaves an orphaned Lich process squatting the port.
@@ -149,13 +152,14 @@ export class ConnectionManager extends EventEmitter {
               ? `Still connecting to Lich… (${s}s) — check your Ruby/Lich paths or antivirus`
               : `Connecting to Lich — waiting for it to finish starting… (${s}s)`)),
         })
-      })
-    } catch (err) {
-      // The connection failed — kill the Lich we spawned (if any) so it does
-      // not hold the front-end port against the next character in the queue.
-      this.lich.killProcess()
-      throw err
-    }
+      } catch (err) {
+        // The connection failed — kill the Lich we spawned (if any) so it does
+        // not hold the front-end port against the next character in the queue.
+        // Inside the queue and awaited (B594), or that character starts first.
+        await this.lich.killProcess()
+        throw err
+      }
+    })
 
     // The rich stream (DESIGN §55.11): after the two handshake lines, which
     // connect() wrote synchronously, so the socket keeps them in order.
@@ -332,7 +336,9 @@ export class ConnectionManager extends EventEmitter {
   // v0.8.1: cap tightened from 1500ms → 500ms. Loopback Lich 'close' fires
   // in ~1–10ms; Direct internet sockets ~50–150ms; 500ms is the paranoid
   // safety net for the rare case the OS never reports 'close' at all.
-  async gracefulDisconnect(opts: { quickClose?: boolean } = {}): Promise<void> {
+  private drain: { finished: Promise<void>; end: () => void; extend: (ms: number) => void } | null = null
+
+  async gracefulDisconnect(opts: { quickClose?: boolean; waitForRelease?: boolean } = {}): Promise<void> {
     // ATTACH MODE DETACHES — IT NEVER SENDS QUIT. From an attached client,
     // Lich runs a user-exit command through its detachable dispatch and shuts
     // the WHOLE session down: scripts killed, character logged out — for every
@@ -348,6 +354,12 @@ export class ConnectionManager extends EventEmitter {
       this.forceDisconnect()
       return
     }
+    // Already leaving: join that wait rather than stacking a second one, whose
+    // own timer would end the first and cut a release wait short (B618).
+    if (this.drain && !opts.quickClose) {
+      if (opts.waitForRelease && this.mode === 'lich') this.drain.extend(LICH_RELEASE_WAIT_MS)
+      return this.drain.finished
+    }
     this.send('QUIT')
 
     if (opts.quickClose) {
@@ -356,15 +368,27 @@ export class ConnectionManager extends EventEmitter {
       return
     }
 
-    await new Promise<void>((resolve) => {
-      const forceClose = setTimeout(() => resolve(), 5000)
+    // Since Lich 5.19.2 a QUIT runs the script drain (up to 20 s plus their
+    // before_dying hooks), saves vars, THEN tells the game, and waits up to 10 s
+    // for it to hang up. Lich closes our socket only after that, so when the next
+    // step is logging in on the same account, 5 s isn't "the slot is free" (B571).
+    const forceAfterMs = opts.waitForRelease && this.mode === 'lich' ? LICH_RELEASE_WAIT_MS : 5000
+    let end = () => {}
+    let extend = (_ms: number) => {}
+    const left = new Promise<void>((resolve) => {
+      let forceClose: ReturnType<typeof setTimeout>
+      const done = () => { clearTimeout(forceClose); this.drain = null; resolve() }
+      forceClose = setTimeout(done, forceAfterMs)
+      extend = (ms) => { clearTimeout(forceClose); forceClose = setTimeout(done, ms) }
       // Resolve early if the game closes the connection itself.
-      this.once('disconnect', () => {
-        clearTimeout(forceClose)
-        resolve()
-      })
+      this.once('disconnect', done)
+      // Or if the session is torn down meanwhile, which removes that listener
+      // and would leave a 35 s wait with nothing left to wait for (B610).
+      end = done
     })
-    this.forceDisconnect()
+    const finished = left.then(() => this.forceDisconnect())
+    this.drain = { finished, end, extend }
+    return finished
   }
 
   // Half-close the active session socket via socket.end() and wait for the
@@ -390,6 +414,7 @@ export class ConnectionManager extends EventEmitter {
   }
 
   forceDisconnect() {
+    this.drain?.end()
     this.lich.disconnect()
     this.attach.disconnect()
     this.gameSocket?.destroy()

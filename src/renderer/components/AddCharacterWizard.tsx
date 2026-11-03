@@ -171,6 +171,10 @@ export function classifyRoster(
     const owner = owners.get(name.toLowerCase())
     if (!owner) return { name, existing: false }
     if (!owner.readable || owner.account.trim().toLowerCase() === me) return { name, existing: true, file: owner.file }
+    // The same name on another account in ANOTHER game is a different character,
+    // not a transfer: it shares this file (profiles are filed by name), and
+    // re-filing it would point the other tile at the wrong account (B614).
+    if (gameFamily(owner.game) !== gameFamily(game)) return { name, existing: true, file: owner.file }
     return { name, existing: false, movedFrom: owner.account, file: owner.file }
   })
   const listed = new Set(roster.map(n => n.toLowerCase()))
@@ -228,8 +232,9 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
   // v0.18.0 cross-platform: password saving rides Electron safeStorage, which
   // on Linux needs a secret service (GNOME Keyring / KWallet). When absent,
   // savePassword silently no-ops — surface that instead of letting "Remember
-  // password" look broken. true until proven otherwise (Windows/mac always
-  // have it; no notice flash while the async check resolves).
+  // password" look broken. true until proven otherwise (no notice flash while
+  // the async check resolves). Windows and macOS normally have a store, but it
+  // isn't guaranteed: a Mac player can deny the Keychain prompt.
   const [secureStore, setSecureStore] = useState(true)
   useEffect(() => {
     let cancelled = false
@@ -412,6 +417,9 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
           console.error(`Failed to restore archived profile for ${name}`, err)
         }
       }
+      // Never over a real file: the list above can miss one if the folder couldn't
+      // be read, and a refused restore means a live profile is there (B617).
+      if (await window.api.characterProfileExists(name).catch(() => true)) continue
       const stub: CharacterProfile = {
         profileVersion: 2,
         account,

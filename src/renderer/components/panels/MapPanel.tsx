@@ -547,6 +547,7 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
           roomTitle={roomTitle}
           roomId={roomId}
           onSendCommand={onSendCommand}
+          onShowGenie={() => setViewMode('genie')}
         />
       )}
       {viewMode === 'genie' && (dbStatus === 'ready' || dbStatus === 'error') && (

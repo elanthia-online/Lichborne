@@ -42,7 +42,7 @@ import type { HighlightStyle, HighlightEffect } from '../highlights'
 import { effectiveEffect, HIGHLIGHT_EFFECTS, FX_HORIZONTAL_GRADIENT } from '../highlights'
 import { resolveEffect, effectContent, type ResolvedEffect } from './highlightEffects'
 import { paintContactText } from './contactStyle'
-import { renderSegment } from './renderSegment'
+import { renderSegment, presetEffectContent } from './renderSegment'
 
 export type MatchRange =
   | { start: number; end: number; kind: 'contact'; contact: Contact; template: ContactTemplate | null }
@@ -159,9 +159,19 @@ function renderPlainRun(
   webLinkSafety: boolean,
   line: LineLayer | null | undefined,
   lineStart: number,
+  // The whole line's length when this run is only part of it.
+  wholeLineLen?: number,
 ): React.ReactNode {
   if (!line?.effect || !seg.text) {
-    return renderSegment(seg, key, onSendCommand, autoLinkUrls, webLinkSafety, line?.color)
+    // A text style's effect on a preset cut by a linked name runs on across the
+    // pieces, as a line effect does (B581). A whole line takes the plain path.
+    const content = wholeLineLen
+      ? presetEffectContent(
+          seg.text, seg.preset ?? (seg.bold ? 'bold' : undefined),
+          line?.color ?? (seg.fg ? '#' + seg.fg : undefined),
+          lineStart, effect => lineGradientVars(effect, wholeLineLen, lineStart))
+      : undefined
+    return renderSegment(seg, key, onSendCommand, autoLinkUrls, webLinkSafety, line?.color, content)
   }
   const { fx } = line
   const inner = (
@@ -233,7 +243,7 @@ export function renderHighlightedLine(
     const key = keyBase * 100 + i
     const offset = cursor
     cursor += seg.text.length
-    if (!splitRuns) return renderPlainRun(seg, key, o.onSendCommand, autoLinkUrls, webLinkSafety, layer, offset)
+    if (!splitRuns) return renderPlainRun(seg, key, o.onSendCommand, autoLinkUrls, webLinkSafety, layer, offset, segments.length > 1 ? lineText.length : undefined)
     return renderSegmentFull(
       seg, key, o.contacts, o.templates, o.nameRegex, o.matchRules,
       o.onContactClick, o.onSendCommand, autoLinkUrls, webLinkSafety,
@@ -325,8 +335,9 @@ export function renderSegmentFull(
   const text = seg.text
   const lineMode = lineText !== undefined && segOffset !== undefined
   const offset = lineMode ? segOffset! : 0
+  const partOfLine = lineMode && text.length < lineText!.length ? lineText!.length : undefined
   if (!text || (!nameRegex && matchRules.length === 0)) {
-    return renderPlainRun(seg, segKey, onSendCommand, autoLinkUrls, webLinkSafety, line, offset)
+    return renderPlainRun(seg, segKey, onSendCommand, autoLinkUrls, webLinkSafety, line, offset, partOfLine)
   }
   const matchSource = lineMode ? lineText! : text
 
@@ -344,7 +355,7 @@ export function renderSegmentFull(
     if (segEnd > segStart) ranges.push({ ...r, start: segStart, end: segEnd })
   }
 
-  if (ranges.length === 0) return renderPlainRun(seg, segKey, onSendCommand, autoLinkUrls, webLinkSafety, line, offset)
+  if (ranges.length === 0) return renderPlainRun(seg, segKey, onSendCommand, autoLinkUrls, webLinkSafety, line, offset, partOfLine)
 
   // B116 (v0.8.5): priority-based overlay. The earlier algorithm sorted
   // ranges by start position with contacts winning ties, then dropped any
@@ -451,7 +462,7 @@ export function renderSegmentFull(
       // picks up the segment's preset / fg / bg as plain text, with the line
       // layer's colour and effect on top when a line rule matched.
       // The link stays on the wrapper below (its whole text), not on each run.
-      parts.push(renderPlainRun({ ...seg, text: matchText, exist: undefined, noun: undefined }, k(), onSendCommand, autoLinkUrls, webLinkSafety, line, offset + run.start))
+      parts.push(renderPlainRun({ ...seg, text: matchText, exist: undefined, noun: undefined }, k(), onSendCommand, autoLinkUrls, webLinkSafety, line, offset + run.start, partOfLine ?? (lineMode ? lineText!.length : text.length)))
       continue
     }
 
@@ -487,12 +498,16 @@ export function renderSegmentFull(
       const nameContent = (
         <np.Tag className={np.className || undefined} style={np.style}>{np.content}</np.Tag>
       )
+      // A contact whose name is also a game link (the rich stream) leaves the
+      // click to the link menu, which has Say to / Whisper to / Look AND the
+      // Contact card. Without a link the name opens the card, as before.
+      const cardClick = seg.exist ? undefined : onContactClick
       parts.push(
         <span
           key={k()}
-          className={`contact-name${onContactClick ? ' contact-name--clickable' : ''}`}
-          onClick={onContactClick
-            ? (e) => { e.stopPropagation(); onContactClick(contact.id, e.clientX, e.clientY) }
+          className={`contact-name${cardClick ? ' contact-name--clickable' : ''}`}
+          onClick={cardClick
+            ? (e) => { e.stopPropagation(); cardClick(contact.id, e.clientX, e.clientY) }
             : undefined}
         >{nameContent}</span>
       )

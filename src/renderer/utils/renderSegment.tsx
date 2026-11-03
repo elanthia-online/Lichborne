@@ -17,22 +17,31 @@
 // slot; its font/size/weight come from a generated stylesheet, not from here.
 import type { TextSegment } from '../../shared/types'
 import { presetEffect } from '../textStyles'
+import type { HighlightEffect } from '../highlights'
 import { resolveEffect, effectContent } from './highlightEffects'
 import { linkDataAttrs } from '../gameLinks'
 
 /** The effect span a text style puts inside a preset's element, or undefined
  *  when that preset has no effect. Exported for surfaces that show the same
  *  text outside a segment (the Room panel's title). The colour is the
- *  segment's own when it has one, else the preset's theme colour. */
-export function presetEffectContent(text: string, preset: string | undefined, color?: string): React.ReactNode | undefined {
+ *  segment's own when it has one, else the preset's theme colour. `startIndex`
+ *  and `extraStyle` place this piece within a line cut into pieces (a linked name
+ *  cuts a preset, B581), so the effect runs on instead of restarting. */
+export function presetEffectContent(
+  text: string,
+  preset: string | undefined,
+  color?: string,
+  startIndex = 0,
+  extraStyle?: (effect: HighlightEffect) => React.CSSProperties,
+): React.ReactNode | undefined {
   const pe = presetEffect(preset)
   if (!pe) return undefined
   const fx = resolveEffect(pe.effect, color ?? `var(${pe.colorVar})`, null)
   return (
     <span
       className={fx.className || undefined}
-      style={{ ...fx.vars, ...(fx.glowShadow ? { textShadow: fx.glowShadow } : {}) }}
-    >{effectContent(text, fx.perLetter)}</span>
+      style={{ ...fx.vars, ...(fx.glowShadow ? { textShadow: fx.glowShadow } : {}), ...extraStyle?.(pe.effect) }}
+    >{effectContent(text, fx.perLetter, startIndex)}</span>
   )
 }
 

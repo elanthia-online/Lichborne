@@ -98,6 +98,21 @@ export function loadFreeWindows(key: string): FloatWindow[] | undefined {
   return undefined
 }
 
+/**
+ * Two signatures of a layout (B550): everything but `z`, and `z` alone. A
+ * click-to-front changes only `z`, and that used to schedule a full profile
+ * save — 60–150 ms of main blocked on YAML — on every click between windows.
+ * GameWindow saves the YAML in 2.5 s for a GEOMETRY change, lazily (60 s, idle
+ * only) for a z-only change, and not at all when nothing changed (the mount
+ * echo). localStorage is written at once either way.
+ */
+export function freeLayoutSignatures(wins: FloatWindow[]): { geom: string; z: string } {
+  return {
+    geom: JSON.stringify(wins.map(({ z: _z, ...rest }) => rest)),
+    z:    JSON.stringify(wins.map(w => [w.id, w.z])),
+  }
+}
+
 export function saveFreeWindows(key: string, wins: FloatWindow[]): void {
   localStorage.setItem(key, JSON.stringify(wins))
 }

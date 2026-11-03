@@ -74,6 +74,7 @@ import { SceneParser } from './parser/SceneParser'
 import { LichBridge } from './lichbridge'
 import { registerLichSqliteHandlers } from './lichbridge/sqliteReader'
 import { registerSessionLogHandlers, flushAllSessionLogs } from './sessionLog'
+import { recordRawLine, flushRawRecorders, startRawCapture, stopRawCapture, isRawCaptureOn } from './rawRecorder'
 import { readSharedProfile, writeSharedProfile, readCharacterProfile, writeCharacterProfile, characterProfileExists, takeProfileNotices, listCharacterProfiles, deleteCharacterProfile, archiveCharacterProfile, restoreCharacterProfile, listArchivedProfiles, backupAllProfiles, ensureProfilesDir, ensureExportsDir, getExportsDir } from './profiles'
 import { savePassword, loadPassword, deletePassword } from './passwords'
 import { registerAIHandlers } from './ai'
@@ -151,6 +152,8 @@ interface Session {
   // Pending auto re-attach (attach sessions only). Held so teardown and a
   // manual reconnect can cancel it — see scheduleReattach / cancelReattach.
   reattachTimer?: ReturnType<typeof setTimeout>
+  noReplyTimer?: ReturnType<typeof setTimeout>
+  noReplyNoticed?: boolean
   // The rich-stream request this attach was made with (DESIGN §55.11), so an
   // auto re-attach declares again: a declaration lasts one connection.
   attachRich?: { richStream?: AttachCredentials['richStream']; lichPath?: string }
@@ -187,6 +190,8 @@ function snapshotKey(evt: GameEvent): string | null {
     // v0.14.7: the game's exits SENTENCE ("Obvious exits: none.") is sticky
     // room state like the tokens — a window takeover must repaint it.
     case 'room-exits-text': return 'room-exits-text'
+    // v0.21.0 (B548): the flag-hidden description is room state for the maps.
+    case 'room-desc':     return 'room-desc'
     case 'player-info':   return 'player-info'
     // v0.21.0: "this session gets the rich stream" — sticky, so /richstream
     // in a window that took the session over still knows.
@@ -332,6 +337,9 @@ function wireSession(s: Session) {
   })
 
   s.connection.on('line', (line: string) => {
+    clearNoReply(s)
+    // "Capture XML" (rawRecorder.ts): every received line to Logs/raw while on.
+    recordRawLine(s.meta?.character ?? String(s.id), line)
     if (s.debugPanelOpen) {
       const payload: RawXmlPayload = { sessionId: s.id, line }
       ownerWindow(s)?.webContents.send(CH.RAW_XML, payload)
@@ -386,6 +394,7 @@ function wireSession(s: Session) {
   })
 
   s.connection.on('disconnect', () => {
+    clearNoReply(s)
     const wasClean = s.cleanDisconnect
     const wasConnected = s.connected
     s.cleanDisconnect = false
@@ -507,6 +516,7 @@ function scheduleReattach(s: Session, attempt = 0) {
     // clear held, half a refused line, or the old room as "ours". The game's
     // own flags (FLAG DESCRIPTION) didn't change, so they are kept.
     s.parser.reset({ keepGameFlags: true })
+    s.sceneParser.noteReconnect()
     s.connection.connectAttach({
       account: s.meta.account, character: s.meta.character,
       game: s.meta.game, host, port, ...s.attachRich,
@@ -531,7 +541,36 @@ function cancelReattach(s: Session) {
   if (s.reattachTimer) { clearTimeout(s.reattachTimer); s.reattachTimer = undefined }
 }
 
+// "No reply" notice (B572). When the game connection dies, Lich keeps our socket
+// open while its scripts stop (11-55 s measured, Knowledge.md) and swallows what
+// we send, and it writes no line that reliably says so. But the game answers every
+// command with at least a prompt, so a command followed by total silence is the one
+// sign we can trust. Worded as a maybe, shown once until the next line arrives.
+const NO_REPLY_MS = 20_000
+
+function clearNoReply(s: Session) {
+  if (s.noReplyTimer) { clearTimeout(s.noReplyTimer); s.noReplyTimer = undefined }
+  s.noReplyNoticed = false
+}
+
+function armNoReply(s: Session) {
+  if (s.noReplyTimer || s.noReplyNoticed) return
+  s.noReplyTimer = setTimeout(() => {
+    s.noReplyTimer = undefined
+    s.noReplyNoticed = true
+    s.eventQueue.push({
+      type: 'stream-text',
+      stream: 'main',
+      segments: [{ text: `--- Lichborne: no reply from the game for ${NO_REPLY_MS / 1000} seconds. The connection may be lost; if it doesn't come back, Disconnect and Reconnect.`, preset: 'internal-system' }],
+      timestamp: Date.now(),
+    })
+    scheduleFlush(s)
+  }, NO_REPLY_MS)
+}
+
 function destroySession(id: SessionId) {
+  // Capture XML dies with the session, so it can't be left on by accident.
+  { const s = sessions.get(id); if (s) { stopRawCapture(s.meta?.character ?? String(s.id)); clearNoReply(s) } }
   const s = sessions.get(id)
   if (!s) return
   // Kill any pending re-attach FIRST: the timer closes over the session and
@@ -625,7 +664,14 @@ function createWindow(opts?: { secondary?: boolean; stateKey?: string; inactive?
       // got stuck there until the window was shown and the player typed LOOK (the
       // long-standing "idle/minimized loses my location" report). Multi-session
       // background characters (pitfall #24) need this off too. See pitfall #71.
-      backgroundThrottling: false
+      backgroundThrottling: false,
+      // v0.21.0 (C8): Chromium spellchecks every text field by default — ~140
+      // of them here, holding commands, regexes, names and game nouns, where
+      // squiggles are noise (and on Linux it downloads Hunspell dictionaries).
+      // Global off: Electron's per-element attribute can only opt a field OUT
+      // of a running checker, never back IN, so "keep it for the notes box"
+      // isn't available. The command input already opted out on its own.
+      spellcheck: false,
     }
   })
   const id = win.webContents.id
@@ -1003,6 +1049,7 @@ function runSecondaryWindowClose(win: BrowserWindow) {
 
   Promise.all([flush, drain]).finally(() => {
     flushAllSessionLogs()
+    flushRawRecorders()
     flushWriteLogs()
     if (!win.isDestroyed()) win.destroy()
   })
@@ -1035,7 +1082,7 @@ function runAppShutdown() {
             .executeJavaScript('window.__flushProfileSaves ? window.__flushProfileSaves() : Promise.resolve()')
             .catch((err: unknown) => console.error('[shutdown] flush failed', err))
     )
-  ).finally(() => { backupAllProfiles(); flushAllSessionLogs(); flushWriteLogs(); stamp('flushAndBackup done') })
+  ).finally(() => { backupAllProfiles(); flushAllSessionLogs(); flushWriteLogs(); flushRawRecorders(); stamp('flushAndBackup done') })
 
   // quickClose=true skips the 5s server-ack wait (B99 followup): fire QUIT, give
   // it ~300ms over the local socket, then force-close.
@@ -1045,6 +1092,8 @@ function runAppShutdown() {
     : Promise.resolve()
 
   Promise.all([flushAll, drain]).finally(() => {
+    // Lines that arrived during the drain, around the QUIT (B612).
+    flushRawRecorders()
     stamp('destroy')
     for (const w of Array.from(windows.values())) if (!w.isDestroyed()) w.destroy()
     // EXPLICIT QUIT — do not rely on `window-all-closed`.
@@ -1073,10 +1122,11 @@ function runAppShutdown() {
 // soon as it can — which runAppShutdown's closing app.quit() does. No confirm:
 // the user asked the OS to go down, not us.
 //
-// Unverified on a Mac: Electron's macOS `terminate:` override is what calls
-// this handler, and the Dock's Quit (or an AppleScript quit) also arrives as
-// `terminate:` — so those may land here too and quit WITHOUT the multi-character
-// confirm. ⌘Q and the app menu's Quit are routed around it (see setupMenu).
+// Electron's macOS `terminate:` override is what calls this handler. From
+// Electron's source (NOT verified on a Mac), the Dock's Quit doesn't go through
+// `terminate:`: it takes the normal quit path, so it keeps the multi-character
+// confirm (B602). ⌘Q and the app menu's Quit are routed around `terminate:` too
+// (see setupMenu).
 function onSystemShutdown(e?: { preventDefault?: () => void }) {
   e?.preventDefault?.()
   // Every close from here on is already consented (the pattern install-update
@@ -1253,6 +1303,20 @@ ipcMain.handle('get-window-info', (event) => ({
 // App version for the About modal (reads package.json via Electron) — keeps the
 // version dynamic in the renderer, never hardcoded.
 ipcMain.handle('get-app-version', () => app.getVersion())
+  // "Capture XML" (v0.21.0): start/stop the received-stream capture for a
+  // session; returns the file being written, or null when stopped / unknown.
+  ipcMain.handle(CH.RAW_CAPTURE_SET, (_e, sessionId: SessionId, on: boolean): string | null => {
+    const s = getSession(sessionId)
+    if (!s) return null
+    const who = s.meta?.character ?? String(s.id)
+    if (on) return startRawCapture(who)
+    stopRawCapture(who)
+    return null
+  })
+  ipcMain.handle(CH.RAW_CAPTURE_GET, (_e, sessionId: SessionId): boolean => {
+    const s = getSession(sessionId)
+    return !!s && isRawCaptureOn(s.meta?.character ?? String(s.id))
+  })
 
 // The owner window's GameWindow reports the server-canonical character name
 // (from player-info XML) so the roster — and thus other windows' Quick Send —
@@ -1418,6 +1482,12 @@ ipcMain.on(CH.SEND_COMMAND, (_event, sessionId: SessionId, command: string) => {
   if (!s) return
   const trimmed = command.trim().toLowerCase()
   if (trimmed === 'quit' || trimmed === 'exit') s.cleanDisconnect = true
+  // Capture XML: stamp WHEN a command left for the game (first word only, so a long
+  // line or an argument never lands in a file the player may share). Without it a
+  // capture cannot tell a slow reply from a late send. No-op unless capture is on.
+  recordRawLine(s.meta?.character ?? String(s.id), `<!-- sent: ${trimmed.split(/\s+/)[0].replace(/[^\w;./#]/g, '').slice(0, 24)} -->`)
+  // A `;` command is Lich's own and may answer nothing; a logout is meant to.
+  if (s.connected && trimmed && !trimmed.startsWith(';') && !s.cleanDisconnect) armNoReply(s)
   s.connection.send(command)
 })
 
@@ -1462,14 +1532,17 @@ ipcMain.on(CH.DISCONNECT, (_event, sessionId: SessionId) => {
 // care: it has to wait for DR's server-side account slot to actually release
 // before attempting the next login, otherwise SGE returns "Invalid login key"
 // because the old character is still considered connected. Returns when
-// gracefulDisconnect resolves (server-acked drop OR 5s timeout floor).
-ipcMain.handle('disconnect-await', async (_event, sessionId: SessionId) => {
+// gracefulDisconnect resolves (server-acked drop OR a timeout floor). `waitForRelease`
+// is for a caller about to log in on this account (B571).
+ipcMain.handle('disconnect-await', async (_event, sessionId: SessionId, waitForRelease?: boolean) => {
   const s = getSession(sessionId)
   if (!s) return
   cancelReattach(s)
   s.cleanDisconnect = true
   sendStatus(s, false, 'Disconnecting...')
-  await s.connection.gracefulDisconnect()
+  // Already closed: no close event is coming to end the wait (B610).
+  if (s.connected) await s.connection.gracefulDisconnect({ waitForRelease: !!waitForRelease })
+  else s.connection.forceDisconnect()
   sendStatus(s, false, 'Disconnected', true)
 })
 
@@ -1522,7 +1595,12 @@ ipcMain.handle('lich:start-script', (_e, sessionId: SessionId, name: string, arg
 // ── IPC: file system helpers (session-agnostic) ──────────────────────────────
 
 ipcMain.handle('browse-file', async (_event, filters: { name: string; extensions: string[] }[]) => {
-  const result = await dialog.showOpenDialog({ properties: ['openFile'], filters })
+  // B599: Ruby lives in hidden folders off Windows (~/.rbenv, ~/.asdf), which
+  // the guide tells players to browse to.
+  const result = await dialog.showOpenDialog({
+    properties: process.platform === 'win32' ? ['openFile'] : ['openFile', 'showHiddenFiles'],
+    filters,
+  })
   return result.canceled ? null : result.filePaths[0] ?? null
 })
 
@@ -1668,8 +1746,11 @@ ipcMain.handle('discover-lich-paths', async (_event, currentRuby: string, curren
     rubyCandidates.push(
       path.join(home, '.asdf', 'shims', 'ruby'),
       path.join(home, '.local', 'share', 'mise', 'shims', 'ruby'),
+      // B600: rvm's wrapper sets up its own environment; a bare ruby path wouldn't.
+      path.join(home, '.rvm', 'wrappers', 'default', 'ruby'),
       '/opt/homebrew/opt/ruby/bin/ruby', '/usr/local/opt/ruby/bin/ruby',
       '/opt/homebrew/bin/ruby', '/usr/local/bin/ruby',
+      '/home/linuxbrew/.linuxbrew/opt/ruby/bin/ruby', '/home/linuxbrew/.linuxbrew/bin/ruby',
       ...(platform === 'darwin' ? [] : ['/usr/bin/ruby']),
     )
 
@@ -2560,6 +2641,9 @@ function setupMenu() {
             const appImage = process.env.APPIMAGE
             shell.openPath(
               appImage ? path.dirname(appImage)
+              // B598: the Mac exe is inside Lichborne.app/Contents/MacOS, so go
+              // up to the folder that holds the app.
+              : app.isPackaged && process.platform === 'darwin' ? path.resolve(app.getPath('exe'), '../../../..')
               : app.isPackaged ? path.dirname(app.getPath('exe'))
               : app.getAppPath()
             )

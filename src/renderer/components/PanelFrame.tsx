@@ -154,6 +154,8 @@ interface Props {
   autoLinkUrls?: boolean
   webLinkSafety?: boolean
   debugEvents?: GameEvent[]
+  // v0.21.0: for the Debug panel's "Capture XML" (per session, in main).
+  sessionId?: string
   onClearDebug?: () => void
   rawXmlLines?: string[]
   onClearRawXml?: () => void
@@ -236,7 +238,7 @@ export default function PanelFrame({
   expFocus = 'None', pinnedSkills, onFocusChange, onTogglePin,
   onSendCommand, autoLinkUrls = true, webLinkSafety = true,
   debugEvents, onClearDebug, rawXmlLines, onClearRawXml, fireLog, onClearFireLog, onGotoFireRule, onClearStream, onHighlight, onTrigger,
-  onMute, onSubstitute, onShowInLog,
+  onMute, onSubstitute, onShowInLog, sessionId,
   injuryState = {},
   tabs, activeId, onTabsChange, onActiveChange,
   discoveredStreams = [], streamTitles = {}, unreadIds,
@@ -539,7 +541,7 @@ export default function PanelFrame({
           expFocus, pinnedSkills ?? EMPTY_SET, onFocusChange ?? NOOP, onTogglePin ?? NOOP,
           onSendCommand,
           debugEvents ?? EMPTY_ARRAY, onClearDebug ?? NOOP,
-          rawXmlLines ?? EMPTY_ARRAY, onClearRawXml ?? NOOP,
+          rawXmlLines ?? EMPTY_ARRAY, onClearRawXml ?? NOOP, sessionId,
           fireLog ?? EMPTY_ARRAY, onClearFireLog ?? NOOP, onGotoFireRule,
           onClearStream ?? NOOP, onHighlight, onTrigger, onMute, onSubstitute, onShowInLog, injuryState,
           streamTimestamps, onToggleTimestamp, autoLinkUrls, webLinkSafety, lichMapVersion,
@@ -870,6 +872,7 @@ function renderPanel(
   onClearDebug: () => void,
   rawXmlLines: string[],
   onClearRawXml: () => void,
+  sessionId: string | undefined,
   fireLog: FireLogEntry[],
   onClearFireLog: () => void,
   onGotoFireRule: ((kind: 'highlight' | 'trigger', ruleId: string) => void) | undefined,
@@ -930,7 +933,7 @@ function renderPanel(
     // it's hosted here (a zone tab or a floating window). DebugPanel isn't
     // memoized, so the inline closure costs nothing.
     case 'debug':         return <DebugPanel events={debugEvents} onClear={onClearDebug} rawXmlLines={rawXmlLines} onClearRawXml={onClearRawXml} fireLog={fireLog} onClearFireLog={onClearFireLog} onGotoFireRule={onGotoFireRule}
-      onCloseTab={onCloseStream ? () => onCloseStream(tab.id) : undefined} />
+      onCloseTab={onCloseStream ? () => onCloseStream(tab.id) : undefined} sessionId={sessionId} />
     case 'log':           return sp('log',           streamLines.log           ?? EMPTY_ARRAY)
     case 'lichScripts':   return <ScriptListPanel scripts={lichScripts} lastUpdated={lichLastUpdated} pending={lichPending} onPause={onLichPause} onResume={onLichResume} onKill={onLichKill} onRefresh={onLichRefresh} />
     case 'combat':        return sp('combat',        streamLines.combat        ?? EMPTY_ARRAY)
