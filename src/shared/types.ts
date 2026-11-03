@@ -165,6 +165,10 @@ export interface RosterEntry {
   // re-ATTACHES instead of relaunching a login — including after a decouple /
   // re-home, where the new window rebuilds its session records from here.
   attach?: AttachTarget
+  // The Lich install (lich.rbw) this session was started from, resolved at
+  // connect time (DESIGN §56.7.1). Rides the roster so a decoupled window's
+  // Dashboard, script list and Lich Map keep reading that install.
+  lichPath?: string
 }
 
 export interface SessionRosterPayload {

@@ -2,7 +2,7 @@
 // and SettingsPanel (in-session edits). Persisted to localStorage; replicated
 // to _shared.yaml by callers so concurrent Electron processes stay in sync.
 
-import { RICH_STREAM_DEFAULT, type GameFamily, type RichStreamMode } from '../shared/types'
+import { RICH_STREAM_DEFAULT, gameFamilyFromCode, type GameFamily, type RichStreamMode } from '../shared/types'
 
 // Cross-platform (v0.18.0): which OS we're on, from the preload bridge.
 // Guarded so non-renderer contexts (the tmp-* harnesses stub window.api
@@ -65,6 +65,74 @@ export interface AdvancedSettings {
   // become a permanent "choice" and a later change of the default would reach
   // nobody. 'auto' = on whenever the Lich install supports it (5.23.0+).
   richStream?: RichStreamMode
+  // Per-game Lich installs (DESIGN §56.7.1). ABSENT for a game = it uses the
+  // default install above (`lichPath` / `rubyPath`). Stored only when the
+  // player sets one, by the same rule as richStream, so the default keeps
+  // reaching everyone who never chose.
+  installs?: Partial<Record<GameFamily, LichInstall>>
+}
+
+/** A Lich install: lich.rbw and the Ruby that runs it. They travel together,
+ *  because Lich 5.18+ refuses to start on an older Ruby. An empty rubyPath
+ *  means "the default install's Ruby". */
+export interface LichInstall {
+  lichPath: string
+  rubyPath: string
+}
+
+/** Where a resolved install came from, for /lich install and the UI. */
+export type LichInstallSource = 'character' | 'game' | 'default'
+
+export interface ResolvedLichInstall extends LichInstall {
+  source: LichInstallSource
+}
+
+/** A stored install, or undefined for anything without a Lich path. */
+export function coerceLichInstall(v: unknown): LichInstall | undefined {
+  if (!v || typeof v !== 'object') return undefined
+  const o = v as Record<string, unknown>
+  if (typeof o.lichPath !== 'string' || !o.lichPath.trim()) return undefined
+  return { lichPath: o.lichPath, rubyPath: typeof o.rubyPath === 'string' ? o.rubyPath : '' }
+}
+
+/** Stored per-game installs, keeping only readable entries; undefined when none. */
+export function coerceInstalls(v: unknown): AdvancedSettings['installs'] {
+  if (!v || typeof v !== 'object') return undefined
+  const o = v as Record<string, unknown>
+  const out: Partial<Record<GameFamily, LichInstall>> = {}
+  for (const fam of ['DR', 'GS4'] as const) {
+    const inst = coerceLichInstall(o[fam])
+    if (inst) out[fam] = inst
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
+/** The install a character on `game` uses: its own override, else its game's
+ *  install, else the default. Pure, so the harness can drive it. */
+export function resolveLichInstall(
+  adv: Pick<AdvancedSettings, 'lichPath' | 'rubyPath' | 'installs'>,
+  game: string,
+  override?: LichInstall,
+): ResolvedLichInstall {
+  const pick = (inst: LichInstall, source: LichInstallSource): ResolvedLichInstall =>
+    ({ lichPath: inst.lichPath, rubyPath: inst.rubyPath || adv.rubyPath, source })
+  if (override?.lichPath) return pick(override, 'character')
+  const forGame = adv.installs?.[gameFamilyFromCode(game)]
+  if (forGame?.lichPath) return pick(forGame, 'game')
+  return { lichPath: adv.lichPath, rubyPath: adv.rubyPath, source: 'default' }
+}
+
+/** resolveLichInstall for a saved character, reading its override from its
+ *  profile at connect time. Read fresh rather than taken from a launcher card,
+ *  because a tab's Reconnect builds its card from the session record. */
+export async function resolveCharacterLichInstall(
+  adv: AdvancedSettings,
+  character: string,
+  game: string,
+): Promise<ResolvedLichInstall> {
+  const raw = await window.api.readCharacterProfile(character).catch(() => null)
+  const override = raw && typeof raw === 'object' ? coerceLichInstall((raw as { lich?: unknown }).lich) : undefined
+  return resolveLichInstall(adv, game, override)
 }
 
 export const ADV_DEFAULTS: AdvancedSettings = {
@@ -112,7 +180,7 @@ export function richStreamSettingText(adv: Pick<AdvancedSettings, 'richStream'>)
 export function loadAdvanced(): AdvancedSettings {
   try {
     const s = { ...ADV_DEFAULTS, ...JSON.parse(localStorage.getItem(ADV_KEY) ?? '{}'), showAdvanced: false }
-    return { ...s, richStream: coerceRichStream(s.richStream) }
+    return { ...s, richStream: coerceRichStream(s.richStream), installs: coerceInstalls(s.installs) }
   } catch { return { ...ADV_DEFAULTS } }
 }
 

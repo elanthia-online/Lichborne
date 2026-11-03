@@ -47,6 +47,9 @@ export interface SharedAdvancedSettings {
   modeLocked: boolean
   // v0.21.0: 'auto' | 'on' | 'off' (RichStreamMode). Optional: older files lack it.
   richStream?: string
+  // Per-game Lich installs (DESIGN §56.7.1): { DR?, GS4? }, each
+  // { lichPath, rubyPath }. Optional and written only when one is set.
+  installs?: Record<string, { lichPath: string; rubyPath: string }>
   // v0.8.0 dropped `lichDelay` and `hideLichWindow`. See lichSettings.ts for
   // the rationale. Old _shared.yaml files with these keys parse fine and the
   // values are silently ignored on import — no migration needed.
@@ -189,6 +192,11 @@ export interface CharacterProfile {
   // Launcher-owned like hidden/favorite (preserved by exportCharacterProfile's
   // read-merge-write). Optional — undefined means never attached.
   attach?: { host: string; port: number }
+  // This character's own Lich install (DESIGN §56.7.1), over its game's and
+  // the default. Launcher-owned like attach (read-modify-write, never the
+  // GameWindow save); a path on this machine, so never in Profile Transfer.
+  // Optional — undefined means "use the game's install".
+  lich?: { lichPath: string; rubyPath: string }
   theme: string                            // boot-fallback theme (shared)
   state: Record<string, unknown>           // dynamic map of localStorage scope
 }

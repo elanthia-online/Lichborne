@@ -26,9 +26,9 @@
 // before discarding it (B369). The shell wears the About-modal chrome with
 // `ui-*` tabs, buttons and ✕ (B400). A
 // `[diag B236]` console logger for the search-highlight offset is still in
-// place and marked for removal. The Lich path comes from
-// `lichborne.advancedSettings`; the Scripts / Variables / Settings / Profiles
-// tabs each degrade to an `ld-empty` notice without it.
+// place and marked for removal. The Lich path is the install this session
+// started from (useSessionLichPath, DESIGN §56.7.1); the Scripts / Variables /
+// Settings / Profiles tabs each degrade to an `ld-empty` notice without it.
 
 import { useState, useEffect, useMemo, useCallback, useRef, useImperativeHandle, forwardRef, useId } from 'react'
 import { backdropHandlers } from "../utils/backdropClose"
@@ -46,16 +46,11 @@ hljs.registerLanguage('yaml', yamlLang)
 hljs.registerLanguage('ruby', rubyLang)   // .lic scripts (Scripts editor)
 import { createPortal } from 'react-dom'
 import type { SessionInfo } from './LoginScreen'
+import { useSessionLichPath } from '../sessionLich'
 import { gameFamilyFromCode, type GameFamily } from '../../shared/types'
 import '../styles/lich-panels.css'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function getLichPath(): string {
-  try {
-    return JSON.parse(localStorage.getItem('lichborne.advancedSettings') ?? '{}').lichPath ?? ''
-  } catch { return '' }
-}
 
 function fmtDate(ms: number): string {
   return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' })
@@ -1731,7 +1726,8 @@ const TABS: { id: DashTab; label: string; title: string; games?: GameFamily[] }[
 ]
 
 export default function LichDashboard({ session, initialTab = 'scripts', onClose, onSendCommand, onRunCommand, closeRequest }: Props) {
-  const lichPath = getLichPath()
+  // The install this session started from (DESIGN §56.7.1).
+  const lichPath = useSessionLichPath()
   const family = gameFamilyFromCode(session.game)
   const tabs = TABS.filter(t => !t.games || t.games.includes(family))
   const [tab, setTab] = useState<DashTab>(() => tabs.some(t => t.id === initialTab) ? initialTab : 'scripts')

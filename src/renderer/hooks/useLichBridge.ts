@@ -6,7 +6,8 @@
 // `sessionId`. Everything resets on disconnect, and every effect is keyed on
 // `[connected, sessionId]` so a reconnect re-arms cleanly. `custom` on each
 // record is a cross-reference against the Lich install's custom/ folder
-// (`listLichScripts`, path read from `lichborne.advancedSettings`).
+// (`listLichScripts`, against the install this session started from —
+// `lichPath`, DESIGN §56.7.1).
 //
 // TWO INVARIANTS, both from tester reports:
 //  • THE POLL SENDS NOTHING UNLESS `shouldPollRef.current` IS TRUE (Idea A,
@@ -30,13 +31,7 @@ const PENDING_TIMEOUT_MS = 3000
 // complete in well under a second but may span a poll boundary.
 const LINGER_MS = 8000
 
-function getLichPath(): string {
-  try {
-    return JSON.parse(localStorage.getItem('lichborne.advancedSettings') ?? '{}').lichPath ?? ''
-  } catch { return '' }
-}
-
-export function useLichBridge(sessionId: SessionId, connected: boolean, shouldPollRef?: { current: boolean }) {
+export function useLichBridge(sessionId: SessionId, connected: boolean, shouldPollRef?: { current: boolean }, lichPath = '') {
   const [scripts, setScripts]       = useState<ScriptRecord[]>([])
   const [lastUpdated, setLastUpdated] = useState(0)
   const [pending, setPending]       = useState(false)
@@ -56,14 +51,13 @@ export function useLichBridge(sessionId: SessionId, connected: boolean, shouldPo
   // Load custom script names once on connect for cross-reference
   useEffect(() => {
     if (!connected) return
-    const lichPath = getLichPath()
     if (!lichPath) return
     window.api.listLichScripts(lichPath).then(list => {
       customNamesRef.current = new Set(
         list.filter(s => s.source === 'custom').map(s => s.name)
       )
     })
-  }, [connected])
+  }, [connected, lichPath])
 
   // Subscribe to script list updates pushed from the main process intercept
   useEffect(() => {
