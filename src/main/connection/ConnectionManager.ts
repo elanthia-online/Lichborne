@@ -35,17 +35,8 @@ import { EventEmitter } from 'events'
 import { LichConnection } from './LichConnection'
 import { AttachConnection } from './AttachConnection'
 import { SGEConnection } from './SGEConnection'
-import { gameFamilyFromCode, type AttachCredentials, type LoginCredentials } from '../../shared/types'
+import { gameFamilyFromCode, gameFamilyName, type AttachCredentials, type LoginCredentials } from '../../shared/types'
 import { FRONTEND_CAPS_LINE, shouldDeclareRichStream } from './frontendCaps'
-
-// Friendly per-family display name for connect-status text. Not the full
-// GAMES table (that's renderer-owned, LoginScreen/SettingsPanel territory) —
-// main only needs "what to call this while connecting", derived from the
-// shard code's family prefix.
-const FAMILY_NAME: Record<'DR' | 'GS4', string> = {
-  DR: 'DragonRealms',
-  GS4: 'GemStone IV',
-}
 
 const CLIENT_ID = 'FE:WRAYTH /VERSION:1.0.1.22 /P:WIN_UNKNOWN /XML'
 
@@ -232,7 +223,7 @@ export class ConnectionManager extends EventEmitter {
     const loginResult = await this.sge.getLoginKey(char.key)
     this.sge.disconnect()
 
-    const gameName = FAMILY_NAME[gameFamilyFromCode(creds.game)]
+    const gameName = gameFamilyName(gameFamilyFromCode(creds.game))
     this.emit('status', step(4, DIRECT_STEPS, `Connecting to ${gameName} (${loginResult.gameHost}:${loginResult.gamePort})…`))
     await this.connectToGameServer(
       loginResult.gameHost,

@@ -43,7 +43,7 @@ import { useEscapeClose, anyDialogOpen } from '../hooks/useEscapeClose'
 import { pressable } from '../utils/pressable'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { GameEvent, StreamTextEvent, TextLine, LineStyleHint, RoomState, TextSegment, InjuryState, FireLogEntry, SessionLogRecord, SimuCoinStatus, CreatureStatus, RichStreamMode } from '../../shared/types'
-import { gameFamilyFromCode, type GameFamily } from '../../shared/types'
+import { gameFamilyFromCode, gameFamilyName, type GameFamily } from '../../shared/types'
 import { normalizeStreamId } from '../../shared/streamAliases'
 import { redactForAI } from '../../shared/redact'
 import { TextLineRow } from './TextLineRow'
@@ -5208,7 +5208,7 @@ export default function GameWindow({
       acc = ''
       try {
         handle = aiChatStream(
-          { system: catchupSystem(session.character, gameFamily === 'GS4' ? 'GemStone IV' : 'DragonRealms', tier, label, persona), messages: [{ role: 'user', content: buffer }], maxTokens: tier.maxTokens },
+          { system: catchupSystem(session.character, gameFamilyName(gameFamily), tier, label, persona), messages: [{ role: 'user', content: buffer }], maxTokens: tier.maxTokens },
           {
             onDelta: d => { acc += d; live(acc, 'ai') },
             onDone: usage => {

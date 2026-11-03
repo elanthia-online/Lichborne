@@ -29,6 +29,18 @@ export function gameFamilyFromCode(code: string): GameFamily {
   return trimmed.startsWith('DR') ? 'DR' : 'GS4'
 }
 
+// The game's display name for a family. The one map both processes use for
+// user-facing text (connect status, Catch Me Up, Lich Setup, the wizard), so
+// the two names can't drift apart across files.
+export const GAME_FAMILY_NAMES: Record<GameFamily, string> = {
+  DR: 'DragonRealms',
+  GS4: 'GemStone IV',
+}
+
+export function gameFamilyName(family: GameFamily): string {
+  return GAME_FAMILY_NAMES[family]
+}
+
 // --- Session identity ---
 
 // Opaque identifier minted by the main process on successful login. Renderer
