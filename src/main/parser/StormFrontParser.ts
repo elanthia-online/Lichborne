@@ -1526,7 +1526,7 @@ export class StormFrontParser {
           // immediately here instead; the normal (non-self-closing, has
           // children) shape still finalizes in tagEnd as before.
           if (selfClosing) {
-            this.emit({ type: 'effects-update', dialog: this.inEffectsDialog, entries: this.effectsBuf })
+            this.emit({ type: 'effects-update', dialog: this.inEffectsDialog, entries: this.effectsBuf, at: Date.now() })
             this.inEffectsDialog = null
             this.effectsBuf = []
           }
@@ -1668,7 +1668,7 @@ export class StormFrontParser {
         // Unlike injuries, ALWAYS emit — an empty entries[] (the clear='t'
         // shape, or a dialog that genuinely has nothing active) is itself a
         // real state change a live effects panel needs to see, not a no-op.
-        this.emit({ type: 'effects-update', dialog: this.inEffectsDialog, entries: this.effectsBuf })
+        this.emit({ type: 'effects-update', dialog: this.inEffectsDialog, entries: this.effectsBuf, at: Date.now() })
         this.inEffectsDialog = null
         this.effectsBuf = []
       }

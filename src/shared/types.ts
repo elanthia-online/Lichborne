@@ -667,12 +667,21 @@ export interface InjuryUpdateEvent {
 // progressBar's 0-100 value (StormFront convention, same field every other
 // progressbar handler reads); `time` is the raw remaining-duration string,
 // left unconverted — a display concern for whichever panel consumes this.
+// `time` is HH:MM:SS LEFT (relative, not a server timestamp) or 'Indefinite'
+// — the only two shapes in ~123k captured blocks — so the countdown base is
+// `at`, the local time the block was parsed. Stamped in main rather than on
+// receipt in the renderer so a window takeover's replay (the sticky
+// `effects:<dialog>` snapshot) counts down from when the game SENT it, not
+// from when the replay arrived.
 export type EffectsDialog = 'Active Spells' | 'Buffs' | 'Debuffs' | 'Cooldowns'
+
+export interface EffectEntry { id: string; name: string; percent: number; time?: string }
 
 export interface EffectsUpdateEvent {
   type: 'effects-update'
   dialog: EffectsDialog
-  entries: Array<{ id: string; name: string; percent: number; time?: string }>
+  entries: EffectEntry[]
+  at: number  // epoch ms the block was parsed
 }
 
 export interface PlayerInfoEvent {

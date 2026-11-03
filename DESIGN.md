@@ -11348,7 +11348,7 @@ GemStone already sends links and doubled bold whatever the client string (wiki �
 - GS adds `<roommeta>`, `health` in `crtrStatus`, and three injury radios.
 - Much of Lichborne is DR-specific: experience mind states, Moons, the Spell Monitor, assess, and the Tableau's combat.
 
-Recommended: a separate version once the DR work is done.
+Recommended: a separate version once the DR work is done. (The GS4 timed-effects panel landed with the gs4-support PR — §56.)
 
 ### 55.8 Open questions and risks
 
@@ -11427,3 +11427,42 @@ The golden run now covers all 24 fixtures (`golden-eol.ts`, baseline `golden-v02
 **Rollback.** `/richstream off` or Game stream → Legacy, then reconnect. Nothing is stored differently on the rich stream, so switching back loses nothing.
 
 **Not verified in play yet:** everything above is fixture-tested; the first live sessions on Lich 5.23.0 are the test plan's job. A familiar's view on the rich stream is still unseen (§55.8).
+
+## 56. GemStone IV timed effects — the Effects panel (PR #1, gs4-support)
+
+GemStone sends four timed-effect dialogs: `Active Spells`, `Buffs`, `Debuffs` and `Cooldowns`. Each one is a `<dialogData>` of `<progressBar id value text time>` rows. The parser already turned them into `effects-update` events (`EffectsUpdateEvent`, replay-sticky as `effects:<dialog>`). This section is the panel that shows them: [EffectsPanel.tsx](src/renderer/components/panels/EffectsPanel.tsx), with its time math in [gsEffects.ts](src/renderer/gsEffects.ts).
+
+### 56.1 The wire, as captured
+
+Verified against 184 GS4 session captures (2026-10-26 to 10-29, 123,261 effect blocks):
+
+- **Every change resends the whole list:** an empty `<dialogData id='X' clear='t'></dialogData>`, then the full block, always on the same line (123,261 of 123,261). Both land in one `parse()` call and one renderer batch, so the empty list is never painted. Unlike ProfanityFE's tracker (`lib/effect_tracker.rb`), no hold-until-prompt is needed. If a capture ever shows a clear without its refill on the same line, add one.
+- **`time` is time LEFT**, `HH:MM:SS`, or `Indefinite`. Nothing else appears. `value` is the share of the duration left, 0–100.
+- **An empty dialog carries a label**, e.g. `<label id='lblNone' value='No debuffs found.'/>`, and no bars, so it arrives as `entries: []`.
+- **Buffs is mixed:** Voln symbols, Rapid Fire, Mana Tap, Bounty Boost, Resist Nature. It is not "everything that isn't a spell", so the section descriptions name real examples rather than a rule.
+
+### 56.2 The panel
+
+- **One panel, `effects`, GS4-only** (`PANEL_GAMES`), labelled "Effects". The DR `spells` panel is already labelled "Active Spells", and no `percWindow` appeared in the 184 captures.
+- **On DR, a placeholder.** Profile Transfer can carry an `effects` tab from a GS4 character to a DR one, so on DR the panel says it is GemStone-only instead of waiting for timers that never come (the mirror of the `exp` guard on GS4).
+- **Order by severity** (UX #3, ProfanityFE's `DRAW_ORDER`): Debuffs, Cooldowns, Buffs, Active Spells. Each section always renders its header (UX #2), and an empty one is muted with no count (UX #1).
+- **Rows keep the game's order**, so nothing jumps as times change. A fill bar behind each row shows `value`. The time reads h:mm:ss from an hour up and m:ss below (Saga's format). Indefinite shows `∞`, with a tooltip.
+- **The warning:** a Buff or Active Spell with at most 60 s left (ProfanityFE's `WARNING_SECONDS`; Saga's 10 s is too late to recast) and at most 25% of its duration left. The row gets an edge stripe and a bold time in `--color-warning`, and keeps its category fill.
+  - **Why 25% too:** Rapid Fire lasts 60 s, so a minute-only rule striped it from the moment it appeared, 53% of all captured Buffs rows. With both conditions it is 16%: a 60 s buff warns for its last 15 s, a long spell for its last minute.
+  - **Why only Buffs and Active Spells:** a Debuff or Cooldown running out is good news, not something to act on.
+- **At 0** the row dims until the game drops it.
+- **Category hues:** `--color-danger`, `--color-warning`, `--color-success`, and the mana bar's bright end (`--vital-mana-end`) for spells. `--accent` is gold on the dark theme and read as a warning. Each hue is mixed into transparent.
+- **The countdown runs locally** from `EffectsUpdateEvent.at`, the epoch ms when main parsed the block. Main stamps it, not the renderer, so a takeover replay counts from when the game sent the block. The 1 s tick lives inside the panel and runs only while some row still counts down. A tick in GameWindow would re-render the whole character every second (B172).
+- **Default layout:** a fresh GS4 character's bottom zone is Effects + Log (`defaultBottomTabs`). Saga also ships its timers panel visible.
+- **Slash commands:** no new noun. `/panel open effects` covers it, and `getOpenableStreams` now applies the same family gate as the + menu, so `/panel open exp` can't open DR's Experience panel on GS4 (Principle #11).
+
+### 56.3 Not built
+
+- **Skipped on purpose:**
+  - ProfanityFE's script-pushed `ProfanityCustom` timers.
+  - Saga's tracked/"missing" spells and its per-effect colour rules.
+- **Still open from the PR:** the rest of the GS4-native UI (Spellbook, Combat HUD, PSM tracker, an Infomon-style tab).
+- **References:**
+  - ProfanityFE `lib/effect_tracker.rb` and `lib/windows/effects_window.rb`.
+  - Saga 0.7.10 `EffectSectionBody` / `CombinedTimersBody` / `EffectList`.
+  - warlock3 draws these dialogs generically from the server's own layout, with the server's static `18s` labels and no local countdown.
