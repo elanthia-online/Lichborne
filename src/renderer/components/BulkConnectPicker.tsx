@@ -23,6 +23,7 @@ import type { LauncherCharacter } from './Launcher'
 import { exportSharedProfile } from '../profile'
 import { loadBulkSets, saveBulkSets, upsertBulkSet, BULK_SET_NAME_MAX, type BulkSet } from '../bulkSets'
 import '../styles/character-notes-editor.css'
+import { profileNameOf } from '../../shared/profileKey'
 
 // App-wide preference persisted in _shared.yaml (via buildSharedProfile /
 // importSharedProfile). Default false (disabled).
@@ -60,7 +61,7 @@ const SEPARATE_WINDOWS_KEY = 'lichborne.bulkConnectSeparateWindows'
 interface AccountGroup {
   account: string
   candidates: LauncherCharacter[]   // connectable (non-hidden) characters
-  alreadyConnected: string | null   // name of the active char on this account, or null
+  alreadyConnected: string | null   // profile key of the active char on this account, or null
 }
 
 interface Props {
@@ -82,7 +83,7 @@ export default function BulkConnectPicker({ groups, initialSetName = null, onCan
       if (g.alreadyConnected) continue
       if (g.candidates.length === 0) continue
       const favorite = g.candidates.find(c => c.favorite)
-      m.set(g.account, (favorite ?? g.candidates[0]).name)
+      m.set(g.account, (favorite ?? g.candidates[0]).profile)
     }
     return m
   })
@@ -119,8 +120,8 @@ export default function BulkConnectPicker({ groups, initialSetName = null, onCan
     const chosen: LauncherCharacter[] = []
     for (const g of groups) {
       if (!isIncluded(g)) continue
-      const name = picks.get(g.account)
-      const c = name ? g.candidates.find(x => x.name === name) : undefined
+      const key = picks.get(g.account)
+      const c = key ? g.candidates.find(x => x.profile === key) : undefined
       if (c) chosen.push(c)
     }
     return chosen
@@ -160,8 +161,8 @@ export default function BulkConnectPicker({ groups, initialSetName = null, onCan
     for (const g of groups) {
       // First match wins if a hand-edited set names two on one account — DR
       // allows one, and the picker can only express one.
-      const hit = g.candidates.find(c => wanted.has(c.name.toLowerCase()))
-      if (hit) nextPicks.set(g.account, hit.name)
+      const hit = g.candidates.find(c => wanted.has(c.profile.toLowerCase()))
+      if (hit) nextPicks.set(g.account, hit.profile)
       else nextExcluded.add(g.account)
     }
     setPicks(nextPicks)
@@ -268,13 +269,13 @@ export default function BulkConnectPicker({ groups, initialSetName = null, onCan
                     checked={on}
                     disabled={locked}
                     onChange={e => toggleAccount(g.account, e.target.checked)}
-                    title={g.alreadyConnected ? `${g.alreadyConnected} is already connected on this account`
+                    title={g.alreadyConnected ? `${profileNameOf(g.alreadyConnected)} is already connected on this account`
                          : g.candidates.length === 0 ? 'This account has no characters to log in'
                          : on ? 'Untick to leave this account out' : 'Tick to bring a character from this account'}
                   />
                   <span className="tl-account-name">{g.account}</span>
                   {g.alreadyConnected && (
-                    <span className="tl-account-note">{g.alreadyConnected} already connected — skipped</span>
+                    <span className="tl-account-note">{profileNameOf(g.alreadyConnected)} already connected — skipped</span>
                   )}
                   {g.candidates.length === 0 && (
                     <span className="tl-account-note">no characters</span>
@@ -288,7 +289,7 @@ export default function BulkConnectPicker({ groups, initialSetName = null, onCan
                 >
                   {g.candidates.length === 0 && <option value="">No characters</option>}
                   {g.candidates.map(c => (
-                    <option key={c.name} value={c.name}>
+                    <option key={c.profile} value={c.profile}>
                       {c.name} ({c.game}){c.favorite ? ' ♥' : ''}
                     </option>
                   ))}

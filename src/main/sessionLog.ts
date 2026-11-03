@@ -44,6 +44,7 @@ import type {
   CatchupDigest, CatchupProgress, CatchupThread,
 } from '../shared/types'
 import { redactForAI } from '../shared/redact'
+import { isProfileKey } from '../shared/profileKey'
 
 // ── Session Log writer ────────────────────────────────────────────────────────
 // Per-character buffered writer. Captured records arrive from the renderer via
@@ -917,6 +918,12 @@ export function registerSessionLogHandlers(): void {
 
   ipcMain.on('session-log:append', (_e, payload: SessionLogAppendPayload) => {
     if (!payload?.character || !Array.isArray(payload.records) || payload.records.length === 0) return
+    // Log folders are per profile key (DESIGN §56.7.3); a bare name would
+    // start a second folder beside the migrated one.
+    if (!isProfileKey(payload.character)) {
+      console.error(`[sessionLog] dropping records for "${payload.character}": not a Name@SHARD key`)
+      return
+    }
     const buf = getBuffer(
       payload.character,
       payload.retentionDays ?? 30,

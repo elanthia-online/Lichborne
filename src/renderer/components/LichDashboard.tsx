@@ -30,6 +30,7 @@
 // started from (useSessionLichPath, DESIGN §56.7.1); the Scripts / Variables /
 // Settings / Profiles tabs each degrade to an `ld-empty` notice without it.
 
+import { profileKey } from '../../shared/profileKey'
 import { useState, useEffect, useMemo, useCallback, useRef, useImperativeHandle, forwardRef, useId } from 'react'
 import { backdropHandlers } from "../utils/backdropClose"
 import { useEscapeClose } from '../hooks/useEscapeClose'
@@ -210,7 +211,7 @@ function ScriptsTab({ lichPath, session, onSendCommand }: { lichPath: string; se
     onSendCommand(`;${selected.name}${args ? ' ' + args : ''}`)
   }
 
-  const { width: listWidth, dragging, dividerProps, reset: resetWidth } = useResizableColumn(scopedKey(session.character, 'ldScriptsSplit'))
+  const { width: listWidth, dragging, dividerProps, reset: resetWidth } = useResizableColumn(scopedKey(profileKey(session.character, session.game), 'ldScriptsSplit'))
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -1393,7 +1394,7 @@ function ProfilesTab({ lichPath, session }: { lichPath: string; session: Session
   const origLines = originalContent?.split('\n').length ?? 0
   const editLines = editContent?.split('\n').length ?? 0
 
-  const { width: listWidth, dragging, dividerProps, reset: resetWidth } = useResizableColumn(scopedKey(session.character, 'ldProfilesSplit'))
+  const { width: listWidth, dragging, dividerProps, reset: resetWidth } = useResizableColumn(scopedKey(profileKey(session.character, session.game), 'ldProfilesSplit'))
 
   async function confirmSave() {
     if (!selected || editContent === null) return

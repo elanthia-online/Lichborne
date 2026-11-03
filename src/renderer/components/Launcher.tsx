@@ -40,12 +40,16 @@ import { type LichInstall, coerceLichInstall, announceCharacterLichChanged, game
 import { differs } from '../hooks/useUnsaved'
 import { makeCharacterId } from '../../shared/characterId'
 import { gameFamilyFromCode, type GameFamily } from '../../shared/types'
+import { profileKey, profileNameOf, testPair } from '../../shared/profileKey'
 import { characterColor, useCharacterColors } from '../characterColors'
 import { monogramStyle, nameInitials } from '../utils/nameColor'
 import '../styles/launcher.css'
 
 export interface LauncherCharacter {
   name:    string
+  // What its data is filed under, `Name@SHARD` (DESIGN §56.7.3): the profile
+  // file's name. Every read-modify-write helper below takes this, never `name`.
+  profile: string
   account: string
   game:    string
   useLich: boolean
@@ -113,27 +117,20 @@ interface Props {
   onEditSet?: (setName: string) => void
 }
 
-// Game-section ordering inside an account. DR (and its DRT variant) come
-// first because it's the canonical / most-common game; DRX and DRF follow.
-// DRT tiles render under the DR section — DRT is a per-character override on
-// DR, not a fourth tier (same SGE auth, same character list, different shard).
-//
-// GS4 shards (GS3/GSX/GST/GSF) each get their OWN section rather than being
-// folded into an existing one — unlike DRT, there's no verified evidence GS4's
-// Test shard shares an account's character list with GS4 Prime the way DR's
-// does, so this doesn't assume it (the conservative default: a section per
-// distinct shard code, same as DRX/DRF already get). If a character's `game`
+// Game-section ordering inside an account. DR first, then DRX and DRF, then
+// GemStone IV Prime and Shattered. A TEST shard renders under its Prime: each
+// test instance mirrors Prime, so DRT and GST are a per-character toggle on
+// the Prime tile, not sections of their own (and share its profile, DESIGN
+// §56.7.3). GemStone IV has no Platinum any more (Sekmeht, 2026-11-03). If a character's `game`
 // matches none of these, it is silently dropped from every account's rendered
 // sections (groupCharacters below) — every code the wizard/GAMES table can
 // produce MUST have a matching section here, or its characters become
 // invisible in the launcher despite existing on disk.
-const GAME_SECTIONS: { key: 'DR' | 'DRX' | 'DRF' | 'GS3' | 'GSX' | 'GST' | 'GSF'; label: string; matches: (game: string) => boolean }[] = [
+const GAME_SECTIONS: { key: 'DR' | 'DRX' | 'DRF' | 'GS3' | 'GSF'; label: string; matches: (game: string) => boolean }[] = [
   { key: 'DR',  label: 'DragonRealms',          matches: g => g === 'DR' || g === 'DRT' },
   { key: 'DRX', label: 'DragonRealms Platinum', matches: g => g === 'DRX' },
   { key: 'DRF', label: 'DragonRealms Fallen',   matches: g => g === 'DRF' },
-  { key: 'GS3', label: 'GemStone IV',           matches: g => g === 'GS3' },
-  { key: 'GSX', label: 'GemStone IV Platinum',  matches: g => g === 'GSX' },
-  { key: 'GST', label: 'GemStone IV Test',      matches: g => g === 'GST' },
+  { key: 'GS3', label: 'GemStone IV',           matches: g => g === 'GS3' || g === 'GST' },
   { key: 'GSF', label: 'GemStone IV Shattered', matches: g => g === 'GSF' },
 ]
 
@@ -308,7 +305,7 @@ function LauncherTopBar({
   )
 }
 
-export interface TeamMemberView { name: string; state: 'on' | 'ready' | 'missing' }
+export interface TeamMemberView { key: string; name: string; state: 'on' | 'ready' | 'missing' }
 export interface TeamRowView {
   name: string
   members: TeamMemberView[]
@@ -340,7 +337,7 @@ function TeamRow({ team, onConnect, onToggleFavorite, onMenu }: {
         <div className="launcher-team-members">
           {team.members.map(m => (
             <span
-              key={m.name}
+              key={m.key}
               className={`launcher-team-member launcher-team-member--${m.state}`}
               title={m.state === 'on' ? `${m.name} is already logged in — Connect will skip them`
                    : m.state === 'missing' ? `${m.name} is no longer on this machine (archived or removed)`
@@ -480,7 +477,8 @@ export async function loadCharacterCards(): Promise<LauncherCharacter[]> {
     if (!raw || typeof raw !== 'object') return null
     const p = raw as Partial<CharacterProfile>
     return {
-      name:     p.character ?? name,
+      name:     p.character ?? profileNameOf(name),
+      profile:  name,
       account:  p.account   ?? '',
       game:     p.game      ?? 'DR',
       useLich:  p.useLich   ?? true,
@@ -496,32 +494,35 @@ export async function loadCharacterCards(): Promise<LauncherCharacter[]> {
   void reportUnreadableProfiles()
   return profiles
     .filter((c): c is LauncherCharacter => c !== null)
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.game.localeCompare(b.game))
 }
 
+// Each helper below takes the profile KEY (`LauncherCharacter.profile`,
+// DESIGN §56.7.3), never the bare name.
+//
 // Read-modify-write the `game` field on a character's YAML profile so the DRT
 // toggle persists across launches. Uses readCharacterProfile + writeCharacterProfile
 // (full YAML round-trip) rather than the renderer's buildCharacterProfile path
 // because that builder pulls `state` from localStorage — fine for the currently-
 // active character, destructive for any other (their scoped keys aren't loaded,
 // so the rebuilt YAML would have empty state and wipe saved automations etc.).
-async function setCharacterGame(characterName: string, nextGame: string): Promise<void> {
-  const raw = await window.api.readCharacterProfile(characterName)
+async function setCharacterGame(key: string, nextGame: string): Promise<void> {
+  const raw = await window.api.readCharacterProfile(key)
   if (!raw || typeof raw !== 'object') return
   const profile = raw as CharacterProfile
   if (profile.game === nextGame) return
-  await window.api.writeCharacterProfile(characterName, { ...profile, game: nextGame })
+  await window.api.writeCharacterProfile(key, { ...profile, game: nextGame })
 }
 
 // Same pattern for the per-tile Lich/Direct mode toggle (v0.8.0). Flipping
 // the LICH/DIRECT badge on a tile writes `useLich` back to the character's
 // YAML without touching the rest of the profile.
-async function setCharacterUseLich(characterName: string, nextUseLich: boolean): Promise<void> {
-  const raw = await window.api.readCharacterProfile(characterName)
+async function setCharacterUseLich(key: string, nextUseLich: boolean): Promise<void> {
+  const raw = await window.api.readCharacterProfile(key)
   if (!raw || typeof raw !== 'object') return
   const profile = raw as CharacterProfile
   if (profile.useLich === nextUseLich) return
-  await window.api.writeCharacterProfile(characterName, { ...profile, useLich: nextUseLich })
+  await window.api.writeCharacterProfile(key, { ...profile, useLich: nextUseLich })
 }
 
 // Attach mode: remember the detachable listener a character attached
@@ -539,7 +540,8 @@ export async function saveCharacterAttach(
   game: string,
   attach: { host: string; port: number },
 ): Promise<void> {
-  const raw = await window.api.readCharacterProfile(characterName).catch(() => null)
+  const key = profileKey(characterName, game)
+  const raw = await window.api.readCharacterProfile(key).catch(() => null)
   if (raw && typeof raw === 'object') {
     const profile = raw as CharacterProfile
     // EXPAND FIRST, ALWAYS — including when the target is unchanged and there
@@ -560,14 +562,14 @@ export async function saveCharacterAttach(
     // it is not a persistent override of their choice.
     expandAccountOnce(profile.account ?? account)
     if (profile.attach?.host === attach.host && profile.attach?.port === attach.port) return
-    await window.api.writeCharacterProfile(characterName, { ...profile, attach })
+    await window.api.writeCharacterProfile(key, { ...profile, attach })
     return
   }
   // Prior accounts, read BEFORE the write, for the 1→2 transition below.
   const priorAccounts = new Set(
     (await loadCharacterCards().catch(() => [])).map(c => c.account),
   )
-  await window.api.writeCharacterProfile(characterName, {
+  await window.api.writeCharacterProfile(key, {
     profileVersion: 2,
     account,
     character: characterName,
@@ -619,24 +621,24 @@ function expandAccountOnce(account: string, priorAccounts: Set<string> = new Set
 // launcher grid unless the user enables "Show hidden" on the top bar. Use
 // this for retired characters you might return to; use deleteCharacterProfile
 // when you truly want the profile gone.
-async function setCharacterHidden(characterName: string, nextHidden: boolean): Promise<void> {
-  const raw = await window.api.readCharacterProfile(characterName)
+async function setCharacterHidden(key: string, nextHidden: boolean): Promise<void> {
+  const raw = await window.api.readCharacterProfile(key)
   if (!raw || typeof raw !== 'object') return
   const profile = raw as CharacterProfile
   if ((profile.hidden ?? false) === nextHidden) return
-  await window.api.writeCharacterProfile(characterName, { ...profile, hidden: nextHidden })
+  await window.api.writeCharacterProfile(key, { ...profile, hidden: nextHidden })
 }
 
 // Favorite toggle (v0.8.0). Persists `favorite: boolean` on the character
 // profile; the launcher mirrors favorited tiles into a top "Favorites"
 // section. Same character still appears in its account / game section
 // below — favorites is a quick-access shortcut, not a re-categorization.
-async function setCharacterFavorite(characterName: string, nextFavorite: boolean): Promise<void> {
-  const raw = await window.api.readCharacterProfile(characterName)
+async function setCharacterFavorite(key: string, nextFavorite: boolean): Promise<void> {
+  const raw = await window.api.readCharacterProfile(key)
   if (!raw || typeof raw !== 'object') return
   const profile = raw as CharacterProfile
   if ((profile.favorite ?? false) === nextFavorite) return
-  await window.api.writeCharacterProfile(characterName, { ...profile, favorite: nextFavorite })
+  await window.api.writeCharacterProfile(key, { ...profile, favorite: nextFavorite })
 }
 
 // Generic profile-fields patcher (v0.8.0). Used by the Notes editor to
@@ -645,13 +647,13 @@ async function setCharacterFavorite(characterName: string, nextFavorite: boolean
 // frequent single-field toggles (heart, mode, test, hidden) so those keep
 // their tight purpose-built call sites.
 async function patchCharacterProfile(
-  characterName: string,
+  key: string,
   patch: Partial<Pick<CharacterProfile, 'guild' | 'circle' | 'notes' | 'lich'>>,
 ): Promise<void> {
-  const raw = await window.api.readCharacterProfile(characterName)
+  const raw = await window.api.readCharacterProfile(key)
   if (!raw || typeof raw !== 'object') return
   const profile = raw as CharacterProfile
-  await window.api.writeCharacterProfile(characterName, { ...profile, ...patch })
+  await window.api.writeCharacterProfile(key, { ...profile, ...patch })
 }
 
 // Bulk Connect is only useful with 2+ accounts that each have at least one
@@ -690,7 +692,7 @@ interface CardProps {
   busy: boolean
   onConnect: (c: LauncherCharacter) => void
   onMenu: (e: React.MouseEvent, c: LauncherCharacter) => void
-  onToggleTest: (c: LauncherCharacter, nextGame: 'DR' | 'DRT') => void
+  onToggleTest: (c: LauncherCharacter, nextGame: string) => void
   onToggleMode: (c: LauncherCharacter, nextUseLich: boolean) => void
   onToggleFavorite: (c: LauncherCharacter, next: boolean) => void
   // v0.8.0 UX pass: when the tile renders inside an account section, the
@@ -700,8 +702,9 @@ interface CardProps {
 }
 
 function CharacterCard({ character: c, busy, onConnect, onMenu, onToggleTest, onToggleMode, onToggleFavorite, showAccount = true }: CardProps) {
-  const isDR = c.game === 'DR' || c.game === 'DRT'
-  const isTest = c.game === 'DRT'
+  // Prime or its test mirror (DR/DRT, GS3/GST): the TEST pill flips between them.
+  const pair = testPair(c.game)
+  const isTest = !!pair && c.game === pair.test
   const guild = guildLabel(c.guild, c.game)
   const shard = gameOptionByCode(c.game)
   const circleText = (typeof c.circle === 'number' && !Number.isNaN(c.circle)) ? String(c.circle) : null
@@ -779,15 +782,15 @@ function CharacterCard({ character: c, busy, onConnect, onMenu, onToggleTest, on
           >
             DIRECT
           </button>
-          {isDR && (
+          {pair && (
             <button
               type="button"
               className={`launcher-card-mode launcher-card-mode--test${isTest ? '' : ' launcher-card-mode--inactive'}`}
-              onClick={() => onToggleTest(c, isTest ? 'DR' : 'DRT')}
+              onClick={() => onToggleTest(c, isTest ? pair.prime : pair.test)}
               disabled={busy}
               title={isTest
-                ? 'Connecting to Prime Test (DRT). Click to switch back to DR.'
-                : 'Click to switch this character to Prime Test (DRT) on the next connect.'}
+                ? `Connecting to the test instance (${pair.test}), with the same settings as on ${pair.prime}. Click to switch back to ${pair.prime}.`
+                : `Click to connect this character to the test instance (${pair.test}) next time. It keeps the same settings, since the test instance mirrors ${pair.prime}.`}
             >
               TEST
             </button>
@@ -897,11 +900,12 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
   // MISSING (archived or deleted — F79 archives rather than deletes, so the
   // name may come back; the team still launches without it).
   const teamRows = useMemo(() => bulkSets.map(set => {
-    const byName = new Map((characters ?? []).filter(c => !c.hidden).map(c => [c.name.toLowerCase(), c]))
-    const members = set.characters.map(name => {
-      const key = name.toLowerCase()
-      const known = byName.get(key)
-      return { name, state: !known ? 'missing' as const : connectedSet.has(key) ? 'on' as const : 'ready' as const }
+    // Members are profile keys (DESIGN §56.7.3); the row shows the name.
+    const byKey = new Map((characters ?? []).filter(c => !c.hidden).map(c => [c.profile.toLowerCase(), c]))
+    const members = set.characters.map(member => {
+      const key = member.toLowerCase()
+      const known = byKey.get(key)
+      return { key: member, name: profileNameOf(member), state: !known ? 'missing' as const : connectedSet.has(key) ? 'on' as const : 'ready' as const }
     })
     return {
       name: set.name, members,
@@ -936,7 +940,7 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
     const set = bulkSets.find(s => s.name === setName)
     if (!set || !characters) return
     const wanted = new Set(set.characters.map(n => n.toLowerCase()))
-    const resolved = characters.filter(c => !c.hidden && wanted.has(c.name.toLowerCase()))
+    const resolved = characters.filter(c => !c.hidden && wanted.has(c.profile.toLowerCase()))
     // One per account — DR's rule, and the set may predate a character moving.
     const perAccount = new Map<string, LauncherCharacter>()
     for (const c of resolved) if (!perAccount.has(c.account)) perAccount.set(c.account, c)
@@ -1037,7 +1041,7 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
       `To keep the profile but take the tile off this screen, use Hide profile instead. This can't be undone.`)
     if (!ok) return
     try {
-      await window.api.deleteCharacterProfile(c.name)
+      await window.api.deleteCharacterProfile(c.profile)
     } catch (err) {
       console.error('Failed to delete character profile', err)
     }
@@ -1064,9 +1068,9 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
   // that may have refreshed underneath it. Naming them is the point of the
   // confirmation: the section may be collapsed, so a count alone doesn't say
   // what goes.
-  async function handleRemoveAccount(account: string, names: string[]) {
-    const n = names.length
-    const who = n > 0 ? ` (${names.join(', ')})` : ''
+  async function handleRemoveAccount(account: string, chars: LauncherCharacter[]) {
+    const n = chars.length
+    const who = n > 0 ? ` (${chars.map(c => c.name).join(', ')})` : ''
     const ok = await confirmAction({
       title: 'Remove account?',
       message: account,
@@ -1078,11 +1082,11 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
       danger: true,
     })
     if (!ok) return
-    for (const name of names) {
+    for (const c of chars) {
       try {
-        await window.api.archiveCharacterProfile(name)
+        await window.api.archiveCharacterProfile(c.profile)
       } catch (err) {
-        console.error(`Failed to archive character profile ${name}`, err)
+        console.error(`Failed to archive character profile ${c.profile}`, err)
       }
     }
     try {
@@ -1093,12 +1097,12 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
     refresh()
   }
 
-  async function handleToggleTest(c: LauncherCharacter, nextGame: 'DR' | 'DRT') {
+  async function handleToggleTest(c: LauncherCharacter, nextGame: string) {
     try {
-      await setCharacterGame(c.name, nextGame)
+      await setCharacterGame(c.profile, nextGame)
       // Optimistic local update so the checkbox reflects immediately; refresh
       // would also work but flickers the whole grid.
-      setCharacters(prev => prev?.map(x => x.name === c.name ? { ...x, game: nextGame } : x) ?? prev)
+      setCharacters(prev => prev?.map(x => x.profile === c.profile ? { ...x, game: nextGame } : x) ?? prev)
     } catch (err) {
       console.error('Failed to update character game', err)
       refresh()
@@ -1107,8 +1111,8 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
 
   async function handleToggleMode(c: LauncherCharacter, nextUseLich: boolean) {
     try {
-      await setCharacterUseLich(c.name, nextUseLich)
-      setCharacters(prev => prev?.map(x => x.name === c.name ? { ...x, useLich: nextUseLich } : x) ?? prev)
+      await setCharacterUseLich(c.profile, nextUseLich)
+      setCharacters(prev => prev?.map(x => x.profile === c.profile ? { ...x, useLich: nextUseLich } : x) ?? prev)
     } catch (err) {
       console.error('Failed to update character mode', err)
       refresh()
@@ -1117,8 +1121,8 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
 
   async function handleToggleHidden(c: LauncherCharacter, nextHidden: boolean) {
     try {
-      await setCharacterHidden(c.name, nextHidden)
-      setCharacters(prev => prev?.map(x => x.name === c.name ? { ...x, hidden: nextHidden } : x) ?? prev)
+      await setCharacterHidden(c.profile, nextHidden)
+      setCharacters(prev => prev?.map(x => x.profile === c.profile ? { ...x, hidden: nextHidden } : x) ?? prev)
     } catch (err) {
       console.error('Failed to toggle hidden state', err)
       refresh()
@@ -1127,8 +1131,8 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
 
   async function handleToggleFavorite(c: LauncherCharacter, nextFavorite: boolean) {
     try {
-      await setCharacterFavorite(c.name, nextFavorite)
-      setCharacters(prev => prev?.map(x => x.name === c.name ? { ...x, favorite: nextFavorite } : x) ?? prev)
+      await setCharacterFavorite(c.profile, nextFavorite)
+      setCharacters(prev => prev?.map(x => x.profile === c.profile ? { ...x, favorite: nextFavorite } : x) ?? prev)
     } catch (err) {
       console.error('Failed to toggle favorite state', err)
       refresh()
@@ -1147,10 +1151,11 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
   const lastSessionTiles: LauncherCharacter[] = (() => {
     if (!onReconnectLast || !characters) return []
     const tiles = new Map(
-      characters.filter(c => !c.hidden).map(c => [`${c.account}:${c.name}`.toLowerCase(), c]),
+      characters.filter(c => !c.hidden).map(c => [`${c.account}:${c.profile}`.toLowerCase(), c]),
     )
+    // By name AND shard (an entry from before DESIGN §56.7.3 has no game: DR Prime).
     return loadLastSessionCharacters()
-      .map(e => tiles.get(`${e.account}:${e.name}`.toLowerCase()))
+      .map(e => tiles.get(`${e.account}:${profileKey(e.name, e.game)}`.toLowerCase()))
       .filter((c): c is LauncherCharacter => !!c)
   })()
 
@@ -1160,9 +1165,9 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
 
   async function handleSaveNotes(c: LauncherCharacter, patch: ProfilePatch) {
     try {
-      await patchCharacterProfile(c.name, patch)
-      if (differs(patch.lich, c.lich)) announceCharacterLichChanged(c.name)
-      setCharacters(prev => prev?.map(x => x.name === c.name ? { ...x, ...patch } : x) ?? prev)
+      await patchCharacterProfile(c.profile, patch)
+      if (differs(patch.lich, c.lich)) announceCharacterLichChanged(c.profile)
+      setCharacters(prev => prev?.map(x => x.profile === c.profile ? { ...x, ...patch } : x) ?? prev)
       setEditingNotes(null)
     } catch (err) {
       console.error('Failed to save character profile fields', err)
@@ -1251,9 +1256,9 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
   // Favorites in BOTH launchers (v0.19.7: + says "Pick a character to
   // connect", and bringing a team in is exactly that). Derived from the same
   // list the Teams block shows, so the Favorites count can't disagree with it.
-  const familyByName = new Map(characters.map(c => [c.name.toLowerCase(), gameFamilyFromCode(c.game)]))
+  const familyByName = new Map(characters.map(c => [c.profile.toLowerCase(), gameFamilyFromCode(c.game)]))
   const shownTeams = filter === 'all' ? teamRows
-    : teamRows.filter(t => t.members.some(m => familyByName.get(m.name.toLowerCase()) === filter))
+    : teamRows.filter(t => t.members.some(m => familyByName.get(m.key.toLowerCase()) === filter))
   const shownFavoriteTeams = shownTeams.filter(t => t.favorite)
   // Favorites mirror — characters with `favorite: true` get pinned to a
   // top-of-launcher section, but they ALSO still appear in their account /
@@ -1356,9 +1361,9 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
             <div className="launcher-grid">
               {favoriteCharacters.map(c => (
                 <CharacterCard
-                  key={`fav::${c.name}`}
+                  key={`fav::${c.profile}`}
                   character={c}
-                  busy={connectingName === c.name}
+                  busy={connectingName === c.profile}
                   onConnect={onConnect}
                   onMenu={(e, ch) => {
                     e.preventDefault()
@@ -1508,7 +1513,7 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
                       // orphaned hidden profiles that could never sign in again,
                       // and an account section that reappears the moment you
                       // toggle Show hidden. Removing an account removes ALL of it.
-                      characters.filter(c => c.account === account).map(c => c.name),
+                      characters.filter(c => c.account === account),
                     )}
                     title={`Remove ${account} and its characters from this screen`}
                   >
@@ -1522,9 +1527,9 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
                   <div className="launcher-grid">
                     {section.chars.map(c => (
                       <CharacterCard
-                        key={c.name}
+                        key={c.profile}
                         character={c}
-                        busy={connectingName === c.name}
+                        busy={connectingName === c.profile}
                         showAccount={false}
                         onConnect={onConnect}
                         onMenu={(e, ch) => {

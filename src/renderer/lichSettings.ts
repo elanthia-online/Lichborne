@@ -2,6 +2,7 @@
 // and SettingsPanel (in-session edits). Persisted to localStorage; replicated
 // to _shared.yaml by callers so concurrent Electron processes stay in sync.
 
+import { profileKey } from '../shared/profileKey'
 import { RICH_STREAM_DEFAULT, gameFamilyFromCode, type GameFamily, type RichStreamMode } from '../shared/types'
 
 // Cross-platform (v0.18.0): which OS we're on, from the preload bridge.
@@ -131,7 +132,7 @@ export const CHARACTER_LICH_CHANGED_KEY = 'lichborne.characterLichChanged'
 
 export function announceCharacterLichChanged(character: string): void {
   window.dispatchEvent(new CustomEvent(CHARACTER_LICH_CHANGED_EVENT, { detail: character }))
-  try { localStorage.setItem(CHARACTER_LICH_CHANGED_KEY, `${character}:${Date.now()}`) } catch { /* same window still heard it */ }
+  try { localStorage.setItem(CHARACTER_LICH_CHANGED_KEY, `${character}|${Date.now()}`) } catch { /* same window still heard it */ }
 }
 
 /** resolveLichInstall for a saved character, reading its override from its
@@ -142,7 +143,7 @@ export async function resolveCharacterLichInstall(
   character: string,
   game: string,
 ): Promise<ResolvedLichInstall> {
-  const raw = await window.api.readCharacterProfile(character).catch(() => null)
+  const raw = await window.api.readCharacterProfile(profileKey(character, game)).catch(() => null)
   const override = raw && typeof raw === 'object' ? coerceLichInstall((raw as { lich?: unknown }).lich) : undefined
   return resolveLichInstall(adv, game, override)
 }
@@ -236,7 +237,6 @@ export const GAMES: GameOption[] = [
   { code: 'DRT', name: 'DragonRealms Prime Test', port: 11624, lichArguments: '--test --dragonrealms',     family: 'DR' },
   { code: 'DRF', name: 'DragonRealms The Fallen', port: 11324, lichArguments: '--fallen',                  family: 'DR' },
   { code: 'GS3', name: 'GemStone IV Prime',       port: 10024, lichArguments: '--gemstone',                family: 'GS4' },
-  { code: 'GSX', name: 'GemStone IV Platinum',    port: 10124, lichArguments: '--gemstone --platinum',     family: 'GS4' },
   { code: 'GST', name: 'GemStone IV Test',        port: 10624, lichArguments: '--gemstone --test',         family: 'GS4' },
   { code: 'GSF', name: 'GemStone IV Shattered',   port: 10324, lichArguments: '--shattered',                family: 'GS4' },
 ]

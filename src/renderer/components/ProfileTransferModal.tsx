@@ -16,6 +16,7 @@
 // `_shared.yaml` is flushed once because two categories (custom themes,
 // named colors) merge into APP-WIDE stores rather than a character's profile.
 
+import { profileKey, profileNameOf } from '../../shared/profileKey'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { backdropHandlers } from "../utils/backdropClose"
 import { useEscapeClose } from '../hooks/useEscapeClose'
@@ -32,7 +33,7 @@ import '../styles/profile-transfer.css'
 // App passes the live sessions so the modal can tell active targets apart and
 // remount them after a live import. Kept loose — only character + characterId
 // are used.
-export interface TransferSession { character: string; characterId: string }
+export interface TransferSession { character: string; game: string; characterId: string }
 
 interface Props {
   sessions: TransferSession[]
@@ -46,7 +47,9 @@ interface Props {
   modeSeq?: number
 }
 
-interface ProfileRow { name: string; account: string; game: string }
+// `key` is the profile key, `Name@SHARD` (DESIGN §56.7.3): what Transfer reads
+// and writes. `name` is only shown.
+interface ProfileRow { key: string; name: string; account: string; game: string }
 
 const CAT_LABEL: Record<TransferCategoryId, string> =
   Object.fromEntries(TRANSFER_CATEGORIES.map(c => [c.id, c.label])) as Record<TransferCategoryId, string>
@@ -56,9 +59,9 @@ async function loadProfileRows(): Promise<ProfileRow[]> {
   const rows = await Promise.all(names.map(async name => {
     const raw = await window.api.readCharacterProfile(name).catch(() => null)
     const p = (raw && typeof raw === 'object' ? raw : {}) as Partial<CharacterProfile>
-    return { name: p.character ?? name, account: p.account ?? '', game: p.game ?? 'DR' } as ProfileRow
+    return { key: name, name: p.character ?? profileNameOf(name), account: p.account ?? '', game: p.game ?? 'DR' } as ProfileRow
   }))
-  return rows.sort((a, b) => a.name.localeCompare(b.name))
+  return rows.sort((a, b) => a.name.localeCompare(b.name) || a.game.localeCompare(b.game))
 }
 
 export default function ProfileTransferModal({ sessions, reloadSession, onClose, initialMode = 'export', modeSeq = 0 }: Props) {
@@ -74,10 +77,10 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose,
   const [profiles, setProfiles] = useState<ProfileRow[]>([])
 
   // Active = has an open session (focused or backgrounded).
-  const activeNames = useMemo(() => new Set(sessions.map(s => s.character)), [sessions])
+  const activeNames = useMemo(() => new Set(sessions.map(s => profileKey(s.character, s.game))), [sessions])
   const charIdByName = useMemo(() => {
     const m = new Map<string, string>()
-    for (const s of sessions) m.set(s.character, s.characterId)
+    for (const s of sessions) m.set(profileKey(s.character, s.game), s.characterId)
     return m
   }, [sessions])
 
@@ -96,8 +99,8 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose,
   // Default the source to the first profile (or the first active session).
   useEffect(() => {
     if (sourceChar || profiles.length === 0) return
-    const firstActive = profiles.find(p => activeNames.has(p.name))
-    setSourceChar((firstActive ?? profiles[0]).name)
+    const firstActive = profiles.find(p => activeNames.has(p.key))
+    setSourceChar((firstActive ?? profiles[0]).key)
   }, [profiles, activeNames, sourceChar])
 
   // Build a full export (all categories) whenever the source changes so the
@@ -131,7 +134,7 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose,
     }
     const file: ProfileExportFile = { ...fullFile, categories }
     try {
-      const path = await window.api.profileTransferExport(defaultExportFilename(sourceChar), serializeExport(file))
+      const path = await window.api.profileTransferExport(defaultExportFilename(profileNameOf(sourceChar)), serializeExport(file))
       setExportDone(path)
     } catch (e) {
       setExportErr(`Export failed: ${String(e)}`)
@@ -242,8 +245,8 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose,
           <label className="pt-label">Source character</label>
           <select className="ui-field pt-select" value={sourceChar} onChange={e => setSourceChar(e.target.value)}>
             {profiles.map(p => (
-              <option key={p.name} value={p.name}>
-                {p.name} — {p.account || 'no account'} ({p.game}){activeNames.has(p.name) ? ' • connected' : ''}
+              <option key={p.key} value={p.key}>
+                {p.name} — {p.account || 'no account'} ({p.game}){activeNames.has(p.key) ? ' • connected' : ''}
               </option>
             ))}
           </select>
@@ -392,7 +395,7 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose,
             <div className="pt-section-head">
               <span>Apply to characters</span>
               <div className="pt-sel-actions">
-                <button className="pt-link" onClick={() => setTargets(new Set(profiles.map(p => p.name)))}>All</button>
+                <button className="pt-link" onClick={() => setTargets(new Set(profiles.map(p => p.key)))}>All</button>
                 <span className="pt-dot">·</span>
                 <button className="pt-link" onClick={() => setTargets(new Set())}>None</button>
               </div>
@@ -403,10 +406,10 @@ export default function ProfileTransferModal({ sessions, reloadSession, onClose,
                   <div className="pt-target-account">{account}</div>
                   {rows.map(p => {
                     const isSource = p.name === importFile.exportedBy
-                    const isActive = activeNames.has(p.name)
+                    const isActive = activeNames.has(p.key)
                     return (
-                      <label key={p.name} className="pt-target-row">
-                        <input type="checkbox" checked={targets.has(p.name)} onChange={() => setTargets(s => toggle(s, p.name))} />
+                      <label key={p.key} className="pt-target-row">
+                        <input type="checkbox" checked={targets.has(p.key)} onChange={() => setTargets(s => toggle(s, p.key))} />
                         <span className="pt-target-name">{p.name}</span>
                         <span className="pt-target-game">{p.game}</span>
                         {isActive && <span className="pt-badge pt-badge--live">connected • refreshes live</span>}
