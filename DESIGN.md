@@ -11600,6 +11600,8 @@ A plan, built in the order at the end. Sections get marked as they land.
 
 #### 56.7.1 Which Lich install a character uses
 
+**Status:** resolution, storage and the session-carried path are BUILT (step 1); the Lich Setup rows, the Edit Profile override and `/lich install` are step 2.
+
 **Resolution, most specific first:** the character's own override; else the game family's default (DR or GS4); else the global install.
 - **By family, not by shard.** GS3/GSX/GST/GSF share one install, as do DR/DRX/DRT/DRF.
 - **An install is the pair `{ lichPath, rubyPath }`.** Lich 5.18+ refuses an older Ruby, so the two travel together.
@@ -11612,8 +11614,8 @@ A plan, built in the order at the end. Sections get marked as they land.
 - Neither rides Profile Transfer or team bundles: they are paths on one machine.
 
 **One resolver, everywhere:**
-- `resolveLichInstall(game, override)` in lichSettings.ts feeds every connect site.
-- The resolved `lichPath` is carried on the session (`SessionInfo`), and one `sessionLichPath` helper replaces the three private readers, so the Dashboard, the script list and the Lich Map read the install the session launched from. Without this a GS4 character would launch from its GS4 install while its dashboard showed the DR install's Vars.
+- `resolveLichInstall(adv, game, override)` in lichSettings.ts is pure; `resolveCharacterLichInstall(adv, character, game)` reads the override from the character's profile AT CONNECT TIME (a tab's Reconnect builds its card from the session record, which has no override). It feeds `runConnect`, the Team Login member connect and attach.
+- The resolved `lichPath` is carried on the session: main's `meta` and `RosterEntry` (so a decoupled window keeps it), `SessionInfo` and `SessionRecord`. [sessionLich.ts](src/renderer/sessionLich.ts) replaces the private readers (three named above, plus GameWindow's two: the script-list path and the Moons `sun` read): GameWindow provides `SessionLichPathContext`, components read `useSessionLichPath()`, and a hook in GameWindow takes `sessionLichPath(session)`. Each falls back to the default install, so the Dashboard, the script list and the Lich Map read the install the session launched from. Without this a GS4 character would launch from its GS4 install while its dashboard showed the DR install's Vars.
 - MapPanel's parse caches already key by source path, so two installs cache twice.
 - **Launch serialization stays one queue.** Every Lich binds 11024 and serves one front-end, whichever folder it runs from.
 

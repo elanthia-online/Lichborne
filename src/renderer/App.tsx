@@ -87,7 +87,7 @@ import { RosterProvider, useRoster } from './RosterContext'
 import { CharacterProvider } from './CharacterContext'
 import { forgetSavedSignature, flushPendingProfileSaves, exportCharacterProfile, importCharacterProfile, clearCharacterLocalStorage, importSharedProfile, exportSharedProfile, saveLastSessionCharacters, scheduleSharedProfileSave } from './profile'
 import { planReconnect } from './reconnectPlan'
-import { loadAdvanced, saveAdvanced, gameOptionByCode, IS_MAC, effectiveRichStream } from './lichSettings'
+import { loadAdvanced, saveAdvanced, gameOptionByCode, IS_MAC, effectiveRichStream, resolveCharacterLichInstall } from './lichSettings'
 import { initTheme } from './themes'
 import type { LoginCredentials, SessionId, RosterEntry, SimuCoinStatus } from '../shared/types'
 import { isSessionAction } from '../shared/menuActions'
@@ -312,6 +312,7 @@ function AppShell() {
         // Attach target rides the roster so a decoupled / re-homed attach
         // session keeps its re-attach path in the new window.
         attach: e.attach,
+        lichPath: e.lichPath,
       })
       updateStatus(cid, { connected: e.connected })
     }
@@ -1546,6 +1547,9 @@ function AppShell() {
     // DR). The character's saved `game` field is now the authority; the
     // global `adv.lichPort` is only used as a fallback default for the wizard.
     const gameOpt = gameOptionByCode(c.game)
+    // The character's own install, else its game's, else the default
+    // (DESIGN §56.7.1). Resolved here, at the one place every login starts.
+    const install = await resolveCharacterLichInstall(adv, c.name, c.game)
     const creds: LoginCredentials = {
       account:       c.account,
       password,
@@ -1553,8 +1557,8 @@ function AppShell() {
       game:          c.game,
       lichArguments: gameOpt.lichArguments,
       useLich:       c.useLich,
-      lichPath:      adv.lichPath,
-      rubyPath:      adv.rubyPath,
+      lichPath:      install.lichPath,
+      rubyPath:      install.rubyPath,
       lichPort:      gameOpt.port,
       lichMode:      adv.lichMode,
       richStream:    effectiveRichStream(adv),
@@ -1630,6 +1634,7 @@ function AppShell() {
       character: c.name,
       game:      c.game,
       useLich:   c.useLich,
+      lichPath:  install.lichPath,
     }, { quiet, activateIfIdle: opts?.background })
   }
 
@@ -1697,8 +1702,11 @@ function AppShell() {
     }
 
     const adv = loadAdvanced()
+    // The install that would launch this character: an attach launches nothing,
+    // but the rich-stream check and the session's Dashboard / map read it.
+    const install = await resolveCharacterLichInstall(adv, character, game)
     const result = await window.api.loginAttach({
-      account, character, game, host, port, richStream: effectiveRichStream(adv), lichPath: adv.lichPath,
+      account, character, game, host, port, richStream: effectiveRichStream(adv), lichPath: install.lichPath,
     })
     if (!result.ok) return result.error ?? 'Attach failed'
 
@@ -1751,6 +1759,7 @@ function AppShell() {
       game,
       useLich: true,
       attach: { host, port },
+      lichPath: install.lichPath,
     }, { quiet })
     if (out) { out.sessionId = result.sessionId; out.characterId = characterId }
     return null
@@ -1953,10 +1962,11 @@ function AppShell() {
       const password = await window.api.loadPassword(c.account)
       if (password === null) return { error: 'No saved password — add it with Add account' }
       const gameOpt = gameOptionByCode(c.game)
+      const install = await resolveCharacterLichInstall(adv, c.name, c.game)
       const creds: LoginCredentials = {
         account: c.account, password, character: c.name,
         game: c.game, lichArguments: gameOpt.lichArguments,
-        useLich: c.useLich, lichPath: adv.lichPath, rubyPath: adv.rubyPath,
+        useLich: c.useLich, lichPath: install.lichPath, rubyPath: install.rubyPath,
         lichPort: gameOpt.port, lichMode: adv.lichMode, richStream: effectiveRichStream(adv),
       }
       const result = await window.api.login(creds)
@@ -1976,6 +1986,7 @@ function AppShell() {
         character: c.name,
         game: c.game,
         useLich: c.useLich,
+        lichPath: install.lichPath,
       }, { quiet: true })
       // `quiet`: the new window opens WITHOUT taking focus (main's
       // showInactive), so a player typing into another character keeps it.

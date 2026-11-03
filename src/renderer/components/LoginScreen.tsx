@@ -43,6 +43,9 @@ export interface SessionInfo {
   // Attach mode: the detachable listener this session came from.
   // Presence flips the tab's Reconnect from relaunch-login to re-attach.
   attach?: { host: string; port: number }
+  // The Lich install this session started from (DESIGN §56.7.1); read through
+  // useSessionLichPath. Absent on sessions from before it was carried.
+  lichPath?: string
 }
 
 interface Props {

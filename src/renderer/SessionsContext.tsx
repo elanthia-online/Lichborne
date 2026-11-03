@@ -105,6 +105,8 @@ export interface SessionRecord {
   // Attach mode: set when this session attached to a running Lich —
   // Reconnect re-attaches here instead of relaunching a login.
   attach?: { host: string; port: number }
+  // The Lich install this session started from (DESIGN §56.7.1).
+  lichPath?: string
   status: SessionStatus
 }
 
@@ -153,6 +155,7 @@ export function SessionsProvider({ children }: { children: ReactNode }) {
         game: info.game,
         useLich: info.useLich,
         attach: info.attach,
+        lichPath: info.lichPath,
         status: { ...DEFAULT_STATUS },
       }
       if (existing >= 0) {
