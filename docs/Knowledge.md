@@ -1046,7 +1046,7 @@ Windows is unaffected: Ruby there derives its default external encoding from the
 active code page and has no `LANG` convention.
 
 Lichborne's handling: `spawnEnv()` in
-[LichConnection.ts](src/main/connection/LichConnection.ts) defaults
+[LichConnection.ts](../src/main/connection/LichConnection.ts) defaults
 `LANG=en_US.UTF-8` for the Lich child on non-Windows platforms, and only when
 neither `LANG` nor `LC_ALL` is already set (B250, v0.18.3).
 
@@ -1384,7 +1384,7 @@ Trabe Chalice (intact, fading)
    `(29 roisaen)`. A plural-only regex silently drops every effect in its final
    minute, which is exactly the minute that matters.
 3. **1 roisan = 60 seconds = 1 real minute** (Elanthipedia; the constants live
-   in [elanthianTime.ts](src/shared/elanthianTime.ts) as `ROISAN_SECONDS`).
+   in [elanthianTime.ts](../src/shared/elanthianTime.ts) as `ROISAN_SECONDS`).
    The reading is a **duration**, NOT a server absolute time — so anchoring it
    on the local clock at receipt is correct and immune to clock skew, unlike
    `roundTime`/`castTime`, which ARE absolute and must be anchored on the
@@ -1450,7 +1450,7 @@ Trabe Chalice (intact, fading)
    demand; do not assume one exists without checking.
 
 Lichborne aliases `percWindow` → `spells` (`streamAliases.ts`) and parses it in
-`parseSpellLine` / `deriveSpellState` ([experiences.ts](src/renderer/experiences.ts)).
+`parseSpellLine` / `deriveSpellState` ([experiences.ts](../src/renderer/experiences.ts)).
 
 ### `base-spells.yaml` — the spell/ability reference (verified 2026-09-05)
 

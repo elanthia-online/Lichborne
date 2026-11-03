@@ -2,7 +2,7 @@
 
 AI-facing project guide. Loaded into every Claude session for this repo — keep tight, keep operational, keep current. **If you make a non-trivial architectural change, update this file.** The goal is that a fresh session can pick up the project without re-deriving its conventions from the code.
 
-This file is for *behavior* (what to do / not do, where to look, what not to violate). For *how things work*, link into [DESIGN.md](DESIGN.md). For *what changed*, see [Tracker.md](Tracker.md).
+This file is for *behavior* (what to do / not do, where to look, what not to violate). For *how things work*, link into [DESIGN.md](docs/DESIGN.md). For *what changed*, see [Tracker.md](docs/Tracker.md).
 
 ---
 
@@ -1168,9 +1168,9 @@ Releases ship via `node publish.mjs` (needs `$env:GH_TOKEN`). Cleans `release/`,
 **Writing README.md (the front door, standards set 2026-07-30 by Sekmeht).** It is read by someone who has just landed on the repo and does not yet know what this is. That audience sets every rule below.
 
 - **Three questions, in order: what is it · why is it different · what does it bring me.** Then how to get it. Nothing else earns space above the fold.
-- **Skimmable beats complete.** A bullet is one or two sentences. If a feature needs a paragraph to explain, that paragraph belongs in [Lichborne-User-Guide.md](Lichborne-User-Guide.md) and the README gets one line plus a link. (The pre-v0.18.3 README had single bullets over a thousand words long — exhaustively accurate and completely unreadable. Length was the bug.)
+- **Skimmable beats complete.** A bullet is one or two sentences. If a feature needs a paragraph to explain, that paragraph belongs in [Lichborne-User-Guide.md](docs/Lichborne-User-Guide.md) and the README gets one line plus a link. (The pre-v0.18.3 README had single bullets over a thousand words long — exhaustively accurate and completely unreadable. Length was the bug.)
 - **Not salesy, not hype.** State what it does and let it stand. No superlatives, no "revolutionary", no exclamation marks stacked on features. Being honest about alpha status, platform betas and known limits is part of the tone, not a caveat bolted on the end.
-- **Getting started = DOWNLOAD A RELEASE.** Almost nobody reading this wants to compile anything. Build commands, prerequisites, project structure and the publish flow are DEVELOPER material and do not belong in the main flow — they live in this file (Commands / Packaging) and [DESIGN.md](DESIGN.md). A short pointer at the very bottom for would-be contributors is the most the README should carry.
+- **Getting started = DOWNLOAD A RELEASE.** Almost nobody reading this wants to compile anything. Build commands, prerequisites, project structure and the publish flow are DEVELOPER material and do not belong in the main flow — they live in this file (Commands / Packaging) and [DESIGN.md](docs/DESIGN.md). A short pointer at the very bottom for would-be contributors is the most the README should carry.
 - **Link, don't duplicate.** The User Guide covers features in depth, AINOTICE.md covers AI privacy, Knowledge.md covers Lich/DR internals. The README's job is to get someone to the right door, not to be all of them.
 - **Screenshots earn their place** — a client is a visual product, and one good image says more than a paragraph of prose about panels.
 

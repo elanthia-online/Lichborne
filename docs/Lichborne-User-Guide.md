@@ -507,7 +507,7 @@ Lichborne can use **Claude** to help you out — entirely on your terms.
 - **Bring your own key.** You plug in *your own* Anthropic API key in **Settings → AI**, stored **encrypted on your machine** (never in your profile files, never sent to any Lichborne server — there isn't one). Pick your model there too — **Haiku 4.5** (fast & cheap, the default), **Sonnet 5**, **Opus 4.8**, or **Fable 5** (premium); higher tiers cost more per request, billed to your key.
 - **Opt-in per feature.** Each AI feature has a one-time disclosure you accept before it can send anything.
 - **AI advises and summarizes — it never plays the game.** It **cannot** send commands to DragonRealms, ever. That's a hard line, which keeps every AI feature inside Simutronics' rules.
-- **Your private info is protected.** Your account **PIN / identification numbers, passwords, and account username** are scrubbed from the text before anything is sent — while your log on disk stays untouched. Full details in **[AINOTICE.md](AINOTICE.md)** (also linked in Help → About).
+- **Your private info is protected.** Your account **PIN / identification numbers, passwords, and account username** are scrubbed from the text before anything is sent — while your log on disk stays untouched. Full details in **[AINOTICE.md](../AINOTICE.md)** (also linked in Help → About).
 
 **The first feature — Catch Me Up.** Wandered off and came back? Type **`/ai catchup`** and it fills you in like a companion sitting in your client.
 
@@ -773,7 +773,7 @@ One file, for the things that make sense **app-wide** rather than per character:
 - **AI settings** (your model choice and consent flags — *not* your API key; see below).
 - **App preferences** — "open each character in its own window," whether Analytics is on, whether you get character status toasts, each character's **colour** (from Edit profile), and the "Reconnect Last" roster.
 
-> Your **API key** (if you use AI) is stored **separately and encrypted** by your operating system (DPAPI on Windows, the Keychain on macOS, libsecret or KWallet on Linux) — it's never part of these YAML files and never leaves your machine except to talk to Anthropic. See [AINOTICE.md](AINOTICE.md).
+> Your **API key** (if you use AI) is stored **separately and encrypted** by your operating system (DPAPI on Windows, the Keychain on macOS, libsecret or KWallet on Linux) — it's never part of these YAML files and never leaves your machine except to talk to Anthropic. See [AINOTICE.md](../AINOTICE.md).
 
 *(Heads up: these are **Lichborne's** profiles. Your **Lich script** profiles are different files, inside your Lich installation — edit those from the [Lich Dashboard → Profiles](#the-lich-dashboard).)*
 
@@ -817,7 +817,7 @@ Still stuck? **Join us on Discord** (**Help → Discord** in the app) — we're 
 
 ## License
 
-Lichborne is free, open-source software under the [BSD 3-Clause License](LICENSE) (© 2026 Sekmeht and Binu) — the same license as Lich itself. DragonRealms and StormFront are trademarks of Simutronics Corp.; Lichborne is an independent community project, not affiliated with or endorsed by Simutronics, and playing through it requires your own Simutronics account under Simutronics' terms of service.
+Lichborne is free, open-source software under the [BSD 3-Clause License](../LICENSE) (© 2026 Sekmeht and Binu) — the same license as Lich itself. DragonRealms and StormFront are trademarks of Simutronics Corp.; Lichborne is an independent community project, not affiliated with or endorsed by Simutronics, and playing through it requires your own Simutronics account under Simutronics' terms of service.
 
 ---
 
