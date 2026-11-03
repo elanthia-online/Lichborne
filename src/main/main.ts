@@ -192,6 +192,7 @@ function snapshotKey(evt: GameEvent): string | null {
     case 'scene-cast':    return 'scene-cast'
     // v0.20.2: the id-keyed creature roster is sticky room state the same way.
     case 'creature-roster': return 'creature-roster'
+    case 'creature-target': return 'creature-target'
     case 'character-guild': return 'character-guild'
     case 'exits':         return 'exits'
     // v0.14.7: the game's exits SENTENCE ("Obvious exits: none.") is sticky

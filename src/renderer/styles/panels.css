@@ -338,6 +338,63 @@
 
 .gsx-caption { color: var(--text-muted); font-size: 0.85em; font-style: italic; }
 
+/* ── GS4 Creatures panel ─────────────────────────────────────── */
+/* One row per creature: a clickable name (targets it), its markers, health
+   numbers and states, then a health bar. Built on the gsx-* panel and bar. */
+.gs-crtr-list { list-style: none; margin: 0; padding: 0; }
+.gs-crtr-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.5em;
+  padding: 2px 0 0 0.4em;
+  border-radius: 3px;
+  color: var(--text-secondary);
+}
+.gs-crtr-row--target {
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.gs-crtr-name {
+  font: inherit;
+  color: var(--text-primary);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gs-crtr-row--hostile .gs-crtr-name { color: var(--preset-bold); font-weight: var(--ui-bold-weight); }
+.gs-crtr-name:hover, .gs-crtr-name:focus-visible { text-decoration: underline; outline: none; }
+.gs-crtr-row--target .gs-crtr-name { font-weight: var(--ui-bold-weight); }
+.gs-crtr-row--dead { opacity: 0.55; }
+.gs-crtr-row--dead .gs-crtr-name { color: var(--text-muted); font-weight: normal; }
+.gs-crtr-tag {
+  font-size: 0.75em;
+  line-height: 1;
+  padding: 2px 0.45em;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 16%, transparent);
+  color: var(--text-secondary);
+  cursor: help;
+}
+.gs-crtr-tag--target {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: color-mix(in srgb, var(--accent) 70%, var(--text-primary));
+}
+.gs-crtr-state { font-size: 0.85em; font-style: italic; color: var(--text-muted); }
+.gs-crtr-hp { cursor: help; }
+.gs-crtr-bar { flex: 0 0 100%; }
+.gs-crtr-bar .gsx-bar { margin: 1px 0 0.35em; }
+.gs-crtr-hp--ok  .gsx-bar { --gsx-hue: var(--color-success); }
+.gs-crtr-hp--mid .gsx-bar { --gsx-hue: var(--color-warning); }
+.gs-crtr-hp--low .gsx-bar { --gsx-hue: var(--color-danger); }
+
 /* ============================================================
    Room panel
    ============================================================ */

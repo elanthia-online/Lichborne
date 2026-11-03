@@ -150,11 +150,11 @@ The target persists as an optional launcher-owned `CharacterProfile.attach {host
 
 ### GemStone IV support (gs4-support PR; DESIGN §56)
 GS4 is a second game family (`GameFamily`, from the shard code). Game-specific surfaces are gated, never forked:
-- panels through `PANEL_GAMES` (`effects`/`encumbrance` GS4-only, `spells` DR-only; `exp` renders per family);
+- panels through `PANEL_GAMES` (`effects`/`encumbrance`/`creatures` GS4-only, `spells` DR-only; `exp` renders per family);
 - Experiences through `ExperienceDef.games`;
 - fresh layouts through the family-aware `defaultMidTabs`/`defaultBottomTabs`/`seedDefaultWindows`.
 
-**A new game-specific surface needs its gate AND a placeholder for a tab carried over by Profile Transfer.** The parser stays family-agnostic: each game's ids never appear on the other's wire. Check a GS4 claim against the captures in DESIGN §56 before relying on it.
+**A new game-specific surface needs its gate AND a placeholder for a tab carried over by Profile Transfer.** The parser stays family-agnostic: each game's ids never appear on the other's wire. **The creature roster is shared but the wire differs:** GS4 puts `<crtrStatus>` INSIDE the `room objs` component and re-sends lone tags mid-fight, DR puts them after it; both shapes must keep producing the same roster (DESIGN §56.5). Check a GS4 claim against the captures in DESIGN §56 before relying on it.
 
 ### Game-text pipeline
 `SGEConnection`/`LichConnection` → `ConnectionManager` (line events) → `LichBridge.interceptLine` → `StormFrontParser.parse` (stateful XML tokenizer) → `GameEvent[]` → batched IPC → `GameWindow`.

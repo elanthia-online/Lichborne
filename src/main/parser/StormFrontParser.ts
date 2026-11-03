@@ -83,11 +83,24 @@
 //    Don't add gates speculatively; extend the recognized-id lists instead,
 //    the same way the progressbar/vitals case does.
 
-import type { GameEvent, StreamTarget, TextSegment, EffectsDialog, EffectsUpdateEvent, GsExperienceEvent, GsEncumbranceEvent, GameFamily } from '../../shared/types'
+import type { GameEvent, StreamTarget, TextSegment, EffectsDialog, EffectsUpdateEvent, GsExperienceEvent, GsEncumbranceEvent, GameFamily, CreatureStatus } from '../../shared/types'
 import { STREAM_ID_ALIASES, normalizeStreamId } from '../../shared/streamAliases'
 import { runSceneCapturers } from './sceneCapturers'
 import { TAG_PATTERN, stripTags } from '../../shared/xmlTag'
 import { boldRuns, type RosterName } from '../../shared/sceneExtract'
+
+// One <crtrStatus> tag: an id, its set flags, and on GS4 its health.
+interface RosterTag { id: string; flags: string[]; health?: number; maxHealth?: number }
+
+// A <crtrStatus> number as lich-5 reads it (strict_crtr_integer): digits only.
+function crtrInt(v: string | undefined): number | undefined {
+  return v !== undefined && /^[+-]?\d+$/.test(v) ? parseInt(v, 10) : undefined
+}
+
+function sameTag(c: CreatureStatus, t: RosterTag): boolean {
+  return c.health === t.health && c.maxHealth === t.maxHealth
+    && c.flags.length === t.flags.length && c.flags.every((f, i) => f === t.flags[i])
+}
 
 // GS4's timed-effect dialogs, exact case (verified against real captured GS4
 // session fixtures — VellumFE's tests/fixtures/active_*.xml, buffs_progress.xml).
@@ -204,6 +217,9 @@ const SILENT_TAGS = new Set([
   'container', 'opendialog', 'exposecontainer', 'clearcontainer',
   // Genie/StormFront UI chrome — quickbars, links, layout (image handled separately for injuries)
   'skin', 'radio', 'link', 'switchquickbar', 'endsetup', 'resource', 'exposestream',
+  // GS4's command bars and combat dialog, which Lichborne does not draw
+  // (DESIGN §56.6); its target picker is read in tagStart's 'dropdownbox'.
+  'cmdbutton', 'menulink', 'updowneditbox',
   // Movement navigation frame marker — no display content
   'nav',
 ])
@@ -563,7 +579,14 @@ export class StormFrontParser {
   // (an older server, or a front-end path that strips it), so no roster is
   // emitted and the renderer keeps its name-based fallback.
   private crtrSeen = false
-  private rosterPending: { names: RosterName[] | null; list: { id: string; flags: string[] }[] } | null = null
+  private rosterPending: { names: RosterName[] | null; list: RosterTag[] } | null = null
+  // The roster last emitted. GS4 sends a creature's tag again on its own as a
+  // fight changes it (health, stunned, prone) with no room objs refresh after
+  // it in 37% of cases (184 captures); flushRoster merges those into this.
+  private lastRoster: CreatureStatus[] = []
+  // GS4's current target id (the combat dialog's dDBTarget), null for none;
+  // undefined until the game has sent one, so a DR session never emits it.
+  private gsTargetId: string | null | undefined = undefined
   // Bold linked names seen in main text since the last roster flush. DR cuts the
   // `room objs` component short in a crowded room, but the main-text "You also
   // see" line is complete, so a creature the component dropped (a corpse, an
@@ -615,7 +638,23 @@ export class StormFrontParser {
     // Only a room-list refresh is a COMPLETE snapshot. A lone batch of tags with
     // no room objs before it (Lich allows for one, xmlparser.rb) would read as
     // "everyone else left" and empty the arena; it's dropped instead.
-    if (p.names === null) return
+    // It updates the creatures already listed instead: GS4 re-sends a
+    // creature's tag on its own each time a blow changes it. An id not in the
+    // list waits for the next room refresh.
+    if (p.names === null) {
+      let changed = false
+      const merged = this.lastRoster.map(c => {
+        const t = p.list.find(x => x.id === c.id)
+        if (!t || sameTag(c, t)) return c
+        changed = true
+        return { ...c, flags: t.flags, health: t.health, maxHealth: t.maxHealth }
+      })
+      if (changed) {
+        this.lastRoster = merged
+        this.emit({ type: 'creature-roster', creatures: merged })
+      }
+      return
+    }
     if (p.list.length === 0 && (p.names?.length ?? 0) > 0) return
     // The rich stream links each creature, and the link's id is the tag's id:
     // pair exactly. Legacy has no ids, so names pair by position, and only
@@ -623,14 +662,14 @@ export class StormFrontParser {
     const byId = new Map<string, string>()
     for (const n of p.names) if (n.exist) byId.set(n.exist, n.name)
     const pair = byId.size === 0 && p.names.length === p.list.length
-    this.emit({
-      type: 'creature-roster',
-      creatures: p.list.map((c, i) => ({
-        id: c.id,
-        name: byId.get(c.id) ?? links.get(c.id) ?? (byId.size === 0 && pair ? p.names![i].name : null),
-        flags: c.flags,
-      })),
-    })
+    this.lastRoster = p.list.map((c, i) => ({
+      id: c.id,
+      name: byId.get(c.id) ?? links.get(c.id) ?? (byId.size === 0 && pair ? p.names![i].name : null),
+      flags: c.flags,
+      ...(c.health !== undefined ? { health: c.health } : {}),
+      ...(c.maxHealth !== undefined ? { maxHealth: c.maxHealth } : {}),
+    }))
+    this.emit({ type: 'creature-roster', creatures: this.lastRoster })
   }
 
   // Call when a new connection is established to clear carry-over state.
@@ -676,6 +715,8 @@ export class StormFrontParser {
     this.ownRoomName       = ''
     this.navSeen           = false
     this.crtrSeen          = false
+    this.lastRoster        = []
+    this.gsTargetId        = undefined
     this.rosterPending     = null
     this.rosterLinks       = new Map()
     if (!opts.keepGameFlags) this.descriptionsOff = false
@@ -837,6 +878,7 @@ export class StormFrontParser {
       // in the renderer on room change ran a frame AFTER the new
       // roster had arrived in the same batch, and wiped it.
       this.rosterPending = null
+      this.lastRoster = []
       if (this.crtrSeen) this.emit({ type: 'creature-roster', creatures: [] })
     }
     // A subtitle naming a DIFFERENT room is a move: any view of
@@ -1537,6 +1579,10 @@ export class StormFrontParser {
           this.captureBuf = ''
           this.captureSegments = []
           if (id === 'room exits') this.componentExitDirs = []
+          // GS4 puts the <crtrStatus> tags INSIDE the component, ahead of each
+          // name (DR sends them after it): start the list here so the end
+          // keeps them. Anything pending from before this refresh is replaced.
+          if (id === 'room objs') this.rosterPending = { names: null, list: [] }
         }
         break
       }
@@ -1634,16 +1680,38 @@ export class StormFrontParser {
         const id = attrs.exist
         if (!id) break
         this.crtrSeen = true
+        // GS4 also sends the creature's exact health and maximum: numbers, not
+        // flags (lich-5 creature_base.rb, strict_crtr_integer).
         const flags = Object.keys(attrs)
-          .filter(k => k !== 'exist' && attrs[k] && attrs[k] !== '0')
+          .filter(k => k !== 'exist' && k !== 'health' && k !== 'maxhealth' && attrs[k] && attrs[k] !== '0')
           .map(k => k.toLowerCase())
+        const tag: RosterTag = { id, flags }
+        const health = crtrInt(attrs.health), maxHealth = crtrInt(attrs.maxhealth)
+        if (health !== undefined) tag.health = health
+        if (maxHealth !== undefined) tag.maxHealth = maxHealth
         if (!this.rosterPending) this.rosterPending = { names: null, list: [] }
         // The newest tag is the whole state. A rich move sends a creature's tag
         // twice before its prompt (after the room objs component, and again
         // inside the <room> block), which would otherwise list it twice.
         const at = this.rosterPending.list.findIndex(c => c.id === id)
-        if (at >= 0) this.rosterPending.list[at] = { id, flags }
-        else this.rosterPending.list.push({ id, flags })
+        if (at >= 0) this.rosterPending.list[at] = tag
+        else this.rosterPending.list.push(tag)
+        break
+      }
+
+      case 'dropdownbox': {
+        // GS4's combat dialog target picker. Only the current target is used
+        // (the Creatures panel marks it), by lich-5's rule (xmlparser.rb): the
+        // first option is it when that option is an id, else there is none.
+        // The game re-sends the box on every room change, so only a change
+        // is emitted.
+        if (attrs.id !== 'dDBTarget') break
+        const m = /^#(-?\d+)(?:,|$)/.exec(attrs.content_value ?? '')
+        const target = m ? m[1] : null
+        if (target !== this.gsTargetId) {
+          this.gsTargetId = target
+          this.emit({ type: 'creature-target', id: target })
+        }
         break
       }
 
@@ -1921,10 +1989,11 @@ export class StormFrontParser {
           this.componentExitDirs = []
         } else {
           const stream = COMPONENT_STREAM[id]
-          // A creature-list refresh opens the roster its <crtrStatus> tags fill.
+          // A creature-list refresh names the roster its <crtrStatus> tags fill:
+          // GS4's came inside it (kept from the start above), DR's follow it.
           // The bold spans are the creatures, in the same order as the tags.
           if (id === 'room objs') {
-            this.rosterPending = { names: boldRuns(capturedSegments), list: [] }
+            this.rosterPending = { names: boldRuns(capturedSegments), list: this.rosterPending?.list ?? [] }
           }
           if (stream) {
             this.emit({ type: 'clear-stream', stream })

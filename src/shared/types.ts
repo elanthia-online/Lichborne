@@ -463,6 +463,7 @@ export type GameEvent =
   | SceneLogonEvent
   | CharacterGuildEvent
   | CreatureRosterEvent
+  | CreatureTargetEvent
   | RichStreamEvent
   | RoomDescEvent
 
@@ -792,10 +793,21 @@ export interface SceneCreature {
 // (Lich's own all-or-nothing rule, xmlparser.rb); null otherwise. A complete
 // snapshot each time — an id missing from it has left the room (decayed,
 // skinned, walked off). STICKY state, snapshotted for replay.
-export interface CreatureStatus { id: string; name: string | null; flags: string[] }
+//
+// GS4's tags also carry the creature's exact `health` and `maxhealth` (DR's
+// carry neither), kept as numbers. A pet or familiar sends 0/0. A tag sent on
+// its own mid-fight updates an id already listed (StormFrontParser.flushRoster).
+export interface CreatureStatus { id: string; name: string | null; flags: string[]; health?: number; maxHealth?: number }
 export interface CreatureRosterEvent {
   type: 'creature-roster'
   creatures: CreatureStatus[]
+}
+
+// GS4's current target (the combat dialog's dDBTarget picker): the creature's
+// id, or null for none. Emitted only on change. STICKY state.
+export interface CreatureTargetEvent {
+  type: 'creature-target'
+  id: string | null
 }
 
 // The full current cast. STICKY state (snapshotted for window-handoff replay,
