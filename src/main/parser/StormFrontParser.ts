@@ -1258,8 +1258,10 @@ export class StormFrontParser {
           // value='<percent>' text='health N/M'. So for a GS4 session the
           // N/M shape is read whether or not customText is set; DR's texts
           // ('mana 86%' live, 'health 86%' on attach) never match it.
+          // Current keeps its sign: GS4 reports a dying character's raw
+          // negative health ('health -5/355', lich-5's own attach spec).
           const curMaxMatch = (customText || this.family === 'GS4')
-            ? text.match(/(\d+)\s*\/\s*(\d+)\s*$/) : null
+            ? text.match(/(-?\d+)\s*\/\s*(\d+)\s*$/) : null
           let current = value
           let max = 100
           let label: string | undefined

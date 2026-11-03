@@ -62,8 +62,12 @@ export default function AttachModal({ onCancel, onAttach, initial = null, known 
   const [port, setPort] = useState('8001')
   // Game defaults to the last attach's (an old saved prefill has none: DR,
   // which every attach was before GS4), and follows a typed name's profile.
-  const [game, setGame] = useState(
+  const [defaultGame] = useState(
     GAMES.some(g => g.code === initial?.game) ? initial!.game! : 'DR')
+  const [game, setGame] = useState(defaultGame)
+  // Set once the player picks a game by hand. From then on the name no longer
+  // moves the picker, so typing never undoes a deliberate choice.
+  const [gamePicked, setGamePicked] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   // True while host/port reflect a saved target rather than hand-typed values
@@ -76,7 +80,10 @@ export default function AttachModal({ onCancel, onAttach, initial = null, known 
   // stick (editing host/port doesn't re-trigger this; only the name does).
   useEffect(() => {
     const k = known[character.trim().toLowerCase()]
-    if (k && GAMES.some(g => g.code === k.game)) setGame(k.game)
+    // Follow the name both ways: a matching tile's game, and back to the
+    // open-time default when the name stops matching (typing "Iltena" passes
+    // through an "Ilten" tile on the way).
+    if (!gamePicked) setGame(k && GAMES.some(g => g.code === k.game) ? k.game : defaultGame)
     const t = k?.attach
     if (t) {
       setHost(t.host)
@@ -172,7 +179,7 @@ export default function AttachModal({ onCancel, onAttach, initial = null, known 
             Game
             <select
               value={game}
-              onChange={e => setGame(e.target.value)}
+              onChange={e => { setGame(e.target.value); setGamePicked(true) }}
               disabled={busy}
               className="cne-input"
             >

@@ -496,8 +496,14 @@ export async function saveCharacterAttach(
     // character wants to see that character, and this fires once per attach —
     // it is not a persistent override of their choice.
     expandAccountOnce(profile.account ?? account)
-    if (profile.attach?.host === attach.host && profile.attach?.port === attach.port) return
-    await window.api.writeCharacterProfile(characterName, { ...profile, attach })
+    // An attach-only stub takes the game it was just attached with, so a stub
+    // saved under the wrong game is corrected by re-attaching with the right
+    // one. A real login profile keeps its game: at this layer a DR and a GS4
+    // character of the same name share one file, and repointing it would
+    // move the login character to the other game.
+    const regame = profile.account === 'attach' && profile.game !== game
+    if (!regame && profile.attach?.host === attach.host && profile.attach?.port === attach.port) return
+    await window.api.writeCharacterProfile(characterName, { ...profile, attach, ...(regame ? { game } : {}) })
     return
   }
   // Prior accounts, read BEFORE the write, for the 1→2 transition below.
