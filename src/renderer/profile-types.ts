@@ -182,7 +182,7 @@ export interface CharacterProfile {
   // v0.8.0: per-character launcher metadata. Edited via the Notes editor
   // modal (Edit Profile… in the tile ⋯ menu). All optional — undefined
   // means "not set" and is rendered as empty / hidden on the tile.
-  guild?: string         // canonical guild key (lowercase, matches themes.ts entries: 'empath', 'moonmage', etc.)
+  guild?: string         // lowercase key: a DR guild (GUILDS in CharacterNotesEditor; matches themes.ts, e.g. 'empath', 'moonmage') or, on a GS4 shard, a profession (GS4_PROFESSIONS; monk, rogue, sorcerer, warrior and wizard have no theme). Read it with the character's game: never key a DR guild verb or a guild theme off it alone
   circle?: number        // character circle / level — surfaced on the tile meta line
   notes?: string         // free-text notes (multi-line); when non-empty, the tile shows a ✎ indicator
   // Attach mode: the detachable Lich listener this character was last

@@ -26,7 +26,7 @@ import { backdropHandlers } from "../utils/backdropClose"
 import { useEscapeClose } from '../hooks/useEscapeClose'
 import { createPortal } from 'react-dom'
 import { GAMES, IS_MAC, IS_WINDOWS } from '../lichSettings'
-import type { GameFamily } from '../../shared/types'
+import { gameFamilyName, type GameFamily } from '../../shared/types'
 import { useSessions } from '../SessionsContext'
 import type { CharacterProfile } from '../profile-types'
 import {
@@ -37,8 +37,8 @@ import { showToast } from '../toasts'
 import '../styles/wizard.css'
 
 const GAME_GROUPS: { family: GameFamily; label: string }[] = [
-  { family: 'DR',  label: 'DragonRealms' },
-  { family: 'GS4', label: 'GemStone IV' },
+  { family: 'DR',  label: gameFamilyName('DR') },
+  { family: 'GS4', label: gameFamilyName('GS4') },
 ]
 
 // AddCharacterWizard — Add-Account discovery flow (rewritten v0.8.0).

@@ -52,7 +52,7 @@ export interface LauncherCharacter {
   useLich: boolean
   hidden:  boolean    // v0.8.0: soft-delete flag; hidden tiles only render when Show Hidden is on
   favorite: boolean   // v0.8.0: mirrored into the Favorites section at the top of the launcher
-  guild?:  string     // v0.8.0: optional guild key (lowercase canonical, see GUILDS in CharacterNotesEditor)
+  guild?:  string     // v0.8.0: optional lowercase key: a DR guild (GUILDS) or a GS4 profession (GS4_PROFESSIONS), both in CharacterNotesEditor; read it with `game`
   circle?: number     // v0.8.0: optional character circle / level
   notes?:  string     // v0.8.0: optional free-text notes; tile shows a ✎ indicator when set
   // Attach mode: last detachable listener this character attached to.
