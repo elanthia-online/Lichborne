@@ -172,7 +172,11 @@ export class ConnectionManager extends EventEmitter {
 
     // The rich stream (DESIGN §55.11): after the two handshake lines, which
     // connect() wrote synchronously, so the socket keeps them in order.
-    if (shouldDeclareRichStream(creds.richStream, creds.lichPath)) {
+    // DragonRealms only: Lich's rich-stream rewrites are DR's (GemStone's
+    // adapt_for_frontend is a no-op — it sends links and bold under any
+    // client), so for GS4 the line did nothing but print a "DragonRealms'
+    // rich stream" status.
+    if (gameFamilyFromCode(creds.game) === 'DR' && shouldDeclareRichStream(creds.richStream, creds.lichPath)) {
       this.lich.send(FRONTEND_CAPS_LINE)
       this.emit('status', "Connected via Lich, with DragonRealms' rich stream.")
       return
@@ -277,7 +281,7 @@ export class ConnectionManager extends EventEmitter {
     // The rich stream (DESIGN §55.11). Straight after connecting, as Lich's
     // doc asks, and before the `look`, so the room comes back rich. A
     // declaration is per connection, so a re-attach sends it again.
-    if (shouldDeclareRichStream(creds.richStream, creds.lichPath, creds.host)) {
+    if (gameFamilyFromCode(creds.game) === 'DR' && shouldDeclareRichStream(creds.richStream, creds.lichPath, creds.host)) {
       this.attach.send(FRONTEND_CAPS_LINE)
     }
     this.emit('status', step(2, ATTACH_STEPS, 'Attached — requesting a room refresh…'))

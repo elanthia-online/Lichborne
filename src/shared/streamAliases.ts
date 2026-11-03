@@ -18,6 +18,11 @@ export const STREAM_ID_ALIASES: Record<string, string> = {
   talk:          'conversation',
   conversations: 'conversation',  // pre-v0.8.10 Lichborne plural form
   whispers:      'conversation',
+  // GemStone IV's speech window. Like DR's `talk`, every line is ALSO sent
+  // to main (30 of 30 in the GS4 captures), so it needs no main fallback
+  // (B136); without the alias a GS4 Conversation panel stayed empty. No DR
+  // source (game, lich-5, dr-scripts) pushes `speech`.
+  speech:        'conversation',
   // Server emits "death" (singular); panel id is plural.
   death:         'deaths',
   // Server emits "logons" for arrivals/departures.

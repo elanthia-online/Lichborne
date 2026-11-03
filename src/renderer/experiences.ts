@@ -11,7 +11,7 @@
 // discovery-filter audit. If a change here seems to need a panel-system file,
 // the design is drifting back to §34.2's rejected models — stop and re-read.
 import type { ComponentType } from 'react'
-import type { RoomState, ScenePlayer, SceneCreature, CreatureStatus } from '../shared/types'
+import type { RoomState, ScenePlayer, SceneCreature, CreatureStatus, GameFamily } from '../shared/types'
 import type { CombatRange, AssessEntity, Engagement, StrikeEvent } from '../shared/combatExtract'
 import { sunPositionAt } from '../shared/elanthianSun'
 import { ROISAN_SECONDS, ANLAS_ROISAEN } from '../shared/elanthianTime'
@@ -1491,6 +1491,10 @@ export function defaultHiddenMap(def: ExperienceDef): Record<string, boolean> {
 
 export interface ExperienceDef {
   id: string                  // own id space, disjoint from streams/panels
+  // Which game families this Experience reads anything from (absent = both),
+  // like PanelFrame's PANEL_GAMES. Moons draws DR's sky and Spell Monitor
+  // reads DR's percWindow; neither has anything to show for GemStone IV.
+  games?: GameFamily[]
   label: string               // user-facing name shown on the shelf
   kind: 'instrument' | 'scene'
   desc: string                // one-liner for the shelf catalog row
@@ -1566,6 +1570,7 @@ export const EXPERIENCES: ExperienceDef[] = [
     // 'moons' (persisted instances + `exp:moons` tabs reference it). Distinct
     // from moonwatch's "Moons" STREAM by the [e] badge (+ menu AND tab strip).
     id: 'moons',
+    games: ['DR'],
     label: 'Moons',
     kind: 'instrument',
     desc: 'Elanthia\'s sky as a living dial — the three moons and the sun arc across the heavens with live rise/set countdowns, weather, and the Elanthian date. Powered by the community moonwatch script.',
@@ -1606,6 +1611,7 @@ export const EXPERIENCES: ExperienceDef[] = [
     // Moons STREAM read identically in a tab strip). A distinct id avoids
     // repeating that.
     id: 'spellmonitor',
+    games: ['DR'],
     label: 'Spell Monitor',
     kind: 'instrument',
     desc: 'Everything currently on you as a grid of live countdowns — each running green while full, yellow past halfway and red as it nears its end.',
@@ -1641,6 +1647,10 @@ export const EXPERIENCES: ExperienceDef[] = [
     textEquivalent: 'The Active Spells panel — the game’s own percWindow readout, listing each effect and the roisaen remaining on it.',
   },
 ]
+
+export function experienceAvailable(def: ExperienceDef, family: GameFamily | undefined): boolean {
+  return !family || !def.games || def.games.includes(family)
+}
 
 export function experienceById(id: string): ExperienceDef | undefined {
   return EXPERIENCES.find(e => e.id === id)

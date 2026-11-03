@@ -11458,7 +11458,18 @@ Verified against 184 GS4 session captures (2026-10-26 to 10-29, 123,261 effect b
 - **Default layout:** a fresh GS4 character's bottom zone is Effects + Log (`defaultBottomTabs`). Saga also ships its timers panel visible.
 - **Slash commands:** no new noun. `/panel open effects` covers it, and `getOpenableStreams` now applies the same family gate as the + menu, so `/panel open exp` can't open DR's Experience panel on GS4 (Principle #11).
 
-### 56.3 Not built
+### 56.3 GS4 configuration fixes (the parity audit)
+
+Found by replaying the 184 GS4 captures through the parser and checking each stream and dialog against what the renderer does with it:
+
+- **`speech` → Conversation** (`STREAM_ID_ALIASES`). GS4's speech window is DR's `talk`: every line is also sent to main (30 of 30), so it takes the B136 rule of an alias with no main fallback. Before this, a GS4 Conversation panel stayed empty. No DR source pushes `speech`.
+- **`loot` falls back to main.** GS4's SEARCH results arrive only in `loot`, an append-only log (0 of 609 lines reached main), so with no panel open a SEARCH printed nothing.
+- **`bounty` and `society` have no fallback, by the `group` rule.** Both are state windows, a `<clearStream>` followed by the whole task, repainted after every kill or sale (up to 30 times a session), while the progress line itself goes to main. A fresh GS4 character gets a Bounties tab instead (`defaultMidTabs`, `seedDefaultWindows`).
+- **`Spells` stays discoverable on GS4.** Discovery drops an id whose lowercase matches a builtin type, and `Spells` matches DR's `spells`. The drop now applies only where that type is available, so GS4's declared Spells window can still be found. No capture has pushed text to it yet.
+- **The rich-stream declaration is DR-only** (`ConnectionManager`, both connect paths). GemStone's `adapt_for_frontend` is a no-op in lich-5 (`games.rb`), so the line did nothing on GS4 except print "Connected via Lich, with DragonRealms' rich stream". `/richstream` on a GS4 character now says the setting is DR-only.
+- **DR-only Experiences are gated.** `ExperienceDef.games`: Moons (DR's sky) and Spell Monitor (DR's `percWindow`) are `['DR']`, so they are left out of a GS4 character's shelf and + menu. An instance carried over by Profile Transfer shows a one-line placeholder. The Tableau reads room components, which GS4 sends too, so it stays.
+
+### 56.4 Not built
 
 - **Skipped on purpose:**
   - ProfanityFE's script-pushed `ProfanityCustom` timers.
