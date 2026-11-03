@@ -1,6 +1,6 @@
 # Lichborne
 
-A DragonRealms client for people who've spent years in StormFront, Genie, or Frostbite — and have opinions about all three.
+A DragonRealms and GemStone IV client for people who've spent years in StormFront, Genie, or Frostbite — and have opinions about all three.
 
 It connects through [Lich5](https://github.com/elanthia-online/lich-5) (recommended) or straight to the game server, and it's free.
 
@@ -15,6 +15,8 @@ It connects through [Lich5](https://github.com/elanthia-online/lich-5) (recommen
 ## What it is
 
 A front-end for DragonRealms: the window you actually play in. It renders the game, gives you somewhere to put your streams, and remembers how you like things.
+
+It plays GemStone IV too (Prime and Shattered), with panels of its own for effects, encumbrance and creatures. A few views are still DragonRealms-only; the [User Guide](docs/Lichborne-User-Guide.md#dragonrealms-and-gemstone-iv) lists which.
 
 It isn't a replacement for Lich — Lich still owns your scripts, maps, and automation. Lichborne is the display and configuration layer on top, and it makes what Lich already knows visible. You can also play without Lich entirely; you'll just be doing more by hand.
 
@@ -57,7 +59,7 @@ And if you already run Lich, Lichborne sits alongside it. Same install, same pat
 
 **2. Set up Lich (recommended).** If you already run [Lich5](https://github.com/elanthia-online/lich-5), point Lichborne at it: **⚙ Lich Setup → Auto-detect**. On macOS and Linux you'll need Ruby 4 installed too. Skipping this is fine — pick **Direct** on a character tile and you'll connect straight to the game without Lich's features.
 
-**3. Add your account.** Click **+ Add account** and sign in. Lichborne finds your characters and makes a tile for each one. You do this once per account.
+**3. Add your account.** Click **+ Add account**, sign in and pick your game. Lichborne finds your characters and makes a tile for each one. You do this once per account, for each game you play on it.
 
 **4. Connect and arrange.** Click a character, then open **Layout** to place your panels. Whatever you change is saved for that character automatically.
 
@@ -132,4 +134,4 @@ Needs Node 24+. Build commands, project layout, conventions, and the release pip
 
 Lichborne is open source under the [BSD 3-Clause License](LICENSE) — the same license as [Lich](https://github.com/elanthia-online/lich-5) itself. Copyright © 2026 Sekmeht and Binu.
 
-DragonRealms and StormFront are trademarks or registered trademarks of Simutronics Corp. Lichborne is an independent, unofficial community project — not affiliated with, sponsored by, or endorsed by Simutronics. Playing DragonRealms through Lichborne requires your own Simutronics account and is subject to Simutronics' terms of service.
+DragonRealms, GemStone IV and StormFront are trademarks or registered trademarks of Simutronics Corp. Lichborne is an independent, unofficial community project — not affiliated with, sponsored by, or endorsed by Simutronics. Playing through Lichborne requires your own Simutronics account and is subject to Simutronics' terms of service.

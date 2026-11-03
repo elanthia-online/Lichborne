@@ -19,7 +19,7 @@ _Last updated: v0.17.2._
   account **PIN / identification numbers**, **passwords**, and **account username**
   are removed from the text on its way to the AI.
 - **AI advises and summarizes — it never plays the game.** It cannot send commands
-  to DragonRealms, ever.
+  to the game (DragonRealms or GemStone IV), ever.
 
 ---
 
@@ -97,7 +97,7 @@ saved logs or what you see on screen.
 ## What the AI can and cannot do
 
 - It can **advise, summarize, compose, and decorate**.
-- It **cannot issue game commands** — no AI output is ever sent to DragonRealms as a
+- It **cannot issue game commands** — no AI output is ever sent to the game as a
   command. This keeps every AI feature within Simutronics' policies.
 
 ## Your data at Anthropic

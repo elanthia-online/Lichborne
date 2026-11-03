@@ -133,12 +133,28 @@
     - 38.7 Type-anywhere focuses the bar (F60)
 39. [Global Cross-Character Rules](#39-global-cross-character-rules-f37-shipped-v0152)
 40. [v0.15.2 batch records — search, session restore, settings nav, virtualization decision](#40-v0152-batch-records--search-session-restore-settings-nav-virtualization-decision)
+41. [Cross-Platform Support — Windows · Linux · macOS (v0.18.0)](#41-cross-platform-support--windows--linux--macos-v0180)
+42. [SimuCoin Claim (F71, v0.18.0)](#42-simucoin-claim-f71-v0180)
+43. [Modal Chrome Unification (v0.18.0)](#43-modal-chrome-unification-v0180)
+44. [Connect Feedback & QuickSend Targeting (v0.18.0)](#44-connect-feedback--quicksend-targeting-v0180)
+45. [Performance Audit — findings & structure (v0.18.0)](#45-performance-audit--findings--structure-v0180)
+46. [Prioritised Backlog — features & UX polish (snapshot 2026-07-30)](#46-prioritised-backlog--features--ux-polish-snapshot-2026-07-30)
+47. [Views — Session & Overview (v0.19.0)](#47-views--session--overview-v0190)
+48. [Attach Mode — connect to an already-running Lich (PR #2, Kahlen, v0.19.4)](#48-attach-mode--connect-to-an-already-running-lich-pr-2-kahlen-v0194)
+49. [Named Colors — the linked palette (F115, v0.19.8)](#49-named-colors--the-linked-palette-f115-v0198)
+50. [Text styles, compass options, and the Tableau person menu (v0.20.1)](#50-text-styles-compass-options-and-the-tableau-person-menu-v0201)
+51. [The Living Tableau in combat, and a screen that holds still (v0.20.2)](#51-the-living-tableau-in-combat-and-a-screen-that-holds-still-v0202)
+52. [The Tableau's sense of place, room by room (v0.20.3)](#52-the-tableaus-sense-of-place-room-by-room-v0203)
+53. [Window zoom, game text size, and number fields (v0.20.4)](#53-window-zoom-game-text-size-and-number-fields-v0204)
+54. [Small fixes from a read-through, and lessons from ProfanityFE (v0.20.5)](#54-small-fixes-from-a-read-through-and-lessons-from-profanityfe-v0205)
+55. [The rich DragonRealms stream (v0.21.0)](#55-the-rich-dragonrealms-stream-v0210)
+56. [GemStone IV support — panels, login by game, Lich installs, profile keys (PRs 4–10, the gs4 stack)](#56-gemstone-iv-support--panels-login-by-game-lich-installs-profile-keys-prs-410-the-gs4-stack)
 
 ---
 
 ## 1. Vision
 
-Lichborne is a DragonRealms game client built for **real players** — from first-timers to veterans who have played for 30 years. It connects via Lich (primary) or direct SGE (fallback), and layers AI assistance on top of the raw game experience.
+Lichborne is a DragonRealms and GemStone IV game client built for **real players** — from first-timers to veterans who have played for 30 years. It connects via Lich (primary) or direct SGE (fallback), and layers AI assistance on top of the raw game experience. (It was DragonRealms-only until the GS4 stack, PRs #4–#10; game-specific surfaces are gated by game family, §56.)
 
 **Design principles:**
 - **Composable** — every panel is independently movable, resizable, floatable, and closeable
@@ -296,7 +312,7 @@ Saved heights persist across mode changes — toggling 3→2→3 restores the us
 
 **Migration defaults when the `*Added` flag is missing:** Main-Top → `false` (Main-Top is new in v0.8.1; users opt in explicitly), other three → `true` (preserves the v0.8.0 always-visible behavior for existing users who never opened the new manager). New users start with the same defaults — three right-column slots populated with their stream defaults, Main-Top removed.
 
-**Streams.** Each added slot's section in the Panel Manager lists the streams currently in that slot, with per-row controls to **reorder** the stream within its slot (◀ / ▶ — moves the tab one position left or right in the slot's PanelFrame tab bar; v0.8.2), **move** the stream to a different added slot (`→ Zone-Name`), or **remove** it (returns it to Available Streams). The Available Streams section shows every builtin PanelType not yet placed, plus any discovered custom streams; rows there show `+ Zone` buttons that target each currently-added slot.
+**Streams.** Each added slot's section in the Panel Manager lists the streams currently in that slot, with per-row controls to **reorder** the stream within its slot (◀ / ▶ — moves the tab one position left or right in the slot's PanelFrame tab bar; v0.8.2), **move** the stream to a different added slot (`→ Zone-Name`), or **remove** it (returns it to Available Streams). The Available Streams section shows every builtin PanelType not yet placed (since the GS4 stack, only those available to the character's game, `PANEL_GAMES` via `panelTypeAvailable`; §56.2), plus any discovered custom streams; rows there show `+ Zone` buttons that target each currently-added slot.
 
 A **Reset panels** row restores defaults. Since v0.19.7 it is the last item under Panel locations, and it asks first (B370). It restores all four slots added (yes, including Main-Top — Reset is "everything visible", not "back to new-user state"), with their default streams.
 
@@ -1816,7 +1832,7 @@ The launcher ([Launcher.tsx](../src/renderer/components/Launcher.tsx)) is the pr
 2. **Welcome card** — when there are zero character profiles on disk. Single `+ Add account` CTA.
 3. **Favorites discoverability hint** — a single dismissable line above the account sections, shown only when the user has tiles but no Favorites and hasn't already dismissed (`lichborne.launcher.favTipDismissed` localStorage flag).
 4. **Favorites section** — always at the top, always expanded. Mirrors any tile with `profile.favorite === true`. Account-mixed, so tiles here keep the account name in their meta line (the `showAccount` prop is true here, false in the account-section context). Hidden overrides favorite — a hidden + favorited character only appears here when Show Hidden is on.
-5. **Per-account sections** — grouped by account, sorted alphabetically. Within each account, sub-sectioned by game (DR/DRX/DRF — DRT tiles render under DR since DRT is a per-character override). Empty sections don't render.
+5. **Per-account sections** — grouped by account, sorted alphabetically. Within each account, sub-sectioned by game (DR/DRX/DRF — DRT tiles render under DR since DRT is a per-character override). Empty sections don't render. (Since the GS4 stack, `GAME_SECTIONS` also has GS3 and GSF, with GST tiles under GS3, and an All / DR / GS filter sits above the sections when the characters span both games; see §56.7.2.)
 6. **`+ Add account` bottom tile** + **Show N hidden profiles** toggle at the bottom of the grid.
 
 **Tile structure (3 rows):**
@@ -1829,6 +1845,8 @@ The launcher ([Launcher.tsx](../src/renderer/components/Launcher.tsx)) is the pr
 └──────────────────────────────────────┘
 ```
 
+(Since the GS4 stack, the meta line names the shard, e.g. "DragonRealms Prime", with the code in its tooltip, and GS4 tiles show profession and level; the TEST pill is on DR and GS Prime tiles. See §56.7.2 and §56.7.3.)
+
 The footer is `display: flex; flex-wrap: wrap` so Connect drops to its own line if the tile gets too narrow. Inside an account section the meta drops the account name (already in the section header).
 
 **Account sections are collapsible** (default collapsed) with state persisted in `lichborne.launcher.expandedAccounts` (JSON array of expanded account names). Two override rules: **(1)** if there's exactly one account, that account is always expanded and the collapse toggle is hidden; **(2)** the wizard auto-expands the just-added account on completion (writes to localStorage before `onCompleted` bumps `refreshKey`, and Launcher re-reads the key on `refreshKey` change). The 1→2 transition also re-expands the prior account so the user doesn't see it suddenly collapse.
@@ -1838,12 +1856,14 @@ The footer is `display: flex; flex-wrap: wrap` so Connect drops to its own line 
 - **♡/♥ heart** — toggles `profile.favorite`. ♥ uses `--color-danger` red.
 - **⋯ kebab menu** — opens a `ContextMenu` (right-click on the tile also opens the same menu). Items: `Edit Profile…` (opens `CharacterNotesEditor`), `Hide Profile`/`Unhide Profile`, `Delete Profile…`.
 - **Paired LICH/DIRECT pills** — active pill colored, inactive grey + clickable to switch. Active pill is `disabled` (no-op click).
-- **TEST pill** (DR only) — grey when off (character is `game: 'DR'`), accent-colored when on (`game: 'DRT'`). Hidden on DRX/DRF tiles.
+- **TEST pill** (DR only) — grey when off (character is `game: 'DR'`), accent-colored when on (`game: 'DRT'`). Hidden on DRX/DRF tiles. (Since the GS4 stack, GS Prime tiles get it too, flipping GS3 ↔ GST via `testPair`; hidden on DRX/DRF/GSF.)
 - **Connect →** — fires `handleCardConnect` in App.tsx with a 1.5s grace window before the actual login IPC.
 
 **Character profiles** ([profile-types.ts](../src/renderer/profile-types.ts) `CharacterProfile`) store all the per-character launcher-owned fields alongside the GameWindow-owned ones:
 - GameWindow-owned: `theme`, `state` (a map of all `lichborne.{character}.*` localStorage keys)
 - Launcher-owned: `game`, `useLich`, `hidden?`, `favorite?`, `guild?`, `circle?`, `notes?`
+
+(The launcher-owned fields also include `attach?` (v0.19.4, §48). Since the GS4 stack, the scope is the profile key, `lichborne.{name@shard}.*` (§56.7.3), and `lich?`, the character's own Lich install, is launcher-owned too (§56.7.1).)
 
 The split matters because both ends save the profile (the GameWindow on its debounced timer, the launcher on every helper write). `exportCharacterProfile` ([profile.ts](../src/renderer/profile.ts)) does a read-merge-write so launcher-owned fields aren't stripped when the GameWindow saves (B97 fix — see CLAUDE.md pitfall).
 
@@ -1853,12 +1873,12 @@ The single entry point for adding characters. Renamed from "Add Character" in v0
 
 [AddCharacterWizard.tsx](../src/renderer/components/AddCharacterWizard.tsx) — 2 steps:
 
-1. **Account / Password / Game.** Same-account conflict check: if any of the active sessions are on this account, a confirmation modal offers to disconnect + continue (the launcher's tile-click path has the same modal — see §13.6.2). DRT is *not* a game option here — it's a per-tile toggle after creation (mirrors the launcher's TEST pill). A "Connect to Prime Test (DRT) instead" sub-checkbox appears when DR is picked, which writes `game: 'DRT'` to the stub.
+1. **Account / Password / Game.** Same-account conflict check: if any of the active sessions are on this account, a confirmation modal offers to disconnect + continue (the launcher's tile-click path has the same modal — see §13.6.2). DRT is *not* a game option here — it's a per-tile toggle after creation (mirrors the launcher's TEST pill). A "Connect to Prime Test (DRT) instead" sub-checkbox appears when DR is picked, which writes `game: 'DRT'` to the stub. (Current code: there is no such checkbox; a hint says to pick Prime and flip the tile's TEST pill. Since the GS4 stack the game step is grouped into DragonRealms and GemStone IV columns and leaves out both test shards, DRT and GST; see §56.7.2.)
 2. **Discovery.** Lichborne runs the existing `eaccessFetchCharacters` IPC (no Lich needed — SimuCo's auth service is mode-agnostic). The character roster comes back as a checkbox list with "Select all new" plus per-character checkboxes. Already-existing profiles are listed with a disabled checkbox and `[already added]` badge so the user knows what's there. Confirm → bulk-write one stub `CharacterProfile` per checked character, then call `onCompleted(addedCount)`. App.tsx bumps `launcherRefreshKey`; Launcher re-fetches the profile list and the new tiles appear.
 
 A `prefillAccount` prop lets a launcher "↺ Refresh from account" button open the wizard with that account pre-filled — discovery is the same operation, just adds anything new for that account.
 
-**Characters that moved between accounts (B542, v0.21.0).** A profile is filed by the character's name; its `account` is a field inside it. So discovery compares each listed character's profile account with the account being added (`classifyRoster`, pure and harnessed): same account → already added; another account (or the `attach` placeholder) → transferred here, shown as "moved from X", ticked by default, and Finish re-files the existing profile (`refileProfile`: read-modify-write of `account` only, refusing an unreadable or newer-version file). A profile restored from the archive is re-filed too. The colour (`SharedProfile.characterColors`, keyed `account::character`) and the Reconnect Last entry move with it. Step 2 also lists "No longer on this account": profiles on this account, in the same game family (DRT counts as DR), that the roster no longer shows. They are unticked by default, and ticking one archives it, so adding the account it moved to restores it with its settings. `exportCharacterProfile` keeps the YAML's `account` over the session's, so a tab left open from before a move can't revert it. No slash command: this is part of the one-time account setup dialog.
+**Characters that moved between accounts (B542, v0.21.0).** A profile is filed by the character's name; its `account` is a field inside it. (Since the GS4 stack it is filed by `Name@SHARD`, and discovery matches name AND shard, retiring B614's cross-game rule; see §56.7.3.) So discovery compares each listed character's profile account with the account being added (`classifyRoster`, pure and harnessed): same account → already added; another account (or the `attach` placeholder) → transferred here, shown as "moved from X", ticked by default, and Finish re-files the existing profile (`refileProfile`: read-modify-write of `account` only, refusing an unreadable or newer-version file). A profile restored from the archive is re-filed too. The colour (`SharedProfile.characterColors`, keyed `account::character`) and the Reconnect Last entry move with it. Step 2 also lists "No longer on this account": profiles on this account, in the same game family (DRT counts as DR), that the roster no longer shows. They are unticked by default, and ticking one archives it, so adding the account it moved to restores it with its settings. `exportCharacterProfile` keeps the YAML's `account` over the session's, so a tab left open from before a move can't revert it. No slash command: this is part of the one-time account setup dialog.
 
 ### 13.6.2 Same-Account Conflict & Auto-Disconnect
 
@@ -2062,7 +2082,8 @@ filename, the `bulk-connect` menu action, `bulkConnectSeparateWindows` and
   rather than resetting it to the default.
 - **Named sets** — a saved team, `SharedProfile.bulkSets` (app-wide: a set spans
   accounts by definition, so it cannot live in a character profile). A set
-  stores CHARACTER NAMES, at most one per account — both DR's rule and the only
+  stores CHARACTER NAMES (since the GS4 stack, profile keys `Name@SHARD`, with a legacy bare name
+  resolved to its key on load; §56.7.3), at most one per account — both DR's rule and the only
   shape this picker can express. Loading one REPLACES the whole selection: an
   account the set does not mention is ticked off, because a team should give you
   exactly that team.
@@ -2126,7 +2147,7 @@ Sekmeht: *"that should run in the background similar to like when you connect a 
 
 ### 13.6.5 Per-Shard Tabs (CharacterId)
 
-`makeCharacterId(account, character, game)` in [SessionsContext.tsx](../src/renderer/SessionsContext.tsx). `Sekmeht-DR` and `Sekmeht-DRT` get separate tabs because their characterIds differ. You still can't have both connected simultaneously (the account-slot rule), but you can have one connected and one in disconnected state for easy switching. The character profile YAML is keyed by character name only (one `Sekmeht.yaml` shared across shards — same automations / theme / layout regardless of shard).
+`makeCharacterId(account, character, game)` in [SessionsContext.tsx](../src/renderer/SessionsContext.tsx). `Sekmeht-DR` and `Sekmeht-DRT` get separate tabs because their characterIds differ. You still can't have both connected simultaneously (the account-slot rule), but you can have one connected and one in disconnected state for easy switching. The character profile YAML is keyed by character name only (one `Sekmeht.yaml` shared across shards — same automations / theme / layout regardless of shard). (Since the GS4 stack the YAML is `Name@SHARD.yaml`, with a test shard folded into its Prime: `Sekmeht-DR` and `Sekmeht-DRT` still share `Sekmeht@DR.yaml`, while DRX, DRF, GS3 and GSF each have their own. The characterId stays `account::name::game`. See §56.7.3.)
 
 ### 13.7 Keyboard Navigation
 
@@ -3481,12 +3502,12 @@ Sekmeht asked for Electron and every module on its current stable version (2026-
 The Map System is a spatially-aware map visualization built around two views.
 
 **Data sources:**
-- **Lich JSON** (`map-*.json` in Lich's `data/DR/` folder) — the primary room database. Flat array of rooms with numeric IDs, titles, descriptions, image file references, and `wayto` exit-command maps. Drives the Lich Map view and the player-position tracking (game emits Lich room IDs in subtitles).
+- **Lich JSON** (`map-*.json` in Lich's `data/DR/` folder; since the GS4 stack a GS4 character reads `data/GS*/`, from the install its session launched from, §56 and §56.7.1) — the primary room database. Flat array of rooms with numeric IDs, titles, descriptions, image file references, and `wayto` exit-command maps. Drives the Lich Map view and the player-position tracking (game emits Lich room IDs in subtitles).
 - **Genie XML** (player's Genie maps folder, e.g. `C:\Genie-Remix\Maps\`) — the spatial source of truth for the Genie Maps view. Provides node positions, arc graph, color tags, free-floating landmark labels, and cross-zone stub markers. Each Genie XML file is one zone.
 
 **Display modes (toolbar buttons in the map panel):**
 - **Lich Map** — renders the Lich image tiles (`.png` files bundled alongside the JSON). Shows the current room highlighted on the tile with arcs drawn from the JSON exit graph. Lich path required. Movement (right-click a room, or the "Walk here" button) delegates to Lich's stock `;go2` script via `onSendCommand(\`;go2 <id>\`)` — `;go2` handles locked doors, hidden exits, blocked paths, retries, and roundtime, none of which a local cardinal-direction walker could handle reliably (v0.8.2). `;k go2` in the command bar cancels in flight.
-- **Genie Maps** — renders Genie XML directly, one zone at a time. Coordinates come from the XML (no auto-layout). Auto-switches zones when the player's `roomTitle` matches a room in another loaded zone. See §19.16 for the full architecture. Genie maps folder required.
+- **Genie Maps** (DragonRealms only: on a GS4 character the button is hidden and the view forced to Lich Map, since there is no GS4 Genie map data; §56) — renders Genie XML directly, one zone at a time. Coordinates come from the XML (no auto-layout). Auto-switches zones when the player's `roomTitle` matches a room in another loaded zone. See §19.16 for the full architecture. Genie maps folder required.
 
 **Component breakdown:**
 - `MapPanel` — coordinator; loads Lich JSON and (optionally) parses every Genie XML in the user-pointed folder into a `Map<zoneId, GenieZone>`; owns current-room tracking and the view-mode switch
@@ -4210,6 +4231,7 @@ The profile system provides portable, file-based persistence for all character a
 **Design principles:**
 - YAML files are the source of truth — `localStorage` is the live runtime working copy.
 - Per-character `localStorage` keys live under the scope `lichborne.{character}.{suffix}` (see `characterScope.ts`) so multiple characters running concurrently in one app instance never collide. Shared keys (account, advancedSettings, mapDir, myThemes) stay unnamespaced.
+- (Since the GS4 stack, `{character}` in these keys and file names is the profile key `Name@SHARD`, never the bare name: `profileKey(name, game)` in [profileKey.ts](../src/shared/profileKey.ts). `scopedKey` logs a bare scope, and main refuses a bare-name profile write. See §56.7.3.)
 - The character YAML's `state:` map mirrors `lichborne.{character}.*` 1:1. Adding a new per-character setting requires only writing to its scoped key via `useProfileSaver()` — the profile system picks it up dynamically with no further plumbing.
 - Atomic writes (`.tmp` + rename) and rolling backup on graceful shutdown (`{name}.yaml.bak`) protect against corruption from mid-write crashes.
 - Per-character debounced saves use a `Map<character, timer>` so two concurrent characters never race their YAML writes.
@@ -4245,6 +4267,8 @@ This guarantees the change reaches the YAML within the 2.5s debounce window — 
     Binu.yaml
     ...
 ```
+
+(Since the GS4 stack the per-character files are `Sekmeht@DR.yaml`, `Binu@GS3.yaml`, …, and the one-time migration keeps a copy of each legacy file in `profiles/PreKeyBackup/`; §56.7.3.)
 
 **Dev mode:** `profiles\` is relative to the project root (`app.getAppPath()`).
 **Production (v0.6.4+):** `profiles\` is inside Electron's `userData` directory (`app.getPath('userData')` = `%APPDATA%\lichborne\profiles\` on Windows — lowercase because Electron's `app.getName()` reads the top-level `name` field in package.json, not the `build.productName` field which only affects installer-side display). userData lives outside the install footprint, so the NSIS uninstaller never touches it — profiles survive upgrades, reinstalls, and version downgrades. Uninstalling Lichborne with `deleteAppDataOnUninstall: false` (the default) preserves them.
@@ -4312,9 +4336,13 @@ myThemes:
     vars: { ... }
 ```
 
+(Since the GS4 stack, `games:` is seeded from the `GAMES` table in lichSettings.ts (`DEFAULT_GAMES` in profile.ts), so it also lists GS3, GST and GSF, and `advancedSettings` may carry `installs: { DR?, GS4? }`, the per-game Lich installs (§56.7.1). Adding GS4 did take code: a connect reads the `GAMES` table (`gameOptionByCode` in App.tsx), and the launcher needs a `GAME_SECTIONS` entry per code.)
+
 **`lichClientFlag`** is combined with the game's `lichArguments` to form the full Lich launch command: `ruby lich.rbw --stormfront --dragonrealms`. Swapping the flag in one place updates it for all games. Adding a new game server requires only a new entry in the `games` table — no code changes needed; the login screen game dropdown is populated from this table at runtime.
 
 #### `{Character}.yaml` (v2 — dynamic shape)
+
+(Since the GS4 stack the file is `{Name@SHARD}.yaml` and the scope `lichborne.{name@shard}.*` (§56.7.3); the shape is unchanged, plus the optional launcher-owned `lich` install (§56.7.1).)
 
 A small set of top-level fields plus a dynamic `state:` map that mirrors localStorage. Every entry under `state` corresponds to one `lichborne.{character}.{suffix}` localStorage key:
 
@@ -4456,7 +4484,7 @@ The `game:` field in a character YAML references a key in `_shared.yaml`'s `game
 - `lichPort` — the local Lich port for that game instance
 - `lichArguments` — game-specific Lich flags (combined with `lichClientFlag`)
 
-This means adding a new game server (e.g. Briarmoon Cove) requires only a new entry in `_shared.yaml` — no code changes.
+This means adding a new game server (e.g. Briarmoon Cove) requires only a new entry in `_shared.yaml` — no code changes. (Not true of the current code: see the note under §20.3's `_shared.yaml` example.)
 
 ---
 
@@ -4464,7 +4492,7 @@ This means adding a new game server (e.g. Briarmoon Cove) requires only a new en
 
 | File | Role |
 |---|---|
-| `src/renderer/characterScope.ts` | `scopedKey(character, suffix)` and `normalizeCharacter(name)` — single source of truth for the `lichborne.{character}.{suffix}` namespace |
+| `src/renderer/characterScope.ts` | `scopedKey(character, suffix)` and `normalizeCharacter(name)` — single source of truth for the `lichborne.{character}.{suffix}` namespace (`character` is the `Name@SHARD` profile key since the GS4 stack, §56.7.3) |
 | `src/renderer/profile-types.ts` | `SharedProfile`, `CharacterProfile` (v2) |
 | `src/renderer/hooks/useProfileSaver.ts` | `useProfileSaver()` — returns a stable `saveProfile()` callback bound to the current character's session info; called at every per-character `setItem` site |
 | `src/main/profiles.ts` | Main YAML file I/O — `readSharedProfile`, `writeSharedProfile`, `readCharacterProfile`, `writeCharacterProfile`, `listCharacterProfiles`, `backupAllProfiles`. `atomicWriteFile` refuses to write over a damaged or locked file, then calls `writeFileAtomic` (atomicWrite.ts) |
@@ -5932,7 +5960,7 @@ Per-stream capture toggles live in Settings, per-character, so a player who only
     Agan_2026-05-15.log
 ```
 
-One file per character per day. Character-prefixed filename so logs are identifiable when moved or shared. Sessions inferred from `[sys] Connected` / `Disconnected` markers within the file — multiple sessions per day collapse into one daily file.
+One file per character per day. Character-prefixed filename so logs are identifiable when moved or shared. (Since the GS4 stack the folder and prefix are the profile key, e.g. `Logs/Sekmeht@DR/Sekmeht@DR_2026-05-15.log`; the one-time migration moved existing folders, and main drops records sent under a bare name. See §56.7.3.) Sessions inferred from `[sys] Connected` / `Disconnected` markers within the file — multiple sessions per day collapse into one daily file.
 
 **Format — plain text, `[HH:MM:SS][stream] text` per line (as built v0.7.0):**
 ```
@@ -6014,7 +6042,7 @@ A single **"Logs" toolbar button** (next to Debug) opens a modal with three affo
 
 #### 28.4.3 Open Logs Folder
 
-Single button. Opens `Logs/{character}/` in the OS file manager. Player uses VSCode / Notepad++ / `less` / `rg` / whatever they prefer. **This is the primary surface for serious log review** — the modal exists for quick lookups.
+Single button. Opens `Logs/{character}/` (the `Name@SHARD` folder since the GS4 stack, §56.7.3) in the OS file manager. Player uses VSCode / Notepad++ / `less` / `rg` / whatever they prefer. **This is the primary surface for serious log review** — the modal exists for quick lookups.
 
 #### 28.4.4 Right-click "Show in Log"
 
@@ -6144,7 +6172,7 @@ Core logic in [profileTransfer.ts](../src/renderer/profileTransfer.ts). Each per
 
 `applyProfileImport(target, isActive, file, { merge, selected })`, unified over a `TargetStore` abstraction (read/write a suffix):
 
-- **Inactive target** → staged YAML store: read `{Character}.yaml`, merge selected categories into a copy of `state` (+ `theme`), one atomic `writeCharacterProfile`. Never `buildCharacterProfile` (would rebuild `state` from empty localStorage and wipe the char).
+- **Inactive target** → staged YAML store: read `{Character}.yaml` (`{Name@SHARD}.yaml` since the GS4 stack, §56.7.3), merge selected categories into a copy of `state` (+ `theme`), one atomic `writeCharacterProfile`. Never `buildCharacterProfile` (would rebuild `state` from empty localStorage and wipe the char).
 - **Active target** → live localStorage store (`scopedKey`, same string/JSON representation as `importCharacterProfile`), then the modal calls `reloadSession(characterId)` → main's `session:reload` **arms a §13.9 state replay** (`replayTarget`/`holdingForReplay` — v0.13.3, the B165 root fix) and routes to the owner window → App bumps the session's reload nonce in the GameWindow `key` → full remount re-reads the imported state, then its replay request restores scrollback + every sticky state (hands/vitals/room/spell/RT/…). Pre-v0.13.3 the remount started from defaults — vitals self-healed on the next change but a long-parked HELD ITEM never re-sent a hand tag, so the hand bar stuck on "Empty" for the rest of the session (found while chasing JadedSoul's B165 cookbook report; her case likely turned out to be the pitfall-#78 protocol gap instead, but this hole was code-verified real). Applies to **focused AND backgrounded** sessions. Writing only the YAML would be overwritten on logout by stale live state — writing the working copy + remount commits it.
 
 **Merge:** rules (highlights/triggers/macros/aliases/groups/modes/contacts) honor **Append** (dedup by the same content/id/name keys as ImportWizard; highlights/triggers/macros/aliases get regenerated ids) vs **Replace**. Config categories (Display/Layout/View/Theme) always overwrite when selected. `settings`/`panelFontSizes` split: Display preserves the target's `panelFontSizes`; Layout merges its own; Display runs before Layout.
@@ -7237,6 +7265,7 @@ gates** (procedural fallbacks always).
    (sessionId on every payload, Principle #6).
 3. Theme vars + light-theme pass; accessibility toggles verified (the Principle #9 check).
 4. Decide its `TRANSFER_CATEGORIES` exposure.
+   - (Since the GS4 stack) decide whether it is game-specific: `ExperienceDef.games` (e.g. `['DR']`) leaves it out of the other game's shelf and + menu, and a carried-over instance shows a placeholder (§56.3).
 5. No panel-system files touched — if a change seems to need one, the design is drifting back to
    §34.2's rejected models; stop and re-read this section.
 
@@ -11397,7 +11426,7 @@ GemStone already sends links and doubled bold whatever the client string (wiki �
 - GS adds `<roommeta>`, `health` in `crtrStatus`, and three injury radios.
 - Much of Lichborne is DR-specific: experience mind states, Moons, the Spell Monitor, assess, and the Tableau's combat.
 
-Recommended: a separate version once the DR work is done. (The GS4 timed-effects panel landed with the gs4-support PR — §56.)
+Recommended: a separate version once the DR work is done. (GS4 support then landed as the GS4 stack, PRs #4–#10: the GS4 shards in `GAMES`, the Effects, Experience, Encumbrance and Creatures panels, and family gates on the DR-only surfaces — §56.)
 
 ### 55.8 Open questions and risks
 
@@ -11477,9 +11506,13 @@ The golden run now covers all 24 fixtures (`golden-eol.ts`, baseline `golden-v02
 
 **Not verified in play yet:** everything above is fixture-tested; the first live sessions on Lich 5.23.0 are the test plan's job. A familiar's view on the rich stream is still unseen (§55.8).
 
-## 56. GemStone IV panels — Effects, Experience, Encumbrance, Creatures (PR #1, gs4-support)
+## 56. GemStone IV support — panels, login by game, Lich installs, profile keys (PRs 4–10, the gs4 stack)
 
-GemStone sends four timed-effect dialogs: `Active Spells`, `Buffs`, `Debuffs` and `Cooldowns`. Each one is a `<dialogData>` of `<progressBar id value text time>` rows. The parser already turned them into `effects-update` events (`EffectsUpdateEvent`, replay-sticky as `effects:<dialog>`). This section is the panel that shows them: [EffectsPanel.tsx](../src/renderer/components/panels/EffectsPanel.tsx), with its time math in [gsEffects.ts](../src/renderer/gsEffects.ts).
+GemStone IV support landed as a stack of seven PRs, #4–#10, split from the single PR #1 (closed): #4 the connectivity foundation, #5 the Effects panel and GS4 stream routing (§56.1–§56.3, except the DR Infomon gate), #6 the Experience, Encumbrance and Creatures panels and the DR Infomon gate (§56.4–§56.5), #7 the login filter and the §56.7 plan, #8 per-game and per-character Lich installs (§56.7.1), #9 shard names, the grouped wizard and GS4 professions (§56.7.2), #10 profile keys and their migration (§56.7.3).
+
+**The foundation (#4).** `GameFamily` (`'DR' | 'GS4'`) is derived from the shard code by `gameFamilyFromCode` (types.ts), never stored: anything not starting with `DR` is GS4, and an empty code is DR. The GS4 shards are in the `GAMES` table (lichSettings.ts) with their ports and Lich flags: GS3 10024 `--gemstone`, GST 10624 `--gemstone --test`, GSF 10324 `--shattered`. Main sets `parser.family` from the login or attach game code (main.ts), and the parser's one family gate is the inline-roomName title fallback, which never runs for DR. The Lich Map works for both games and `find-lich-map-file` takes the family, so a Lich install holding both games' map data loads the right one. Genie Maps is DR-only: there is no GS4 Genie map data, so on GS4 the button is hidden and the view is forced to the Lich Map (MapPanel.tsx).
+
+GemStone sends four timed-effect dialogs: `Active Spells`, `Buffs`, `Debuffs` and `Cooldowns`. Each one is a `<dialogData>` of `<progressBar id value text time>` rows. The parser already turned them into `effects-update` events (`EffectsUpdateEvent`, replay-sticky as `effects:<dialog>`). §56.1–§56.2 are the panel that shows them: [EffectsPanel.tsx](../src/renderer/components/panels/EffectsPanel.tsx), with its time math in [gsEffects.ts](../src/renderer/gsEffects.ts).
 
 ### 56.1 The wire, as captured
 
@@ -11580,17 +11613,17 @@ Found by replaying the 184 GS4 captures through the parser and checking each str
 - Saga 0.10.7, minified: the `expr` / `encum` parse, plus the Experience rows (Total, Capped, Session, Pulse, Tutelage).
 - warlock3: draws these dialogs generically from the server's layout.
 
-### 56.7 Login by game, and a Lich install per game or per character (planned 2026-11-02)
+### 56.7 Login by game, and a Lich install per game or per character (planned 2026-11-02, built in PRs #7–#10)
 
-A plan, built in the order at the end. Sections get marked as they land.
+Planned in PR #7 and built in the order at the end (§56.7.4): the filter in #7, the installs in #8, shard names, the wizard and professions in #9, profile keys in #10. Each subsection describes the code as built.
 
 **Decisions (Sekmeht, 2026-11-02):**
 - A character's Lich install is chosen per game AND per character, layered as in 56.7.1.
-- The same-name fix (56.7.3) is in this PR, as its last phase.
+- The same-name fix (56.7.3) ships in the same stack, as its last PR (#10).
 - One character per account stays one IN TOTAL, across both games. `planReconnect` keeps keying on the account alone, deliberately: an account has one character on at a time across DR and GS4.
 - The login screen gets an **All / DR / GS** filter (56.7.2).
 
-**What was there (read 2026-11-02):**
+**What was there before the stack (read 2026-11-02; history, not current behaviour):**
 - **One Lich install for everything.** `AdvancedSettings.lichPath` / `rubyPath` (`lichborne.advancedSettings`, replicated to `_shared.yaml`). Every connect path reads it: `runConnect` (card Connect, tab Reconnect, background connect), the Team Login per-member connect, and attach (only for the rich-stream support check).
 - **Post-connect code reads the global through three private copies of `getLichPath()`:** `useLichBridge` (script list), `LichDashboard` (Vars, Settings, Sessions, Scripts, Profiles, from that install's `data/lich.db3` and `scripts/`) and `MapPanel` (the Lich Map's `maps/`).
 - **Startup discovery** fills the global value when it doesn't validate.
@@ -11600,7 +11633,7 @@ A plan, built in the order at the end. Sections get marked as they land.
 
 #### 56.7.1 Which Lich install a character uses
 
-**Status:** BUILT. Resolution, storage and the session-carried path in step 1; the Lich Setup rows, the Edit Profile override and `/lich install` in step 2.
+**Status:** BUILT (PR #8). Resolution, storage and the session-carried path in step 1; the Lich Setup rows, the Edit Profile override and `/lich install` in step 2.
 
 **Resolution, most specific first:** the character's own override; else the game family's default (DR or GS4); else the global install.
 - **By family, not by shard.** GS3/GSX/GST/GSF share one install, as do DR/DRX/DRT/DRF.
@@ -11618,7 +11651,7 @@ A plan, built in the order at the end. Sections get marked as they land.
 - `resolveLichInstall(adv, game, override)` in lichSettings.ts is pure; `resolveCharacterLichInstall(adv, character, game)` reads the override from the character's profile AT CONNECT TIME (a tab's Reconnect builds its card from the session record, which has no override). It feeds `runConnect`, the Team Login member connect and attach.
 - The resolved `lichPath` is carried on the session: main's `meta` and `RosterEntry` (so a decoupled window keeps it), `SessionInfo` and `SessionRecord`. [sessionLich.ts](../src/renderer/sessionLich.ts) replaces the private readers (three named above, plus GameWindow's two: the script-list path and the Moons `sun` read): GameWindow provides `SessionLichPathContext`, components read `useSessionLichPath()`, and a hook in GameWindow takes `sessionLichPath(session)`. Each falls back to the default install, so the Dashboard, the script list and the Lich Map read the install the session launched from. Without this a GS4 character would launch from its GS4 install while its dashboard showed the DR install's Vars.
 - MapPanel's parse caches already key by source path, so two installs cache twice.
-- **Launch serialization stays one queue.** Every Lich binds 11024 and serves one front-end, whichever folder it runs from.
+- **Launch serialization stays one queue.** Every Lich binds its shard's game port (11024 for DR Prime, 10024 for GS4 Prime) and serves one front-end, whichever folder it runs from.
 
 **UI:**
 - **Lich Setup** has a "Lich install by game" section under the default install (`GameInstallRow` in LichSetupFields.tsx; Lich Setup only, not the legacy LoginScreen). Each game reads "Same as the install above" (no entry stored) or "Its own install", which opens the path pair. An entry left without a Lich path is dropped by `loadAdvanced`.
@@ -11628,19 +11661,19 @@ A plan, built in the order at the end. Sections get marked as they land.
 
 #### 56.7.2 Organising the login screen by game
 
-- **An All / DR / GS filter** (BUILT: `GameFilterBar` / `effectiveGameFilter` in Launcher.tsx, the shared `ui-tabs` chips with a per-game count) on the launcher (both the full screen and the + modal). It shows only when the saved characters span both games (UX #1), and narrows the account sections, Favorites and Teams (a team shows when any of its members is in that game). An account with no character in that game drops out. The choice is a per-viewer convenience in `lichborne.launcher.gameFilter`. A stale choice whose game no longer has characters reads as All. **No slash command:** the launcher is the pre-session screen, where the command bar doesn't exist.
-- **Tile meta shows the shard name** ("GemStone IV Prime") rather than the code; the code stays in the tooltip. (BUILT; an unknown code shows as itself.)
-- **The wizard's game step is grouped** into DragonRealms and GemStone IV columns, each shard named without the game's name (BUILT, `GAME_GROUPS` in AddCharacterWizard.tsx).
-- **Edit Profile per family** (BUILT, `guildTerms(game)` in CharacterNotesEditor.tsx). GS4 professions (`GS4_PROFESSIONS`) replace DR guilds, "Profession" and "Level" replace "Guild" and "Circle", and the tile and Team Login pills follow. The stored fields stay `guild`/`circle`. A stored key the game's list doesn't know stays selectable, so opening the editor never drops it. GameWindow reads the profile's guild as a DR guild ONLY for a DR character: a GS4 "empath" must not pick the DR badge or the Tableau's Touch.
-- **The hero says what the client is for** (BUILT, `heroTagline`): "DragonRealms Client" or "GemStone IV Client" when every saved character is in one game, "DragonRealms & GemStone IV Client" when both are present and on first run.
+- **An All / DR / GS filter** (BUILT in PR #7: `GameFilterBar` / `effectiveGameFilter` in Launcher.tsx, the shared `ui-tabs` chips with a per-game count) on the launcher (both the full screen and the + modal). It shows only when the saved characters span both games (UX #1), and narrows the account sections, Favorites and Teams (a team shows when any of its members is in that game). An account with no character in that game drops out. The choice is a per-viewer convenience in `lichborne.launcher.gameFilter`. A stale choice whose game no longer has characters reads as All. **No slash command:** the launcher is the pre-session screen, where the command bar doesn't exist.
+- **Tile meta shows the shard name** ("GemStone IV Prime") rather than the code; the code stays in the tooltip. (BUILT in PR #9; an unknown code shows as itself.)
+- **The wizard's game step is grouped** into DragonRealms and GemStone IV columns, each shard named without the game's name (BUILT in PR #9, `GAME_GROUPS` in AddCharacterWizard.tsx). The test shards (DRT, GST, `TEST_SHARDS`) are not offered: a hint says to pick Prime and flip the tile's TEST pill.
+- **Edit Profile per family** (BUILT in PR #9, `guildTerms(game)` in CharacterNotesEditor.tsx). GS4 professions (`GS4_PROFESSIONS`) replace DR guilds, "Profession" and "Level" replace "Guild" and "Circle", and the tile and Team Login pills follow. The stored fields stay `guild`/`circle`. A stored key the game's list doesn't know stays selectable, so opening the editor never drops it. GameWindow reads the profile's guild as a DR guild ONLY for a DR character: a GS4 "empath" must not pick the DR badge or the Tableau's Touch.
+- **The hero says what the client is for** (BUILT in PR #9, `heroTagline`): "DragonRealms Client" or "GemStone IV Client" when every saved character is in one game, "DragonRealms & GemStone IV Client" when both are present and on first run.
 
-#### 56.7.3 A character is its name on a shard (BUILT)
+#### 56.7.3 A character is its name on a shard (BUILT, PR #10)
 
 **Decision (Sekmeht, 2026-11-03):** every character's data is keyed by its shard AND its name, for every game. A GSF Tysong who is a bard keeps a different layout and settings from a GS3 Tysong who is a wizard. Existing profiles migrate on first launch. A test instance is a mirror copy of its Prime, so it uses the Prime character's profile. GemStone IV has no Platinum any more, so GSX is gone from the shard list. That leaves five profile shards: **DR, DRX, DRF, GS3, GSF**.
 
 **The key:** `Name@SHARD` ([src/shared/profileKey.ts](../src/shared/profileKey.ts), shared by main and the renderer).
 - `profileKey(name, game)` builds it. `profileShard` folds a test shard into its Prime (`TEST_SHARDS`: DRT → DR, GST → GS3).
-- `profileNameOf(key)` reads the name back, and `testPair(game)` drives the tile's TEST pill, now on GS Prime as well as DR.
+- `profileNameOf(key)` reads the name back, and `testPair(game)` drives the tile's TEST pill, now on GS Prime as well as DR. The pill flips the profile's `game` between Prime and test, and a connect uses that code's port and Lich flags (`gameOptionByCode(c.game)` in App.tsx), so only the storage key is folded.
 - '@' never occurs in a character name, is filename-safe everywhere, and isn't the '.' that `lichborne.{scope}.` prefix scans split on.
 
 **What is keyed:**
@@ -11664,14 +11697,18 @@ A plan, built in the order at the end. Sections get marked as they land.
 
 **Guards against a missed call site:** `writeCharacterProfile` and `session-log:append` refuse a non-key in main, and `scopedKey` logs a bare scope once.
 
+**Attach:** an attach knows only the character's name, so it uses that character's profile only when exactly one shard has one (`findProfileKeysByName` in App.tsx), and otherwise keeps its placeholders.
+
 **The wizard:** a fetched character matches a profile by name AND shard. The same name on another shard is a new character, which retires B614's cross-game rule. A re-file (B542) is the same key under another account.
 
 #### 56.7.4 Order of work
 
-1. The resolver, the session-carried install and the three readers. (BUILT.)
-2. Lich Setup per-game rows, the Edit Profile override and `/lich install`. (BUILT.)
-3. The launcher filter, shard names, the grouped wizard and Edit Profile per family. (BUILT.)
-4. Profiles keyed by name and shard, with the migration. (BUILT.)
+1. The resolver, the session-carried install and the readers. (BUILT, PR #8.)
+2. Lich Setup per-game rows, the Edit Profile override and `/lich install`. (BUILT, PR #8.)
+3. The launcher filter (BUILT, PR #7), shard names, the grouped wizard, the hero and Edit Profile per family (BUILT, PR #9).
+4. Profiles keyed by name and shard, with the migration. (BUILT, PR #10.)
 5. **Future: copy one character's setup to another in one step.** Profile Transfer (F38, launcher → Transfer) already does this through a bundle file: export from GS3 Tysong, import into GS3 Char3, choosing categories (layout, highlights, triggers, macros, …). The future step is a "Copy settings to…" item in the tile ⋯ menu that runs `buildProfileExport` → `applyProfileImport` with no file in between: pick the targets and the categories, done. Transfer's pickers show each character's shard, so two Tysongs can be told apart.
 
-**Tests:** a harness for `resolveLichInstall` and the `_shared.yaml` round-trip (including a file without `installs`); a GS4 session whose Dashboard, script list and map read the GS4 install; the key migration on a scratch userData (DR, DRX, DRT, GS3, no game, unreadable, existing target, Archive, backups, logs; run three times); two Tysongs (GS3 and GSF) keeping separate files and scopes, the localStorage move, legacy team and Reconnect Last names, and the wizard's roster match.
+**Tests run (from the PR test plans):** a harness for `resolveLichInstall`, the `_shared.yaml` round-trip (including a file without `installs`) and an in-game save keeping a character's install (#8); the Lich Dashboard, script list and Lich Map inside a GS4 session on its own install, all reading that install (#10); the key migration on a scratch userData (DR, DRX, DRT, GS3, no game, unreadable, existing target, Archive, backups, logs; run three times) plus an interruption harness (#10); two Tysongs (GS3 and GSF) keeping separate files and scopes, the localStorage move, legacy team and Reconnect Last names, and the wizard's roster match (#10).
+
+**Not yet verified:** a live GS4 character on its own install (#8), a first launch migrating a real profiles folder (#10), Genie Maps gating on a second GS4 account, and Team Login and Profile Transfer with a GS4 character (#10).
