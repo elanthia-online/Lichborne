@@ -1,4 +1,4 @@
-// Which Lich install a character's session reads (DESIGN §56.7.1).
+// sessionLich — which Lich install a character's session reads (DESIGN §56.7.1).
 //
 // A session is started from one install — the character's own, its game's, or
 // the default (resolveLichInstall in lichSettings.ts) — and everything after
