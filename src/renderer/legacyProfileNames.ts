@@ -11,6 +11,16 @@
 import { isProfileKey, profileKey } from '../shared/profileKey'
 
 const KEY = 'lichborne.profileKeyRenames'
+// Names whose entry came from a LIVE profile. Kept beside the map so a later
+// start can't let an archived rename overwrite one.
+const LIVE_KEY = 'lichborne.profileKeyRenames.live'
+
+function loadLive(): Set<string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(LIVE_KEY) ?? '[]')
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+  } catch { return new Set() }
+}
 
 function load(): Record<string, string> {
   try {
@@ -19,11 +29,26 @@ function load(): Record<string, string> {
   } catch { return {} }
 }
 
-/** Remember the migration's old→new names (merged into any kept before). */
-export function rememberLegacyNames(renames: { from: string; to: string }[]): void {
+/** Remember the migration's old→new names (merged into any kept before).
+ *  A live profile wins over an archived one for the same name: live `Bob.yaml`
+ *  (DR) beside `Archive/Bob.yaml` (DRX) must map Bob to `Bob@DR`, or a legacy
+ *  team or Reconnect Last entry would point at the archived character. */
+export function rememberLegacyNames(renames: { from: string; to: string; archived?: true }[]): void {
   const map = load()
-  for (const { from, to } of renames) map[from.toLowerCase()] = to
-  try { localStorage.setItem(KEY, JSON.stringify(map)) } catch { /* the DR Prime fallback still applies */ }
+  const live = loadLive()
+  for (const { from, to, archived } of renames) {
+    const name = from.toLowerCase()
+    if (archived) {
+      if (!live.has(name)) map[name] = to
+    } else {
+      map[name] = to
+      live.add(name)
+    }
+  }
+  try {
+    localStorage.setItem(KEY, JSON.stringify(map))
+    localStorage.setItem(LIVE_KEY, JSON.stringify([...live]))
+  } catch { /* the DR Prime fallback still applies */ }
 }
 
 /** A team member or similar: a key stays as it is; a bare name becomes its key. */

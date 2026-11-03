@@ -1,12 +1,13 @@
 // Per-character localStorage scoping. Each character's per-tab state lives
-// under `lichborne.{normalizedCharacter}.{suffix}` so two tabs in the same app
-// instance can independently read/write without clobbering each other.
+// under `lichborne.{name@shard}.{suffix}` (the lowercased profile key, DESIGN
+// §56.7.3) so two tabs in the same app instance can independently read/write
+// without clobbering each other.
 //
 // Shared keys (account, advancedSettings, mapDir, genieMapsDir, myThemes,
 // rememberPassword) stay unnamespaced — they apply to all characters.
 //
-// YAML files (profiles/{character}.yaml) remain authoritative. localStorage is
-// just a fast cache that gets repopulated from YAML on each login.
+// YAML files (profiles/{Name@SHARD}.yaml) remain authoritative. localStorage
+// is just a fast cache that gets repopulated from YAML on each login.
 
 import { showToast } from './toasts'
 

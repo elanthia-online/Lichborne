@@ -560,9 +560,11 @@ export async function importCharacterProfile(character: string): Promise<Charact
   // save runs as it always did.
   _lastSavedSig.set(normalizeCharacter(character), stateSignature(loaded, rememberedCharacterTheme(character) ?? ''))
 
+  // The KEY, like every `character` here: the builder scans its scope and
+  // stores the name itself (a bare name scanned a scope nothing uses).
   return buildCharacterProfile(
     data.account ?? '',
-    data.character ?? profileNameOf(character),
+    character,
     data.game ?? 'DR',
     data.useLich ?? true,
   )
@@ -575,9 +577,36 @@ export async function importCharacterProfile(character: string): Promise<Charact
 // A key that already exists under the new name wins, and its old copy is then
 // left alone rather than deleted (Principle #3). Run once, by the window that
 // loads _shared.yaml, before anything reads a character's keys.
+//
+// A FULL localStorage must not stop it (review of #10). Each new key name is a
+// few characters longer, so near the quota the copy throws, nothing would be
+// acknowledged, and the old scope's copy would then make every import throw
+// too, on every start. So on a quota error the old key goes FIRST and the copy
+// is retried. A value that still doesn't fit is a working copy lost: the
+// character's YAML (already renamed by main) is the truth and re-seeds it on
+// connect. The renames are then acknowledged either way.
+function isQuotaError(err: unknown): boolean {
+  return err instanceof DOMException && (err.name === 'QuotaExceededError' || err.code === 22 || err.code === 1014)
+}
+
+// Copy `from` to `to` and remove `from`. Returns false only when the value
+// could not be kept (storage full even after freeing `from`).
+function moveKey(from: string, to: string, value: string): boolean {
+  try {
+    localStorage.setItem(to, value)
+    localStorage.removeItem(from)
+    return true
+  } catch (err) {
+    if (!isQuotaError(err)) throw err
+    localStorage.removeItem(from)
+    try { localStorage.setItem(to, value); return true } catch { return false }
+  }
+}
+
 export async function applyProfileKeyRenames(): Promise<void> {
   const renames = await window.api.takeProfileKeyRenames().catch(() => [])
   if (!renames.length) return
+  let dropped = 0
   // Kept for good, for teams and Reconnect Last in any _shared.yaml, old or new.
   rememberLegacyNames(renames)
   try {
@@ -586,34 +615,32 @@ export async function applyProfileKeyRenames(): Promise<void> {
     for (const { from, to } of renames) {
       const oldPrefix = `lichborne.${normalizeCharacter(from)}.`
       const newPrefix = `lichborne.${normalizeCharacter(to)}.`
-      // Key by key, so a run cut short (storage full) resumes where it
-      // stopped: a key already under the new name wins and its old copy is
-      // kept; any other old key is copied, and removed only once the copy
-      // has landed. (A whole-scope "new keys exist → skip" check would read
-      // a half-moved scope as done and acknowledge it.)
+      // Key by key: a key already under the new name wins and its old copy is
+      // kept; any other old key is copied, and removed once the copy lands.
+      // (A whole-scope "new keys exist → skip" check would read a half-moved
+      // scope as done.)
       for (const k of all.filter(k => k.startsWith(oldPrefix))) {
         const dest = newPrefix + k.slice(oldPrefix.length)
         if (localStorage.getItem(dest) !== null) continue
         const v = localStorage.getItem(k)
         if (v === null) continue
-        localStorage.setItem(dest, v)
-        localStorage.removeItem(k)
+        if (!moveKey(k, dest, v)) dropped++
       }
       const oldTheme = localStorage.getItem(characterThemeKey(from))
       if (oldTheme !== null && localStorage.getItem(characterThemeKey(to)) === null) {
-        localStorage.setItem(characterThemeKey(to), oldTheme)
-        localStorage.removeItem(characterThemeKey(from))
+        if (!moveKey(characterThemeKey(from), characterThemeKey(to), oldTheme)) dropped++
       }
       if (localStorage.getItem(LAST_DISPLAY_CHARACTER_KEY)?.toLowerCase() === from.toLowerCase()) {
-        localStorage.setItem(LAST_DISPLAY_CHARACTER_KEY, to)
+        try { localStorage.setItem(LAST_DISPLAY_CHARACTER_KEY, to) } catch { /* a display hint only */ }
       }
     }
   } catch (err) {
-    // Storage full: the YAMLs are already renamed and re-seed each scope on
-    // connect, so keep the list for the next start rather than acknowledging.
+    // Not a full storage (moveKey handles that): something unexpected, so keep
+    // the list for the next start rather than acknowledging.
     console.error('[profile-keys] could not move localStorage scopes', err)
     return
   }
+  if (dropped) console.warn(`[profile-keys] storage full: ${dropped} working-copy key(s) dropped; each character's YAML re-seeds them on connect`)
   await window.api.ackProfileKeyRenames().catch(() => {})
 }
 

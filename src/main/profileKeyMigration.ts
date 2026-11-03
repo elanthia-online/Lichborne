@@ -41,7 +41,9 @@ import * as yaml from 'js-yaml'
 import { isProfileKey, profileKey } from '../shared/profileKey'
 import { quarantineFile } from './atomicWrite'
 
-export interface ProfileKeyRename { from: string; to: string; file?: string }
+// `archived`: the profile lives in profiles/Archive/. A live profile's rename
+// wins over an archived one for the same name (legacyProfileNames).
+export interface ProfileKeyRename { from: string; to: string; file?: string; archived?: true }
 
 const BACKUP_DIR = 'PreKeyBackup'
 
@@ -95,7 +97,7 @@ function freeBackupPath(dir: string, name: string): string {
 }
 
 /** Rename one folder's legacy profiles. `backupDir` receives a copy of each. */
-function migrateDir(dir: string, backupDir: string): ProfileKeyRename[] {
+function migrateDir(dir: string, backupDir: string, archived = false): ProfileKeyRename[] {
   if (!fs.existsSync(dir)) return []
   let files: string[]
   try { files = fs.readdirSync(dir) } catch { return [] }
@@ -138,7 +140,7 @@ function migrateDir(dir: string, backupDir: string): ProfileKeyRename[] {
     // on the next start, which retries the move and records it again.
     // The NAME, not the file name: localStorage scopes and log folders were
     // named after the session's character, which can differ in case.
-    const rename = { from: name.trim(), to: key, file: base }
+    const rename: ProfileKeyRename = { from: name.trim(), to: key, file: base, ...(archived ? { archived: true as const } : {}) }
     if (!recordRename(rename)) {
       console.error(`[profile-keys] ${f} left as it is until its rename can be recorded`)
       continue
@@ -227,7 +229,7 @@ function migrateLogs(logsRoot: string, r: ProfileKeyRename): boolean {
 export function migrateProfileKeys(profilesDir: string, logsRoot: string): ProfileKeyRename[] {
   const backup = path.join(profilesDir, BACKUP_DIR)
   migrateDir(profilesDir, backup)
-  migrateDir(path.join(profilesDir, 'Archive'), path.join(backup, 'Archive'))
+  migrateDir(path.join(profilesDir, 'Archive'), path.join(backup, 'Archive'), true)
   // Every log move on record, this run's and any an earlier start couldn't finish.
   const logMoves = readList(logMovesFile())
   if (logMoves.length) writeList(logMovesFile(), logMoves.filter(r => !migrateLogs(logsRoot, r)), 'the log folder moves left')

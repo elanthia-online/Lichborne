@@ -1705,9 +1705,12 @@ function AppShell() {
     let game = fixed?.game ?? chosenGame ?? 'DR'
     if (!fixed) {
       try {
-        // Only the name is known here: use that character's profile when
-        // exactly one shard has one (DESIGN §56.7.3).
-        const keys = await findProfileKeysByName(character)
+        // The dialog names the game, so the profile is exactly Name@SHARD for
+        // it (DESIGN §56.7.3). A namesake on another shard is a different
+        // character: it must lend neither its account nor its game. Only an
+        // attach with no game at all falls back to the name, and then only
+        // when exactly one shard has a profile for it.
+        const keys = chosenGame ? [profileKey(character, chosenGame)] : await findProfileKeysByName(character)
         const existing = keys.length === 1
           ? await window.api.readCharacterProfile(keys[0]).catch(() => null) as { account?: string; game?: string } | null
           : null
@@ -1813,7 +1816,16 @@ function AppShell() {
     let known: Record<string, { game: string; attach?: { host: string; port: number } }> = {}
     try {
       const cards = await loadCharacterCards()
-      for (const c of cards) known[c.name.toLowerCase()] = { game: c.game, attach: c.attach }
+      // A name filed on two shards autofills only when one tile is clearly
+      // meant: the only one, or the only one with a saved attach target.
+      // Otherwise the player picks the game (review of #10).
+      const byName = new Map<string, typeof cards>()
+      for (const c of cards) byName.set(c.name.toLowerCase(), [...(byName.get(c.name.toLowerCase()) ?? []), c])
+      for (const [name, list] of byName) {
+        const withTarget = list.filter(c => c.attach)
+        const pick = list.length === 1 ? list[0] : withTarget.length === 1 ? withTarget[0] : null
+        if (pick) known[name] = { game: pick.game, attach: pick.attach }
+      }
     } catch { /* no tiles yet — nothing to autofill */ }
     let initial: { character: string; host: string; port: number; game?: string } | null = null
     try { initial = JSON.parse(localStorage.getItem(ATTACH_LAST_KEY) ?? 'null') } catch { /* ignore */ }

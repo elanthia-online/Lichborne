@@ -11,9 +11,12 @@
 // by `account::character` (lowercase) — the characterId WITHOUT its shard, so
 // the launcher's DR ↔ Test toggle (same profile, different characterId) keeps
 // the colour, and the same character on DR and DR Test shares one. Not the bare
-// name: profiles are keyed by name only and two same-named characters on
-// different accounts already collide there (BUGS.md Known Limitations) — this
-// doesn't copy that. Pass a characterId anywhere; `colorKey` reduces it. Shared rather than per-character because every window must read
+// name, so two same-named characters on different accounts never share one.
+// Deliberately NOT the profile key (`Name@SHARD`) either: a colour belongs to
+// the name on an ACCOUNT, so namesakes on one account in two games (a DR and a
+// GS4 Tysong) share it. They can never be on at once (one character per
+// account, across both games), so the shared colour never makes two live tabs
+// look alike. Pass a characterId anywhere; `colorKey` reduces it. Shared rather than per-character because every window must read
 // it synchronously (a toast about a character in ANOTHER window) and a change
 // must reach every window at once. localStorage is the working copy; the same-
 // window event plus the cross-window `storage` event invalidate the cache.
