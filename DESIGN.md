@@ -11649,7 +11649,7 @@ A plan, built in the order at the end. Sections get marked as they land.
 - the Session Log folder (`Logs/Tysong@GSF/Tysong@GSF_YYYY-MM-DD.log`);
 - Team members (`bulkSets`) and Reconnect Last (`lastSessionCharacters`, which gained `game`).
 
-`session.character` stays the NAME: it is what the game, Lich (`game:char`), contacts, `$characterName` and everything on screen use. GameWindow derives `profile` once; the CharacterProvider value, `LauncherCharacter.profile`, Transfer's rows and the wizard's owner map are keys. The Lich-launch log and the raw XML capture stay by name, since they are diagnostics overwritten per launch or day.
+`session.character` stays the NAME: it is what the game, Lich (`game:char`), contacts, `$characterName` and everything on screen use. GameWindow derives `profile` once; the CharacterProvider value, `LauncherCharacter.profile`, Transfer's rows and the wizard's owner map are keys. The Lich-launch log is filed by key too (`Logs/lich-launch/{Name@SHARD}.log`), so two namesakes launching at once on different shards don't overwrite one file. The raw XML capture stays by name, since it is a diagnostic overwritten per day.
 
 **Migration** ([profileKeyMigration.ts](src/main/profileKeyMigration.ts)), at app-ready, before the first window:
 - **Where a file goes:** each legacy `profiles/{Name}.yaml`, in `profiles/` and `profiles/Archive/`, becomes `{character}@{profileShard(game)}.yaml`. The inputs are the file's own `character` and `game`, the same ones `loadCharacterCards` reads. So a DR Prime profile, or one naming no game, lands on DR (Sekmeht's "bound to DR Prime"), while a DRX or DRF profile keeps its own shard instead of being pointed at Prime's port.

@@ -5222,7 +5222,9 @@ export default function GameWindow({
         aiCancelRef.current = null
         updateLive(liveId, [{ text: `— Catch Me Up · ${label}\n(stopped)\n`, preset: 'internal-system' }])
       }
-      window.api.sessionLogCatchupDigest(requestId, session.character, from, now, tier.maxChars, [session.account])
+      // The log is filed by profile key (DESIGN §56.7.3), the same key the
+      // append above writes under, never the bare name.
+      window.api.sessionLogCatchupDigest(requestId, profile, from, now, tier.maxChars, [session.account])
         .then(d => {
           if (buildCancelled) return
           offProgress()

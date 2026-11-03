@@ -145,7 +145,7 @@ const GAME_FILTER_KEY = 'lichborne.launcher.gameFilter'
 const GAME_FILTERS: { key: GameFilter; label: string; title: string }[] = [
   { key: 'all', label: 'All', title: 'Show characters from both games' },
   { key: 'DR',  label: 'DR',  title: 'Show only DragonRealms characters (Prime, Platinum, Fallen and Test)' },
-  { key: 'GS4', label: 'GS',  title: 'Show only GemStone IV characters (Prime, Platinum, Shattered and Test)' },
+  { key: 'GS4', label: 'GS',  title: 'Show only GemStone IV characters (Prime, Shattered and Test)' },
 ]
 
 function loadGameFilter(): GameFilter {

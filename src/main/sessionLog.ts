@@ -967,6 +967,10 @@ export function registerSessionLogHandlers(): void {
   // `redactLiterals` = extra strings scrubbed from the AI copy (the account
   // username). Generic credential/PIN patterns are handled by redactForAI itself.
   ipcMain.handle('session-log:catchup-digest', async (e, requestId: string, character: string, fromTs: number, toTs: number, maxBodyChars: number, redactLiterals: string[]): Promise<CatchupDigest> => {
+    // Same rule as the append: a bare name would read a pre-migration (or
+    // another shard's namesake's) folder and send it to the AI. The renderer
+    // treats a rejection as "log unreadable" and falls back to the screen.
+    if (!isProfileKey(character ?? '')) throw new Error(`not a Name@SHARD key: "${character}"`)
     const buf = buffers.get(character?.toLowerCase() ?? '')
     if (buf) flushBuffer(buf)
     const send = (p: { phase: 'reading' | 'deduping' | 'extracting'; done: number; total: number; lines: number }) => {

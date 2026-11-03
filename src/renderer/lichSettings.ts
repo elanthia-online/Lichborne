@@ -277,7 +277,8 @@ export interface GameOption {
 
 // GS4 ports/flags verified against lich-5's own
 // lib/common/authentication/login_helpers.rb (GEMSTONE_FLAGS/resolved
-// instance codes: GS3/GSX/GST/GSF) and lib/main/argv_options.rb's
+// instance codes: GS3/GSX/GST/GSF; Lichborne leaves out GSX, since GemStone IV
+// has no Platinum any more) and lib/main/argv_options.rb's
 // handle_gemstone_connection/handle_shattered_connection (game_port values) —
 // NOT guessed. GS4 has no bare-default flag like DR's fallback: Lich only
 // resolves a GemStone instance when `--gemstone`/`--gs` (or the standalone

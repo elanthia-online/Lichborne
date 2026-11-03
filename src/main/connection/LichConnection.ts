@@ -68,9 +68,10 @@ function wrongKind(rubyPath: string, lichPath: string): string | null {
 
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
 
-// Sanitize a character name into a safe per-session log filename (mirrors the
-// safeName used by sessionLog.ts). Empty → 'lich'.
-const safeName = (name: string) => (name || '').replace(/[^a-zA-Z0-9_-]/g, '') || 'lich'
+// Sanitize a profile key (`Name@SHARD`) into a safe per-session log filename
+// (mirrors the safeName used by sessionLog.ts; '@' is kept, as in the profile
+// and Session Log names). Empty → 'lich'.
+const safeName = (name: string) => (name || '').replace(/[^a-zA-Z0-9_@-]/g, '') || 'lich'
 
 interface ExitInfo {
   code: number | null
@@ -154,7 +155,7 @@ export class LichConnection extends EventEmitter {
   //   3. No stderr PIPE. The previous shape piped stderr for crash diagnostics,
   //      but a redirected console pipe is exactly the kind of non-GUI process
   //      context that made GTK flaky. Instead Lich's stdout+stderr go to a
-  //      per-session log file ({userData}/Logs/lich-launch/{Character}.log);
+  //      per-session log file ({userData}/Logs/lich-launch/{Name@SHARD}.log);
   //      describeExit() reads its tail when a launch fails.
   // `detached` + `unref()` are kept (Lich is the proxy and must outlive us),
   // as is the child handle (so a Lich that dies on startup fails fast via
@@ -207,8 +208,9 @@ export class LichConnection extends EventEmitter {
     }
 
     // Open the per-session launch log (truncate per launch → bounded size,
-    // holds only the latest session). Per-character filename so concurrent
-    // sessions never interleave into one file. Best-effort: if we can't open
+    // holds only the latest session). Named by the character's profile key
+    // (`Name@SHARD`), not the bare name, so concurrent sessions never share a
+    // file, including two namesakes on different shards (DESIGN §56.7.3). Best-effort: if we can't open
     // it, fall back to discarding output rather than failing the launch.
     let logFd: number | null = null
     try {
