@@ -70,7 +70,7 @@ import { loadAnalyticsEnabled, recordFire } from '../automationStats'
 import { loadTriggers, saveTriggers, type TriggerRule } from '../triggers'
 import { useTriggerEngine, playWavFile, vitalPercent, secondsLeft, type TriggerGameState } from '../hooks/useTriggerEngine'
 import { loadAliases, loadMacros, saveAliases, saveMacros, resolveAlias, resolveMacro, matchKeyCombo, getMacroToken, newMacro, parseCursorMarker, splitTypedCommands, type AliasRule, type MacroRule } from '../macros'
-import { IS_MAC, loadAdvanced, saveAdvanced } from '../lichSettings'
+import { IS_MAC, loadAdvanced, saveAdvanced, coerceLichInstall, resolveLichInstall, type LichInstall, CHARACTER_LICH_CHANGED_EVENT, CHARACTER_LICH_CHANGED_KEY } from '../lichSettings'
 import { loadSimuCoinConfig, accountConfig } from '../simucoinConfig'
 import ContactPopover from './ContactPopover'
 import MapPanel from './panels/MapPanel'
@@ -1178,6 +1178,29 @@ export default function GameWindow({
   // LichBridge — script tracking. The install this session started from
   // (DESIGN §56.7.1), which may not be the default one.
   const lichPath = sessionLichPath(session)
+  // This character's own install as it stands NOW (for /lich install's "the
+  // next connect uses…"): read from its profile at mount, and again when Edit
+  // Profile saves it (the event in this window, the storage key in others).
+  // Never on focus: a profile read blocks main (B550).
+  const lichOverrideRef = useRef<LichInstall | undefined>(undefined)
+  useEffect(() => {
+    const read = () => {
+      window.api.readCharacterProfile(session.character)
+        .then(raw => { lichOverrideRef.current = raw && typeof raw === 'object' ? coerceLichInstall((raw as { lich?: unknown }).lich) : undefined })
+        .catch(() => {})
+    }
+    read()
+    const onChanged = (e: Event) => { if ((e as CustomEvent<string>).detail === session.character) read() }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === CHARACTER_LICH_CHANGED_KEY && e.newValue?.startsWith(`${session.character}:`)) read()
+    }
+    window.addEventListener(CHARACTER_LICH_CHANGED_EVENT, onChanged)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener(CHARACTER_LICH_CHANGED_EVENT, onChanged)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [session.character])
   // Idea A (Binu): only auto-poll `;listall` while a Lich Scripts panel is open.
   // lichPollRef is the gate read inside useLichBridge's interval; the effect by
   // `lichScriptsOpen` (below the layout state) keeps it in sync and fires one
@@ -5355,6 +5378,12 @@ export default function GameWindow({
         receiving: richStreamSeenRef.current,
         viaLich: session.useLich,
         gs4: gameFamily === 'GS4',
+      }),
+      getLichInstall: () => ({
+        sessionPath: lichPath,
+        next: resolveLichInstall(loadAdvanced(), session.game, lichOverrideRef.current),
+        viaLich: session.useLich,
+        gameName: gameFamily === 'GS4' ? 'GemStone IV' : 'DragonRealms',
       }),
       setRichStream: (mode: RichStreamMode | undefined) => {
         // undefined removes the key (JSON.stringify drops it), so "default"

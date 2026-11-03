@@ -14,7 +14,7 @@
 
 import { newHighlight, type HighlightRule, HIGHLIGHT_EFFECTS, effectiveEffect } from './highlights'
 import { CMD_HISTORY_MIN_MAX } from './commandHistorySettings'
-import { richStreamSettingText } from './lichSettings'
+import { richStreamSettingText, type ResolvedLichInstall } from './lichSettings'
 import type { RichStreamMode } from '../shared/types'
 import type { CompassOptions } from './settings'
 import { newMute, type MuteRule } from './mutes'
@@ -61,6 +61,9 @@ export interface SlashContext {
   // mode: the player's choice, or undefined for Lichborne's default (B544).
   getRichStream: () => { mode: RichStreamMode | undefined; receiving: boolean; viaLich: boolean; gs4?: boolean }
   setRichStream: (mode: RichStreamMode | undefined) => void
+  // DESIGN §56.7.1 — the Lich install this session launched from, and what
+  // the current settings would pick for this character's next connect.
+  getLichInstall: () => { sessionPath: string; next: ResolvedLichInstall; viaLich: boolean; gameName: string }
   // v0.20.0 — character status notifications (app-wide).
   getCharacterNotices: () => boolean
   setCharacterNotices: (on: boolean) => void
@@ -1411,6 +1414,35 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
     },
   },
 
+  // ── /lich install (DESIGN §56.7.1) ──────────────────────────────────────
+  // Read-only: which Lich folder this session runs from and why. Setting a
+  // path stays a dialog (Lich Setup, Edit Profile) because it is one-time
+  // setup with file browsing.
+  {
+    noun: 'lich', nounAliases: [], verb: 'install',
+    args: [], options: [], flags: [],
+    description: 'Show which Lich install this character uses, and where that choice comes from',
+    example: '/lich install',
+    run: ctx => {
+      const { sessionPath, next, viaLich, gameName } = ctx.getLichInstall()
+      const from = next.source === 'character'
+        ? "this character's own install (Edit Profile)"
+        : next.source === 'game'
+          ? `the ${gameName} install (Lich Setup → Lich install by game)`
+          : 'the default install (Lich Setup)'
+      const ruby = next.rubyPath ? ` Ruby: ${next.rubyPath}.` : ''
+      if (!viaLich) {
+        return ok(`This character connects directly (no Lich), so it runs no Lich install. Through Lich it would use ${next.lichPath || '(no path set)'}, ${from}.`)
+      }
+      if (!next.lichPath && !sessionPath) return ok('No Lich path is set yet. Set one in Lich Setup (the ⚙ on the launcher).')
+      if (sessionPath === next.lichPath) return ok(`This session runs Lich from ${sessionPath}, ${from}.${ruby}`)
+      return ok(
+        `This session runs Lich from ${sessionPath || '(unknown)'}.`,
+        `The settings have changed since it connected: the next connect uses ${next.lichPath || '(no path set)'}, ${from}.${ruby}`,
+      )
+    },
+  },
+
   // ── /view (Views — DESIGN §47) ────────────────────────────────────────────
   // A bare+verbs noun like /ai and /colors: the BARE form reports status and
   // toggles, the verbs switch and configure. Per the palette rule there is
@@ -1715,6 +1747,7 @@ const NOUN_HELP: Record<string, string> = {
   timestamps: 'Show the time next to each line in the main window',
   compass:    'The floating compass — show or hide it, resize it, move it, give it a backing',
   notices:    'Turn the "character is in the game / disconnected" notifications on or off',
+  lich:       'See which Lich install (folder) this character runs from, and why',
   richstream: "Ask Lich for DragonRealms' rich (Saga) stream, or see which stream you're getting",
   clear:      'Wipe the main window (your Session Log still keeps everything)',
   colors:     'Named colors — make your own, and everything using one changes when you change it (/colors manage)',
