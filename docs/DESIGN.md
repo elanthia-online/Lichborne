@@ -159,7 +159,7 @@ Lichborne is a DragonRealms and GemStone IV game client built for **real players
 **Design principles:**
 - **Composable** — every panel is independently movable, resizable, floatable, and closeable
 - **Accessible** — usable by players with low vision, color blindness, epilepsy, or motor impairments
-- **Familiar** — veterans coming from Genie or StormFront should feel at home immediately
+- **Familiar** — veterans coming from Genie or Wrayth should feel at home immediately
 - **Discoverable** — new players should be able to configure the client without reading a manual
 - **Performant** — never drop game text, never lag a command
 
@@ -167,7 +167,7 @@ Lichborne is a DragonRealms and GemStone IV game client built for **real players
 
 Lichborne is not a general-purpose DR client that happens to support Lich. It is a purpose-built **display and configuration layer** that treats Lich as a first-class citizen. Lich owns all automation — scripts, variables, text substitution, conditional triggers, and training/combat routines. Lichborne owns what you see, hear, and configure visually.
 
-This distinction is the product's moat. Every other DR client (StormFront, Genie, Frostbite, Wrayth) treats Lich as an optional add-on. Lichborne is built around Lich as the assumed runtime — which means it can go deeper on rendering quality and Lich dashboard features than any client that has to work without Lich too.
+This distinction is the product's moat. Every other DR client (Wrayth, Genie, Frostbite) treats Lich as an optional add-on. Lichborne is built around Lich as the assumed runtime — which means it can go deeper on rendering quality and Lich dashboard features than any client that has to work without Lich too.
 
 The two unique advantages no other client offers today:
 1. **Rendering depth** — modern themes with 100+ CSS variables, 16+ built-in themes including all 12 guild palettes, full accessibility suite, virtual scrolling, hybrid map (Lich image tiles + Genie SVG graph), and a display profile system that follows the player across reinstalls and machines.
@@ -534,7 +534,7 @@ Any stream panel can display a `[HH:MM]` wall-clock prefix on each line. The tog
 
 ### 4.4 Text Styles (Presets)
 
-StormFront `<preset>` tags map to visual styles:
+Wrayth `<preset>` tags map to visual styles:
 
 | Preset | Meaning | Default Style |
 |---|---|---|
@@ -643,7 +643,7 @@ Two display styles are available (Settings → Roundtime / Cast Time Timer Style
 
 ### 5.5 Vitals Bar Position
 
-By default the vitals bar sits at the top of the window, spanning the full width. Players can move it to **just above the command bar** — the layout StormFront uses, which many veterans are accustomed to.
+By default the vitals bar sits at the top of the window, spanning the full width. Players can move it to **just above the command bar** — the layout Wrayth uses, which many veterans are accustomed to.
 
 In bottom position, the vitals bar is scoped to the **main text area width only** — it does not extend under the right panel column. This gives the bottom-right panel (Experience) maximum vertical space while keeping the vitals visible at the point of focus.
 
@@ -791,9 +791,9 @@ DragonRealms has two exp display modes:
 | Mode | Format | Used by |
 |---|---|---|
 | Standard | Verbose text output, parsed from prose | Genie (forces this mode on login) |
-| expbrief | Structured XML `<component>` tags | StormFront, Frostbite, Lichborne |
+| expbrief | Structured XML `<component>` tags | Wrayth, Frostbite, Lichborne |
 
-Lichborne is an XML client — expbrief is the natural mode and gives us the structured data the exp panel needs for free. On login, the client sends `expbrief` to ensure the game is in the right state, matching StormFront's behavior.
+Lichborne is an XML client — expbrief is the natural mode and gives us the structured data the exp panel needs for free. On login, the client sends `expbrief` to ensure the game is in the right state, matching Wrayth's behavior.
 
 **Lich mode:** Lich may handle the expbrief toggle itself on login. In Lich mode, the client does not send the `expbrief` command — Lich owns the session setup. The exp panel still works identically either way since the data arrives as the same XML regardless of who toggled the mode.
 
@@ -1478,7 +1478,7 @@ Items are roughly priority-ordered within each phase. This list evolves.
 
 Priority order reflects data availability from the protocol and player-facing value:
 
-- [x] StormFront XML parser (main process, typed GameEvent IPC — replaces raw string IPC)
+- [x] Wrayth XML parser (main process, typed GameEvent IPC — replaces raw string IPC)
 - [x] Vital bars — Health, Mana, Concentration, Fatigue, Spirit (exact values from `<progressBar>`)
 - [x] Vital bar health threshold colors — green/yellow/red at 50%/25% (Section 4.3)
 - [x] Roundtime countdown — precise timer from `<roundTime>` Unix timestamp
@@ -2733,7 +2733,7 @@ The THEN section of a trigger uses a card-per-action layout. Two notable UI deci
 
 ### 14.z Command Echo
 
-Every command sent through `sendCommandSequence` (macros and alias resolution) is echoed to the main stream as `>command` using the `command-echo` preset, so players can see what fired. For aliases, only the resolved commands are echoed — the original typed alias name is suppressed. This matches how veteran clients (Genie, StormFront) behave and prevents confusion when an alias maps to a different command name.
+Every command sent through `sendCommandSequence` (macros and alias resolution) is echoed to the main stream as `>command` using the `command-echo` preset, so players can see what fired. For aliases, only the resolved commands are echoed — the original typed alias name is suppressed. This matches how veteran clients (Genie, Wrayth) behave and prevents confusion when an alias maps to a different command name.
 
 **Inline echo (v0.17.3).** The echo is merged INLINE into the prompt the command was typed at — `s>stand`, not a standalone `s>` line followed by a `>stand` line (matches Wrayth/Genie/Frostbite). `appendEcho(prev, cmd)` (GameWindow) merges the command into a trailing bare prompt line (reusing the prompt's own `>`, clearing its `prompt` flag so the dedup collapse can't treat it as a duplicate, reusing the line id so it updates in place); it falls back to a standalone `>cmd` line when there's no trailing prompt (mid-stream, or rapid commands). All three echo sites (`sendCommandSequence`, `dispatchUserText` split, canonical `sendCommand`) route through it and then null `lastMainLineRef` (a typed command is a "break" — the prompt returning after a no-output command must still show). The echo is display-only — the Session Log still records the canonical `>cmd`.
 
@@ -3303,10 +3303,10 @@ capability, not a regression fix.
 ### 17.15 Default macro seeds (v0.8.3 repeat tokens; F56 numpad movement, v0.15.2)
 
 Two one-time per-character seeds run from GameWindow mount effects, giving a fresh character (or a
-convert's existing character, once) the Stormfront-family keyboard conventions out of the box:
+convert's existing character, once) the Wrayth-family keyboard conventions out of the box:
 
 - **`seededRepeatMacros` (v0.8.3):** `Ctrl+Enter` → `{RepeatLast}`, `Alt+Enter` →
-  `{RepeatSecondToLast}`, `NumEnter` → `{ReturnOrRepeatLast}` — the Stormfront/Wrayth repeat keys.
+  `{RepeatSecondToLast}`, `NumEnter` → `{ReturnOrRepeatLast}` — the Wrayth repeat keys.
 - **`seededNumpadMovement` (F56, v0.15.2):** the classic movement pad — `Num8/2/4/6` = `n/s/w/e`,
   corners = the diagonals (`Num7/9/1/3` = `nw/ne/sw/se`), `Num5` = `out`, `Num0` = `down`,
   `Num.` = `up`. Layout and short-form commands verified against **Frostbite's bundled default
@@ -8560,7 +8560,7 @@ shells behave. Companion fix: ↑ with an EMPTY history is now a no-op (it used 
 
 ### 38.3 Esc clears the line
 
-The classic Stormfront/Genie reflex. Layered UNDER the slash palette's Esc (the palette's
+The classic Wrayth/Genie reflex. Layered UNDER the slash palette's Esc (the palette's
 `handleKey` runs first in `handleCommandKey`): first Esc dismisses an open palette, second clears
 the line. Gated on non-empty so Esc on an empty bar stays inert. Clearing also resets the history
 index and the stashed draft.

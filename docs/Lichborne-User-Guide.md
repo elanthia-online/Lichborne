@@ -2,7 +2,7 @@
 
 *Your friendly primer for getting Lichborne up and running, and making it your own.*
 
-Welcome! Lichborne is a modern DragonRealms and GemStone IV client for Windows, Linux, and macOS. Whether you're brand new or you've been playing since the StormFront days, this guide walks you from **download** to **fully set up** — and then tours everything the client can do. You don't need to read it front to back; jump to what you need using the contents below.
+Welcome! Lichborne is a modern DragonRealms and GemStone IV client for Windows, Linux, and macOS. Whether you're brand new or you've been playing since Wrayth was called StormFront, this guide walks you from **download** to **fully set up** — and then tours everything the client can do. You don't need to read it front to back; jump to what you need using the contents below.
 
 > **Stuck or something looks wrong?** Come say hi on **Discord**. The invite is inside Lichborne: [download it](#getting-started) first, then choose **Help → Discord**. (**Help → About Lichborne** shows your version, which is handy to mention.) We're a friendly bunch and love a good bug report.
 
@@ -58,7 +58,7 @@ Welcome! Lichborne is a modern DragonRealms and GemStone IV client for Windows, 
 
 ## What is Lichborne?
 
-Lichborne is a DragonRealms and GemStone IV client inspired by **StormFront**, **Genie**, and **Frostbite** — built for players who've had opinions about all three. If you've used any of them, you'll feel at home in minutes.
+Lichborne is a DragonRealms and GemStone IV client inspired by **Wrayth**, **Genie**, and **Frostbite** — built for players who've had opinions about all three. If you've used any of them, you'll feel at home in minutes.
 
 A few ideas shape everything:
 
@@ -192,7 +192,7 @@ Once you're in, run this **once**:
 SET STATUSPROMPT
 ```
 
-This tells DragonRealms to put your current state (stunned, prone, unconscious and so on) in front of every `>` prompt. Lichborne reads it for the **Unconscious** marker on the icon bar and the `$unconscious` trigger variable, which DragonRealms reports nowhere else. Your vitals and roundtime don't depend on it. If you've used StormFront, you've likely done this already.
+This tells DragonRealms to put your current state (stunned, prone, unconscious and so on) in front of every `>` prompt. Lichborne reads it for the **Unconscious** marker on the icon bar and the `$unconscious` trigger variable, which DragonRealms reports nowhere else. Your vitals and roundtime don't depend on it. If you've used Wrayth, you've likely done this already.
 
 *(EXPBRIEF works either way — the Experience panel handles it on or off.)*
 
@@ -837,7 +837,7 @@ Still stuck? **Join us on Discord** (**Help → Discord** in the app) — we're 
 
 ## License
 
-Lichborne is free, open-source software under the [BSD 3-Clause License](../LICENSE) (© 2026 Sekmeht and Binu) — the same license as Lich itself. DragonRealms, GemStone IV and StormFront are trademarks of Simutronics Corp.; Lichborne is an independent community project, not affiliated with or endorsed by Simutronics, and playing through it requires your own Simutronics account under Simutronics' terms of service.
+Lichborne is free, open-source software under the [BSD 3-Clause License](../LICENSE) (© 2026 Sekmeht and Binu) — the same license as Lich itself. DragonRealms, GemStone IV and Wrayth (formerly StormFront) are trademarks of Simutronics Corp.; Lichborne is an independent community project, not affiliated with or endorsed by Simutronics, and playing through it requires your own Simutronics account under Simutronics' terms of service.
 
 ---
 

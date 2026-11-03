@@ -1,6 +1,6 @@
 # Lichborne
 
-A DragonRealms and GemStone IV client for people who've spent years in StormFront, Genie, or Frostbite — and have opinions about all three.
+A DragonRealms and GemStone IV client for people who've spent years in Wrayth, Genie, or Frostbite — and have opinions about all three.
 
 It connects through [Lich5](https://github.com/elanthia-online/lich-5) (recommended) or straight to the game server, and it's free.
 
@@ -41,7 +41,7 @@ It isn't a replacement for Lich — Lich still owns your scripts, maps, and auto
 
 ## What you get out of it
 
-If you've spent years tuning Genie highlights or rebuilding a StormFront layout after a reinstall, the thing you get here is **not losing that work again**. Your configuration is a folder of readable files that you own.
+If you've spent years tuning Genie highlights or rebuilding a Wrayth layout after a reinstall, the thing you get here is **not losing that work again**. Your configuration is a folder of readable files that you own.
 
 If you run several characters, they live in one app that knows about all of them — one place to look, one set of settings, one click to bring the whole team back online, and a heads-up in whatever window you're looking at when one of them drops.
 
@@ -134,4 +134,4 @@ Needs Node 24+. Build commands, project layout, conventions, and the release pip
 
 Lichborne is open source under the [BSD 3-Clause License](LICENSE) — the same license as [Lich](https://github.com/elanthia-online/lich-5) itself. Copyright © 2026 Sekmeht and Binu.
 
-DragonRealms, GemStone IV and StormFront are trademarks or registered trademarks of Simutronics Corp. Lichborne is an independent, unofficial community project — not affiliated with, sponsored by, or endorsed by Simutronics. Playing through Lichborne requires your own Simutronics account and is subject to Simutronics' terms of service.
+DragonRealms, GemStone IV and Wrayth (formerly StormFront) are trademarks or registered trademarks of Simutronics Corp. Lichborne is an independent, unofficial community project — not affiliated with, sponsored by, or endorsed by Simutronics. Playing through Lichborne requires your own Simutronics account and is subject to Simutronics' terms of service.

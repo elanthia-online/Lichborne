@@ -43,7 +43,7 @@ Lich5 is a Ruby scripting proxy that sits between the game server and the client
 
 **Process model:** Each Lich instance is a single OS process. Multiple characters require multiple Lich processes. Each process has its own PID and manages its own connection. The `session_summary_state` table in `lich.db3` is how processes announce themselves to each other (and to Lichborne).
 
-**Frontend flag:** Lich is told which client protocol to speak via a command-line flag. Lichborne uses `--stormfront`, which makes Lich speak the StormFront XML protocol that the game server natively sends.
+**Frontend flag:** Lich is told which client protocol to speak via a command-line flag. Lichborne uses `--stormfront`, which makes Lich speak the Wrayth XML protocol that the game server natively sends. (Simutronics renamed its StormFront client to Wrayth; Lich's flag, and Lichborne's `StormFrontParser`, keep the old name.)
 
 ---
 
@@ -530,7 +530,7 @@ This is unrelated to the script list. Do not confuse with `;listall`.
 1. Lichborne spawns Lich as a child process with `--stormfront` (or whatever `lichClientFlag` is set to)
 2. Lich authenticates with SGE for the specified character
 3. Lich opens a local TCP listener on `lichPort`: in this force mode Lich binds the shard's own GAME port on `127.0.0.1` (`lib/main/main.rb:621` binds `@argv_options[:game_port]`), so the port follows the shard flag — 11024 for DR Prime, 10024 for GS4 Prime (table below)
-4. Lichborne connects to `127.0.0.1:lichPort` as if it were a StormFront client
+4. Lichborne connects to `127.0.0.1:lichPort` as if it were a Wrayth client
 5. Lich proxies the full XML game stream to Lichborne, with its own output injected as `--- Lich:` prefixed lines
 
 ### Port Assignments (from `_shared.yaml` / profile)
@@ -557,7 +557,7 @@ Lich injects its own messages as lines beginning with `--- Lich: `. These are NO
 
 ### What Lich Sends to Lichborne
 
-- The game's StormFront XML stream (DragonRealms or GemStone IV), with Lich's own rewrites applied (§15 hooks; the room-number and rich-stream rewrites in §16/§17)
+- The game's Wrayth XML stream (DragonRealms or GemStone IV), with Lich's own rewrites applied (§15 hooks; the room-number and rich-stream rewrites in §16/§17)
 - Script output echoed to named streams via `<pushStream id="...">` / `popStream`
 - The `LichScripts` stream — populated by the `script-watch.lic` script when running (clearStream + pushStream with script list)
 - `--- Lich: ` prefixed lines for control responses
@@ -718,7 +718,7 @@ With `set statusprompt` on, DR writes the character's current state as letters b
 DR's `<streamWindow id='main' subtitle='…'>` carries the room title, and the room id can appear in TWO forms; Lich may REWRITE them based on feature flags:
 
 - `[Whistling Wood, Barrows - 9479]` — id inside the brackets after ` - ` (Lich `display_lichid` injects the LICH id this way as bare digits).
-- `[Arthelun Ruins, Courtyard] (56107)` — the StormFront-standard `[Title] (uid)`, DR's own room-id-flag display. With Lich's `display_uid` on, Lich rewrites this to a **`u`-prefixed** `(u12345)` (same game uid). `(**)` / `(unknown)` = no id.
+- `[Arthelun Ruins, Courtyard] (56107)` — the Wrayth-standard `[Title] (uid)`, DR's own room-id-flag display. With Lich's `display_uid` on, Lich rewrites this to a **`u`-prefixed** `(u12345)` (same game uid). `(**)` / `(unknown)` = no id.
 
 > **Current lich-5 (main `804cadda`, checked 2026-11-03): the trailing `(u12345)` rewrite is now GemStone's.** GS4's `modify_room_display` (`lib/games.rb:1535-1550`, in `Lich::Gemstone::GameInstance`) does exactly the rewrite above. DR's (`lib/games.rb:1649-1659`) instead strips the game's `] (NNN)` when `display_uid` is on and puts Lich's id/uid INSIDE the brackets (`[Name - 2072 - (u230007)]`, title placement) or on a `Room Number:` line below the room (see the Locate section below and §17, 5.20.0). Keep parsing every form. GS4's subtitle carries no brackets at all: [GemStone IV — shards, room titles and creature tags](#gemstone-iv--shards-room-titles-and-creature-tags-verified-2026-11-03).
 
@@ -1549,7 +1549,7 @@ GM Auchand announced work on DR's Combat panel, which "has been largely non-func
 A player watching his own feed (Mahtra) reported the same. Two untested explanations:
 
 1. **Dialog layouts arrive in the login burst** (`<openDialog>`), so a session already logged in when the change rolled out would never receive a new panel's setup. A capture from a fresh login settles it.
-2. **A version gate.** DR receives the client's own id line: for a Stormfront-style front end, Lich relays the client's login key and version line unchanged and substitutes its own string (`Frontend::CLIENT_STRING`, `/FE:WRAYTH /VERSION:1.0.1.28 /P:WIN_UNKNOWN /XML`, lich-5 `lib/common/frontend.rb:515`) only for its GSL and Frostbite paths and its `--without-frontend` mode (`lib/main/main.rb:702-790`). Lichborne sends `/FE:WRAYTH /VERSION:1.0.1.22` (`LichConnection.ts`, `ConnectionManager.ts` `CLIENT_ID`). If DR sends the panel only to newer clients, Lichborne wouldn't get it.
+2. **A version gate.** DR receives the client's own id line: for a Wrayth-style front end, Lich relays the client's login key and version line unchanged and substitutes its own string (`Frontend::CLIENT_STRING`, `/FE:WRAYTH /VERSION:1.0.1.28 /P:WIN_UNKNOWN /XML`, lich-5 `lib/common/frontend.rb:515`) only for its GSL and Frostbite paths and its `--without-frontend` mode (`lib/main/main.rb:702-790`). Lichborne sends `/FE:WRAYTH /VERSION:1.0.1.22` (`LichConnection.ts`, `ConnectionManager.ts` `CLIENT_ID`). If DR sends the panel only to newer clients, Lichborne wouldn't get it.
 
 Tracked in BUGS.md, Pending Tester Follow-ups.
 

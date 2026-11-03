@@ -50,7 +50,7 @@ import { useOverlayScrollX } from '../hooks/useOverlayScrollX'
 import '../styles/panel-frame.css'
 
 // v0.8.10 (B134-follow-up): `conversation` (singular) — matches the
-// Stormfront / Wrayth / Genie / Frostbite convention. Earlier versions
+// Wrayth / Genie / Frostbite convention. Earlier versions
 // used 'conversations' (plural); a one-time localStorage migration in
 // [renderer/migrations.ts](src/renderer/migrations.ts) renames any
 // saved tabs / activeIds / panelFontSizes / trigger watchStream values

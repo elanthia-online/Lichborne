@@ -1,6 +1,6 @@
 // --- Game family (GS4 support, added alongside the original DR-only build) ---
 
-// DR and GS4 share the same StormFront/Wrayth wire protocol (same tags, same
+// DR and GS4 share the same Wrayth wire protocol (same tags, same
 // tokenizer grammar) — they differ only in which stream/indicator/component
 // ids are meaningful and in game-specific domain systems (skills, spells,
 // combat). `family` is the ONE discriminator everything else branches on.
@@ -683,7 +683,7 @@ export interface InjuryUpdateEvent {
 // real captured GS4 session fixtures (VellumFE's tests/fixtures/active_*.xml,
 // buffs_progress.xml) — not guessed. `id` is the wire's numeric spell/effect
 // id (a cooldown's is prefixed 'c', e.g. 'c123'); `percent` is the
-// progressBar's 0-100 value (StormFront convention, same field every other
+// progressBar's 0-100 value (Wrayth convention, same field every other
 // progressbar handler reads); `time` is the raw remaining-duration string,
 // left unconverted — a display concern for whichever panel consumes this.
 // `time` is HH:MM:SS LEFT (relative, not a server timestamp) or 'Indefinite'
