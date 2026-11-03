@@ -608,7 +608,9 @@ export async function applyProfileKeyRenames(): Promise<void> {
   if (!renames.length) return
   let dropped = 0
   // Kept for good, for teams and Reconnect Last in any _shared.yaml, old or new.
-  rememberLegacyNames(renames)
+  // On a full storage this write fails; it is retried after the moves (which
+  // may free room) and the list stays unacknowledged until it lands.
+  let namesStored = rememberLegacyNames(renames)
   try {
     const all: string[] = []
     for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k) all.push(k) }
@@ -641,6 +643,16 @@ export async function applyProfileKeyRenames(): Promise<void> {
     return
   }
   if (dropped) console.warn(`[profile-keys] storage full: ${dropped} working-copy key(s) dropped; each character's YAML re-seeds them on connect`)
+  if (!namesStored) namesStored = rememberLegacyNames(renames)
+  if (!namesStored) {
+    // Without the stored map, every bare name in an old team or Reconnect Last
+    // list would fall back to DR Prime on later starts, and the next shared
+    // save would make that permanent. Keep the list: re-applying it costs one
+    // scan, and a later start stores the map once there is room. This session
+    // resolves names from the in-memory copy meanwhile.
+    console.warn('[profile-keys] storage full: the old-name map could not be saved; the renames stay pending until it can')
+    return
+  }
   await window.api.ackProfileKeyRenames().catch(() => {})
 }
 

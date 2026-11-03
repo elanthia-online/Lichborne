@@ -1793,7 +1793,11 @@ function AppShell() {
   // the second character "replaced" the first instead of adding to it.
   async function runAttachFromModal(character: string, host: string, port: number, game: string): Promise<string | null> {
     const name = character.trim()
-    const existing = sessions.find(s => s.character.toLowerCase() === name.toLowerCase())
+    // The same CHARACTER is the same profile key: the typed name on the game
+    // the dialog names (a DRT session still counts as its DR profile). A bare
+    // name match would treat a DR Tysong as "already attached" when the player
+    // is attaching a GS4 Tysong, and could destroy the DR tab (review of #10).
+    const existing = sessions.find(s => sameProfile(s, { profile: profileKey(name, game) }))
     if (existing?.status.connected) {
       // Already on: show it rather than attaching a duplicate. Lich would
       // accept a second front-end happily — the problem is on our side.

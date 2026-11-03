@@ -16,24 +16,42 @@ const KEY = 'lichborne.profileKeyRenames'
 const LIVE_KEY = 'lichborne.profileKeyRenames.live'
 
 function loadLive(): Set<string> {
+  if (unsaved) return new Set([...loadLiveStored(), ...unsaved.live])
+  return loadLiveStored()
+}
+
+function loadLiveStored(): Set<string> {
   try {
     const v = JSON.parse(localStorage.getItem(LIVE_KEY) ?? '[]')
     return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
   } catch { return new Set() }
 }
 
-function load(): Record<string, string> {
+// The map this window computed but couldn't store yet (storage full). Read
+// alongside the stored one, so a bare name resolves correctly for the rest of
+// this session; applyProfileKeyRenames keeps the list unacknowledged until the
+// write lands, so a later start stores it once there is room.
+let unsaved: { map: Record<string, string>; live: string[] } | null = null
+
+function loadStored(): Record<string, string> {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) ?? '{}')
     return v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, string> : {}
   } catch { return {} }
 }
 
+function load(): Record<string, string> {
+  return unsaved ? { ...loadStored(), ...unsaved.map } : loadStored()
+}
+
 /** Remember the migration's old→new names (merged into any kept before).
  *  A live profile wins over an archived one for the same name: live `Bob.yaml`
  *  (DR) beside `Archive/Bob.yaml` (DRX) must map Bob to `Bob@DR`, or a legacy
- *  team or Reconnect Last entry would point at the archived character. */
-export function rememberLegacyNames(renames: { from: string; to: string; archived?: true }[]): void {
+ *  team or Reconnect Last entry would point at the archived character.
+ *  Returns whether the map reached storage. On a full storage it is kept in
+ *  memory for this session, and the caller must not acknowledge the renames
+ *  until a later call stores it (review of #10). */
+export function rememberLegacyNames(renames: { from: string; to: string; archived?: true }[]): boolean {
   const map = load()
   const live = loadLive()
   for (const { from, to, archived } of renames) {
@@ -48,7 +66,12 @@ export function rememberLegacyNames(renames: { from: string; to: string; archive
   try {
     localStorage.setItem(KEY, JSON.stringify(map))
     localStorage.setItem(LIVE_KEY, JSON.stringify([...live]))
-  } catch { /* the DR Prime fallback still applies */ }
+    unsaved = null
+    return true
+  } catch {
+    unsaved = { map, live: [...live] }
+    return false
+  }
 }
 
 /** A team member or similar: a key stays as it is; a bare name becomes its key. */
