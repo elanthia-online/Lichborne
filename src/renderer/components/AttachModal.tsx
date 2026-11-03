@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { backdropHandlers } from '../utils/backdropClose'
 import { useEscapeClose } from '../hooks/useEscapeClose'
+import { GAMES } from '../lichSettings'
 // Imported explicitly rather than relying on Launcher having pulled it in: the
 // cne-* chrome this modal reuses lives there, including the `.cne-backdrop`
 // z-index that keeps it above the + tab's Add Character modal.
@@ -9,8 +10,12 @@ import '../styles/character-notes-editor.css'
 
 // Attach to an already-running detachable Lich session.
 //
-// The form is deliberately three fields — character, host, port — because the
-// protocol needs nothing else: no account, no password, no Ruby/Lich paths.
+// The form is deliberately four fields — character, game, host, port — because
+// the protocol needs nothing else: no account, no password, no Ruby/Lich paths.
+// The GAME is not sent either, but it decides how the session is read: the
+// parser family, the rich-stream line and which panels are offered. Without
+// it a GS4 character with no profile attached as DragonRealms, and its stub
+// profile kept it that way.
 // Headless Lich (`lich --login Char --headless PORT`) logged in by itself;
 // this modal only says where its listener is. Reuses the cne-* modal
 // vocabulary (CharacterNotesEditor) rather than minting a new style family.
@@ -24,14 +29,15 @@ interface Props {
   onCancel: () => void
   // Resolves to null on success (App closes the modal) or an error sentence
   // to show inline (modal stays open, values intact, for a fix-and-retry).
-  onAttach: (character: string, host: string, port: number) => Promise<string | null>
+  onAttach: (character: string, host: string, port: number, game: string) => Promise<string | null>
   // The modal's memory (both loaded by App.openAttachModal, both optional):
   // `initial` supplies the last successful attach — only its HOST is used as
-  // a default (see the state notes below). `known` maps lowercased character
-  // names to their profile-saved targets, so typing a name that has attached
-  // before autofills its host/port.
-  initial?: { character: string; host: string; port: number } | null
-  known?: Record<string, { host: string; port: number }>
+  // a default (see the state notes below), plus its GAME, which defaults the
+  // game picker. `known` maps lowercased character names to their profile's
+  // saved target and game, so typing a name that has a tile autofills its
+  // game and (when it has attached before) its host/port.
+  initial?: { character: string; host: string; port: number; game?: string } | null
+  known?: Record<string, { game: string; attach?: { host: string; port: number } }>
 }
 
 export default function AttachModal({ onCancel, onAttach, initial = null, known = {} }: Props) {
@@ -54,6 +60,10 @@ export default function AttachModal({ onCancel, onAttach, initial = null, known 
   // its own port, so last time's port belongs to a different character. It
   // fills in from the saved target once a known name is typed (below).
   const [port, setPort] = useState('8001')
+  // Game defaults to the last attach's (an old saved prefill has none: DR,
+  // which every attach was before GS4), and follows a typed name's profile.
+  const [game, setGame] = useState(
+    GAMES.some(g => g.code === initial?.game) ? initial!.game! : 'DR')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   // True while host/port reflect a saved target rather than hand-typed values
@@ -65,7 +75,9 @@ export default function AttachModal({ onCancel, onAttach, initial = null, known 
   // listener" — the strongest signal available. Hand-edits AFTER the match
   // stick (editing host/port doesn't re-trigger this; only the name does).
   useEffect(() => {
-    const t = known[character.trim().toLowerCase()]
+    const k = known[character.trim().toLowerCase()]
+    if (k && GAMES.some(g => g.code === k.game)) setGame(k.game)
+    const t = k?.attach
     if (t) {
       setHost(t.host)
       setPort(String(t.port))
@@ -96,7 +108,7 @@ export default function AttachModal({ onCancel, onAttach, initial = null, known 
     setBusy(true)
     setError('')
     try {
-      const err = await onAttach(character.trim(), host.trim(), portNum)
+      const err = await onAttach(character.trim(), host.trim(), portNum, game)
       if (err !== null) setError(err)
       // On success App unmounts us — no local close, so a slow unmount can't
       // flash the form back to idle first.
@@ -153,6 +165,22 @@ export default function AttachModal({ onCancel, onAttach, initial = null, known 
             <span className="cne-field-hint">
               Must match the character that Lich session is logged in as —
               the one you passed to <code>--login</code>.
+            </span>
+          </label>
+
+          <label className="cne-label">
+            Game
+            <select
+              value={game}
+              onChange={e => setGame(e.target.value)}
+              disabled={busy}
+              className="cne-input"
+            >
+              {GAMES.map(g => <option key={g.code} value={g.code}>{g.name}</option>)}
+            </select>
+            <span className="cne-field-hint">
+              The game that Lich session is playing. It decides which panels
+              you get and how the game's text is read.
             </span>
           </label>
 

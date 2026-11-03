@@ -970,7 +970,7 @@ function renderPanel(
       // mindstate ladder/guild list, so render an honest placeholder instead
       // of a misleadingly-DR-shaped panel with meaningless data.
       if (gameFamily === 'GS4') {
-        return <div className="stream-panel-empty">Experience tracking for GemStone IV isn't built yet.</div>
+        return <div className="ui-empty">Experience tracking for GemStone IV isn't built yet.</div>
       }
       return <ExpPanel skills={expSkills} rankUpSkills={rankUpSkills} focus={expFocus} pinnedSkills={pinnedSkills} onFocusChange={onFocusChange} onTogglePin={onTogglePin} compactExp={compactExp} />
     case 'injuries':      return <InjuriesPanel parts={injuryState} />

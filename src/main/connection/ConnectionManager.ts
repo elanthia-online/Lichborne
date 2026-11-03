@@ -174,7 +174,7 @@ export class ConnectionManager extends EventEmitter {
     // connect() wrote synchronously, so the socket keeps them in order.
     if (shouldDeclareRichStream(creds.richStream, creds.lichPath)) {
       this.lich.send(FRONTEND_CAPS_LINE)
-      this.emit('status', "Connected via Lich, with DragonRealms' rich stream.")
+      this.emit('status', `Connected via Lich, with ${FAMILY_NAME[gameFamilyFromCode(creds.game)]}'s rich stream.`)
       return
     }
     this.emit('status', 'Connected via Lich.')

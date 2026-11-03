@@ -679,11 +679,14 @@ export class StormFrontParser {
   // streamwindow subtitle) is a deliberate, safe no-op, not an error; see
   // the parse()-level roomName fallback for GS4's real title source.
   //
-  // Extracted from the streamwindow subtitle handler (unchanged logic — this
-  // is a pure refactor) so the SAME extraction+emit logic can also run
+  // Extracted from the streamwindow subtitle handler so the SAME
+  // extraction+emit logic can also run
   // against GS4's inline `<style id="roomName"/>[Title...] (uid)` text,
   // which — verified live (Ilten @ GST, 2026-08-27) — carries the exact same
   // bracket format DR's subtitle does, just delivered a different way.
+  // One behaviour change came with it, for DR too: the dash slot's digits
+  // are optional (`\d*`, see case D below), so "[Crossing, Town Green - ]"
+  // now loses its dangling " -" instead of keeping it in the title.
   //
   // `inline` = called from that roomName fallback. The inline name arrives
   // AFTER the room's components (GS4 and DR alike), so it must not run the
@@ -753,6 +756,13 @@ export class StormFrontParser {
     // slot whenever both are present — the map indexes both number spaces
     // regardless (MapPanel), so using the dash-number in the rarer case
     // where NEITHER uid form is present still resolves either way.
+    // Until v0.21.0 the dash won whenever present, so a player with BOTH
+    // `;display lichid` and the game's room-number flag on got
+    // `[Title - 2522] (2010652)` parsed as 2522 — and because Lich sends that
+    // rewritten subtitle AFTER the game's own `[Title] (2010652)`, roomId
+    // flipped 2010652 → 2522 on every arrival (a Sekmeht raw capture,
+    // 2026-10-31), handing the map a Lich id to try first in the uid index
+    // (the B282 overlap).
     const parenMatch = innerUid ? null : fragment.match(/\]\s*\(u?(\d+)\)/)
     const roomId = innerUid
       ? (innerUid[1] ? parseInt(innerUid[1], 10) : undefined)
@@ -1243,7 +1253,13 @@ export class StormFrontParser {
           // live only in text. Try the GS4 cur/max shape FIRST (a trailing
           // "N/M" — DR's label text never contains a slash), falling back to
           // DR's name-extraction shape so that path is untouched.
-          const curMaxMatch = customText ? text.match(/(\d+)\s*\/\s*(\d+)\s*$/) : null
+          // A GS4 ATTACH sends the same text WITHOUT customText: lich-5's
+          // Gemstone DetachableClientInit.vitals (#1617) writes
+          // value='<percent>' text='health N/M'. So for a GS4 session the
+          // N/M shape is read whether or not customText is set; DR's texts
+          // ('mana 86%' live, 'health 86%' on attach) never match it.
+          const curMaxMatch = (customText || this.family === 'GS4')
+            ? text.match(/(\d+)\s*\/\s*(\d+)\s*$/) : null
           let current = value
           let max = 100
           let label: string | undefined
@@ -1272,10 +1288,8 @@ export class StormFrontParser {
           // because these vitals ARE percentages.
           //
           // Only reached when curMaxMatch above didn't already resolve
-          // current/max — a GS4 attach (if that ever exists) would already be
-          // customText='t' with a "current/max" shape indistinguishable from
-          // this, so curMaxMatch fires first and this never double-applies.
-          // Still deliberately narrow beyond that — only when `value` is 0.
+          // current/max, so a GS4 attach (read there, see above) never gets
+          // here. Deliberately narrow beyond that — only when `value` is 0.
           // DR's live bars carry a correct `value` (86 in that capture) and
           // take exactly the path they always did; customText bars
           // ('inner fire 59%') likewise.
