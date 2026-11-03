@@ -94,7 +94,9 @@ jobs:
       # had. g++-12 is the oldest compiler Node 24's headers are documented for,
       # and on 22.04 it still links against the system's own libstdc++. Building
       # from source stops a prebuilt binary (made on some other system) being
-      # downloaded instead.
+      # downloaded instead. Undefining V8_DEPRECATION_WARNINGS is required: with
+      # it, Electron 43's v8-primitive.h has `class [[deprecated]] __attribute__`,
+      # which Clang accepts and g++-12 rejects. It only drops deprecation notices.
       - name: Prepare the Linux build container
         if: matrix.container
         run: |
@@ -104,6 +106,7 @@ jobs:
             echo "CI=true"
             echo "CC=gcc-12"
             echo "CXX=g++-12"
+            echo "CXXFLAGS=-UV8_DEPRECATION_WARNINGS"
             echo "npm_config_build_from_source=true"
           } >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

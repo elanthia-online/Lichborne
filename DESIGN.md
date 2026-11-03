@@ -8845,7 +8845,7 @@ A native module needs at least the glibc and libstdc++ of the system that compil
 
 `build/afterPack.cjs` reads the packaged `.node` file's symbols with `objdump -T` and fails a CI build if any needs more than GLIBC 2.35 or GLIBCXX 3.4.30. It runs before an artifact exists, so a bad binary can't reach a draft. Finding no native module also fails, because that means the check looked in the wrong place.
 
-Every `lich.db3` read still catches its error and returns `[]`, but the Dashboard's Variables and Settings tabs ask `lich:db-info` and show the error. **Unverified:** that gcc-12 compiles better-sqlite3 against Electron 43's headers in this container, and that the empty `container:` value leaves the Windows and macOS jobs on the runner. Both fail loudly in the first release run, before Publish.
+Every `lich.db3` read still catches its error and returns `[]`, but the Dashboard's Variables and Settings tabs ask `lich:db-info` and show the error. **The first real run proved one of these wrong:** g++-12 rejects `class [[deprecated]] __attribute__` in Electron 43's `v8-primitive.h`, so the build sets `CXXFLAGS=-UV8_DEPRECATION_WARNINGS` (node-gyp puts `CXXFLAGS` after its own `-D`, and the flag only removes deprecation notices). Reproduced and fixed against g++-12 12.4 in WSL; 22.04 ships 12.3. **Unverified:** the stages after the compile on Linux, and that the empty `container:` value leaves the Windows and macOS jobs on the runner. Both fail loudly in the first release run, before Publish.
 
 ## 42. SimuCoin Claim (F71, v0.18.0)
 

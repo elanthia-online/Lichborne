@@ -66,6 +66,7 @@ ok(JSON.stringify(fromMatrix) === JSON.stringify([...expected].sort()),
 ok(/- os: ubuntu-latest\s+args: --linux\s+container: ubuntu:22\.04/.test(yml), 'Linux builds in the ubuntu:22.04 container')
 ok(/^\s+container: \$\{\{ matrix\.container \}\}/m.test(yml), 'build job uses the matrix container')
 ok(/npm_config_build_from_source=true/.test(yml), 'Linux build compiles native modules from source')
+ok(/CXXFLAGS=-UV8_DEPRECATION_WARNINGS/.test(yml), "g++-12 can compile Electron's V8 headers")
 ok(readFileSync('build/afterPack.cjs', 'utf-8').includes('checkLinuxLibraries(context.appOutDir)'), 'afterPack checks the Linux native module')
 
 // 5. Never build on a plain push.
