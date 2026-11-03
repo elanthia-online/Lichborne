@@ -19,7 +19,8 @@
 // active one (the comment on `setCharacterGame`). Launcher-local UI state in
 // localStorage: `expandedAccounts` (a JSON array; the wizard pre-seeds a new
 // account and `refreshKey` re-reads it), `favCollapsed` / `teamsCollapsed`
-// (INVERTED flags, so an absent key means expanded), `favTipDismissed`;
+// (INVERTED flags, so an absent key means expanded), `favTipDismissed`,
+// `gameFilter` (the All / DR / GS choice; an unknown value reads as All);
 // "Show hidden" is session-only. `refreshKey` is a SOFT refresh, not a
 // remount key, so that state survives. Removing an ACCOUNT archives its
 // profiles (profiles first, password second — order matters) rather than
@@ -1239,7 +1240,10 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
   // Favorites in BOTH launchers (v0.19.7: + says "Pick a character to
   // connect", and bringing a team in is exactly that). Derived from the same
   // list the Teams block shows, so the Favorites count can't disagree with it.
-  const familyByName = new Map(characters.map(c => [c.name.toLowerCase(), gameFamilyFromCode(c.game)]))
+  // Hidden characters are left out: a team row treats a hidden member as
+  // missing (every bulk path skips hidden tiles), so a team whose only GS
+  // member is hidden must not show under GS either.
+  const familyByName = new Map(characters.filter(c => !c.hidden).map(c => [c.name.toLowerCase(), gameFamilyFromCode(c.game)]))
   const shownTeams = filter === 'all' ? teamRows
     : teamRows.filter(t => t.members.some(m => familyByName.get(m.name.toLowerCase()) === filter))
   const shownFavoriteTeams = shownTeams.filter(t => t.favorite)
@@ -1412,7 +1416,10 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
             account sections when the user has tiles but hasn't favorited
             any. Dismissable; the dismiss state lives in localStorage so
             the hint doesn't come back next launch. */}
-        {!favTipDismissed && favoriteCharacters.length === 0 && groups.length > 0 && (
+        {/* Any favourite at all, not just in the game filter: a player whose
+            favourites are all DR must not be told to start favouriting when
+            they pick GS. */}
+        {!favTipDismissed && !shownOrHidden.some(c => c.favorite) && groups.length > 0 && (
           <div className="launcher-fav-tip">
             <span>💡 Click the ♡ on any character to pin it to a Favorites section at the top for quick access.</span>
             <button
