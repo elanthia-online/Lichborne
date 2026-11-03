@@ -4,7 +4,7 @@
 // PanelFrame (kind:'panel') or — from Phase 2 — a decoupled chrome strip
 // (main text / vitals / icon / compass / command).
 import { nanoid } from 'nanoid'
-import { makeTab, type TabDef } from './components/PanelFrame'
+import { makeTab, makeCustomTab, type TabDef } from './components/PanelFrame'
 import type { GameFamily } from '../shared/types'
 
 export type WinKind = 'panel' | 'main' | 'vitals' | 'icon' | 'compass' | 'command'
@@ -131,8 +131,9 @@ function isFloatWindow(w: unknown): w is FloatWindow {
 // measure-and-mint conversion (§33.6) that snapshots the user's ACTUAL
 // current layout (panels + chrome + main text).
 // GS4: no `spells` (DR's percWindow stream) or `exp` (DR's mindstate panel);
-// Effects carries GS4's spells/buffs/debuffs/cooldowns instead — the same
-// split as GameWindow's defaultMidTabs/defaultBottomTabs.
+// Effects carries GS4's spells/buffs/debuffs/cooldowns instead, and GS4 gets
+// its Bounties window — the same split as GameWindow's defaultMidTabs/
+// defaultBottomTabs.
 export function seedDefaultWindows(family: GameFamily = 'DR'): FloatWindow[] {
   const gs4 = family === 'GS4'
   return [
@@ -142,7 +143,7 @@ export function seedDefaultWindows(family: GameFamily = 'DR'): FloatWindow[] {
     { id: nanoid(), kind: 'panel', z: 2, showTitle: true, title: 'Panel 2',
       rect: { x: 0.60, y: 0.36, w: 0.36, h: 0.30 },
       tabs: gs4
-        ? [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths')]
+        ? [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths'), makeCustomTab('bounty')]
         : [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths'), makeTab('spells')], activeId: 'thoughts' },
     { id: nanoid(), kind: 'panel', z: 3, showTitle: true, title: 'Panel 3',
       rect: { x: 0.60, y: 0.68, w: 0.36, h: 0.28 },
