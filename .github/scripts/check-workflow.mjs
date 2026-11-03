@@ -19,7 +19,10 @@
 // assert the PROPERTIES the release depends on.
 import { readFileSync } from 'fs'
 
-const yml = readFileSync('.github/workflows/release.yml', 'utf-8')
+// CRLF → LF: Windows CI checks out with CRLF, and a JS `.` does not match \r,
+// so any `.*\n` pattern below would fail there and pass on Linux.
+const readText = (f) => readFileSync(f, 'utf-8').replace(/\r\n/g, '\n')
+const yml = readText('.github/workflows/release.yml')
 const lines = yml.split('\n')
 let pass = 0, fail = 0
 const ok = (c, m) => { if (c) { pass++; console.log('  ok    ' + m) } else { fail++; console.log('  FAIL  ' + m) } }
@@ -87,7 +90,7 @@ for (const [plat, ext, arch] of [['win', 'exe', 'x64'], ['linux', 'AppImage', 'x
 }
 
 // 7. test-build.yml: the same build as the release, but it must never publish.
-const tb = readFileSync('.github/workflows/test-build.yml', 'utf-8')
+const tb = readText('.github/workflows/test-build.yml')
 const tbLines = tb.split('\n')
 const tbCode = tbLines.filter(l => !/^\s*#/.test(l)).join('\n')
 const tbPkgIdx = tbLines.findIndex(l => l.includes('name: Package (no publish)'))
@@ -97,11 +100,25 @@ ok(/electron-builder \$\{\{ matrix\.args \}\} --publish never/.test(tbPkg), 'tes
 ok(!/GH_TOKEN|secrets\./.test(tbCode), 'test-build: no token or secret in use (cannot reach a release)')
 ok(/CSC_IDENTITY_AUTO_DISCOVERY:\s*'false'/.test(tbPkg), 'test-build: packaging step carries CSC_IDENTITY_AUTO_DISCOVERY')
 ok(/^permissions:\s*\n\s+contents: read\s*$/m.test(tbCode), 'test-build: read-only token')
-ok(!/^\s*(push|pull_request\w*):/m.test(tbCode.split('jobs:')[0]), 'test-build: manual-only')
+// Positively: workflow_dispatch and nothing else. A schedule (or any other
+// trigger) would start a run with no `inputs`, so no platform is ticked.
+const tbOn = (tbCode.split(/^"on":[ \t]*$/m)[1] ?? '').split(/^\S/m)[0]
+const tbTriggers = [...tbOn.matchAll(/^  (\w+):/gm)].map(m => m[1])
+ok(tbTriggers.join() === 'workflow_dispatch', `test-build: workflow_dispatch is the only trigger [${tbTriggers}]`)
 ok(/retention-days: 7/.test(tbCode), 'test-build: artifacts expire after 7 days')
 const tbOs = [...tbCode.matchAll(/"os":"([^"]+)"/g)].map(m => m[1])
 ok(JSON.stringify([...tbOs].sort()) === JSON.stringify([...osEntries].sort()),
    `test-build targets [${tbOs}] match release matrix [${osEntries}]`)
+// Per platform, the packaging args and container must match release.yml too,
+// or a test build would package a different target set than the release.
+const releaseTargets = Object.fromEntries([...yml.matchAll(
+  /^\s+- os:\s*(\S+)\s*\n\s+args:\s*(\S.*?)\s*\n(?:\s+container:\s*(\S+))?/gm)]
+  .map(m => [m[1], { args: m[2], container: m[3] ?? null }]))
+for (const m of tbCode.matchAll(/\{"platform":"\w+","os":"([^"]+)","args":"([^"]+)"(?:,"container":"([^"]+)")?\}/g)) {
+  const want = releaseTargets[m[1]]
+  ok(want && want.args === m[2] && want.container === (m[3] ?? null),
+     `test-build ${m[1]}: args "${m[2]}"${m[3] ? ` + container ${m[3]}` : ''} match release.yml`)
+}
 ok(/"platform":"linux","os":"ubuntu-latest","args":"--linux","container":"ubuntu:22\.04"/.test(tbCode),
    'test-build: Linux builds in the ubuntu:22.04 container')
 ok(/matrix: \$\{\{ fromJSON\(needs\.plan\.outputs\.matrix\) \}\}/.test(tbCode), 'test-build: matrix comes from the plan job')
