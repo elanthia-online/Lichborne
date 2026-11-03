@@ -11624,7 +11624,7 @@ A plan, built in the order at the end. Sections get marked as they land.
 
 #### 56.7.2 Organising the login screen by game
 
-- **An All / DR / GS filter** on the launcher (both the full screen and the + modal). It shows only when the saved characters span both games (UX #1), and narrows the account sections, Favorites and Teams (a team shows when any of its members is in that game). An account with no character in that game drops out. The choice is a per-viewer convenience in `lichborne.launcher.gameFilter`. A stale choice whose game no longer has characters reads as All. **No slash command:** the launcher is the pre-session screen, where the command bar doesn't exist.
+- **An All / DR / GS filter** (BUILT: `GameFilterBar` / `effectiveGameFilter` in Launcher.tsx, the shared `ui-tabs` chips with a per-game count) on the launcher (both the full screen and the + modal). It shows only when the saved characters span both games (UX #1), and narrows the account sections, Favorites and Teams (a team shows when any of its members is in that game). An account with no character in that game drops out. The choice is a per-viewer convenience in `lichborne.launcher.gameFilter`. A stale choice whose game no longer has characters reads as All. **No slash command:** the launcher is the pre-session screen, where the command bar doesn't exist.
 - **Tile meta shows the shard name** ("GemStone IV Prime") rather than the code; the code stays in the tooltip.
 - **The wizard's game step is grouped** into DragonRealms and GemStone IV blocks.
 - **Edit Profile per family.** GS4 professions replace DR guilds, and "Level" replaces "Circle". The stored fields stay `guild`/`circle`; only labels and the list change.

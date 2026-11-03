@@ -37,6 +37,7 @@ import { loadBulkSets, saveBulkSets, removeBulkSet, upsertBulkSet, BULK_SET_NAME
 import ContextMenu, { type CtxItem } from './ContextMenu'
 import CharacterNotesEditor, { guildLabel } from './CharacterNotesEditor'
 import { makeCharacterId } from '../../shared/characterId'
+import { gameFamilyFromCode, type GameFamily } from '../../shared/types'
 import { characterColor, useCharacterColors } from '../characterColors'
 import { monogramStyle, nameInitials } from '../utils/nameColor'
 import '../styles/launcher.css'
@@ -131,6 +132,55 @@ const GAME_SECTIONS: { key: 'DR' | 'DRX' | 'DRF' | 'GS3' | 'GSX' | 'GST' | 'GSF'
   { key: 'GST', label: 'GemStone IV Test',      matches: g => g === 'GST' },
   { key: 'GSF', label: 'GemStone IV Shattered', matches: g => g === 'GSF' },
 ]
+
+// The All / DR / GS filter (DESIGN §56.7.2). Shown only when the saved
+// characters span both games; a stale choice (that game has no characters any
+// more) reads as All, so it can never hide every tile. A per-viewer
+// convenience, so localStorage only.
+export type GameFilter = 'all' | GameFamily
+const GAME_FILTER_KEY = 'lichborne.launcher.gameFilter'
+
+const GAME_FILTERS: { key: GameFilter; label: string; title: string }[] = [
+  { key: 'all', label: 'All', title: 'Show characters from both games' },
+  { key: 'DR',  label: 'DR',  title: 'Show only DragonRealms characters (Prime, Platinum, Fallen and Test)' },
+  { key: 'GS4', label: 'GS',  title: 'Show only GemStone IV characters (Prime, Platinum, Shattered and Test)' },
+]
+
+function loadGameFilter(): GameFilter {
+  try {
+    const v = localStorage.getItem(GAME_FILTER_KEY)
+    return v === 'DR' || v === 'GS4' ? v : 'all'
+  } catch { return 'all' }
+}
+
+/** The filter actually in force: All unless the characters span both games. */
+export function effectiveGameFilter(filter: GameFilter, characters: { game: string }[]): GameFilter {
+  const families = new Set(characters.map(c => gameFamilyFromCode(c.game)))
+  return families.size > 1 && filter !== 'all' && families.has(filter) ? filter : 'all'
+}
+
+function GameFilterBar({ filter, counts, onChange }: {
+  filter: GameFilter
+  counts: Record<GameFilter, number>
+  onChange: (next: GameFilter) => void
+}) {
+  return (
+    <div className="ui-tabs launcher-filter" role="group" aria-label="Show characters from">
+      {GAME_FILTERS.map(f => (
+        <button
+          key={f.key}
+          type="button"
+          className={`ui-tab${filter === f.key ? ' ui-tab--active' : ''}`}
+          aria-pressed={filter === f.key}
+          title={f.title}
+          onClick={() => onChange(f.key)}
+        >
+          {f.label}<span className="launcher-filter-count">{counts[f.key]}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
 
 // Launcher hero logo. Lives in src/renderer/public/ (the about-theme.mid
 // precedent) so Vite copies it into the build with no config and it ships in
@@ -848,12 +898,6 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
       favorite: !!set.favorite, notes: set.notes,
     }
   }), [bulkSets, characters, connectedSet])
-  // Pinned teams join Favorites in BOTH launchers. Compact (the + tab's Add
-  // Character modal) used to zero this on the theory that you came to add an
-  // account, not to launch a team — but + says "Pick a character to connect",
-  // and bringing a team in is exactly that (v0.19.7). Derived HERE so the
-  // Favorites count can't disagree with what the block actually shows.
-  const favoriteTeams = useMemo(() => teamRows.filter(t => t.favorite), [teamRows])
 
   // Favorites is the QUICK-SELECT block (Sekmeht: "think of favorites as their
   // quick select to things"), so it holds characters AND pinned teams. The
@@ -889,6 +933,11 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
   }
 
   const [showHidden, setShowHidden] = useState(false)
+  const [gameFilter, setGameFilter] = useState<GameFilter>(loadGameFilter)
+  function changeGameFilter(next: GameFilter) {
+    setGameFilter(next)
+    try { localStorage.setItem(GAME_FILTER_KEY, next) } catch { /* quota — in-memory only */ }
+  }
   const [editingNotes, setEditingNotes] = useState<LauncherCharacter | null>(null)
   // Favorites discoverability hint — shows above the first account section
   // for new users until they either favorite a character or explicitly
@@ -1171,9 +1220,29 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
   // Filter out hidden tiles unless the user has toggled Show Hidden. The
   // hidden state is per-character (CharacterProfile.hidden) so it survives
   // restarts; the "Show hidden" launcher-level toggle is session state only.
-  const visibleCharacters = showHidden ? characters : characters.filter(c => !c.hidden)
-  const hiddenCount = characters.filter(c => c.hidden).length
+  // The game filter narrows everything below it: accounts, Favorites, Teams
+  // and the hidden count. Removing an account still acts on ALL its
+  // characters (it reads `characters`, not this list).
+  const filter = effectiveGameFilter(gameFilter, characters)
+  const showFilter = new Set(characters.map(c => gameFamilyFromCode(c.game))).size > 1
+  const inGame = (c: LauncherCharacter) => filter === 'all' || gameFamilyFromCode(c.game) === filter
+  const shownOrHidden = showHidden ? characters : characters.filter(c => !c.hidden)
+  const filterCounts: Record<GameFilter, number> = {
+    all: shownOrHidden.length,
+    DR:  shownOrHidden.filter(c => gameFamilyFromCode(c.game) === 'DR').length,
+    GS4: shownOrHidden.filter(c => gameFamilyFromCode(c.game) === 'GS4').length,
+  }
+  const visibleCharacters = shownOrHidden.filter(inGame)
+  const hiddenCount = characters.filter(c => c.hidden && inGame(c)).length
   const groups = groupCharacters(visibleCharacters)
+  // A team shows when any member is in the filtered game. Pinned teams join
+  // Favorites in BOTH launchers (v0.19.7: + says "Pick a character to
+  // connect", and bringing a team in is exactly that). Derived from the same
+  // list the Teams block shows, so the Favorites count can't disagree with it.
+  const familyByName = new Map(characters.map(c => [c.name.toLowerCase(), gameFamilyFromCode(c.game)]))
+  const shownTeams = filter === 'all' ? teamRows
+    : teamRows.filter(t => t.members.some(m => familyByName.get(m.name.toLowerCase()) === filter))
+  const shownFavoriteTeams = shownTeams.filter(t => t.favorite)
   // Favorites mirror — characters with `favorite: true` get pinned to a
   // top-of-launcher section, but they ALSO still appear in their account /
   // game section below (Favorites is a quick-access shortcut, not a
@@ -1238,7 +1307,15 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
 
       <div className="launcher-groups">
 
-        {(favoriteCharacters.length > 0 || favoriteTeams.length > 0) && (
+        {showFilter && <GameFilterBar filter={filter} counts={filterCounts} onChange={changeGameFilter} />}
+        {showFilter && visibleCharacters.length === 0 && (
+          <div className="ui-empty launcher-filter-empty">
+            No {filter === 'GS4' ? 'GemStone IV' : 'DragonRealms'} characters to show
+            {hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ''}.
+          </div>
+        )}
+
+        {(favoriteCharacters.length > 0 || shownFavoriteTeams.length > 0) && (
           <div className={`launcher-section launcher-section--favorites${favCollapsed ? ' launcher-section--collapsed' : ''}`}>
             {/* A real <button> (not a clickable div) so Enter/Space work
                 natively — the same lesson the account header learned in
@@ -1253,15 +1330,15 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
               <span className="launcher-account-chevron" aria-hidden="true">{favCollapsed ? '▶' : '▼'}</span>
               <span className="launcher-section-header-heart" aria-hidden="true">♥</span>
               Favorites
-              <span className="launcher-account-count">{favoriteCharacters.length + favoriteTeams.length}</span>
+              <span className="launcher-account-count">{favoriteCharacters.length + shownFavoriteTeams.length}</span>
             </button>
             {!favCollapsed && (<>
             {/* Pinned TEAMS lead the quick-select block: a team is a bigger
                 action than a single character, and keeping the rows above the
                 card grid stops two different shapes interleaving. */}
-            {favoriteTeams.length > 0 && (
+            {shownFavoriteTeams.length > 0 && (
               <div className="launcher-teams launcher-teams--infav">
-                {favoriteTeams.map(t => <TeamRow key={`favteam::${t.name}`} team={t} {...teamRowProps} />)}
+                {shownFavoriteTeams.map(t => <TeamRow key={`favteam::${t.name}`} team={t} {...teamRowProps} />)}
               </div>
             )}
             <div className="launcher-grid">
@@ -1294,7 +1371,7 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
         {/* In BOTH launchers (v0.19.7): the + tab's compact launcher is how you
             bring more characters in mid-session, and a team is exactly that.
             Launching skips anyone already on (planReconnect). */}
-        {onConnectSet && teamRows.length > 0 && (
+        {onConnectSet && shownTeams.length > 0 && (
           <div className={`launcher-section launcher-section--teams${teamsCollapsed ? ' launcher-section--collapsed' : ''}`}>
             <button
               type="button"
@@ -1320,11 +1397,11 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
                   as U+2691 (flag) rather than adding more selectors. */}
               <span className="launcher-section-header-glyph" aria-hidden="true">⚔︎</span>
               Teams
-              <span className="launcher-account-count">{teamRows.length}</span>
+              <span className="launcher-account-count">{shownTeams.length}</span>
             </button>
             {!teamsCollapsed && (
               <div className="launcher-teams">
-                {teamRows.map(t => <TeamRow key={t.name} team={t} {...teamRowProps} />)}
+                {shownTeams.map(t => <TeamRow key={t.name} team={t} {...teamRowProps} />)}
               </div>
             )}
           </div>
