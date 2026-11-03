@@ -11428,7 +11428,7 @@ The golden run now covers all 24 fixtures (`golden-eol.ts`, baseline `golden-v02
 
 **Not verified in play yet:** everything above is fixture-tested; the first live sessions on Lich 5.23.0 are the test plan's job. A familiar's view on the rich stream is still unseen (§55.8).
 
-## 56. GemStone IV timed effects — the Effects panel (PR #1, gs4-support)
+## 56. GemStone IV panels — Effects, Experience, Encumbrance, Creatures (PR #1, gs4-support)
 
 GemStone sends four timed-effect dialogs: `Active Spells`, `Buffs`, `Debuffs` and `Cooldowns`. Each one is a `<dialogData>` of `<progressBar id value text time>` rows. The parser already turned them into `effects-update` events (`EffectsUpdateEvent`, replay-sticky as `effects:<dialog>`). This section is the panel that shows them: [EffectsPanel.tsx](src/renderer/components/panels/EffectsPanel.tsx), with its time math in [gsEffects.ts](src/renderer/gsEffects.ts).
 
@@ -11489,18 +11489,37 @@ Found by replaying the 184 GS4 captures through the parser and checking each str
 - **Unverified:** the below-100 level bar and the "of cap" figure follow Saga's code. Every capture is one level-100 character, about 8× past the 7,572,500 cap, so the figure is shown only under 100%, where it measures progress.
 - **Vitals:** GS4 mana can exceed its max (6 of 1,222 readings, e.g. 558/508). The text keeps the true percentage and the bar's fill is clamped to its track.
 
-### 56.5 GS4 parity: not built yet
+### 56.5 GS4 Creatures panel and creature health
 
-From a census of the GS4 captures, largest first:
+- **The panel** (`creatures`, GS4-only, [CreaturesPanel.tsx](src/renderer/components/panels/CreaturesPanel.tsx)) lists the room's creatures from the roster, one row each:
+  - the name, in the game's creature colour while hostile;
+  - its markers (`inferior`, `challenging`, the boss and mount flags), each with a tooltip;
+  - the game's exact health as numbers and a bar (green above 50%, amber above 25%, red below; the colour-blind remap of §56.2 covers them);
+  - its states (stunned, prone, rooted, flying, …).
+- **Order** (UX #3): hostile and alive first, then everything else, then the dead (greyed, no bar), each in the room's order.
+- **Click** sends `target #id`, the command the game's own target picker sends. **Right-click** opens the shared game-link menu (§55.5). The current target is striped and tagged.
+- **Pets and familiars send `health="0" maxhealth="0"`** (7,271 tags: owls, cats, ravens, all `inferior`), so they get no bar. Health goes **below 0 past death** (e.g. `-46`); the bar stops at empty.
+- **The game doesn't define `inferior` or `challenging`.** In the captures, `inferior` is on shopkeepers, pets and harmless critters, and `challenging` on guild guards. The tooltips say exactly that and claim nothing more.
+- **A fresh GS4 layout** has Creatures as the second mid-zone tab, after Thoughts, in both layout modes. `/panel open creatures` opens it. A Creatures tab carried onto a DR character points at the Room panel.
 
-- **Quickbar and combat dialogs**: `cmdButton`, `dropDownBox`, `switchQuickBar` and `menuLink` in the `quick*` and `combat` dialogs, about 37k elements in a 16-file sample and most of what is left as `unknown`. These are Saga's Hotbar and Combat board, command buttons the server lays out. This is the largest remaining gap.
-- **`<roommeta>`** (weather, climate, terrain, sanctuary, realm, bonfire), one per room. Saga draws terrain and environment icons from it.
-- **Objectives / world events** (`<objectives>`, `<task>`, 17 in the sample). Saga has an Objectives panel.
-- **Spellbook:** the `Spells` window is declared and cleared at login but never filled in the captures, so there is no data to design against yet.
-- **PSM tracker** (CMan, shield, weapon and armor techniques, feats): nothing on the wire in the captures; it would come from Lich/infomon rather than the game stream.
+**The parser** (all checked by replaying the 184 captures):
+- **Health is read as numbers.** `<crtrStatus>`'s `health` and `maxhealth` become `CreatureStatus.health` / `maxHealth`, read as lich-5's `strict_crtr_integer` reads them. They used to fall into `flags` as the words "health" and "maxhealth".
+- **GS4's tags come INSIDE the `room objs` component**, ahead of each name. DR's come after it. The roster used to start when the component ENDED, throwing away the tags it had just collected, so **every GS4 roster was empty** and Room panel creature states never worked on GS4. It now starts when the component opens.
+- **Lone mid-fight updates are merged.** GS4 re-sends a creature's tag on its own as a blow changes it. In 37% of those (17,679 of 47,762) no room refresh follows before the prompt, and the parser used to drop them. They now update the creatures already listed, keyed by id (`lastRoster`). An id not in the list waits for the next refresh, so a lone batch never reads as "everyone left". With this, every last-per-prompt health reading for a listed creature reaches the roster. The 75 that don't are LOOK views of a room, which correctly leave the roster alone.
+- **DR gets the merge too.** In lich-5's `dr_legacy_hunt.xml` a moradu's `disengaged` drops in a lone batch, which the roster used to miss. It is the only change across all the DR fixtures.
+- **The current target** comes from the combat dialog's `dDBTarget` box, using lich-5's rule: the first `content_value` is the target when it is an `#id`, else there is none. The game re-sends the box on every room change (294,631 times in the captures), so only a change emits `creature-target`. It is replay-sticky, and `reset()` clears it.
+- **The renderer's `sameRoster`** compares health too, or the roster memo would keep the stale list.
+
+### 56.6 GS4 parity: what's left
+
+- **Objectives / world events** (`<objectives>`, `<task>`, 17 in a 16-file sample). Saga has an Objectives panel.
 - **`ifClosedStyle="watching"`.** Lich marks script stream pushes this way (show in main when that window is closed). Lichborne decides main fallbacks from its own `STREAM_FALLBACK` table instead; honouring the attribute would cover script streams generally.
 
-**Still skipped on purpose:**
+**Not building (decided 2026-11-02 by a GS4 player on the PR):**
+- **The quick bar and the Combat window** (`cmdButton`, `menuLink`, `upDownEditBox`, `switchQuickBar` and every `dropDownBox` except `dDBTarget`). These are the server's command-button layouts. Lichborne has its own macros and buttons, and the useful part, the current target, feeds the Creatures panel. The tags are now silent instead of `unknown` events.
+- **`<roommeta>`** (weather, climate, terrain, sanctuary, realm, bonfire).
+- **A Spellbook.** The `Spells` window is declared but never filled in any capture.
+- **A PSM tracker** (CMans, shield, weapon and armor techniques, feats). It would have to come from Lich's infomon, not the game stream.
 - ProfanityFE's script-pushed `ProfanityCustom` timers.
 - Saga's tracked/"missing" spells and its per-effect colour rules.
 

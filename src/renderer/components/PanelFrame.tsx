@@ -38,6 +38,7 @@ import InjuriesPanel from './panels/InjuriesPanel'
 import EffectsPanel from './panels/EffectsPanel'
 import GsExperiencePanel, { type GsExperienceState } from './panels/GsExperiencePanel'
 import EncumbrancePanel, { type GsEncumbranceState } from './panels/EncumbrancePanel'
+import CreaturesPanel from './panels/CreaturesPanel'
 import type { EffectsState } from '../gsEffects'
 import DebugPanel from './DebugPanel'
 import MapPanel from './panels/MapPanel'
@@ -63,7 +64,7 @@ import '../styles/panel-frame.css'
 // stream/tab id space bare — the §34.1 collision-safety guarantee holds.
 // Deliberately NOT in ALL_PANEL_TYPES (it's parameterized — added via the
 // + menu's [e] section, never as a generic builtin row).
-export type PanelType = 'room' | 'thoughts' | 'arrivals' | 'conversation' | 'deaths' | 'spells' | 'exp' | 'familiar' | 'inv' | 'injuries' | 'effects' | 'encumbrance' | 'debug' | 'log' | 'map' | 'lichScripts' | 'combat' | 'custom' | 'experience'
+export type PanelType = 'room' | 'thoughts' | 'arrivals' | 'conversation' | 'deaths' | 'spells' | 'exp' | 'familiar' | 'inv' | 'injuries' | 'effects' | 'encumbrance' | 'creatures' | 'debug' | 'log' | 'map' | 'lichScripts' | 'combat' | 'custom' | 'experience'
 
 // GS4 support: which built-in panel TYPES are meaningful for which game
 // family. A type absent from this map is available to BOTH families (the
@@ -89,6 +90,7 @@ export const PANEL_GAMES: Partial<Record<PanelType, GameFamily[]>> = {
   spells: ['DR'],
   effects: ['GS4'],
   encumbrance: ['GS4'],   // GS4's `encum` dialog; DR has no encumbrance readout
+  creatures: ['GS4'],     // needs GS4's per-creature health; DR's tags carry flags only
 }
 
 export function panelTypeAvailable(type: PanelType, family: GameFamily | undefined): boolean {
@@ -120,6 +122,7 @@ export const PANEL_LABELS: Record<PanelType, string> = {
   injuries:      'Injuries',
   effects:       'Effects',
   encumbrance:   'Encumbrance',
+  creatures:     'Creatures',
   debug:         'Debug',
   log:           'Log',
   map:           'Map',
@@ -130,7 +133,7 @@ export const PANEL_LABELS: Record<PanelType, string> = {
 }
 
 export const ALL_PANEL_TYPES: PanelType[] = [
-  'room', 'thoughts', 'arrivals', 'conversation', 'deaths', 'spells', 'exp', 'familiar', 'inv', 'injuries', 'effects', 'encumbrance', 'debug', 'log', 'map', 'lichScripts', 'combat',
+  'room', 'thoughts', 'arrivals', 'conversation', 'deaths', 'spells', 'exp', 'familiar', 'inv', 'injuries', 'effects', 'encumbrance', 'creatures', 'debug', 'log', 'map', 'lichScripts', 'combat',
 ]
 
 // B172: referentially STABLE fallbacks for renderPanel's optional props.
@@ -224,6 +227,8 @@ interface Props {
   // GS4's experience (the `exp` tab on GS4) and encumbrance readouts.
   gsExperience?: GsExperienceState | null
   gsEncumbrance?: GsEncumbranceState | null
+  // GS4's current target id (Creatures panel), null for none.
+  creatureTarget?: string | null
   tabs: TabDef[]
   activeId: string
   onTabsChange: (tabs: TabDef[]) => void
@@ -310,6 +315,7 @@ export default function PanelFrame({
   effectsState = EMPTY_EFFECTS,
   gsExperience = null,
   gsEncumbrance = null,
+  creatureTarget = null,
 }: Props) {
   const [showAddMenu, setShowAddMenu] = useState(false)
   // F55 follow-up: tab-hosted ⚙ popover open state — closed on tab switch so
@@ -607,7 +613,7 @@ export default function PanelFrame({
           onLichKill ?? NOOP, onLichRefresh ?? NOOP,
           mapAnimations, compactExp,
           renderExperienceTab, activeFontSize, closeStreamRef.current, creatureRoster,
-          gameFamily, effectsState, gsExperience, gsEncumbrance,
+          gameFamily, effectsState, gsExperience, gsEncumbrance, creatureTarget,
         )}
         {activeTab && (() => {
           // F55 follow-up: an active EXPERIENCE tab with registry options gets
@@ -963,6 +969,7 @@ function renderPanel(
   effectsState: EffectsState = EMPTY_EFFECTS,
   gsExperience: GsExperienceState | null = null,
   gsEncumbrance: GsEncumbranceState | null = null,
+  creatureTarget: string | null = null,
 ) {
   // B172: StreamPanel is memoized, so every prop must be referentially
   // stable — onClear/onToggleTimestamp now take the streamId as an argument
@@ -1018,6 +1025,12 @@ function renderPanel(
         return <div className="stream-panel-empty">Encumbrance is a GemStone IV panel.</div>
       }
       return <EncumbrancePanel enc={gsEncumbrance} />
+    case 'creatures':
+      // Same carried-over-tab guard as `effects`.
+      if (gameFamily === 'DR') {
+        return <div className="stream-panel-empty">Creatures is a GemStone IV panel. DragonRealms creatures are in the Room panel.</div>
+      }
+      return <CreaturesPanel roster={creatureRoster} targetId={creatureTarget} onSendCommand={onSendCommand} />
     case 'familiar':      return sp('familiar',      streamLines.familiar      ?? EMPTY_ARRAY)
     case 'inv':           return sp('inv',           streamLines.inv           ?? EMPTY_ARRAY)
     // B391: onCloseTab gives the Debug panel's right-click menu a Close when

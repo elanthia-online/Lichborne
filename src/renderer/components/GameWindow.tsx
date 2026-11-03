@@ -677,15 +677,16 @@ function defaultBottomActiveId(family: GameFamily): string {
 // gets the game's Bounties window instead: a state window with no main
 // fallback (see STREAM_FALLBACK), so without a tab it is out of sight.
 function defaultMidTabs(family: GameFamily): TabDef[] {
-  const tabs = [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths')]
-  return family === 'GS4' ? [...tabs, makeCustomTab('bounty')] : [...tabs, makeTab('spells')]
+  if (family === 'GS4') return [makeTab('thoughts'), makeTab('creatures'), makeTab('arrivals'), makeTab('deaths'), makeCustomTab('bounty')]
+  return [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths'), makeTab('spells')]
 }
-// Same creatures, same names, same states, in the same order.
+// Same creatures, same names, same states and health, in the same order.
 function sameRoster(a: readonly CreatureStatus[], b: readonly CreatureStatus[]): boolean {
   if (a.length !== b.length) return false
   for (let i = 0; i < a.length; i++) {
     const x = a[i], y = b[i]
     if (x.id !== y.id || x.name !== y.name || x.flags.length !== y.flags.length) return false
+    if (x.health !== y.health || x.maxHealth !== y.maxHealth) return false
     for (let j = 0; j < x.flags.length; j++) if (x.flags[j] !== y.flags[j]) return false
   }
   return true
@@ -759,6 +760,7 @@ export default function GameWindow({
       setAssessCast([])
       setAssessAt(0)
       setCreatureRoster(null)
+      setCreatureTarget(null)
       setFaceTurn(null)
       setWalkedOut(prev => (Object.keys(prev).length > 0 ? {} : prev))
       streamRoomRef.current = { title: null, navId: null }
@@ -1120,6 +1122,8 @@ export default function GameWindow({
   // to face one. A FACE #id you send is remembered for a few seconds so the
   // game's id-less "You turn to face …" reply can be tied to that creature.
   const [creatureRoster, setCreatureRoster] = useState<CreatureStatus[] | null>(null)
+  // GS4's current target (`creature-target`), marked in the Creatures panel.
+  const [creatureTarget, setCreatureTarget] = useState<string | null>(null)
   const [faceTurn, setFaceTurn] = useState<FaceTurn | null>(null)
   // Players seen walking out (or logging off), for the Tableau's duels.
   const [walkedOut, setWalkedOut] = useState<Record<string, number>>({})
@@ -2043,10 +2047,11 @@ export default function GameWindow({
     // `injuries` already surfaces as the wound chip, `room` is structured
     // sub-streams, `lichScripts` is the `;listall` poll, raw/debug are
     // diagnostics. `effects` (GS4) is rendered from effects-update state, like
-    // `injuries`, so a feed of it could only ever be empty.
+    // `injuries`, so a feed of it could only ever be empty; so are
+    // `encumbrance` and `creatures` (the roster).
     const skip = new Set([
       'main', 'raw', 'debug', 'room',
-      'map', 'lichscripts', 'injuries', 'effects', 'encumbrance',
+      'map', 'lichscripts', 'injuries', 'effects', 'encumbrance', 'creatures',
     ])
     const ids: string[] = []
     // Lowercase for the COMPARISON only — the id pushed is the original, because
@@ -3710,6 +3715,9 @@ export default function GameWindow({
             // Kept when unchanged: the game re-sends the whole list on every room
             // refresh, which during a fight is most lines (perf pass, v0.20.2).
             setCreatureRoster(prev => (prev && sameRoster(prev, evt.creatures) ? prev : evt.creatures))
+            break
+          case 'creature-target':
+            setCreatureTarget(evt.id)
             break
           case 'scene-arrive':
           case 'scene-depart':
@@ -5902,6 +5910,7 @@ export default function GameWindow({
     effectsState,
     gsExperience,
     gsEncumbrance,
+    creatureTarget,
     unreadIds: unreadStreams,
     streamTimestamps,
     onToggleTimestamp: toggleStreamTimestamp,
