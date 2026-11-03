@@ -85,7 +85,8 @@ import { SessionsProvider, useSessions, makeCharacterId, type CharacterId } from
 import { TeamLoginPanel, SoloConnectPanel, TeamLoginPill, teamCounts, trackConnectSteps, type TeamRun, type TeamMember } from './components/TeamLoginPanel'
 import { RosterProvider, useRoster } from './RosterContext'
 import { CharacterProvider } from './CharacterContext'
-import { forgetSavedSignature, flushPendingProfileSaves, exportCharacterProfile, importCharacterProfile, clearCharacterLocalStorage, importSharedProfile, exportSharedProfile, saveLastSessionCharacters, scheduleSharedProfileSave } from './profile'
+import { profileKey } from '../shared/profileKey'
+import { forgetSavedSignature, flushPendingProfileSaves, exportCharacterProfile, importCharacterProfile, clearCharacterLocalStorage, importSharedProfile, applyProfileKeyRenames, findProfileKeysByName, exportSharedProfile, saveLastSessionCharacters, scheduleSharedProfileSave } from './profile'
 import { planReconnect } from './reconnectPlan'
 import { loadAdvanced, saveAdvanced, gameOptionByCode, IS_MAC, effectiveRichStream, resolveCharacterLichInstall, withInstallHint } from './lichSettings'
 import { initTheme } from './themes'
@@ -147,8 +148,15 @@ const ATTACH_LAST_KEY = 'lichborne.attach.last'
 let sharedProfileLoad: Promise<void> | null = null
 function loadSharedProfileOnce(): Promise<void> {
   sharedProfileLoad ??= window.api.claimSharedImport()
-    .then(first => (first ? importSharedProfile() : undefined))
+    // The localStorage half of the profile-key migration first (DESIGN §56.7.3).
+    .then(async first => { if (first) { await applyProfileKeyRenames(); await importSharedProfile() } })
   return sharedProfileLoad
+}
+
+// A session and a launcher tile are the same character when their profile keys
+// match: name AND shard (DESIGN §56.7.3), never the name alone.
+function sameProfile(s: { character: string; game: string }, c: { profile: string }): boolean {
+  return profileKey(s.character, s.game).toLowerCase() === c.profile.toLowerCase()
 }
 
 export default function App() {
@@ -305,7 +313,7 @@ function AppShell() {
       if (sessionsRef.current.some(s => s.sessionId === e.sessionId)) return
       // Coming back to this window: what it remembers writing may be older
       // than the file another window has written since (B616).
-      forgetSavedSignature(e.character)
+      forgetSavedSignature(profileKey(e.character, e.game))
       const cid = addSession({
         sessionId: e.sessionId, account: e.account,
         character: e.character, game: e.game, useLich: e.useLich,
@@ -323,7 +331,7 @@ function AppShell() {
       if (rec) {
         // Another window writes this character's file from now on, so this
         // window's memory of what it last wrote is no longer true (B609).
-        forgetSavedSignature(rec.character)
+        forgetSavedSignature(profileKey(rec.character, rec.game))
         removeSession(rec.characterId)
       }
     })
@@ -351,7 +359,8 @@ function AppShell() {
         // By NAME too: main announces a login from inside its handler, before
         // the renderer's await returns and the tile learns its characterId.
         inOpenTeamPanel: !!run?.expanded && run.members.some(m =>
-          m.characterId === n.characterId || m.pick.name.toLowerCase() === n.character.toLowerCase()),
+          m.characterId === n.characterId
+          || m.pick.profile.toLowerCase() === profileKey(n.character, n.characterId.split('::').pop()).toLowerCase()),
       }, goTo)
       // Newer news about a character takes it off the older, opposite toast —
       // a reconnect must not leave it listed as "disconnected". Only touches a
@@ -396,9 +405,9 @@ function AppShell() {
     if (!isPrimary || live.length === 0) return
     const seen = new Set<string>()
     const entries = live
-      .map(r => ({ account: r.account, name: r.character }))
+      .map(r => ({ account: r.account, name: r.character, game: r.game }))
       .filter(e => {
-        const k = `${e.account}:${e.name}`.toLowerCase()
+        const k = `${e.account}:${profileKey(e.name, e.game)}`.toLowerCase()
         if (seen.has(k)) return false
         seen.add(k)
         return true
@@ -428,7 +437,8 @@ function AppShell() {
   // they grey the members Connect will skip — planReconnect reads the same
   // roster, so the row's count and the actual outcome cannot disagree.
   const connectedCharacterNames = useMemo(
-    () => roster.filter(r => r.character).map(r => r.character as string), [roster])
+    // Profile keys, not names (DESIGN §56.7.3): a GS3 and a GSF Tysong are two characters.
+    () => roster.filter(r => r.character).map(r => profileKey(r.character as string, r.game)), [roster])
 
   // Teams row ⋯ → Edit. Opens Team Login with that team already loaded, so
   // "edit" means the surface you built it on rather than a second editor.
@@ -650,7 +660,7 @@ function AppShell() {
     window.__flushProfileSaves = async () => {
       await flushPendingProfileSaves()
       await Promise.all(sessions.map(s =>
-        exportCharacterProfile(s.account, s.character, s.game, s.useLich).catch(console.error)
+        exportCharacterProfile(s.account, profileKey(s.character, s.game), s.game, s.useLich).catch(console.error)
       ))
     }
     return () => { delete window.__flushProfileSaves }
@@ -1608,16 +1618,17 @@ function AppShell() {
     // recorded the user's pick at creation time. Deriving it from adv.lichPort
     // was wrong because lichPort is global (always the Lich front-end port,
     // not a per-shard port).
+    const key = profileKey(c.name, c.game)
     try {
       // Clear the working copy only when there is NO profile file. A file that
       // exists but was unreadable (moved aside by main) or is from a newer
       // version leaves the working copy as the best copy we have (v0.20.4).
-      const existed = await window.api.characterProfileExists(c.name).catch(() => true)
-      const loaded = await importCharacterProfile(c.name)
-      if (!loaded && !existed) clearCharacterLocalStorage(c.name)
+      const existed = await window.api.characterProfileExists(key).catch(() => true)
+      const loaded = await importCharacterProfile(key)
+      if (!loaded && !existed) clearCharacterLocalStorage(key)
     } catch (err) { console.error(err) }
     try {
-      await exportCharacterProfile(c.account, c.name, c.game, c.useLich)
+      await exportCharacterProfile(c.account, key, c.game, c.useLich)
     } catch (err) { console.error(err) }
 
     // Last check: the profile import/export above is awaited, so Cancel can
@@ -1694,8 +1705,12 @@ function AppShell() {
     let game = fixed?.game ?? chosenGame ?? 'DR'
     if (!fixed) {
       try {
-        const existing = await window.api.readCharacterProfile(character)
-          .catch(() => null) as { account?: string; game?: string } | null
+        // Only the name is known here: use that character's profile when
+        // exactly one shard has one (DESIGN §56.7.3).
+        const keys = await findProfileKeysByName(character)
+        const existing = keys.length === 1
+          ? await window.api.readCharacterProfile(keys[0]).catch(() => null) as { account?: string; game?: string } | null
+          : null
         if (existing?.account) account = existing.account
         if (existing?.game && !chosenGame) game = existing.game
       } catch { /* no profile — placeholders stand */ }
@@ -1721,9 +1736,10 @@ function AppShell() {
       // Clear the working copy only when there is NO profile file. A file that
       // exists but was unreadable (moved aside by main) or is from a newer
       // version leaves the working copy as the best copy we have (v0.20.4).
-      const existed = await window.api.characterProfileExists(character).catch(() => true)
-      const loaded = await importCharacterProfile(character)
-      if (!loaded && !existed) clearCharacterLocalStorage(character)
+      const key = profileKey(character, game)
+      const existed = await window.api.characterProfileExists(key).catch(() => true)
+      const loaded = await importCharacterProfile(key)
+      if (!loaded && !existed) clearCharacterLocalStorage(key)
     } catch (err) { console.error(err) }
 
     // REMEMBER THE TARGET — the reason this feature is usable twice. Saved on
@@ -1818,7 +1834,7 @@ function AppShell() {
   function prepareTileAttach(c: LauncherCharacter, quiet?: boolean): 'focused' | 'ready' {
     // sessionsRef, not `sessions`: the team loop calls this minutes after the
     // render it started in, and a stale list could destroy the wrong session.
-    const existing = sessionsRef.current.find(s => s.character.toLowerCase() === c.name.toLowerCase())
+    const existing = sessionsRef.current.find(s => sameProfile(s, c))
     if (existing?.status.connected) {
       if (!quiet) setActive(existing.characterId)
       return 'focused'
@@ -1851,7 +1867,7 @@ function AppShell() {
     // Already open: hand back THAT tab's id. An attach-only tile's account is a
     // placeholder, so an id computed from the tile needn't match the real tab.
     if (prepareTileAttach(c, quiet) === 'focused') {
-      return { ok: true, characterId: sessionsRef.current.find(s => s.character.toLowerCase() === c.name.toLowerCase())?.characterId }
+      return { ok: true, characterId: sessionsRef.current.find(s => sameProfile(s, c))?.characterId }
     }
     const out: { sessionId?: SessionId; characterId?: CharacterId } = {}
     const err = await runAttach(
@@ -1971,14 +1987,15 @@ function AppShell() {
       }
       const result = await window.api.login(creds)
       if (!result.ok) return { error: withInstallHint(result.error ?? 'Connection failed', install, c.name, c.game) }
+      const key = profileKey(c.name, c.game)
       try {
         // Same rule as runConnect: clear only when no profile file exists.
-        const existed = await window.api.characterProfileExists(c.name).catch(() => true)
-        const loaded = await importCharacterProfile(c.name)
-        if (!loaded && !existed) clearCharacterLocalStorage(c.name)
+        const existed = await window.api.characterProfileExists(key).catch(() => true)
+        const loaded = await importCharacterProfile(key)
+        if (!loaded && !existed) clearCharacterLocalStorage(key)
       } catch (err) { console.error(err) }
       try {
-        await exportCharacterProfile(c.account, c.name, c.game, c.useLich)
+        await exportCharacterProfile(c.account, key, c.game, c.useLich)
       } catch (err) { console.error(err) }
       const characterId = handleConnected({
         sessionId: result.sessionId,
@@ -2131,7 +2148,7 @@ function AppShell() {
       return {
         account,
         candidates: candidates.sort((a, b) => a.name.localeCompare(b.name)),
-        alreadyConnected: activeOnAccount ? activeOnAccount.character : null,
+        alreadyConnected: activeOnAccount ? profileKey(activeOnAccount.character, activeOnAccount.game) : null,
       }
     })
   }
@@ -2153,7 +2170,7 @@ function AppShell() {
       // scheduling a save (command history, /group on|off, group and mode
       // edits) was reverted from the old YAML at the next connect. The export
       // reads localStorage, so it doesn't need the tab to stay mounted.
-      exportCharacterProfile(target.account, target.character, target.game, target.useLich).catch(console.error)
+      exportCharacterProfile(target.account, profileKey(target.character, target.game), target.game, target.useLich).catch(console.error)
     }
     removeSession(id)
   }
@@ -2186,7 +2203,7 @@ function AppShell() {
       return
     }
     const c: LauncherCharacter = {
-      name: s.character, account: s.account, game: s.game, useLich: s.useLich,
+      name: s.character, profile: profileKey(s.character, s.game), account: s.account, game: s.game, useLich: s.useLich,
       hidden: false, favorite: false,
     }
     setReconnectingIds(prev => new Set(prev).add(id))
@@ -2266,11 +2283,11 @@ function AppShell() {
             // A real tab already here for this character (it just landed and
             // the tile hasn't caught up, or an old one is being re-logged):
             // don't show a placeholder beside it.
-            .filter(m => !sessions.some(s => s.character.toLowerCase() === m.pick.name.toLowerCase()))
+            .filter(m => !sessions.some(s => sameProfile(s, m.pick)))
             .map(m => ({ key: `${m.pick.account}|${m.pick.name}`, name: m.pick.name, game: m.pick.game, status: m.status as 'waiting' | 'connecting' | 'failed' }))
             // A single character logging in behind you (startBackgroundConnect).
             .concat(bgConnects
-              .filter(b => !sessions.some(s => s.status.connected && s.character.toLowerCase() === b.c.name.toLowerCase()))
+              .filter(b => !sessions.some(s => s.status.connected && sameProfile(s, b.c)))
               .map(b => ({ key: b.key, name: b.c.name, game: b.c.game, status: 'connecting' as const })))}
           onPendingClick={(key) => {
             if (key.startsWith('bg:')) { setBgShown(key); return }
@@ -2310,7 +2327,7 @@ function AppShell() {
               setShowWizard(true)
             }}
             onOpenLichSetup={() => setShowLichSetup(true)}
-            connectingName={pendingConnect?.name ?? null}
+            connectingName={pendingConnect?.profile ?? null}
             connectError={connectError}
             onDismissError={() => setConnectError('')}
           />
@@ -2340,8 +2357,8 @@ function AppShell() {
               key={`${s.characterId}:${reloadNonces[s.characterId] ?? 0}`}
               className={`session-shell${s.characterId === activeId ? '' : ' session-shell--hidden'}`}
             >
-              <CharacterProvider character={s.character}>
-                <GroupsProvider character={s.character}>
+              <CharacterProvider character={profileKey(s.character, s.game)}>
+                <GroupsProvider character={profileKey(s.character, s.game)}>
                   <GameWindow
                     session={{
                       sessionId: s.sessionId,
@@ -2430,7 +2447,7 @@ function AppShell() {
             }}
             onOpenLichSetup={() => setShowLichSetup(true)}
             compact
-            connectingName={pendingConnect?.name ?? null}
+            connectingName={pendingConnect?.profile ?? null}
             connectError={connectError}
             onDismissError={() => setConnectError('')}
           />
@@ -2480,7 +2497,7 @@ function AppShell() {
           // window is correctly treated as active (localStorage working-copy
           // write + cross-window remount), not as an inactive YAML merge that
           // its owner window would overwrite on save.
-          sessions={roster.filter(r => r.connected).map(r => ({ character: r.character, characterId: r.characterId }))}
+          sessions={roster.filter(r => r.connected).map(r => ({ character: r.character, game: r.game, characterId: r.characterId }))}
           reloadSession={(cid) => window.api.requestSessionReload(cid)}
           initialMode={profileTransferAim.mode}
           modeSeq={profileTransferAim.seq}

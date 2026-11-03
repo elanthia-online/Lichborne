@@ -14,6 +14,7 @@
 // `LichSetupFields` (wrapped in `.login-form` for CSS scoping) with the
 // Lich Setup dialog. Don't extend it; add to the Launcher/Wizard path instead.
 
+import { profileKey } from '../../shared/profileKey'
 import { useState, useEffect, useRef } from 'react'
 import { LoginCredentials } from '../../shared/types'
 import { exportSharedProfile, exportCharacterProfile, importSharedProfile, importCharacterProfile, clearCharacterLocalStorage } from '../profile'
@@ -189,15 +190,16 @@ export default function LoginScreen({ onConnected, isModal = false }: Props) {
 
     // Import character YAML first so saved settings repopulate localStorage.
     // Missing YAML → clear stale localStorage so the new profile starts blank.
+    const key = profileKey(chr, game)   // DESIGN §56.7.3
     try {
-      const loaded = await importCharacterProfile(chr)
-      if (!loaded) clearCharacterLocalStorage(chr)
+      const loaded = await importCharacterProfile(key)
+      if (!loaded) clearCharacterLocalStorage(key)
     } catch (err) { console.error(err) }
 
     try {
       await Promise.all([
         exportSharedProfile(),
-        exportCharacterProfile(acc, chr, game, curAdv.useLich),
+        exportCharacterProfile(acc, key, game, curAdv.useLich),
       ])
     } catch (err) { console.error(err) }
 

@@ -417,6 +417,8 @@ contextBridge.exposeInMainWorld('api', {
   // True for exactly one window per run: the one that loads _shared.yaml (v0.20.4).
   claimSharedImport: (): Promise<boolean> => ipcRenderer.invoke('profile:claim-shared-import'),
   writeCharacterProfile:(character: string, data: unknown):       Promise<void>           => ipcRenderer.invoke('profile:write-character', character, data),
+  takeProfileKeyRenames:(): Promise<{ from: string; to: string }[]> => ipcRenderer.invoke('profile:take-key-renames'),
+  ackProfileKeyRenames: (): Promise<void>                          => ipcRenderer.invoke('profile:ack-key-renames'),
   listCharacterProfiles:():                                        Promise<string[]>       => ipcRenderer.invoke('profile:list'),
   deleteCharacterProfile:(character: string):                      Promise<void>           => ipcRenderer.invoke('profile:delete-character', character),
   archiveCharacterProfile:(character: string):                     Promise<boolean>        => ipcRenderer.invoke('profile:archive-character', character),

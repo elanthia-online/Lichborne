@@ -20,6 +20,7 @@
 // character's rules can use the same color. They're re-read on mount; the
 // panel remounts on every tab switch, so an edit made in another tab shows.
 
+import { profileNameOf } from '../../shared/profileKey'
 import { useMemo, useRef, useState } from 'react'
 import { pressable } from '../utils/pressable'
 import { ResizeDivider } from './ResizeDivider'
@@ -193,7 +194,7 @@ export default function ColorsPanel() {
             ))}
           </ul>
         )}
-        <div className="ui-hint">Counts {character}’s rules and All-characters rules. Your other characters may use it too.</div>
+        <div className="ui-hint">Counts {profileNameOf(character)}’s rules and All-characters rules. Your other characters may use it too.</div>
       </div>
     )
   }

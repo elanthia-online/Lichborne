@@ -50,6 +50,9 @@ import { loadAIConfig, saveAIConfig, DEFAULT_AI_CONFIG } from './aiConfig'
 import { loadCustomColors, saveCustomColors, coerceCustomColors } from './colors'
 import { DEFAULT_RUBY, DEFAULT_LICH, GAMES, coerceRichStream, coerceInstalls } from './lichSettings'
 import { loadSimuCoinConfig, saveSimuCoinConfig, coerceSimuCoinConfig } from './simucoinConfig'
+import { profileNameOf, profileShardOf } from '../shared/profileKey'
+import { keyForLegacyName, rememberLegacyNames } from './legacyProfileNames'
+import { LAST_DISPLAY_CHARACTER_KEY } from './settings'
 
 // ── Default game definitions ──────────────────────────────────────────────────
 // Written once when creating _shared.yaml; user can edit the file to add more.
@@ -73,7 +76,9 @@ export const CHARACTER_PROFILE_VERSION = 2 as const
 // on the launcher is harmless; an emptied one loses the feature). Rides
 // _shared.yaml like bulkConnectSeparateWindows.
 
-export interface LastSessionEntry { account: string; name: string }
+// `game` since DESIGN §56.7.3: the same name can be on two shards. An entry
+// without one (written before) is DR Prime.
+export interface LastSessionEntry { account: string; name: string; game?: string }
 const LAST_SESSION_KEY = 'lichborne.lastSessionCharacters'
 
 export function loadLastSessionCharacters(): LastSessionEntry[] {
@@ -83,6 +88,9 @@ export function loadLastSessionCharacters(): LastSessionEntry[] {
     return Array.isArray(parsed)
       ? parsed.filter((e): e is LastSessionEntry =>
           !!e && typeof e.account === 'string' && typeof e.name === 'string')
+          // No game: from before profile keys. Its shard is where the
+          // migration filed that name (DR Prime when it filed none).
+          .map(e => (e.game ? e : { ...e, game: profileShardOf(keyForLegacyName(e.name)) }))
       : []
   } catch { return [] }
 }
@@ -186,7 +194,8 @@ export function buildCharacterProfile(
   return {
     profileVersion: CHARACTER_PROFILE_VERSION,
     account,
-    character,
+    // `character` here is the profile KEY (DESIGN §56.7.3); the file stores the name.
+    character: profileNameOf(character),
     game,
     useLich,
     theme: localStorage.getItem('lichborne.theme') ?? 'classic',
@@ -229,6 +238,8 @@ export async function reportUnreadableProfiles(): Promise<void> {
 // with empty module state, still knows each character's theme. The key sits
 // OUTSIDE the `lichborne.{character}.` prefix on purpose: the profile builder
 // sweeps that prefix into `state`, and the theme already has its own field.
+// Every `character` parameter in this file is a profile KEY, `Name@SHARD`
+// (DESIGN §56.7.3): it names the YAML and the localStorage scope.
 const characterThemeKey = (character: string) => `lichborne.characterTheme.${normalizeCharacter(character)}`
 export function rememberCharacterTheme(character: string, themeId: string): void {
   try { localStorage.setItem(characterThemeKey(character), themeId) } catch { /* storage full: falls back to the YAML */ }
@@ -551,10 +562,61 @@ export async function importCharacterProfile(character: string): Promise<Charact
 
   return buildCharacterProfile(
     data.account ?? '',
-    data.character ?? character,
+    data.character ?? profileNameOf(character),
     data.game ?? 'DR',
     data.useLich ?? true,
   )
+}
+
+// ── Profile-key migration, localStorage half (DESIGN §56.7.3) ──────────────
+// Main renamed name-keyed YAMLs to `Name@SHARD` at startup and hands over
+// old→new. Move each `lichborne.{name}.` scope (and the per-character theme
+// record and the boot fallback's last character) to the new key. A scope that
+// already has keys under the new name wins, and the old keys are then left
+// alone rather than deleted (Principle #3). Run once, by the window that
+// loads _shared.yaml, before anything reads a character's keys.
+export async function applyProfileKeyRenames(): Promise<void> {
+  const renames = await window.api.takeProfileKeyRenames().catch(() => [])
+  if (!renames.length) return
+  // Kept for good, for teams and Reconnect Last in any _shared.yaml, old or new.
+  rememberLegacyNames(renames)
+  try {
+    const all: string[] = []
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k) all.push(k) }
+    for (const { from, to } of renames) {
+      const oldPrefix = `lichborne.${normalizeCharacter(from)}.`
+      const newPrefix = `lichborne.${normalizeCharacter(to)}.`
+      const olds = all.filter(k => k.startsWith(oldPrefix))
+      if (olds.length && !all.some(k => k.startsWith(newPrefix))) {
+        for (const k of olds) {
+          const v = localStorage.getItem(k)
+          if (v !== null) localStorage.setItem(newPrefix + k.slice(oldPrefix.length), v)
+          localStorage.removeItem(k)
+        }
+      }
+      const oldTheme = localStorage.getItem(characterThemeKey(from))
+      if (oldTheme !== null && localStorage.getItem(characterThemeKey(to)) === null) {
+        localStorage.setItem(characterThemeKey(to), oldTheme)
+        localStorage.removeItem(characterThemeKey(from))
+      }
+      if (localStorage.getItem(LAST_DISPLAY_CHARACTER_KEY)?.toLowerCase() === from.toLowerCase()) {
+        localStorage.setItem(LAST_DISPLAY_CHARACTER_KEY, to)
+      }
+    }
+  } catch (err) {
+    // Storage full: the YAMLs are already renamed and re-seed each scope on
+    // connect, so keep the list for the next start rather than acknowledging.
+    console.error('[profile-keys] could not move localStorage scopes', err)
+    return
+  }
+  await window.api.ackProfileKeyRenames().catch(() => {})
+}
+
+/** The profile keys filed for a character name, on any shard. */
+export async function findProfileKeysByName(name: string): Promise<string[]> {
+  const n = name.trim().toLowerCase()
+  const keys = await window.api.listCharacterProfiles().catch(() => [] as string[])
+  return keys.filter(k => profileNameOf(k).toLowerCase() === n)
 }
 
 // ── Clear character localStorage ─────────────────────────────────────────────

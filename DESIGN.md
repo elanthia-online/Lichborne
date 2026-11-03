@@ -11634,15 +11634,42 @@ A plan, built in the order at the end. Sections get marked as they land.
 - **Edit Profile per family** (BUILT, `guildTerms(game)` in CharacterNotesEditor.tsx). GS4 professions (`GS4_PROFESSIONS`) replace DR guilds, "Profession" and "Level" replace "Guild" and "Circle", and the tile and Team Login pills follow. The stored fields stay `guild`/`circle`. A stored key the game's list doesn't know stays selectable, so opening the editor never drops it. GameWindow reads the profile's guild as a DR guild ONLY for a DR character: a GS4 "empath" must not pick the DR badge or the Tableau's Touch.
 - **The hero says what the client is for** (BUILT, `heroTagline`): "DragonRealms Client" or "GemStone IV Client" when every saved character is in one game, "DragonRealms & GemStone IV Client" when both are present and on first run.
 
-#### 56.7.3 Same-name characters across games
+#### 56.7.3 A character is its name on a shard (BUILT)
 
-Profiles become keyed by `(name, family)` for a GS4 character that collides with a DR one. DR's existing names stay exactly as they are (`Bob.yaml`, `lichborne.bob.*`), so no DR data moves; only a colliding GS4 character gets a suffixed scope. Every name-keyed store has to be listed first (`scopedKey(`, `normalizeCharacter`, `readCharacterProfile(`, `Logs/`), and every write it makes is backed up (Principles #3, #8).
+**Decision (Sekmeht, 2026-11-03):** every character's data is keyed by its shard AND its name, for every game. A GSF Tysong who is a bard keeps a different layout and settings from a GS3 Tysong who is a wizard. Existing profiles migrate on first launch. A test instance is a mirror copy of its Prime, so it uses the Prime character's profile. GemStone IV has no Platinum any more, so GSX is gone from the shard list. That leaves five profile shards: **DR, DRX, DRF, GS3, GSF**.
+
+**The key:** `Name@SHARD` ([src/shared/profileKey.ts](src/shared/profileKey.ts), shared by main and the renderer).
+- `profileKey(name, game)` builds it. `profileShard` folds a test shard into its Prime (`TEST_SHARDS`: DRT → DR, GST → GS3).
+- `profileNameOf(key)` reads the name back, and `testPair(game)` drives the tile's TEST pill, now on GS Prime as well as DR.
+- '@' never occurs in a character name, is filename-safe everywhere, and isn't the '.' that `lichborne.{scope}.` prefix scans split on.
+
+**What is keyed:**
+- the profile YAML (`profiles/Tysong@GSF.yaml`, its `.bak`s and its Archive copy);
+- every `scopedKey` scope (`lichborne.tysong@gsf.*`) and the per-character theme record;
+- the Session Log folder (`Logs/Tysong@GSF/Tysong@GSF_YYYY-MM-DD.log`);
+- Team members (`bulkSets`) and Reconnect Last (`lastSessionCharacters`, which gained `game`).
+
+`session.character` stays the NAME: it is what the game, Lich (`game:char`), contacts, `$characterName` and everything on screen use. GameWindow derives `profile` once; the CharacterProvider value, `LauncherCharacter.profile`, Transfer's rows and the wizard's owner map are keys. The Lich-launch log and the raw XML capture stay by name, since they are diagnostics overwritten per launch or day.
+
+**Migration** ([profileKeyMigration.ts](src/main/profileKeyMigration.ts)), at app-ready, before the first window:
+- **Where a file goes:** each legacy `profiles/{Name}.yaml`, in `profiles/` and `profiles/Archive/`, becomes `{character}@{profileShard(game)}.yaml`. The inputs are the file's own `character` and `game`, the same ones `loadCharacterCards` reads. So a DR Prime profile, or one naming no game, lands on DR (Sekmeht's "bound to DR Prime"), while a DRX or DRF profile keeps its own shard instead of being pointed at Prime's port.
+- **Safety:** every legacy YAML is first copied to `profiles/PreKeyBackup/`. A file that can't be read right now (locked) is left where it is; one that won't parse is moved aside as `.unreadable-*`, as a launcher read would, so its notice still shows. When the target already exists it wins, and the legacy file goes to `PreKeyBackup/` as `{name}.superseded-{ts}.yaml` (an older build can write `Name.yaml` again after a migration). `listCharacterProfiles` lists only `@` names, so a bare file can never become a second tile. A second run does nothing.
+- **What moves with it:** its `.bak`s, and its Session Log folder together with the files inside it.
+- **localStorage:** the old→new list goes to `{userData}/profile-key-renames.json`. The window that loads `_shared.yaml` applies it with `applyProfileKeyRenames()`, moving each scope, the theme record and the boot fallback's last character, then acknowledges. An existing new scope wins, and the old keys are then kept rather than deleted.
+- **Bare names elsewhere:** the list is also kept for good in `lichborne.profileKeyRenames` (`legacyProfileNames.ts`), so a bare team member or Reconnect Last entry from any `_shared.yaml`, however old, resolves to its key. A name it doesn't know is DR Prime.
+
+**One-way:** a build from before this change lists `Tysong@GS3` as a character named "Tysong@GS3". `PreKeyBackup/` is the way back.
+
+**Guards against a missed call site:** `writeCharacterProfile` and `session-log:append` refuse a non-key in main, and `scopedKey` logs a bare scope once.
+
+**The wizard:** a fetched character matches a profile by name AND shard. The same name on another shard is a new character, which retires B614's cross-game rule. A re-file (B542) is the same key under another account.
 
 #### 56.7.4 Order of work
 
-1. The resolver, the session-carried install and the three readers.
+1. The resolver, the session-carried install and the three readers. (BUILT.)
 2. Lich Setup per-game rows, the Edit Profile override and `/lich install`. (BUILT.)
 3. The launcher filter, shard names, the grouped wizard and Edit Profile per family. (BUILT.)
-4. Same-name collision.
+4. Profiles keyed by name and shard, with the migration. (BUILT.)
+5. **Future: copy one character's setup to another in one step.** Profile Transfer (F38, launcher → Transfer) already does this through a bundle file: export from GS3 Tysong, import into GS3 Char3, choosing categories (layout, highlights, triggers, macros, …). The future step is a "Copy settings to…" item in the tile ⋯ menu that runs `buildProfileExport` → `applyProfileImport` with no file in between: pick the targets and the categories, done. Transfer's pickers show each character's shard, so two Tysongs can be told apart.
 
-**Tests:** a harness for `resolveLichInstall` and the `_shared.yaml` round-trip (including a file without `installs`); a GS4 session whose Dashboard, script list and map read the GS4 install; a DR-only profile set that loads unchanged.
+**Tests:** a harness for `resolveLichInstall` and the `_shared.yaml` round-trip (including a file without `installs`); a GS4 session whose Dashboard, script list and map read the GS4 install; the key migration on a scratch userData (DR, DRX, DRT, GS3, no game, unreadable, existing target, Archive, backups, logs; run three times); two Tysongs (GS3 and GSF) keeping separate files and scopes, the localStorage move, legacy team and Reconnect Last names, and the wizard's roster match.

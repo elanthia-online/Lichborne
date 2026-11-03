@@ -75,6 +75,7 @@ import { LichBridge } from './lichbridge'
 import { registerLichSqliteHandlers } from './lichbridge/sqliteReader'
 import { registerSessionLogHandlers, flushAllSessionLogs } from './sessionLog'
 import { recordRawLine, flushRawRecorders, startRawCapture, stopRawCapture, isRawCaptureOn } from './rawRecorder'
+import { migrateProfileKeys, pendingProfileKeyRenames, ackProfileKeyRenames } from './profileKeyMigration'
 import { readSharedProfile, writeSharedProfile, readCharacterProfile, writeCharacterProfile, characterProfileExists, takeProfileNotices, listCharacterProfiles, deleteCharacterProfile, archiveCharacterProfile, restoreCharacterProfile, listArchivedProfiles, backupAllProfiles, ensureProfilesDir, ensureExportsDir, getExportsDir } from './profiles'
 import { savePassword, loadPassword, deletePassword } from './passwords'
 import { registerAIHandlers } from './ai'
@@ -2119,6 +2120,10 @@ ipcMain.handle('profile:claim-shared-import', () => {
   return true
 })
 ipcMain.handle('profile:write-character',           (_e, character: string, data: unknown) => writeCharacterProfile(character, data))
+// DESIGN §56.7.3: the old→new names the startup key migration made, for the
+// first window to move their localStorage scopes; then it acknowledges.
+ipcMain.handle('profile:take-key-renames',          ()                               => pendingProfileKeyRenames())
+ipcMain.handle('profile:ack-key-renames',           ()                               => ackProfileKeyRenames())
 ipcMain.handle('profile:list',                      ()                               => listCharacterProfiles())
 ipcMain.handle('profile:delete-character',          (_e, character: string)          => deleteCharacterProfile(character))
 // Archive = remove from the launcher WITHOUT destroying the data (v0.18.2).
@@ -2863,6 +2868,10 @@ app.whenReady().then(() => {
   })
   session.defaultSession.setPermissionCheckHandler((_wc, permission: string) =>
     ALLOWED_PERMISSIONS.has(permission))
+  // Name-keyed profiles become `Name@SHARD` (DESIGN §56.7.3), before any window
+  // can read one.
+  try { migrateProfileKeys(ensureProfilesDir(), path.join(app.getPath('userData'), 'Logs')) }
+  catch (err) { console.error('[profile-keys] migration failed', err) }
   createWindow()
   setupMenu()
   if (app.isPackaged) setupAutoUpdater()

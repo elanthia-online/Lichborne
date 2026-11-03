@@ -9,6 +9,7 @@
 // (sessions are read through a ref): panels put it in effect deps, and a
 // callback that churned on every vital tick would re-fire all of them.
 
+import { profileKey } from '../../shared/profileKey'
 import { useCallback, useEffect, useRef } from 'react'
 import { useCharacter } from '../CharacterContext'
 import { useSessions, type SessionRecord } from '../SessionsContext'
@@ -30,7 +31,8 @@ export function useProfileSaver(): () => void {
   useEffect(() => { sessionsRef.current = sessions }, [sessions])
 
   return useCallback(() => {
-    const s = sessionsRef.current.find(s => s.character.toLowerCase() === character.toLowerCase())
-    if (s) scheduleProfileSave(s.account, s.character, s.game, s.useLich)
+    // `character` is the profile key (DESIGN §56.7.3), so match on the key.
+    const s = sessionsRef.current.find(s => profileKey(s.character, s.game).toLowerCase() === character.toLowerCase())
+    if (s) scheduleProfileSave(s.account, character, s.game, s.useLich)
   }, [character])
 }
