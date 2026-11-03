@@ -44,6 +44,7 @@ import { pressable } from '../utils/pressable'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { GameEvent, StreamTextEvent, TextLine, LineStyleHint, RoomState, TextSegment, InjuryState, FireLogEntry, SessionLogRecord, SimuCoinStatus, CreatureStatus, RichStreamMode } from '../../shared/types'
 import { gameFamilyFromCode, gameFamilyName, type GameFamily } from '../../shared/types'
+import type { EffectsState } from '../gsEffects'
 import { normalizeStreamId } from '../../shared/streamAliases'
 import { redactForAI } from '../../shared/redact'
 import { TextLineRow } from './TextLineRow'
@@ -76,7 +77,7 @@ import VitalsBar from './VitalsBar'
 import IconBar from './IconBar'
 import FloatingCompass from './FloatingCompass'
 import { directedLine, type DirectedVerb } from '../utils/sayTo'
-import PanelFrame, { type TabDef, type PanelType, PANEL_LABELS, ALL_PANEL_TYPES, makeTab, expIdFromTab, panelTypeAvailable } from './PanelFrame'
+import PanelFrame, { type TabDef, type PanelType, PANEL_LABELS, ALL_PANEL_TYPES, makeTab, expIdFromTab, panelTypeAvailable, filterPanelTypesForFamily } from './PanelFrame'
 import PanelManager from './PanelManager'
 import WindowLayer from './WindowLayer'
 import ExperienceLayer from './ExperienceLayer'
@@ -648,15 +649,16 @@ const TimerDisplay = memo(function TimerDisplay({ rtExpires, ctExpires, aimExpir
 // GS4 support: 'exp' (<ExpPanel/>) is DR-only (PANEL_GAMES in PanelFrame.tsx)
 // — defaulting a fresh GS4 character's bottom zone to it would render the DR
 // mindstate-ladder panel with meaningless data, not just an empty one. No
-// GS4-native experience panel exists yet, so default to just Log until one
-// does. Module-level (not per-component) so both the initial useState default
+// GS4-native experience panel exists yet, so GS4 gets the Effects panel
+// (its timed spells/buffs/debuffs/cooldowns — Saga ships its Timers panel
+// visible too) beside Log instead. Module-level (not per-component) so both the initial useState default
 // and resetLayout()'s "Reset Panels" default read the SAME function and can't
 // drift (pitfall #113's class of bug).
 function defaultBottomTabs(family: GameFamily): TabDef[] {
-  return family === 'GS4' ? [makeTab('log')] : [makeTab('exp'), makeTab('log')]
+  return family === 'GS4' ? [makeTab('effects'), makeTab('log')] : [makeTab('exp'), makeTab('log')]
 }
 function defaultBottomActiveId(family: GameFamily): string {
-  return family === 'GS4' ? 'log' : 'exp'
+  return family === 'GS4' ? 'effects' : 'exp'
 }
 // Same creatures, same names, same states, in the same order.
 function sameRoster(a: readonly CreatureStatus[], b: readonly CreatureStatus[]): boolean {
@@ -1933,6 +1935,7 @@ export default function GameWindow({
   const [discoveredStreams, setDiscoveredStreams] = useState<string[]>([AI_STREAM])
   const [streamTitles, setStreamTitles]           = useState<Record<string, string>>({})
   const [injuryState, setInjuryState]             = useState<InjuryState>({})
+  const [effectsState, setEffectsState]           = useState<EffectsState>({})
 
   // ── Views: per-session accumulators (v0.19.0, DESIGN §47) ─────────────────
   // Placed here so every input above is in scope. The counters run ALWAYS, even
@@ -2017,10 +2020,11 @@ export default function GameWindow({
     // The others stay out because nothing renders them: `map` is graphical,
     // `injuries` already surfaces as the wound chip, `room` is structured
     // sub-streams, `lichScripts` is the `;listall` poll, raw/debug are
-    // diagnostics.
+    // diagnostics. `effects` (GS4) is rendered from effects-update state, like
+    // `injuries`, so a feed of it could only ever be empty.
     const skip = new Set([
       'main', 'raw', 'debug', 'room',
-      'map', 'lichscripts', 'injuries',
+      'map', 'lichscripts', 'injuries', 'effects',
     ])
     const ids: string[] = []
     // Lowercase for the COMPARISON only — the id pushed is the original, because
@@ -3654,6 +3658,12 @@ export default function GameWindow({
             break
           case 'injury-update':
             setInjuryState(evt.parts)
+            break
+          // GS4's timed-effect dialogs: each block replaces its dialog's whole
+          // list. The clear='t' block and its refill share one line, so they
+          // land in this same batch and only the refill is ever painted.
+          case 'effects-update':
+            setEffectsState(prev => ({ ...prev, [evt.dialog]: { entries: evt.entries, at: evt.at } }))
             break
           // §35 scene events. The cast is sticky state (replay-snapshotted in
           // main) feeding the Experiences; arrive/depart are transient edges
@@ -5391,7 +5401,9 @@ export default function GameWindow({
       // runs applyTheme (which persists lichborne.theme + storage-syncs other
       // windows) and re-applies accessibility overlays via the hook.
       applyThemeId: id => setCurrentThemeId(id),
-      getOpenableStreams: () => [...ALL_PANEL_TYPES, ...discoveredStreams],
+      // Same family gate as the + menu, so `/panel open exp` can't put DR's
+      // Experience panel on a GS4 character (or `effects` on a DR one).
+      getOpenableStreams: () => [...filterPanelTypesForFamily(ALL_PANEL_TYPES, gameFamily), ...discoveredStreams],
       getOpenPanels: () => layoutMode === 'free'
         ? freeWindows.filter(w => w.kind === 'panel').flatMap(w => (w.tabs ?? []).map(t => t.id))
         : [
@@ -5849,6 +5861,7 @@ export default function GameWindow({
     discoveredStreams,
     streamTitles,
     injuryState,
+    effectsState,
     unreadIds: unreadStreams,
     streamTimestamps,
     onToggleTimestamp: toggleStreamTimestamp,
