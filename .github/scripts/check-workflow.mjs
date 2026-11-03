@@ -86,5 +86,26 @@ for (const [plat, ext, arch] of [['win', 'exe', 'x64'], ['linux', 'AppImage', 'x
   ok(demands(plat).includes(built), `${plat}: builder produces "${built}" and verify expects it`)
 }
 
+// 7. test-build.yml: the same build as the release, but it must never publish.
+const tb = readFileSync('.github/workflows/test-build.yml', 'utf-8')
+const tbLines = tb.split('\n')
+const tbCode = tbLines.filter(l => !/^\s*#/.test(l)).join('\n')
+const tbPkgIdx = tbLines.findIndex(l => l.includes('name: Package (no publish)'))
+ok(tbPkgIdx > 0, 'test-build: packaging step exists')
+const tbPkg = tbLines.slice(tbPkgIdx, tbPkgIdx + 20).join('\n').split(/\n\s+- (?:name|uses):/)[0]
+ok(/electron-builder \$\{\{ matrix\.args \}\} --publish never/.test(tbPkg), 'test-build: packages with --publish never')
+ok(!/GH_TOKEN|secrets\./.test(tbCode), 'test-build: no token or secret in use (cannot reach a release)')
+ok(/CSC_IDENTITY_AUTO_DISCOVERY:\s*'false'/.test(tbPkg), 'test-build: packaging step carries CSC_IDENTITY_AUTO_DISCOVERY')
+ok(/^permissions:\s*\n\s+contents: read\s*$/m.test(tbCode), 'test-build: read-only token')
+ok(!/^\s*(push|pull_request\w*):/m.test(tbCode.split('jobs:')[0]), 'test-build: manual-only')
+ok(/retention-days: 7/.test(tbCode), 'test-build: artifacts expire after 7 days')
+const tbOs = [...tbCode.matchAll(/^\s+- os:\s*(\S+)/gm)].map(m => m[1])
+ok(JSON.stringify([...tbOs].sort()) === JSON.stringify([...osEntries].sort()),
+   `test-build matrix [${tbOs}] matches release matrix [${osEntries}]`)
+for (const needle of ['container: ubuntu:22.04', 'container: ${{ matrix.container }}',
+  'npm_config_build_from_source=true', 'CXXFLAGS=-UV8_DEPRECATION_WARNINGS', "if: matrix.os == 'macos-latest'"]) {
+  ok(tbCode.includes(needle), `test-build mirrors release: ${needle}`)
+}
+
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)
