@@ -11529,3 +11529,66 @@ Found by replaying the 184 GS4 captures through the parser and checking each str
 - Saga 0.7.10, readable: `EffectSectionBody` / `CombinedTimersBody` / `EffectList`, `ExperiencePanel`, `EncumbranceBody`.
 - Saga 0.10.7, minified: the `expr` / `encum` parse, plus the Experience rows (Total, Capped, Session, Pulse, Tutelage).
 - warlock3: draws these dialogs generically from the server's layout.
+
+### 56.7 Login by game, and a Lich install per game or per character (planned 2026-11-02)
+
+A plan, built in the order at the end. Sections get marked as they land.
+
+**Decisions (Sekmeht, 2026-11-02):**
+- A character's Lich install is chosen per game AND per character, layered as in 56.7.1.
+- The same-name fix (56.7.3) is in this PR, as its last phase.
+- One character per account stays one IN TOTAL, across both games. `planReconnect` keeps keying on the account alone, deliberately: an account has one character on at a time across DR and GS4.
+- The login screen gets an **All / DR / GS** filter (56.7.2).
+
+**What was there (read 2026-11-02):**
+- **One Lich install for everything.** `AdvancedSettings.lichPath` / `rubyPath` (`lichborne.advancedSettings`, replicated to `_shared.yaml`). Every connect path reads it: `runConnect` (card Connect, tab Reconnect, background connect), the Team Login per-member connect, and attach (only for the rich-stream support check).
+- **Post-connect code reads the global through three private copies of `getLichPath()`:** `useLichBridge` (script list), `LichDashboard` (Vars, Settings, Sessions, Scripts, Profiles, from that install's `data/lich.db3` and `scripts/`) and `MapPanel` (the Lich Map's `maps/`).
+- **Startup discovery** fills the global value when it doesn't validate.
+- **The launcher groups by account, then by shard** (`GAME_SECTIONS`). A tile's meta line shows the raw code (`GS3`). Edit Profile offers DR guilds and "Circle". The hero says "DragonRealms Client".
+- **The Add Account wizard** lists all seven shards as one flat set of radios.
+- **Profiles are filed by character NAME:** `profiles/{Name}.yaml`, `scopedKey(character, …)`, `Logs/{Character}/`, `Logs/lich-launch/{Character}.log`. A DR "Bob" and a GS4 "Bob" share one file and one settings scope, and B614 makes the wizard show the second as already added, so it can't be added at all. `makeCharacterId(account, name, game)` already includes the game.
+
+#### 56.7.1 Which Lich install a character uses
+
+**Resolution, most specific first:** the character's own override; else the game family's default (DR or GS4); else the global install.
+- **By family, not by shard.** GS3/GSX/GST/GSF share one install, as do DR/DRX/DRT/DRF.
+- **An install is the pair `{ lichPath, rubyPath }`.** Lich 5.18+ refuses an older Ruby, so the two travel together.
+- **Only explicit choices are stored** (the B544 rule). Absent means inherit, and a resolved value is never written back. A DR-only player sees nothing new and nothing migrates.
+- **Startup discovery only ever fills the global value.**
+
+**Storage:**
+- Per-family defaults: `advancedSettings.installs?: { DR?: LichInstall; GS4?: LichInstall }` in the localStorage working copy and `SharedProfile.advancedSettings`, through `buildSharedProfile` and `importSharedProfile`'s field-preserving merge.
+- Per-character override: a top-level, launcher-owned `CharacterProfile.lich?: LichInstall`, like `attach`, written read-modify-write (pitfall #26).
+- Neither rides Profile Transfer or team bundles: they are paths on one machine.
+
+**One resolver, everywhere:**
+- `resolveLichInstall(game, override)` in lichSettings.ts feeds every connect site.
+- The resolved `lichPath` is carried on the session (`SessionInfo`), and one `sessionLichPath` helper replaces the three private readers, so the Dashboard, the script list and the Lich Map read the install the session launched from. Without this a GS4 character would launch from its GS4 install while its dashboard showed the DR install's Vars.
+- MapPanel's parse caches already key by source path, so two installs cache twice.
+- **Launch serialization stays one queue.** Every Lich binds 11024 and serves one front-end, whichever folder it runs from.
+
+**UI:**
+- **Lich Setup** gets per-game rows (DragonRealms, GemStone IV) under the default install. Each defaults to "Same as default" and expands to the path fields when changed.
+- **Edit Profile** gets a "Lich install" row: the game default, or this character's own paths.
+- **Slash command (Principle #11):** `/lich install` reports which install the session uses and where that came from. Setting paths stays a dialog: it is one-time setup with file browsing.
+
+#### 56.7.2 Organising the login screen by game
+
+- **An All / DR / GS filter** on the launcher (both the full screen and the + modal). It shows only when the saved characters span both games (UX #1), and narrows the account sections, Favorites and Teams (a team shows when any of its members is in that game). An account with no character in that game drops out. The choice is a per-viewer convenience in `lichborne.launcher.gameFilter`. A stale choice whose game no longer has characters reads as All. **No slash command:** the launcher is the pre-session screen, where the command bar doesn't exist.
+- **Tile meta shows the shard name** ("GemStone IV Prime") rather than the code; the code stays in the tooltip.
+- **The wizard's game step is grouped** into DragonRealms and GemStone IV blocks.
+- **Edit Profile per family.** GS4 professions replace DR guilds, and "Level" replaces "Circle". The stored fields stay `guild`/`circle`; only labels and the list change.
+- **The hero says what the client is for** when both games are present.
+
+#### 56.7.3 Same-name characters across games
+
+Profiles become keyed by `(name, family)` for a GS4 character that collides with a DR one. DR's existing names stay exactly as they are (`Bob.yaml`, `lichborne.bob.*`), so no DR data moves; only a colliding GS4 character gets a suffixed scope. Every name-keyed store has to be listed first (`scopedKey(`, `normalizeCharacter`, `readCharacterProfile(`, `Logs/`), and every write it makes is backed up (Principles #3, #8).
+
+#### 56.7.4 Order of work
+
+1. The resolver, the session-carried install and the three readers.
+2. Lich Setup per-game rows, the Edit Profile override and `/lich install`.
+3. The launcher filter, shard names, the grouped wizard and Edit Profile per family.
+4. Same-name collision.
+
+**Tests:** a harness for `resolveLichInstall` and the `_shared.yaml` round-trip (including a file without `installs`); a GS4 session whose Dashboard, script list and map read the GS4 install; a DR-only profile set that loads unchanged.
