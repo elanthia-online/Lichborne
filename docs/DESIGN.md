@@ -11622,7 +11622,7 @@ Planned in PR #7 and built in the order at the end (§56.7.4): the filter in #7,
 **Decisions (Sekmeht, 2026-11-02):**
 - A character's Lich install is chosen per game AND per character, layered as in 56.7.1.
 - The same-name fix (56.7.3) ships in the same stack, as its last PR (#10).
-- One character per account stays one IN TOTAL, across both games. `planReconnect` keeps keying on the account alone, deliberately: an account has one character on at a time across DR and GS4.
+- One character per account stays one IN TOTAL, across both games. `planReconnect` keeps keying on the account alone, deliberately: an account has one character on at a time across DR and GS4. **This is Simutronics' rule, verified** (Horibu, 2026-11-03, answering the review of #4): an account can have only one character logged in at a time, whichever game it is in, so the same-account guards (Team Login, the background connect, Reconnect Last, the conflict modal) are right to ignore the game.
 - The login screen gets an **All / DR / GS** filter (56.7.2).
 
 **What was there before the stack (read 2026-11-02; history, not current behaviour):**
