@@ -10486,8 +10486,9 @@ recorded rather than skipped silently; this is that record.
 The reasoning matches the Experiences precedent (§34.6): attach is **one-time
 setup, not an in-play verb.** You attach once per session from the launcher, and
 thereafter the saved target makes it a single click on the tile — there is no
-repeated action a command would accelerate, and the three fields it needs
-(character, host, port) are exactly what a form is better at than a command line.
+repeated action a command would accelerate, and the four fields it needs
+(character, game, host, port; the game since the GS4 stack, §56.7.3) are exactly
+what a form is better at than a command line.
 Revisit if attach ever grows an in-play action (re-attach on demand, switching
 targets mid-session) — that *would* deserve a verb.
 
