@@ -5463,8 +5463,9 @@ export default function GameWindow({
       // runs applyTheme (which persists lichborne.theme + storage-syncs other
       // windows) and re-applies accessibility overlays via the hook.
       applyThemeId: id => setCurrentThemeId(id),
-      // Same family gate as the + menu, so `/panel open exp` can't put DR's
-      // Experience panel on a GS4 character (or `effects` on a DR one).
+      // Same family gate as the + menu, so `/panel open spells` can't put DR's
+      // Spells panel on a GS4 character (or `effects` on a DR one). `exp` opens
+      // on both: renderPanel draws GsExperiencePanel for GS4.
       getOpenableStreams: () => [...filterPanelTypesForFamily(ALL_PANEL_TYPES, gameFamily), ...discoveredStreams],
       getOpenPanels: () => layoutMode === 'free'
         ? freeWindows.filter(w => w.kind === 'panel').flatMap(w => (w.tabs ?? []).map(t => t.id))

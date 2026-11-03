@@ -370,7 +370,9 @@
   white-space: nowrap;
 }
 .gs-crtr-row--hostile .gs-crtr-name { color: var(--preset-bold); font-weight: var(--ui-bold-weight); }
-.gs-crtr-name:hover, .gs-crtr-name:focus-visible { text-decoration: underline; outline: none; }
+/* No `outline: none`: keyboard focus keeps global.css's :focus-visible ring
+   (pitfall #142), so it reads differently from a mouse hover. */
+.gs-crtr-name:hover, .gs-crtr-name:focus-visible { text-decoration: underline; }
 .gs-crtr-row--target .gs-crtr-name { font-weight: var(--ui-bold-weight); }
 .gs-crtr-row--dead { opacity: 0.55; }
 .gs-crtr-row--dead .gs-crtr-name { color: var(--text-muted); font-weight: normal; }
