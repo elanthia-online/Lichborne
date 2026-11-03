@@ -1310,7 +1310,8 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
         {showFilter && <GameFilterBar filter={filter} counts={filterCounts} onChange={changeGameFilter} />}
         {showFilter && visibleCharacters.length === 0 && (
           <div className="ui-empty launcher-filter-empty">
-            No {filter === 'GS4' ? 'GemStone IV' : 'DragonRealms'} characters to show
+            {/* `all` too: every character hidden, Show hidden off. */}
+            No {filter === 'GS4' ? 'GemStone IV ' : filter === 'DR' ? 'DragonRealms ' : ''}characters to show
             {hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ''}.
           </div>
         )}
