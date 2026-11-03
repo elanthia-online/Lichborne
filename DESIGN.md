@@ -11554,7 +11554,8 @@ A plan, built in the order at the end. Sections get marked as they land.
 
 **Resolution, most specific first:** the character's own override; else the game family's default (DR or GS4); else the global install.
 - **By family, not by shard.** GS3/GSX/GST/GSF share one install, as do DR/DRX/DRT/DRF.
-- **An install is the pair `{ lichPath, rubyPath }`.** Lich 5.18+ refuses an older Ruby, so the two travel together.
+- **An install is the pair `{ lichPath, rubyPath }`.** Lich 5.18+ refuses an older Ruby, so the two travel together. A blank Ruby falls through the same chain (a character's own Lich with no Ruby uses its game's Ruby, then the default's).
+- **Every writer of the character YAML must keep `lich`.** `exportCharacterProfile` (the in-game save) copies the launcher's fields by name, so `lich` is in that list; the launcher's helpers and Profile Transfer spread the existing file.
 - **Only explicit choices are stored** (the B544 rule). Absent means inherit, and a resolved value is never written back. A DR-only player sees nothing new and nothing migrates.
 - **Startup discovery only ever fills the global value.**
 

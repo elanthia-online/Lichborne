@@ -356,6 +356,7 @@ export async function exportCharacterProfile(
         circle:   existing.circle,
         notes:    existing.notes,
         attach:   existing.attach,
+        lich:     existing.lich,      // the character's own Lich install (DESIGN §56.7.1)
       }
     : built
   await window.api.writeCharacterProfile(character, merged)

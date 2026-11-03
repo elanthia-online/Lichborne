@@ -74,7 +74,7 @@ export interface AdvancedSettings {
 
 /** A Lich install: lich.rbw and the Ruby that runs it. They travel together,
  *  because Lich 5.18+ refuses to start on an older Ruby. An empty rubyPath
- *  means "the default install's Ruby". */
+ *  means "the Ruby of the next layer down" (game, then default). */
 export interface LichInstall {
   lichPath: string
   rubyPath: string
@@ -114,11 +114,12 @@ export function resolveLichInstall(
   game: string,
   override?: LichInstall,
 ): ResolvedLichInstall {
-  const pick = (inst: LichInstall, source: LichInstallSource): ResolvedLichInstall =>
-    ({ lichPath: inst.lichPath, rubyPath: inst.rubyPath || adv.rubyPath, source })
-  if (override?.lichPath) return pick(override, 'character')
+  // A blank Ruby falls through the same chain as the install: a character's
+  // own Lich with no Ruby of its own uses its game's Ruby, then the default's.
   const forGame = adv.installs?.[gameFamilyFromCode(game)]
-  if (forGame?.lichPath) return pick(forGame, 'game')
+  const gameRuby = (forGame?.lichPath && forGame.rubyPath) || adv.rubyPath
+  if (override?.lichPath) return { lichPath: override.lichPath, rubyPath: override.rubyPath || gameRuby, source: 'character' }
+  if (forGame?.lichPath) return { lichPath: forGame.lichPath, rubyPath: gameRuby, source: 'game' }
   return { lichPath: adv.lichPath, rubyPath: adv.rubyPath, source: 'default' }
 }
 
