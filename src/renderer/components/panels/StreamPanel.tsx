@@ -17,7 +17,7 @@
 // GameWindow renders, which is why `onClear` / `onToggleTimestamp` /
 // `onCloseStream` take the `streamId` as an argument instead of receiving a
 // per-render closure.
-import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { TextLine } from '../../../shared/types'
 import { useContacts } from '../../ContactsContext'
 import { useHighlights } from '../../HighlightsContext'
@@ -26,6 +26,7 @@ import { newMute, type MuteRule } from '../../mutes'
 import { newSubstitute, type SubstituteRule } from '../../substitutes'
 import { TextLineRow } from '../TextLineRow'
 import ContextMenu, { type CtxItem } from '../ContextMenu'
+import { GameLinkContext, hasOwnClick, selectionJustEnded } from '../../gameLinks'
 
 // ── The one text context-menu shape (B391) ───────────────────────────────────
 // Every right-click menu over text — the main game window (GameWindow), every
@@ -140,7 +141,10 @@ export default memo(function StreamPanel({ streamId, lines, emptyMessage, onClea
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; word: string | null; lineText: string | null } | null>(null)
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; word: string | null; lineText: string | null; linkItems: CtxItem[] } | null>(null)
+  // Game links (rich stream, v0.21.0): the same link menu as the main window.
+  const linkMenu = useContext(GameLinkContext)
+  const [linkMenuAt, setLinkMenuAt] = useState<{ x: number; y: number; items: CtxItem[] } | null>(null)
 
   // B203: unpinning happens ONLY here, from real scroll events — never from
   // render-time geometry reads. The old render-time "recheck" re-derived
@@ -181,11 +185,24 @@ export default memo(function StreamPanel({ streamId, lines, emptyMessage, onClea
   }
 
   function handleContextMenu(e: React.MouseEvent) {
+    // A right-click inside one of this panel's own (portaled) menus bubbles
+    // here through React; the menu has already claimed it (pitfall #164).
+    if (e.defaultPrevented) return
     e.preventDefault()
     const hasExtras = onHighlight || onTrigger || onMute || onSubstitute || onShowInLog
     const word = hasExtras ? getWordAtPoint(e.clientX, e.clientY) : null
     const lineText = hasExtras ? getLineTextAtPoint(e.clientX, e.clientY) : null
-    setCtxMenu({ x: e.clientX, y: e.clientY, word, lineText })
+    const linkItems = linkMenu?.(e.target as Element, e.clientX, e.clientY) ?? []
+    setCtxMenu({ x: e.clientX, y: e.clientY, word, lineText, linkItems })
+  }
+
+  // A left-click on a game link opens its menu (not one that ended a selection,
+  // nor a command link or contact name, which have their own click).
+  function handleClick(e: React.MouseEvent) {
+    const t = e.target as Element
+    if (!linkMenu || hasOwnClick(t) || selectionJustEnded()) return
+    const items = linkMenu(t, e.clientX, e.clientY)
+    if (items.length) setLinkMenuAt({ x: e.clientX, y: e.clientY, items })
   }
 
   useLayoutEffect(() => {
@@ -208,7 +225,7 @@ export default memo(function StreamPanel({ streamId, lines, emptyMessage, onClea
   }, [])
 
   return (
-    <div className="stream-panel" ref={scrollRef} onScroll={handleScroll} onContextMenu={handleContextMenu}>
+    <div className="stream-panel" ref={scrollRef} onScroll={handleScroll} onContextMenu={handleContextMenu} onClick={handleClick}>
       {/* B385: the shared quiet-but-readable empty line (--text-muted, em-sized
           off this panel's font) — every stream now passes one, built-ins too. */}
       {lines.length === 0 && emptyMessage && (
@@ -241,12 +258,15 @@ export default memo(function StreamPanel({ streamId, lines, emptyMessage, onClea
           x={ctxMenu.x}
           y={ctxMenu.y}
           onClose={() => setCtxMenu(null)}
-          items={buildTextMenu(ctxMenu, { onHighlight, onTrigger, onMute, onSubstitute, onShowInLog }, {
+          items={joinMenuGroups([ctxMenu.linkItems, buildTextMenu(ctxMenu, { onHighlight, onTrigger, onMute, onSubstitute, onShowInLog }, {
             timestamps: onToggleTimestamp ? { shown: !!showTimestamp, toggle: () => onToggleTimestamp(streamId) } : undefined,
             clear: onClear ? () => onClear(streamId) : undefined,
             close: onCloseStream ? () => onCloseStream(streamId) : undefined,
-          })}
+          })])}
         />
+      )}
+      {linkMenuAt && (
+        <ContextMenu x={linkMenuAt.x} y={linkMenuAt.y} onClose={() => setLinkMenuAt(null)} items={linkMenuAt.items} />
       )}
     </div>
   )

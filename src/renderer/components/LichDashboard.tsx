@@ -122,6 +122,30 @@ function SessionPill({ lichPath, session }: { lichPath: string; session: Session
   )
 }
 
+// B590: every lich.db3 read catches its error and returns [], so a native module
+// that won't load (or a missing database) used to read as "nothing stored". The
+// db-info call reports the real error, and this says it out loud.
+function LichDbError({ lichPath }: { lichPath: string }) {
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    if (!lichPath) return
+    let cancelled = false
+    window.api.lichDbInfo(lichPath).then(info => {
+      const e = (info as { error?: string } | null)?.error
+      if (!cancelled) setError(e ?? null)
+    }).catch(e => { if (!cancelled) setError(String(e)) })
+    return () => { cancelled = true }
+  }, [lichPath])
+  if (!error) return null
+  return (
+    <div className="ld-error">
+      Couldn't read Lich's database, so this list can't be trusted.
+      {/GLIBC/.test(error) ? ' Your Linux version is older than this build supports.' : ''}
+      {' '}{error}
+    </div>
+  )
+}
+
 // ── Scripts tab ───────────────────────────────────────────────────────────────
 
 interface ScriptEntry { name: string; source: 'core' | 'custom'; lastModified: number }
@@ -642,6 +666,7 @@ function VarsTab({ lichPath, session, onRunCommand }: { lichPath: string; sessio
         <div className="ld-var-note">Viewing another character's variables — editing is only available for {defaultScope} (the connected session).</div>
       )}
 
+      <LichDbError lichPath={lichPath} />
       {error   && <div className="ld-error">{error}</div>}
       {loading && <div className="ld-empty">Loading…</div>}
 
@@ -727,6 +752,7 @@ function SettingsTab({ lichPath }: { lichPath: string }) {
 
   return (
     <>
+      <LichDbError lichPath={lichPath} />
       <div className="ld-info-intro">
         Lich&rsquo;s own settings and feature flags, read from <code>lich.db3</code>. The <strong>display</strong> flags control what
         Lich injects into your game text (room IDs, exits, inline experience). This view is read-only — toggle a flag with Lich&rsquo;s

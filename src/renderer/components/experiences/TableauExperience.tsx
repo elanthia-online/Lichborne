@@ -44,7 +44,7 @@ import { CONDITION_TITLES } from '../../attention'
 import ContextMenu, { type CtxItem } from '../ContextMenu'
 import { characterColor, characterColorsByName, useCharacterColors } from '../../characterColors'
 import { useRosterOptional } from '../../RosterContext'
-import type { Contact, ContactTemplate } from '../../contacts'
+import { sameContactName, type Contact, type ContactTemplate } from '../../contacts'
 import type { ExperienceProps, SceneSpeechItem, SceneMoveItem, FaceTurn } from '../../experiences'
 import { healthBand, SESSION_HEALTH_THRESHOLDS } from '../VitalsBar'
 import { groupHealthOf, exactSunPhase, detectWeather, type GroupMember, type SceneMoment } from '../../experiences'
@@ -285,7 +285,7 @@ export function computeDuels(
 // strips from the cast, plus "the"), applied to BOTH sides so "A lava drake"
 // (assess, article kept) matches "lava drake" (cast, article already stripped).
 const ASSESS_NAME_ARTICLE = /^(?:a|an|the|some|two|three|four|five|six|seven|eight|nine|ten)\s+/
-const normAssessName = (n: string) => n.toLowerCase().replace(ASSESS_NAME_ARTICLE, '').trim()
+const normAssessName = (n: string) => n.toLowerCase().replace(/\s{2,}/g, ' ').replace(ASSESS_NAME_ARTICLE, '').trim()
 
 // The ASSESS PICTURE KEPT CURRENT between assesses (v0.20.2, Sekmeht: "this
 // doesn't do anything until the assess fires off"). An assess is a snapshot;
@@ -826,7 +826,7 @@ const DIR_VECTOR: Record<string, [number, number]> = {
 // Tableau only needs to when its own inputs change (cast/speech/moves are
 // state objects with stable identities between changes). The default export
 // wraps this at the bottom of the file.
-function TableauExperience({ character, characterId, roomState, sceneCast, speech: rawSpeech, moves: rawMoves, indicators, contacts, contactTemplates, settings, isActive, onOpenContact, onCommand, onDirect, guild, hidden, combat: combatIn, group, serverClockOffsetMs, weather, place }: ExperienceProps) {
+function TableauExperience({ character, characterId, roomState, sceneCast, speech: rawSpeech, moves: rawMoves, indicators, contacts, contactTemplates, settings, isActive, onOpenContact, onEditContact, onDeleteContact, onAddContact, onCommand, onDirect, guild, hidden, combat: combatIn, group, serverClockOffsetMs, weather, place }: ExperienceProps) {
   // The assess picture kept current between assesses (correctAssess, above):
   // every reader below — duels, fight lines, the battlefield, crosshairs — sees
   // the corrected list without knowing it was corrected.
@@ -837,9 +837,19 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
   // room list plainly shows. Same count (living + dead) = the same refresh;
   // anything else falls back to the name-based display it had before.
   const castTotal = sceneCast.creatures.reduce((n, c) => n + (c.count ?? 1), 0)
-  const trustedRoster = useMemo(
-    () => (combatIn?.roster && combatIn.roster.length === castTotal ? combatIn.roster : null),
-    [combatIn?.roster, castTotal])
+  // DR clips a crowded room's list (B574, B560), so a roster can rightly be LONGER
+  // than it: still the same refresh when every creature the list does name is
+  // accounted for in the roster.
+  const castCreatures = sceneCast.creatures
+  const trustedRoster = useMemo(() => {
+    const r = combatIn?.roster
+    if (!r) return null
+    if (r.length === castTotal) return r
+    if (castTotal === 0 || r.length < castTotal) return null
+    const have = new Map<string, number>()
+    for (const c of r) if (c.name) { const k = normAssessName(c.name); have.set(k, (have.get(k) ?? 0) + 1) }
+    return castCreatures.every(c => (have.get(normAssessName(c.name)) ?? 0) >= (c.count ?? 1)) ? r : null
+  }, [combatIn?.roster, castTotal, castCreatures])
   const combat = useMemo(() => (!combatIn ? combatIn : {
     ...combatIn,
     roster: trustedRoster,
@@ -2852,7 +2862,7 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
         // menu — Say to… / Whisper to…, plus the contact card (the same
         // ContactPopover in-text name clicks use) for a contact. More verbs go
         // on the same menu. A plain left-click does nothing.
-        const contact = isContact ? contacts.find(c => c.name && c.name.toLowerCase() === chatKey) : undefined
+        const contact = isContact ? contacts.find(c => c.name && sameContactName(c.name, p.name)) : undefined
         const hasCard = !!(contact && onOpenContact)
         const hasMenu = !!onDirect || hasCard
         const duel = duels.get(chatKey)
@@ -3205,9 +3215,20 @@ function TableauExperience({ character, characterId, roomState, sceneCast, speec
             ?? combat?.assess.find(e => e.targetId?.startsWith('-') && e.target?.toLowerCase() === m.name.toLowerCase())?.targetId
           items.push({ label: `Look at ${m.name}`, onClick: () => onCommand(pcId ? `look #${pcId}` : `look ${m.name}`) })
         }
-        if (m.contactId && onOpenContact) {
+        // The contact items, in the game-text menu's order (B553): View /
+        // Edit / Delete… for a contact, Add for anyone else.
+        // By name as well as by the id the figure passed: a lost duel and a group
+        // member elsewhere are opened with no id, and read as strangers (B576).
+        const menuContactId = m.contactId ?? contacts.find(c => c.name && sameContactName(c.name, m.name))?.id
+        if (menuContactId) {
+          const own: CtxItem[] = []
+          if (onOpenContact)   own.push({ label: 'View contact card', onClick: () => onOpenContact(menuContactId, m.x, m.y) })
+          if (onEditContact)   own.push({ label: 'Edit contact', onClick: () => onEditContact(m.name) })
+          if (onDeleteContact) own.push({ label: 'Delete contact…', onClick: () => onDeleteContact(m.name) })
+          if (own.length) { if (items.length) items.push({ label: null }); items.push(...own) }
+        } else if (onAddContact) {
           if (items.length) items.push({ label: null })
-          items.push({ label: 'Contact card', onClick: () => onOpenContact(m.contactId!, m.x, m.y) })
+          items.push({ label: 'Add as a contact', onClick: () => onAddContact(m.name, m.x, m.y) })
         }
         // In combat with you (v0.20.2): turn to face them, or re-assess. Sent,
         // not typed — the same kind of action as clicking a creature to face

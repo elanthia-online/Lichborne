@@ -2156,7 +2156,12 @@
   height: 100%;
   transform-origin: left center;
   background: var(--accent);
-  transition: transform 1s linear, background 300ms ease;
+  /* B552: no transition on the transform. The bar is written once a second,
+     so a 1 s transition was re-armed by every tick for any buff under ~1000 s
+     and never completed — the pitfall #160 shape, surviving B465's rounding —
+     keeping the compositor producing frames while the window was open. A 1 Hz
+     step reads fine for a proportion. */
+  transition: background 300ms ease;
 }
 
 /* ── Traffic light: green when full → amber midway → red near the end ───────
@@ -2258,11 +2263,25 @@
    epilepsy-safe setting; the urgency COLOUR above stays either way, so the
    accessible path keeps the information the motion was carrying (UX #9b).
    It also inherits the app-wide minimize pause via the --window-hidden rule. */
+/* B552: the pulse is an OPACITY keyframe on a pseudo-element that carries the
+   full-strength ring, not a border-color keyframe on the cell — border-color
+   is paint-only, so the old one repainted the cell every frame for the whole
+   last minute of every spell. Opacity composites. (The B498 shape; the
+   minimize pause covers *::after.) */
 @keyframes sm-pulse {
-  0%, 100% { border-color: color-mix(in srgb, var(--spell-band-crit) 60%, transparent); }
-  50%      { border-color: color-mix(in srgb, var(--spell-band-crit) 100%, transparent); }
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 1; }
 }
-.sm-cell--pulse { animation: sm-pulse 1.4s ease-in-out infinite; }
+.sm-cell--pulse { position: relative; }
+.sm-cell--pulse::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border: 1px solid var(--spell-band-crit);
+  border-radius: inherit;
+  pointer-events: none;
+  animation: sm-pulse 1.4s ease-in-out infinite;
+}
 
 .sm-empty {
   flex: 1 1 auto;

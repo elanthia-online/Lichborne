@@ -29,6 +29,8 @@ interface Props {
   roomTitle:   string
   roomId?:     number
   onSendCommand: (cmd: string) => void
+  /** Switch the panel to the Genie map. Offered when a room has no Lich map image. */
+  onShowGenie?: () => void
 }
 
 interface Transform { x: number; y: number; scale: number }
@@ -102,7 +104,7 @@ function tilePut(cache: Map<string, string>, key: string, value: string): void {
 }
 
 export default function MapImageView({
-  lichDb, imageIndex, mapsDir, currentRoom, roomTitle, roomId, onSendCommand,
+  lichDb, imageIndex, mapsDir, currentRoom, roomTitle, roomId, onSendCommand, onShowGenie,
 }: Props) {
   const character    = useCharacter()
   const saveProfile  = useProfileSaver()
@@ -516,6 +518,19 @@ export default function MapImageView({
             <div className="map-empty-icon">🗺</div>
             <div className="map-empty-msg">No map image for this area</div>
             <div className="map-empty-sub">{lichTitle(currentRoom)}</div>
+            <div className="map-empty-sub">
+              Lich's map data has no picture for this room (banks and other interiors often don't).
+            </div>
+            {onShowGenie && (
+              <button
+                type="button"
+                className="map-btn map-btn--sm"
+                onClick={onShowGenie}
+                title="Show the Genie map, which covers many rooms the Lich map has no picture for"
+              >
+                Try Genie Maps
+              </button>
+            )}
           </div>
         )}
         <svg ref={svgRef} className="map-svg"

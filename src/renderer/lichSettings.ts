@@ -2,7 +2,7 @@
 // and SettingsPanel (in-session edits). Persisted to localStorage; replicated
 // to _shared.yaml by callers so concurrent Electron processes stay in sync.
 
-import type { GameFamily } from '../shared/types'
+import { RICH_STREAM_DEFAULT, type GameFamily, type RichStreamMode } from '../shared/types'
 
 // Cross-platform (v0.18.0): which OS we're on, from the preload bridge.
 // Guarded so non-renderer contexts (the tmp-* harnesses stub window.api
@@ -57,6 +57,14 @@ export interface AdvancedSettings {
   lichMode: '--stormfront' | '--genie' | '--wizard' | '--avalon' | '--frostbite'
   modeLocked: boolean
   showAdvanced: boolean
+  // DragonRealms' rich ("Saga") stream through Lich (v0.21.0, DESIGN §55.11):
+  // see RichStreamMode in shared/types.ts. ABSENT = no choice made, which
+  // resolves to RICH_STREAM_DEFAULT (rich when Lich supports it) at every use via
+  // effectiveRichStream(). It is stored only when the player picks a mode
+  // (B544): saveAdvanced writes the whole object, so a stored default would
+  // become a permanent "choice" and a later change of the default would reach
+  // nobody. 'auto' = on whenever the Lich install supports it (5.23.0+).
+  richStream?: RichStreamMode
 }
 
 export const ADV_DEFAULTS: AdvancedSettings = {
@@ -68,11 +76,43 @@ export const ADV_DEFAULTS: AdvancedSettings = {
   lichMode: '--stormfront',
   modeLocked: true,
   showAdvanced: false,
+  // richStream deliberately absent: see the field's comment.
+}
+
+/** A stored mode, or undefined for "no choice" (and for anything unreadable). */
+export function coerceRichStream(v: unknown): RichStreamMode | undefined {
+  return v === 'on' || v === 'off' || v === 'auto' ? v : undefined
+}
+
+/** The mode a connection uses: the player's choice, else Lichborne's default. */
+export function effectiveRichStream(adv: Pick<AdvancedSettings, 'richStream'>): RichStreamMode {
+  return adv.richStream ?? RICH_STREAM_DEFAULT
+}
+
+/** The label for the "no choice" option, shared by Lich Setup and /richstream. */
+export const RICH_STREAM_DEFAULT_LABEL = 'Rich (Saga) stream (default)'
+
+// One sentence per mode, shared by Lich Setup and /richstream so they can't
+// describe the same setting differently. For an UNSET setting, callers show
+// richStreamSettingText(), which names the default and then its sentence.
+export function richStreamModeText(mode: RichStreamMode): string {
+  switch (mode) {
+    case 'auto': return 'Rich (Saga) — Lichborne asks for it whenever your Lich supports it (5.23.0 or later); older Lich gets the legacy stream.'
+    case 'on':   return 'Always — asked for on every Lich connection, including an attach to another machine.'
+    case 'off':  return 'Legacy stream — the older stream, as before v0.21.0. Lich 5.23 or later converts the rich one for you.'
+  }
+}
+
+/** The setting as a sentence: the chosen mode's, or the default named as such. */
+export function richStreamSettingText(adv: Pick<AdvancedSettings, 'richStream'>): string {
+  const text = richStreamModeText(effectiveRichStream(adv))
+  return adv.richStream === undefined ? `Default: ${text}` : text
 }
 
 export function loadAdvanced(): AdvancedSettings {
   try {
-    return { ...ADV_DEFAULTS, ...JSON.parse(localStorage.getItem(ADV_KEY) ?? '{}'), showAdvanced: false }
+    const s = { ...ADV_DEFAULTS, ...JSON.parse(localStorage.getItem(ADV_KEY) ?? '{}'), showAdvanced: false }
+    return { ...s, richStream: coerceRichStream(s.richStream) }
   } catch { return { ...ADV_DEFAULTS } }
 }
 

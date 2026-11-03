@@ -17,21 +17,31 @@
 // slot; its font/size/weight come from a generated stylesheet, not from here.
 import type { TextSegment } from '../../shared/types'
 import { presetEffect } from '../textStyles'
+import type { HighlightEffect } from '../highlights'
 import { resolveEffect, effectContent } from './highlightEffects'
+import { linkDataAttrs } from '../gameLinks'
 
 /** The effect span a text style puts inside a preset's element, or undefined
  *  when that preset has no effect. Exported for surfaces that show the same
  *  text outside a segment (the Room panel's title). The colour is the
- *  segment's own when it has one, else the preset's theme colour. */
-export function presetEffectContent(text: string, preset: string | undefined, color?: string): React.ReactNode | undefined {
+ *  segment's own when it has one, else the preset's theme colour. `startIndex`
+ *  and `extraStyle` place this piece within a line cut into pieces (a linked name
+ *  cuts a preset, B581), so the effect runs on instead of restarting. */
+export function presetEffectContent(
+  text: string,
+  preset: string | undefined,
+  color?: string,
+  startIndex = 0,
+  extraStyle?: (effect: HighlightEffect) => React.CSSProperties,
+): React.ReactNode | undefined {
   const pe = presetEffect(preset)
   if (!pe) return undefined
   const fx = resolveEffect(pe.effect, color ?? `var(${pe.colorVar})`, null)
   return (
     <span
       className={fx.className || undefined}
-      style={{ ...fx.vars, ...(fx.glowShadow ? { textShadow: fx.glowShadow } : {}) }}
-    >{effectContent(text, fx.perLetter)}</span>
+      style={{ ...fx.vars, ...(fx.glowShadow ? { textShadow: fx.glowShadow } : {}), ...extraStyle?.(pe.effect) }}
+    >{effectContent(text, fx.perLetter, startIndex)}</span>
   )
 }
 
@@ -80,6 +90,10 @@ export function renderSegment(
   // a rule the player aimed at this line is more specific than a whole kind.
   if (content === undefined && seg.text) content = presetEffectContent(seg.text, preset, fgColor)
   const body = content ?? seg.text
+  // A game link (rich stream, v0.21.0): its id and noun ride data attributes,
+  // read by the link menu (gameLinks.ts). Absent on legacy text.
+  const link = linkDataAttrs(seg)
+  const linkCls = link ? ' game-link' : ''
   const style: React.CSSProperties | undefined =
     fgColor || seg.bg
       ? { ...(fgColor ? { color: fgColor } : {}), ...(seg.bg ? { backgroundColor: '#' + seg.bg } : {}) }
@@ -93,6 +107,7 @@ export function renderSegment(
         key={key}
         className="url-link"
         data-preset={preset}
+        {...link}
         style={style}
         onClick={() => window.api.openUrl(resolved)}
         title={webLinkSafety && resolved !== href ? `${href} (via Play.net bounce)` : href}
@@ -107,6 +122,7 @@ export function renderSegment(
         key={key}
         className="cmd-link"
         data-preset={preset}
+        {...link}
         style={style}
         onClick={() => onSendCommand(cmd)}
       >{body}</span>
@@ -114,10 +130,10 @@ export function renderSegment(
   }
 
   if (seg.bold) {
-    return <strong key={key} data-preset={preset} style={style}>{body}</strong>
+    return <strong key={key} className={linkCls.trim() || undefined} data-preset={preset} style={style} {...link}>{body}</strong>
   }
-  if (preset || style) {
-    return <span key={key} data-preset={preset} style={style}>{body}</span>
+  if (preset || style || link) {
+    return <span key={key} className={linkCls.trim() || undefined} data-preset={preset} style={style} {...link}>{body}</span>
   }
   return content === undefined ? seg.text : <span key={key}>{content}</span>
 }

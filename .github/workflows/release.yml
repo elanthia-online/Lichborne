@@ -48,8 +48,8 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
       - name: Validate release notes + pre-create draft
@@ -69,8 +69,13 @@ jobs:
             args: --win nsis
           # Linux (v0.18.0): AppImage, fully first-class — no signing exists on
           # Linux, auto-update works out of the box via latest-linux.yml.
+          # B590: built inside an Ubuntu 22.04 container, because a native module
+          # needs the glibc of the system that compiled it, and the docs promise
+          # 22.04. A container rather than runs-on: ubuntu-22.04, which GitHub is
+          # retiring. build/afterPack.cjs fails the build if this ever slips.
           - os: ubuntu-latest
             args: --linux
+            container: ubuntu:22.04
           # Mac (v0.18.0): UNSIGNED beta — deliberately no Apple Developer
           # account (free-project decision, revisit if Mac demand shows).
           # build/afterPack.cjs ad-hoc signs the .app (electron-builder does
@@ -82,9 +87,27 @@ jobs:
           - os: macos-latest
             args: --mac
     runs-on: ${{ matrix.os }}
+    # Empty on Windows and macOS, which then run directly on the runner.
+    container: ${{ matrix.container }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      # The container is bare, so it needs the tools the runner image would have
+      # had. g++-12 is the oldest compiler Node 24's headers are documented for,
+      # and on 22.04 it still links against the system's own libstdc++. Building
+      # from source stops a prebuilt binary (made on some other system) being
+      # downloaded instead.
+      - name: Prepare the Linux build container
+        if: matrix.container
+        run: |
+          apt-get update
+          apt-get install -y git python3 make g++-12 binutils xz-utils zstd ca-certificates
+          {
+            echo "CI=true"
+            echo "CC=gcc-12"
+            echo "CXX=g++-12"
+            echo "npm_config_build_from_source=true"
+          } >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
@@ -133,8 +156,8 @@ jobs:
     if: ${{ !cancelled() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
       - name: Verify draft artifact set + refresh notes

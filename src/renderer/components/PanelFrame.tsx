@@ -26,7 +26,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import ContextMenu from './ContextMenu'
-import type { GameEvent, TextLine, RoomState, InjuryState, FireLogEntry, GameFamily } from '../../shared/types'
+import type { GameEvent, TextLine, RoomState, InjuryState, FireLogEntry, CreatureStatus, GameFamily } from '../../shared/types'
 import { optionShown } from '../experiences'
 import type { HighlightRule } from '../highlights'
 import type { MuteRule } from '../mutes'
@@ -169,6 +169,9 @@ export function expIdFromTab(tab: TabDef): string {
 interface Props {
   streamLines: Record<string, TextLine[]>
   roomState: RoomState
+  // The creature roster (dead/sleeping/prone), so the Room panel can mark
+  // each creature in its objects line (v0.21.0, ProfanityFE #265).
+  creatureRoster?: CreatureStatus[] | null
   expSkills: Record<string, string>
   rankUpSkills?: Set<string>
   expFocus?: string
@@ -179,6 +182,8 @@ interface Props {
   autoLinkUrls?: boolean
   webLinkSafety?: boolean
   debugEvents?: GameEvent[]
+  // v0.21.0: for the Debug panel's "Capture XML" (per session, in main).
+  sessionId?: string
   onClearDebug?: () => void
   rawXmlLines?: string[]
   onClearRawXml?: () => void
@@ -266,7 +271,7 @@ export default function PanelFrame({
   expFocus = 'None', pinnedSkills, onFocusChange, onTogglePin,
   onSendCommand, autoLinkUrls = true, webLinkSafety = true,
   debugEvents, onClearDebug, rawXmlLines, onClearRawXml, fireLog, onClearFireLog, onGotoFireRule, onClearStream, onHighlight, onTrigger,
-  onMute, onSubstitute, onShowInLog,
+  onMute, onSubstitute, onShowInLog, sessionId,
   injuryState = {},
   tabs, activeId, onTabsChange, onActiveChange,
   discoveredStreams = [], streamTitles = {}, unreadIds,
@@ -280,6 +285,7 @@ export default function PanelFrame({
   onAdoptTab,
   experienceDefs = [], renderExperienceTab,
   getExperienceHidden, onSetExperienceOption,
+  creatureRoster = null,
   gameFamily,
 }: Props) {
   const [showAddMenu, setShowAddMenu] = useState(false)
@@ -569,7 +575,7 @@ export default function PanelFrame({
           expFocus, pinnedSkills ?? EMPTY_SET, onFocusChange ?? NOOP, onTogglePin ?? NOOP,
           onSendCommand,
           debugEvents ?? EMPTY_ARRAY, onClearDebug ?? NOOP,
-          rawXmlLines ?? EMPTY_ARRAY, onClearRawXml ?? NOOP,
+          rawXmlLines ?? EMPTY_ARRAY, onClearRawXml ?? NOOP, sessionId,
           fireLog ?? EMPTY_ARRAY, onClearFireLog ?? NOOP, onGotoFireRule,
           onClearStream ?? NOOP, onHighlight, onTrigger, onMute, onSubstitute, onShowInLog, injuryState,
           streamTimestamps, onToggleTimestamp, autoLinkUrls, webLinkSafety, lichMapVersion,
@@ -577,7 +583,7 @@ export default function PanelFrame({
           onLichPause ?? NOOP, onLichResume ?? NOOP,
           onLichKill ?? NOOP, onLichRefresh ?? NOOP,
           mapAnimations, compactExp,
-          renderExperienceTab, activeFontSize, closeStreamRef.current,
+          renderExperienceTab, activeFontSize, closeStreamRef.current, creatureRoster,
           gameFamily,
         )}
         {activeTab && (() => {
@@ -901,6 +907,7 @@ function renderPanel(
   onClearDebug: () => void,
   rawXmlLines: string[],
   onClearRawXml: () => void,
+  sessionId: string | undefined,
   fireLog: FireLogEntry[],
   onClearFireLog: () => void,
   onGotoFireRule: ((kind: 'highlight' | 'trigger', ruleId: string) => void) | undefined,
@@ -928,6 +935,7 @@ function renderPanel(
   renderExperienceTab?: (expId: string) => React.ReactNode,
   panelFontSize?: number,
   onCloseStream?: (streamId: string) => void,
+  creatureRoster: CreatureStatus[] | null = null,
   gameFamily?: GameFamily,
 ) {
   // B172: StreamPanel is memoized, so every prop must be referentially
@@ -947,7 +955,7 @@ function renderPanel(
       emptyMessage={`Nothing in ${PANEL_LABELS[tab.type]} yet.`} />
   )
   switch (tab.type) {
-    case 'room':          return <RoomPanel room={roomState} onSendCommand={onSendCommand} />
+    case 'room':          return <RoomPanel room={roomState} roster={creatureRoster} onSendCommand={onSendCommand} />
     case 'thoughts':      return sp('thoughts',      streamLines.thoughts      ?? EMPTY_ARRAY)
     case 'arrivals':      return sp('arrivals',      streamLines.arrivals      ?? EMPTY_ARRAY)
     case 'conversation':  return sp('conversation',  streamLines.conversation  ?? EMPTY_ARRAY)
@@ -972,7 +980,7 @@ function renderPanel(
     // it's hosted here (a zone tab or a floating window). DebugPanel isn't
     // memoized, so the inline closure costs nothing.
     case 'debug':         return <DebugPanel events={debugEvents} onClear={onClearDebug} rawXmlLines={rawXmlLines} onClearRawXml={onClearRawXml} fireLog={fireLog} onClearFireLog={onClearFireLog} onGotoFireRule={onGotoFireRule}
-      onCloseTab={onCloseStream ? () => onCloseStream(tab.id) : undefined} />
+      onCloseTab={onCloseStream ? () => onCloseStream(tab.id) : undefined} sessionId={sessionId} />
     case 'log':           return sp('log',           streamLines.log           ?? EMPTY_ARRAY)
     case 'lichScripts':   return <ScriptListPanel scripts={lichScripts} lastUpdated={lichLastUpdated} pending={lichPending} onPause={onLichPause} onResume={onLichResume} onKill={onLichKill} onRefresh={onLichRefresh} />
     case 'combat':        return sp('combat',        streamLines.combat        ?? EMPTY_ARRAY)

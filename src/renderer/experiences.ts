@@ -1393,6 +1393,12 @@ export interface ExperienceProps {
   // Open the contact CARD (the same ContactPopover in-text name clicks use)
   // at the given screen position — contact figures in a scene are clickable.
   onOpenContact?: (contactId: string, x: number, y: number) => void
+  // v0.21.0 (B553): the rest of the game-text player menu's contact items, so
+  // a person works the same way in the Tableau as in text. All route through
+  // GameWindow's one contacts writer (commitContacts).
+  onEditContact?: (name: string) => void
+  onDeleteContact?: (name: string) => void
+  onAddContact?: (name: string, x: number, y: number) => void
   // Send a game command as if the user issued it (echoes + logs, pitfall #86) —
   // for user-initiated actions inside an Experience, e.g. clicking a creature to
   // `face #id` from the combat arena. NOT for automation (AI never sends).

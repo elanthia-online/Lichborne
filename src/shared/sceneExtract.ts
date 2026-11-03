@@ -75,14 +75,22 @@ export function extractScenePlayers(segs: TextSegment[]): ScenePlayer[] {
 export function extractSceneCreaturesFromBold(segs: TextSegment[]): SceneCreature[] {
   const out: SceneCreature[] = []
   for (let i = 0; i < segs.length; i++) {
-    const s = segs[i]
-    if (!s.bold || !s.text.trim()) continue
+    if (!segs[i].bold) continue
+    // A creature is a RUN of consecutive bold segments, not one segment. The
+    // rich stream (v0.21.0) bolds an article and a link together, `<pushBold/>
+    // <pushBold/>a <a …>jeol moradu</a><popBold/><popBold/>`, which the link
+    // tag splits into "a " and "jeol moradu"; read separately they made a
+    // phantom creature called "a". Legacy sends one segment per creature.
+    let text = ''
+    while (i < segs.length && segs[i].bold) text += segs[i++].text
+    if (!text.trim()) { i--; continue }
     // Lich's NPC_SCAN spans PAST </popBold>: the corpse marker ("… which
     // appears dead" / "… (dead)") trails the bold span as PLAIN text, so
     // check the head of the following non-bold segment (harness-caught).
-    const next = segs[i + 1]
+    const next = segs[i]
     const deadHint = !!next && !next.bold && /^\s*(?:which appears dead|\(dead\))/.test(next.text)
-    pushCreature(out, s.text, deadHint)
+    pushCreature(out, text, deadHint)
+    i--
   }
   return out
 }
@@ -99,8 +107,10 @@ export function extractSceneCreaturesFromText(segs: TextSegment[]): SceneCreatur
 
 function pushCreature(out: SceneCreature[], raw: string, deadHint: boolean) {
   const dead = deadHint || DEAD_NPC.test(raw)
+  // The rich stream can double a space inside a name (`lava  drake`), which
+  // would otherwise tally apart from `lava drake` (B575).
   const cleaned = raw.replace(DEAD_NPC, '').replace(/[.,]\s*$/, '').trim()
-    .replace(LEADING_ARTICLE, '')
+    .replace(LEADING_ARTICLE, '').replace(/\s{2,}/g, ' ')
   if (!cleaned) return
   // Identical creatures COUNT instead of collapsing (Sekmeht corpus: five
   // "a lava drake" spans in one room — Lich ordinals them; we tally, and
@@ -137,5 +147,33 @@ export function mergeSceneCreatures(...lists: SceneCreature[][]): SceneCreature[
       out.push(copy)
     }
   }
+  return out
+}
+
+/** A creature name from a room-objects list, with its link id on the rich stream. */
+export interface RosterName { name: string; exist?: string }
+
+/**
+ * The creatures in a room-objects list: each run of CONSECUTIVE bold segments
+ * is one name. Legacy bolds a creature in one span (`<pushBold/>a jeol
+ * moradu<popBold/>`, one segment). The rich stream doubles the bold around an
+ * article and a link (`<pushBold/><pushBold/>a <a …>jeol moradu</a><popBold/><popBold/>`),
+ * which the link tag splits into two bold segments, "a " and "jeol moradu";
+ * counted separately they made a phantom creature called "a". The run's link id
+ * comes with it.
+ */
+export function boldRuns(segs: TextSegment[]): RosterName[] {
+  const out: RosterName[] = []
+  let text = '', exist: string | undefined
+  const end = () => {
+    const name = text.trim()
+    if (name) out.push(exist ? { name, exist } : { name })
+    text = ''; exist = undefined
+  }
+  for (const s of segs) {
+    if (s.bold) { text += s.text; exist ??= s.exist }
+    else end()
+  }
+  end()
   return out
 }

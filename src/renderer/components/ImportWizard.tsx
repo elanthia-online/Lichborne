@@ -298,7 +298,7 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved, nested = 
     // contacts store (by name), not highlights — otherwise the same names are
     // offered every re-import with no EXISTS flag (the append-apply already
     // skips them, but the preview never said so).
-    const contactExist = new Set(loadContacts(character).map(c => c.name.toLowerCase()))
+    const contactExist = new Set(loadContacts(character).map(c => c.name.trim().toLowerCase()))
 
     const dH = new Set<number>(); r.highlights.forEach((h, i) => { if (hlExist.has(hlContentKey(h.pattern, h.scope, h.caseSensitive))) dH.add(i) })
     const dT = new Set<number>(); r.triggers  .forEach((t, i) => { if (trExist.has(trContentKey(t.pattern, t.caseSensitive))) dT.add(i) })
@@ -306,7 +306,7 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved, nested = 
     const dA = new Set<number>(); r.aliases   .forEach((a, i) => { if (a.input && alExist.has(a.input.toLowerCase())) dA.add(i) })
     const dMu = new Set<number>(); (r.mutes ?? []).forEach((m, i) => { if (muExist.has(muKey(m.pattern, m.matchType, 'line', m.caseSensitive))) dMu.add(i) })
     const dSub = new Set<number>(); (r.substitutes ?? []).forEach((s, i) => { if (subExist.has(subKey(s.pattern, s.matchType, s.replacement, s.caseSensitive))) dSub.add(i) })
-    const dC = new Set<number>(); r.names.forEach((n, i) => { if (contactExist.has(n.pattern.toLowerCase())) dC.add(i) })
+    const dC = new Set<number>(); r.names.forEach((n, i) => { if (contactExist.has(n.pattern.trim().toLowerCase())) dC.add(i) })
     setDupH(dH); setDupT(dT); setDupM(dM); setDupA(dA); setDupMu(dMu); setDupSub(dSub); setDupC(dC)
 
     // Pre-select all ready/partial items, INCLUDING duplicates. (Earlier
@@ -539,8 +539,8 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved, nested = 
       const incoming = result.nativeContacts as Contact[]
       if (merge === 'append') {
         const existing = loadContacts(character)
-        const seen = new Set(existing.map(c => c.name.toLowerCase()))
-        saveContacts(character, [...existing, ...incoming.filter(c => !seen.has(c.name.toLowerCase()))])
+        const seen = new Set(existing.map(c => c.name.trim().toLowerCase()))
+        saveContacts(character, [...existing, ...incoming.filter(c => !seen.has(c.name.trim().toLowerCase()))])
       } else {
         saveContacts(character, incoming)
       }
@@ -595,7 +595,7 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved, nested = 
     // freshly-generated ids).
     if (selC.size > 0) {
       const existingContacts = loadContacts(character)
-      const existingNames = new Set(existingContacts.map(c => c.name.toLowerCase()))
+      const existingNames = new Set(existingContacts.map(c => c.name.trim().toLowerCase()))
 
       const existingTemplates = loadContactTemplates(character)
       const templatesByName = new Map(existingTemplates.map(t => [t.name.toLowerCase(), t]))
@@ -625,7 +625,7 @@ export default function ImportWizard({ onClose, onSaved, onThemeSaved, nested = 
       const newContacts: Contact[] = []
       for (const i of selC) {
         const n = result.names[i]
-        if (!n || existingNames.has(n.pattern.toLowerCase())) continue
+        if (!n || existingNames.has(n.pattern.trim().toLowerCase())) continue
         const templateId = n.templateName ? ensureTemplate(n.templateName, n.textColor) : null
         newContacts.push({
           id:         crypto.randomUUID(),

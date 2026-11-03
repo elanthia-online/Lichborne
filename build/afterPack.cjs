@@ -31,7 +31,46 @@
 // destroy it.
 
 const { execFileSync } = require('child_process')
+const fs = require('fs')
 const path = require('path')
+
+// B590: the oldest Linux the docs promise is Ubuntu 22.04, and a native module
+// needs at least the glibc/libstdc++ of the system that compiled it. Built on
+// 24.04 the AppImage's better-sqlite3 wanted GLIBC_2.38, so on 22.04, Debian 12
+// and Mint 21 it failed to load and the Lich Dashboard read empty. CI only: a
+// local build on a newer distro is fine for that machine. It runs here because
+// afterPack is the last step BEFORE an artifact exists to upload.
+const LINUX_LIMITS = { GLIBC: [2, 35], GLIBCXX: [3, 4, 30] }
+function newer(a, b) {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0)
+  }
+  return false
+}
+function findNative(dir, out = []) {
+  if (!fs.existsSync(dir)) return out
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name)
+    if (e.isDirectory()) findNative(p, out)
+    else if (e.name.endsWith('.node')) out.push(p)
+  }
+  return out
+}
+function checkLinuxLibraries(appOutDir) {
+  const files = findNative(path.join(appOutDir, 'resources', 'app.asar.unpacked'))
+  // Finding nothing means this looked in the wrong place, not that all is well.
+  if (files.length === 0) throw new Error('afterPack: no native module found to check under app.asar.unpacked')
+  for (const f of files) {
+    const syms = execFileSync('objdump', ['-T', f], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+    for (const m of syms.matchAll(/\b(GLIBCXX|GLIBC)_(\d+(?:\.\d+)*)/g)) {
+      const v = m[2].split('.').map(Number)
+      if (newer(v, LINUX_LIMITS[m[1]])) {
+        throw new Error(`afterPack: ${path.basename(f)} needs ${m[1]}_${m[2]}, newer than ${m[1]}_${LINUX_LIMITS[m[1]].join('.')} on Ubuntu 22.04`)
+      }
+    }
+    console.log(`  • ${path.basename(f)} loads on Ubuntu 22.04`)
+  }
+}
 
 exports.default = async function afterPack(context) {
   // Log on EVERY platform, not just darwin. electron-builder calls afterPack for
@@ -41,6 +80,7 @@ exports.default = async function afterPack(context) {
   // unsigned app with no error anywhere. Absence of this line in a build log
   // means the hook did not run.
   console.log(`  • afterPack hook: platform=${context.electronPlatformName}`)
+  if (context.electronPlatformName === 'linux' && process.env.CI) checkLinuxLibraries(context.appOutDir)
   if (context.electronPlatformName !== 'darwin') return
 
   const appPath = path.join(

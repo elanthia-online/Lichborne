@@ -45,6 +45,8 @@ export interface SharedAdvancedSettings {
   lichPort: number
   portLocked: boolean
   modeLocked: boolean
+  // v0.21.0: 'auto' | 'on' | 'off' (RichStreamMode). Optional: older files lack it.
+  richStream?: string
   // v0.8.0 dropped `lichDelay` and `hideLichWindow`. See lichSettings.ts for
   // the rationale. Old _shared.yaml files with these keys parse fine and the
   // values are silently ignored on import — no migration needed.

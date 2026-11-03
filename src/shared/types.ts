@@ -78,7 +78,28 @@ export interface LoginCredentials {
   // port, which made cross-shard logins land on the wrong server.
   lichPort: number
   lichMode: '--stormfront' | '--genie' | '--wizard' | '--avalon' | '--frostbite'
+  // Ask Lich for DragonRealms' rich ("Saga") stream (v0.21.0, DESIGN §55.11).
+  // Absent = RICH_STREAM_DEFAULT (rich when Lich supports it). Ignored on a direct connection, which stays legacy.
+  richStream?: RichStreamMode
 }
+
+// Whether to send Lich `SET_FRONTEND_CAPS room_element game_links double_bold`
+// (lich-5 #1726, in Lich 5.23.0), which stops Lich rewriting the rich stream
+// into the legacy shape for this client:
+//   auto — when Lichborne can see the Lich supports it: the install it launches
+//          has lib/common/client_capabilities.rb, or, for an attach to this
+//          machine, the configured install does;
+//   on   — always, including an attach to another machine (an older Lich passes
+//          the line to the game, which answers it once as an unknown command);
+//   off  — never: the legacy shape, as before v0.21.0.
+export type RichStreamMode = 'auto' | 'on' | 'off'
+// What a player who has made no choice gets: the rich stream whenever the
+// Lich supports it (Sekmeht's decision, 2026-11-01; Legacy was the default
+// until then). 'auto', not 'on', so an older Lich is never sent a line it
+// would pass to the game. The setting is stored ONLY when chosen (B544), so a
+// later change here reaches everyone who never picked a mode; main and the
+// renderer both read this one constant.
+export const RICH_STREAM_DEFAULT: RichStreamMode = 'auto'
 
 // Attach to an ALREADY-RUNNING, detachable Lich session.
 //
@@ -111,6 +132,10 @@ export interface AttachCredentials {
   game: string
   host: string
   port: number
+  // Rich-stream request (see RichStreamMode). `lichPath` is the configured
+  // local install, checked under 'auto' when the attach target is this machine.
+  richStream?: RichStreamMode
+  lichPath?: string
 }
 
 export interface CharacterEntry {
@@ -168,6 +193,9 @@ export const IPC = {
   // because the target may live in a DECOUPLED window, which a renderer-side
   // DOM event could never reach.
   SEND_USER_TEXT:    'send-user-text',
+  // v0.21.0: "Capture XML" — the received stream to Logs/raw, per session.
+  RAW_CAPTURE_SET:   'raw-capture:set',
+  RAW_CAPTURE_GET:   'raw-capture:get',
   USER_TEXT:         'user-text',
   // v0.20.5: a <LaunchURL> from the game or a Lich script, sent to the owning
   // window so its GameWindow can apply the character's link-safety setting
@@ -376,6 +404,12 @@ export interface TextSegment {
   cmd?: string      // clickable command link (from <d cmd='...'>)
   href?: string     // clickable URL link (from <a href='...'>)
   autoHref?: boolean // true when href was auto-detected in plain text (not from <a href>)
+  // A game link on the rich stream (v0.21.0, DESIGN §55): the object, creature
+  // or player this text names. `exist` is its id (players negative), usable as
+  // `#id` in commands; `noun` is the game's noun for it, often NOT the text's
+  // last word. Absent on the legacy stream.
+  exist?: string
+  noun?: string
 }
 
 // --- Typed game events ---
@@ -415,6 +449,27 @@ export type GameEvent =
   | SceneLogonEvent
   | CharacterGuildEvent
   | CreatureRosterEvent
+  | RichStreamEvent
+  | RoomDescEvent
+
+// v0.21.0 (B548/C5): the player's own room's description when FLAG
+// DESCRIPTION OFF made the parser drop it from the displayed line — on the
+// rich stream (the <room> rebuild) and on legacy-shaped input alike. The map
+// matchers (Genie: title + description + exits; the Lich map's title+desc
+// fallback) read roomState.desc, which used to come only from the displayed
+// `roomdesc` preset; without this they went dark for every flag-OFF player.
+// Display never shows it. Sticky room state (snapshotKey), like `exits`.
+export interface RoomDescEvent {
+  type: 'room-desc'
+  text: string
+}
+
+// The first rich-stream shape of the session (a <room> block or an
+// <a exist> game link): Lich is passing DragonRealms' rich stream through
+// unrewritten. Emitted once per parser lifetime (reset() re-arms it).
+export interface RichStreamEvent {
+  type: 'rich-stream'
+}
 
 export interface StreamTextEvent {
   type: 'stream-text'
@@ -560,6 +615,8 @@ export interface StreamPopEvent {
 export interface ClearStreamEvent {
   type: 'clear-stream'
   stream: StreamTarget
+  /** This clear comes from `<nav>`: the character is moving (SceneParser, B566). */
+  move?: boolean
 }
 
 // Emitted when the server declares a stream via <streamWindow> — carries the

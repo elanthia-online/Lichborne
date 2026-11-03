@@ -138,9 +138,10 @@ export function compileMutes(
 //   • returns the same `segments` reference → unchanged;
 //   • returns a NEW array → `match`-scope mutes stripped some text.
 // `segments` is any array of objects carrying a `text` string (only `text` is
-// read/rewritten). `match`-scope strips per-segment (within-segment is the
-// common case; a match spanning segment boundaries isn't caught — same limit as
-// per-segment highlighting). Blank lines never mute.
+// read/rewritten). `match`-scope matches against the WHOLE line and cuts the
+// matched range out of whichever segments it covers (B563/B564): the rich stream
+// splits a line at every linked name, so a per-segment match missed anything
+// spanning a name and let `^`/`$` match at each link. Blank lines never mute.
 // `onFired` (Automation Analytics, v0.14.4) is invoked with a mute's ruleId each
 // time it actually removes/strips text — wired only when analytics is on, so it
 // rides the existing match loop at ~no cost.
@@ -172,31 +173,52 @@ export function applyMutesToSegments<T extends { text: string }>(
     m.rule.scope === 'match' && (!m.fastLower || lower.includes(m.fastLower)))
   if (matchMutes.length === 0) return segments
 
+  let current = segments
   let changed = false
-  const stripped: T[] = segments.map(seg => {
-    let t = seg.text
-    let touched = false
-    for (const m of matchMutes) {
-      m.regex.lastIndex = 0
-      const next = t.replace(m.regex, '')
-      if (next !== t) { t = next; touched = true; onFired?.(m.rule.id) }
+  for (const m of matchMutes) {
+    const text = current.map(s => s.text).join('')
+    const ranges: Array<[number, number]> = []
+    m.regex.lastIndex = 0
+    let hit: RegExpExecArray | null
+    while ((hit = m.regex.exec(text)) !== null) {
+      if (hit[0].length > 0) ranges.push([hit.index, hit.index + hit[0].length])
+      else m.regex.lastIndex++   // zero-width match (pitfall #29)
+      if (!m.regex.global) break
     }
-    if (!touched) return seg
+    if (ranges.length === 0) continue
+    onFired?.(m.rule.id)
     changed = true
-    // Collapse the double-space left behind, and drop a space now dangling
-    // before punctuation.
-    t = t.replace(/ {2,}/g, ' ').replace(/ +([.,;:!?…)\]'"]+)/g, '$1')
-    return { ...seg, text: t } as T
-  })
+    let start = 0
+    current = current.map(seg => {
+      const end = start + seg.text.length
+      let kept = ''
+      let pos = start
+      for (const [a, b] of ranges) {
+        if (b <= pos || a >= end) continue
+        if (a > pos) kept += text.slice(pos, a)
+        pos = Math.max(pos, Math.min(b, end))
+      }
+      if (pos === start && !ranges.some(([a, b]) => a < end && b > start)) { start = end; return seg }
+      if (pos < end) kept += text.slice(pos, end)
+      start = end
+      // Collapse the double-space left behind, and drop a space now dangling
+      // before punctuation.
+      return { ...seg, text: kept.replace(/ {2,}/g, ' ').replace(/ +([.,;:!?…)\]'"]+)/g, '$1') } as T
+    })
+  }
   if (!changed) return segments
 
-  let out = stripped.filter(s => s.text.length > 0)
+  let out = current.filter(s => s.text.length > 0)
   // Tidy the seams the removal created (the matched text may have been its own
-  // styled segment): collapse a space-space boundary, and trim a leading/
-  // trailing space the removal left at the line edges.
+  // styled segment): collapse a space-space boundary, drop a space left before
+  // punctuation in the next piece, and trim a leading/trailing space the removal
+  // left at the line edges.
   for (let i = 0; i < out.length - 1; i++) {
     if (/\s$/.test(out[i].text) && /^\s/.test(out[i + 1].text)) {
       out[i + 1] = { ...out[i + 1], text: out[i + 1].text.replace(/^\s+/, '') } as T
+    }
+    if (/\s$/.test(out[i].text) && /^[.,;:!?…)\]]/.test(out[i + 1].text)) {
+      out[i] = { ...out[i], text: out[i].text.replace(/\s+$/, '') } as T
     }
   }
   if (out.length > 0) {

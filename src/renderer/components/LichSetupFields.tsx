@@ -17,13 +17,8 @@
 // is phrased conditionally because it reads the RUBY version, not Lich's.
 
 import { useState, useEffect } from 'react'
-import {
-  type AdvancedSettings,
-  ADV_DEFAULTS,
-  GAMES,
-  IS_WINDOWS,
-  IS_MAC,
-} from '../lichSettings'
+import { type AdvancedSettings, ADV_DEFAULTS, GAMES, IS_WINDOWS, IS_MAC, richStreamSettingText, effectiveRichStream, RICH_STREAM_DEFAULT_LABEL } from '../lichSettings'
+import type { RichStreamMode } from '../../shared/types'
 
 // Platform-aware copy (v0.18.0): where the canonical Lich install lives and
 // what the interpreter file is called — Windows = the Ruby4Lich5 one-click
@@ -67,14 +62,14 @@ export default function LichSetupFields({ adv, setAdv, disabled = false, alwaysS
   // discovered candidates, so it cannot imply a path is fine because one was
   // found elsewhere. probeDesktop is off: this runs unprompted, and the Desktop
   // probe raises a macOS privacy dialog that must only ever follow a click.
-  const [pathsExist, setPathsExist] = useState<{ ruby: boolean; lich: boolean } | null>(null)
+  const [pathsExist, setPathsExist] = useState<{ ruby: boolean; lich: boolean; rich: boolean } | null>(null)
   useEffect(() => {
     if (!useLich && !alwaysShowFields) return
     let cancelled = false
     // Debounced: this fires per keystroke while a path is being typed.
     const t = setTimeout(() => {
       window.api.discoverLichPaths(rubyPath, lichPath)
-        .then(r => { if (!cancelled) setPathsExist({ ruby: r.rubyAlreadyValid, lich: r.lichAlreadyValid }) })
+        .then(r => { if (!cancelled) setPathsExist({ ruby: r.rubyAlreadyValid, lich: r.lichAlreadyValid, rich: r.richStreamSupported }) })
         .catch(() => { if (!cancelled) setPathsExist(null) })
     }, 250)
     return () => { cancelled = true; clearTimeout(t) }
@@ -272,6 +267,37 @@ export default function LichSetupFields({ adv, setAdv, disabled = false, alwaysS
           </button>
         </div>
       </label>
+
+      {/* DragonRealms' rich ("Saga") stream (v0.21.0, DESIGN §55.11). The line
+          under it reads the CONFIGURED install, which is what 'auto' checks at
+          connect; it says nothing until the path check has answered. */}
+      <label>
+        Game stream
+        <select
+          value={adv.richStream === undefined || adv.richStream === 'auto' ? 'default' : adv.richStream}
+          onChange={e => {
+            // 'default' REMOVES the key (B544): no choice is stored as absent,
+            // so Lichborne's default can change later and reach this machine.
+            const v = e.target.value
+            setAdv1('richStream', v === 'default' ? undefined : (v as RichStreamMode))
+          }}
+          disabled={disabled}
+          title={richStreamSettingText(adv)}
+        >
+          <option value="default">{RICH_STREAM_DEFAULT_LABEL}</option>
+          <option value="off">Legacy stream</option>
+          <option value="on">Rich (Saga) always</option>
+        </select>
+      </label>
+      <div className="ui-hint lich-stream-hint">
+        {richStreamSettingText(adv)}{' '}
+        {effectiveRichStream(adv) !== 'off' && pathsExist && (pathsExist.rich
+          ? 'Your Lich supports it.'
+          : effectiveRichStream(adv) === 'auto'
+            ? "Your Lich doesn't yet: update Lich to 5.23.0 or later. Until then you get the legacy stream."
+            : "Your Lich doesn't yet: update Lich to 5.23.0 or later, or the game will answer the request once as an unknown command.")}
+        {' '}Direct connections (no Lich) always use the legacy stream. Takes effect on your next connect.
+      </div>
 
       {/* Read-only inventory of the game shards and the Lich front-end port each
           one uses by convention. Surfaced here so users can verify against their

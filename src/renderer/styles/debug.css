@@ -116,6 +116,15 @@
   margin-left: 6px;
 }
 
+/* "Capture XML" while on (v0.21.0): accent text, accent hairline and an inset
+   ring, the open-state look every toggle button wears (B345). */
+.debug-capture--on,
+.debug-capture--on:hover {
+  color: color-mix(in srgb, var(--accent) 60%, var(--text-primary));
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
 /* B345: "Export CSV…" turns into the shorter "Saved ✓" for two seconds after a
    save. Reserve room for the longer label so the buttons beside it don't move.
    Measured in em so it follows the font; 8.6em fits "Export CSV…" plus padding

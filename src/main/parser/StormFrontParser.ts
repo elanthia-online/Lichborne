@@ -82,6 +82,7 @@ import type { GameEvent, StreamTarget, TextSegment, EffectsDialog, EffectsUpdate
 import { STREAM_ID_ALIASES, normalizeStreamId } from '../../shared/streamAliases'
 import { runSceneCapturers } from './sceneCapturers'
 import { TAG_PATTERN, stripTags } from '../../shared/xmlTag'
+import { boldRuns, type RosterName } from '../../shared/sceneExtract'
 
 // GS4's timed-effect dialogs, exact case (verified against real captured GS4
 // session fixtures — VellumFE's tests/fixtures/active_*.xml, buffs_progress.xml).
@@ -117,10 +118,15 @@ function parseExits(text: string): string[] {
 // it. GLANCE always reports the complete truth in text, so it doubles as a
 // player-reachable re-sync. The single-hand forms imply the other hand is
 // empty — glance never omits a held item.
+// DR's own wording today (B583, the only glance in the 2026-11-01 captures):
+// `You glance down to see a steel spike in your right hand and nothing in your
+// left hand.` "nothing" is an empty hand. The `You are holding` forms stay for
+// any older shape.
 const GLANCE_EMPTY_RE = /^You glance down at your empty hands\./
-const GLANCE_BOTH_RE  = /^You are holding (.+?) in your right hand and (.+) in your left(?: hand)?\.$/
+const GLANCE_BOTH_RE  = /^You (?:are holding|glance down to see) (.+?) in your right hand and (.+) in your left(?: hand)?\.$/
 const GLANCE_RIGHT_RE = /^You are holding (.+) in your right hand\.$/
 const GLANCE_LEFT_RE  = /^You are holding (.+) in your left hand\.$/
+const glanceItem = (s: string) => (/^nothing$/i.test(s.trim()) ? 'Empty' : stripArticle(s))
 
 // The <right>/<left> tags carry the bare item name ("bamboo folder"); glance
 // text carries the article form ("a bamboo folder ..."). Strip the article so
@@ -194,7 +200,8 @@ export function parseInlineRoomName(raw: string): { name: string; gameId?: numbe
   const inner = text.match(/\[([^\]]+)\]/)?.[1]
   if (!inner) return null
   const id = text.match(/\]\s*\((\d+)\)/)?.[1]
-  const noUid = inner.replace(/\s*-\s*\(u\d+\)\s*$/, '')
+  // `(**)` is Lich's mark for a room with no uid, same place (B580).
+  const noUid = inner.replace(/\s*-\s*\((?:u\d+|\*\*)\)\s*$/, '')
   const name = noUid.replace(/\s*-\s*\d+\s*$/, '').trim()
   return { name, ...(id ? { gameId: parseInt(id, 10) } : {}) }
 }
@@ -207,6 +214,151 @@ function parseTag(raw: string): ParsedTag {
   const name = (nameMatch ? nameMatch[0] : '').toLowerCase()
   return { name, attrs: parseAttrs(inner), closing, selfClosing }
 }
+
+// ── The rich stream's <room> block (v0.21.0, DESIGN §55.4) ──────────────────
+// DR's Saga-identity ("rich") stream sends a room view as ONE line,
+//   <resource picture="0"/><room><name>[Area, Title] (uid)</name><description>…</description>
+//   <exists>You also see …</exists>[<crtrStatus …/>]<players>Also here: …</players>
+//   <exits>Obvious paths: <d>north</d>.</exits><extra></extra></room>
+// where the legacy stream sends the roomName style line, the roomDesc preset
+// line, one line per part and a <compass> line. Rather than a second path
+// through the parser, the block is rebuilt into the legacy lines before they are
+// tokenized, so every legacy rule (room name, description capture, the Locate
+// check, the compass gate) applies unchanged. This mirrors lich-5's own
+// RoomBlock.legacy_lines / legacy_shape_with_compass (#1708, #1721) verbatim, so
+// a Lich that rewrites for us and our own rewrite produce the same lines.
+// A block cut off before </room> is left as it is (never observed: 0 of 53,663).
+const ROOM_BLOCK_RE = /<room>((?:(?!<room>)[\s\S])*?)<\/room>/g
+const ROOM_PART_NAMES = ['name', 'description', 'exists', 'players', 'exits', 'extra'] as const
+const ROOM_PARTS_RE = /<(name|description|exists|players|exits|extra)>[\s\S]*?<\/\1>/g
+// The legacy <compass> value for each exit name in "Obvious paths:", in order.
+const COMPASS_DIRS: Record<string, string> = {
+  north: 'n', northeast: 'ne', east: 'e', southeast: 'se',
+  south: 's', southwest: 'sw', west: 'w', northwest: 'nw',
+  up: 'up', down: 'down', out: 'out',
+}
+function roomPart(body: string, tag: typeof ROOM_PART_NAMES[number]): string {
+  const m = body.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`))
+  return m ? m[1] : ''
+}
+/** The legacy compass line for a block's exits; none known gives an empty compass. */
+function legacyCompass(exits: string[]): string {
+  return '<compass>' + exits.filter(e => Object.prototype.hasOwnProperty.call(COMPASS_DIRS, e))
+    .map(e => `<dir value="${COMPASS_DIRS[e]}"/>`).join('') + '</compass>'
+}
+/**
+ * The Room PANEL's feed for a block (B558, v0.21.0). The panel's structured
+ * sections are fed only by the legacy `<component id='room …'>` tags — the
+ * rebuilt lines above go to the main window. On the rich stream DR sends those
+ * components around an ARRIVAL but not around a LOOK, and sometimes empty, so
+ * the panel went stale or showed only the title and description (Sekmeht,
+ * 2026-10-29; 19 of 73 fixture blocks carry exits with no component near
+ * them, 8 players, 6 objects). So a block for the player's own room also
+ * yields one synthetic component line per part it CARRIES, in the legacy
+ * order, and each runs through the unchanged component capture: clear, then
+ * fill, bold and links kept, the roster's names taken from `room objs` as
+ * always (the block's <crtrStatus> tags follow in the players line, so they
+ * fill the list the synthetic component just opened). A part the block lacks
+ * yields nothing, so a brief/names-off view never clears a section it didn't
+ * mention; a part present but empty yields an empty component, which CLEARS
+ * the section — someone left. The real components, when DR sends them too,
+ * do the same work a moment earlier; the repeat is a clear-and-rewrite with
+ * identical content. A remote view (Locate) yields none: the panel is ours.
+ */
+function roomBlockPanelLines(body: string): string[] {
+  const out: string[] = []
+  const has = (tag: string) => new RegExp(`<${tag}>`).test(body)
+  if (has('description')) out.push(`<component id='room desc'>${roomPart(body, 'description')}</component>`)
+  if (has('exists')) out.push(`<component id='room objs'>${roomPart(body, 'exists')}</component>`)
+  if (has('players')) out.push(`<component id='room players'>${roomPart(body, 'players')}</component>`)
+  if (has('exits')) out.push(`<component id='room exits'>${roomPart(body, 'exits')}</component>`)
+  if (has('extra')) out.push(`<component id='room extra'>${roomPart(body, 'extra')}</component>`)
+  return out
+}
+
+/** A block's body as legacy lines (lich-5 RoomBlock.legacy_lines). */
+function roomBlockLegacyLines(body: string, compass: string | null, dropDescription: boolean): string[] {
+  const name = roomPart(body, 'name')
+  const exists = roomPart(body, 'exists')
+  const players = roomPart(body, 'players')
+  const extra = roomPart(body, 'extra')
+  // Tags between the parts (the <crtrStatus> batch after <exists>) lead the
+  // next line, where the legacy stream puts them.
+  const between = body.replace(ROOM_PARTS_RE, '')
+  const lines = [`<style id="roomName" />${name}`]
+  let description = dropDescription ? '' : roomPart(body, 'description')
+  if (description) description = `<preset id='roomDesc'>${description}</preset>`
+  lines.push(`<style id=""/>${description}  ${exists}`)
+  if (players) lines.push(`${between}${players}`)
+  let exits = roomPart(body, 'exits')
+  if (!players) exits = `${between}${exits}`
+  if (exits) lines.push(exits)
+  if (compass !== null) lines.push(compass)
+  if (extra) lines.push(extra)
+  return lines
+}
+
+// How long a spell-window clear may wait for its push (see spellClearHeldAt).
+const SPELL_CLEAR_HOLD_MS = 10_000
+
+// A roundtime refusal the game cut into the line it was sending (v0.21.0,
+// mirrors lich-5 #1857 `buffer_split_line`, games.rb SPLIT_REFUSAL). The game
+// puts "...wait N seconds." plus a line end into the middle of a line, then
+// sends the rest of that line (or only its line end) as the next line. Lich
+// main rejoins it before we see it; released Lich and a direct connection do
+// not, so the sentence showed as two lines and a cut room component kept the
+// refusal in its text.
+// A preset's captured pieces, ready to emit with their game links kept:
+// adjacent pieces with the same link and bold are merged, and the whole is
+// trimmed the way the single-segment path trims (`captureBuf.trim()`), so the
+// joined text is identical to it. Exported for the harness.
+export function presetLinkPieces(
+  segs: { text: string; bold?: boolean; exist?: string; noun?: string }[],
+): { text: string; bold?: boolean; exist?: string; noun?: string }[] {
+  const out: { text: string; bold?: boolean; exist?: string; noun?: string }[] = []
+  for (const s of segs) {
+    const last = out[out.length - 1]
+    if (last && last.exist === s.exist && !!last.bold === !!s.bold) last.text += s.text
+    else out.push({ ...s })
+  }
+  while (out.length && !out[0].text.trimStart()) out.shift()
+  while (out.length && !out[out.length - 1].text.trimEnd()) out.pop()
+  if (out.length) {
+    out[0].text = out[0].text.trimStart()
+    out[out.length - 1].text = out[out.length - 1].text.trimEnd()
+  }
+  return out
+}
+
+const SPLIT_REFUSAL_RE = /\.\.\.wait \d+ seconds?\.\r?\n$/
+// A spell row of a percWindow refresh: name, two spaces, then its reading.
+const BARE_SPELL_ROW_RE = /^[^<>\s][^<>]*? {2}\((?:OM|Indefinite|Fading|\d+%[^)]*|\d+ (?:roisaen|roisan|anlaen|anlas)[^)]*)\)\s*$/i
+// What may sit in front of a refusal for it to be a line the game cut: real text,
+// not only tags (Lich's atmospherics filter prepends a popStream to a whole
+// refusal), and not a script's `[name: …` output (B586).
+const isCutPrefix = (prefix: string) =>
+  prefix.replace(/<[^>]*>/g, '').trim().length > 0 && !/^\[[\w/.-]+: /.test(prefix)
+
+// One line in, one line out, exactly as Lich does it. A line ending in a
+// refusal with text BEFORE it returns the refusal alone and holds that text;
+// the next line is returned with the held text in front of it. A refusal that
+// starts its line (pre-match empty) is a normal refusal and passes through,
+// which is also what an already-rejoined stream from Lich main looks like, so
+// this is a no-op there. Pure, so the harness can lock it.
+export function rejoinRefusalSplit(held: string | null, line: string): { line: string; held: string | null } {
+  const joined = held === null ? line : held + line
+  const m = SPLIT_REFUSAL_RE.exec(joined)
+  if (!m || m.index === 0 || !isCutPrefix(joined.slice(0, m.index))) return { line: joined, held: null }
+  return { line: joined.slice(m.index), held: joined.slice(0, m.index) }
+}
+
+// The game's answers to FLAG DESCRIPTION, and the Description row of the FLAG
+// listing (linked on the rich stream). Mirrors lich-5 RoomDescriptionFilter.
+// A line reaches parse() WITH its line end, and `$` (no m flag) matches only at
+// the very end, so both must allow the line feed: without it the reply never
+// matched in play, only in a harness that strips line ends (v0.21.0 bug check).
+const DESC_FLAG_REPLY_RE = /^You will (no longer|now) see room descriptions\.\r?\n?$/
+const DESC_FLAG_ROW_RE = /^(?:<popBold\/>)?  (?:<d cmd="[^"]*">Description<\/d>|Description) +(ON|OFF)(?: |\r?\n?$)/
 
 interface CaptureContext {
   tag: string
@@ -222,11 +374,25 @@ export class StormFrontParser {
   private colorStack: Array<{ fg?: string; bg?: string }> = []
 
   private compassDirs: string[] = []
+  // B549: the exit names inside the current `room exits` component (its <d>
+  // tokens). On the rich stream the component's own <compass></compass> is
+  // ALWAYS empty and the top-level compass only comes with a <room> block —
+  // which DR skips for some arrivals (The Heavens, ~0.2% of moves) — so these
+  // tokens are the exits when nothing else says. Both dialects carry them.
+  private componentExitDirs: string[] = []
   private linkCmd: string | undefined = undefined
   private linkCmdIsText = false  // true when <d> has no cmd attr; first text node becomes the cmd
   private linkHref: string | undefined = undefined
+  // A game link on the rich stream (v0.21.0, DESIGN §55): `<a exist="ID"
+  // noun="NOUN">text</a>`. Stamped on every segment written inside it, so a
+  // later consumer can tie the text to the object, creature or player.
+  private linkExist: string | undefined = undefined
+  private linkNoun: string | undefined = undefined
 
   private monoMode = false
+  private monoPending = false
+  // A percWindow refresh with no pushStream is under way (see parseLine, B573).
+  private bareSpellBlock = false
 
   private inInjuriesDialog = false
   private injuryBuf: Array<{ id: string; name: string; height: number; width: number }> = []
@@ -347,7 +513,43 @@ export class StormFrontParser {
   // (an older server, or a front-end path that strips it), so no roster is
   // emitted and the renderer keeps its name-based fallback.
   private crtrSeen = false
-  private rosterPending: { names: string[] | null; list: { id: string; flags: string[] }[] } | null = null
+  private rosterPending: { names: RosterName[] | null; list: { id: string; flags: string[] }[] } | null = null
+  // Bold linked names seen in main text since the last roster flush. DR cuts the
+  // `room objs` component short in a crowded room, but the main-text "You also
+  // see" line is complete, so a creature the component dropped (a corpse, an
+  // unbolded extra) is named from here instead of left nameless.
+  private rosterLinks = new Map<string, string>()
+  private keepLeadWs = false
+
+  // FLAG DESCRIPTION on the rich stream (v0.21.0, DESIGN §55.4): DR ignores the
+  // flag there and fills every <room> block's description, a game bug. We
+  // follow the game's own answers to the flag and leave the description out of
+  // the player's own room view while it is off, as legacy does. Unknown (shown)
+  // until the game answers FLAG DESCRIPTION or lists its flags this session —
+  // Lich's RoomDescriptionFilter (lich-5 #1725) does exactly this.
+  private descriptionsOff = false
+
+  // A spell-window clear waiting for its push (v0.21.0, DESIGN §55.4). On the
+  // rich stream the `percWindow` push often comes many lines after its clear,
+  // sometimes after prompts (DR rich reference §2.10: 3,311 of 18,259
+  // refreshes). Applied at once, the clear emptied the Active Spells panel for
+  // that whole gap, and the Spell Monitor read the empty block as "every
+  // effect ended". So the clear is held and emitted just before the push. A
+  // refresh with NO push (the last spell dropped) is still a clear, so a held
+  // one is also emitted once SPELL_CLEAR_HOLD_MS has passed, at the next line.
+  private spellClearHeldAt: number | null = null
+  // The part of a line before a roundtime-refusal cut, waiting for the rest
+  // (see rejoinRefusalSplit); null when nothing is held.
+  private refusalHeld: string | null = null
+  // Has this session sent a game link (`<a exist>`)? The rich stream links
+  // nearly everything from the first lines of a login (DR rich reference §1.3),
+  // the legacy stream never does. Only the spell-clear hold needs to know: on
+  // legacy the push always follows its clear before the prompt, so a held clear
+  // still pending at the prompt is an empty refresh and is released there,
+  // exactly when it used to apply.
+  private linksSeen = false
+  // Has this session announced the rich stream ('rich-stream' event)?
+  private richAnnounced = false
 
   // Emit the pending creature roster (at the <prompt> that closes its refresh).
   // Names pair by position only when the counts match (Lich's rule). A list
@@ -355,6 +557,8 @@ export class StormFrontParser {
   // as "everyone left".
   private flushRoster() {
     const p = this.rosterPending
+    const links = this.rosterLinks
+    if (links.size) this.rosterLinks = new Map()
     if (!p) return
     this.rosterPending = null
     if (!this.crtrSeen) return
@@ -363,15 +567,27 @@ export class StormFrontParser {
     // "everyone else left" and empty the arena; it's dropped instead.
     if (p.names === null) return
     if (p.list.length === 0 && (p.names?.length ?? 0) > 0) return
-    const pair = !!p.names && p.names.length === p.list.length
+    // The rich stream links each creature, and the link's id is the tag's id:
+    // pair exactly. Legacy has no ids, so names pair by position, and only
+    // when the counts match.
+    const byId = new Map<string, string>()
+    for (const n of p.names) if (n.exist) byId.set(n.exist, n.name)
+    const pair = byId.size === 0 && p.names.length === p.list.length
     this.emit({
       type: 'creature-roster',
-      creatures: p.list.map((c, i) => ({ id: c.id, name: pair ? p.names![i] : null, flags: c.flags })),
+      creatures: p.list.map((c, i) => ({
+        id: c.id,
+        name: byId.get(c.id) ?? links.get(c.id) ?? (byId.size === 0 && pair ? p.names![i].name : null),
+        flags: c.flags,
+      })),
     })
   }
 
-  // Call when a new connection is established to clear carry-over state
-  reset() {
+  // Call when a new connection is established to clear carry-over state.
+  // `keepGameFlags`: a re-attach to the same game session (B310) keeps what
+  // the GAME still has set (FLAG DESCRIPTION), which a new connection can't
+  // re-learn until the player changes it.
+  reset(opts: { keepGameFlags?: boolean } = {}) {
     this.boldDepth     = 0
     this.activeStream  = 'main'
     this.streamStack   = []
@@ -387,7 +603,11 @@ export class StormFrontParser {
     this.linkCmd           = undefined
     this.linkCmdIsText     = false
     this.linkHref          = undefined
+    this.linkExist         = undefined
+    this.linkNoun          = undefined
     this.monoMode          = false
+    this.monoPending       = false
+    this.bareSpellBlock    = false
     this.inInjuriesDialog  = false
     this.injuryBuf         = []
     this.inEffectsDialog   = null
@@ -397,12 +617,19 @@ export class StormFrontParser {
     this.lastRoomTitle     = ''
     this.subtitleTitled    = false
     this.remoteView        = false
+    this.componentExitDirs = []
     this.lastNavId         = undefined
     this.movedSincePrompt  = false
     this.ownRoomName       = ''
     this.navSeen           = false
     this.crtrSeen          = false
     this.rosterPending     = null
+    this.rosterLinks       = new Map()
+    if (!opts.keepGameFlags) this.descriptionsOff = false
+    this.spellClearHeldAt  = null
+    this.refusalHeld       = null
+    this.linksSeen         = false
+    this.richAnnounced     = false
     this.rtExpires     = 0
     this.lastPromptTime = 0
     // Cleared with the rest of the per-session state (pitfall #4) so a new login
@@ -498,7 +725,10 @@ export class StormFrontParser {
     // used to survive as a dangling "-" — `.trim()` only removes
     // whitespace, not the dash character itself), even though there's no
     // number to extract as an id in that case.
-    const innerUid = inner.match(/\s*-\s*\(u(\d+)\)\s*$/)
+    // `(**)` is Lich's mark for a room with no uid (`;display uid`, The
+    // Heavens). Left in, it made a different title and wiped the room's
+    // panels at the prompt (B580).
+    const innerUid = inner.match(/\s*-\s*\((?:u(\d+)|\*\*)\)\s*$/)
     const afterUid = innerUid ? inner.slice(0, innerUid.index) : inner
     const trailMatch = afterUid.match(/\s*-\s*(\d*)\s*$/)
     const cleanTitle = trailMatch
@@ -514,7 +744,7 @@ export class StormFrontParser {
     // where NEITHER uid form is present still resolves either way.
     const parenMatch = innerUid ? null : fragment.match(/\]\s*\(u?(\d+)\)/)
     const roomId = innerUid
-      ? parseInt(innerUid[1], 10)
+      ? (innerUid[1] ? parseInt(innerUid[1], 10) : undefined)
       : parenMatch
         ? parseInt(parenMatch[1], 10)
         : trailNum
@@ -567,7 +797,78 @@ export class StormFrontParser {
   }
 
   parse(line: string): GameEvent[] {
+    // Rejoin a line the game cut with "...wait N seconds." before anything
+    // reads it. Cheap includes() gate first: this runs per line.
+    if (this.refusalHeld !== null || line.includes('...wait ')) {
+      const r = rejoinRefusalSplit(this.refusalHeld, line)
+      this.refusalHeld = r.held
+      line = r.line
+    }
+    // FLAG DESCRIPTION state, from the game's own answer or its FLAG listing
+    // (see `descriptionsOff`). Cheap includes() gate first: this runs per line.
+    if (line.includes(' see room descriptions.') || line.includes('Description')) {
+      const reply = line.match(DESC_FLAG_REPLY_RE)
+      const row = reply ? null : line.match(DESC_FLAG_ROW_RE)
+      if (reply) this.descriptionsOff = reply[1] === 'no longer'
+      else if (row) this.descriptionsOff = row[1] === 'OFF'
+    }
+    if (!line.includes('<room>')) return this.parseLine(line)
+    // A rich-stream room view: rebuild it into the legacy lines and parse
+    // those (see ROOM_BLOCK_RE). A line without a complete block parses as is.
+    let rebuilt = false
+    let hiddenDesc: string | null = null
+    const text = line.replace(ROOM_BLOCK_RE, (_block, body: string) => {
+      rebuilt = true
+      // Only a view of the player's OWN room lights the compass or loses its
+      // description to the flag; a Locate shows another room (lich-5 #1721/#1725).
+      const view = parseInlineRoomName(roomPart(body, 'name'))
+      const own = view ? !this.isRemoteRoomName(view) : true
+      if (own && this.descriptionsOff) {
+        // C5: the description the flag hides still reaches the map matchers.
+        const hidden = decodeEntities(roomPart(body, 'description').replace(/<[^>]+>/g, '')).trim()
+        if (hidden) hiddenDesc = hidden
+      }
+      // Joined with \r\n as Lich joins them (room_block.rb legacy_lines), so each
+      // rebuilt line reaches parseLine ending as a real line does. The Room
+      // panel's component lines come FIRST (B558): the roster's names are set
+      // by the room objs component, and the block's <crtrStatus> tags, which
+      // the legacy lines put before the players line, then fill its list.
+      const panel = own ? roomBlockPanelLines(body) : []
+      // The compass: the synthetic room exits component already emits the
+      // exits from its <d> tokens (B549), so a legacy compass line is added
+      // only when the block carries NO exits part — an empty compass then
+      // still clears the stale one. A remote view gets neither.
+      const compass = !own ? null : /<exits>/.test(body) ? null : legacyCompass([])
+      return [...panel, ...roomBlockLegacyLines(body, compass, own && this.descriptionsOff)].join('\r\n')
+    })
+    if (!rebuilt) return this.parseLine(line)
+    const out: GameEvent[] = []
+    if (hiddenDesc) out.push({ type: 'room-desc', text: hiddenDesc })
+    if (!this.richAnnounced) { this.richAnnounced = true; out.push({ type: 'rich-stream' }) }
+    // Split AFTER each line end, as the connection does: splitting ON it left an
+    // empty last piece, which parseLine turned into a blank spacer line under
+    // every room view (v0.21.0 bug check).
+    for (const l of text.split(/(?<=\n)/)) out.push(...this.parseLine(l))
+    this.events = out
+    return out
+  }
+
+  private parseLine(line: string): GameEvent[] {
     this.events = []
+    // A held spell clear whose push never came: an empty refresh after all.
+    if (this.spellClearHeldAt !== null && Date.now() - this.spellClearHeldAt > SPELL_CLEAR_HOLD_MS) {
+      this.spellClearHeldAt = null
+      this.emit({ type: 'clear-stream', stream: 'spells' })
+    }
+    // A percWindow refresh with no pushStream (B573): on some Lich builds the
+    // rich stream's refresh is the clear, then plain spell rows, sometimes after
+    // other lines, up to the next prompt (ProfanityFE rich_perc_refresh_spec).
+    // Those rows belong to the spell window; other lines between them stay put.
+    if ((this.spellClearHeldAt !== null || this.bareSpellBlock)
+      && this.activeStream === 'main' && this.streamStack.length === 0 && BARE_SPELL_ROW_RE.test(line)) {
+      this.bareSpellBlock = true
+      line = `<pushStream id="percWindow"/>${line.replace(/\r?\n$/, '')}<popStream/>\n`
+    }
     const isBlankLine = !line.replace(/[\r\n]/g, '').trim()
 
     // A tag ends at the first `>` outside quotes (TAG_PATTERN, ProfanityFE #100).
@@ -580,7 +881,12 @@ export class StormFrontParser {
         if (!tag.closing) this.tagStart(tag.name, tag.attrs, tag.selfClosing)
         if (tag.closing)  this.tagEnd(tag.name)
       } else if (m[2]) {
+        // B562: indentation in front of a link (`  <a>some gloves</a>`) is the
+        // line's layout, so a whitespace-only token that the next tag turns into a
+        // link is kept. Legacy has it (the link is just text there).
+        this.keepLeadWs = !m[2].trim() && /^<(?:a|d)[\s>]/i.test(line.slice(tokenRe.lastIndex, tokenRe.lastIndex + 3))
         this.text(m[2])
+        this.keepLeadWs = false
       }
     }
 
@@ -692,6 +998,8 @@ export class StormFrontParser {
       ...(topColor?.bg       ? { bg: topColor.bg }            : {}),
       ...(this.linkCmd       ? { cmd: this.linkCmd }           : {}),
       ...(this.linkHref      ? { href: this.linkHref }         : {}),
+      ...(this.linkExist     ? { exist: this.linkExist }       : {}),
+      ...(this.linkNoun      ? { noun: this.linkNoun }         : {}),
       ...extra,
     })
   }
@@ -707,7 +1015,16 @@ export class StormFrontParser {
         this.captureSegments.push({
           text: cleaned,
           ...(this.boldDepth > 0 ? { bold: true } : {}),
+          ...(this.linkExist ? { exist: this.linkExist } : {}),
+          ...(this.linkNoun  ? { noun: this.linkNoun }   : {}),
         })
+        // B549: a <d>north</d> token inside the room exits component. Only the
+        // exit words themselves are compass keys ("Obvious paths: ", ", " and
+        // "." are not), so the key test is the whole gate.
+        if (this.captureCtx.id === 'room exits' && this.linkCmdIsText) {
+          const word = cleaned.trim().toLowerCase()
+          if (Object.prototype.hasOwnProperty.call(COMPASS_DIRS, word)) this.componentExitDirs.push(word)
+        }
       }
       return
     }
@@ -723,7 +1040,7 @@ export class StormFrontParser {
     // pending yet and was dropped — every <d>-led row jumped to column 0 while
     // the plain-text rows beside it kept their indent, shearing the table in
     // half. Same reasoning as the mono carve-out in the `preset` capture below.
-    if (!cleaned.trim() && this.pendingSegments.length === 0 && !this.monoMode) return
+    if (!cleaned.trim() && this.pendingSegments.length === 0 && !this.monoMode && !this.keepLeadWs) return
     // <d>TEXT</d> with no cmd attr — first non-empty text node becomes the command
     if (this.linkCmdIsText && !this.linkCmd) {
       const candidate = cleaned.trim()
@@ -778,6 +1095,10 @@ export class StormFrontParser {
         const target = normalizeStreamId(id)
         this.streamStack.push(this.activeStream)
         this.activeStream = target
+        if (target === 'spells' && this.spellClearHeldAt !== null) {
+          this.spellClearHeldAt = null
+          this.emit({ type: 'clear-stream', stream: 'spells' })
+        }
         // Always emit stream-push so the renderer can discover new streams
         if (id) this.emit({ type: 'stream-push', stream: target })
         break
@@ -1067,6 +1388,10 @@ export class StormFrontParser {
       }
 
       case 'output':
+        // Lich wraps one line in both tags (`<output class="mono"/>Room Number:
+        // 2522<output class=""/>`), so mono is already off by the time that line
+        // flushes. Remember it for the flush (B579).
+        if (attrs.class !== 'mono' && this.monoMode && this.pendingSegments.length > 0) this.monoPending = true
         this.monoMode = (attrs.class === 'mono')
         break
 
@@ -1079,7 +1404,7 @@ export class StormFrontParser {
       case 'nav':
         this.emit({ type: 'clear-stream', stream: 'room' })
         this.emit({ type: 'clear-stream', stream: 'room-objects' })
-        this.emit({ type: 'clear-stream', stream: 'room-players' })
+        this.emit({ type: 'clear-stream', stream: 'room-players', move: true })
         this.emit({ type: 'clear-stream', stream: 'room-exits' })
         // v0.8.8 (Rakkor): DR's <nav rm='X'/> carries the new room id on
         // every transition (Lich's $room variable derives from this). For
@@ -1118,6 +1443,8 @@ export class StormFrontParser {
         // normalizeStreamId always returns a string (never undefined) which
         // would short-circuit the COMPONENT_STREAM fallback.
         const stream = STREAM_ID_ALIASES[id] ?? COMPONENT_STREAM[id] ?? (id || null)
+        // The spell window's clear waits for its push (see spellClearHeldAt).
+        if (stream === 'spells') { this.spellClearHeldAt ??= Date.now(); break }
         if (stream) this.emit({ type: 'clear-stream', stream })
         break
       }
@@ -1129,6 +1456,7 @@ export class StormFrontParser {
           this.captureCtx = { tag: name, id }
           this.captureBuf = ''
           this.captureSegments = []
+          if (id === 'room exits') this.componentExitDirs = []
         }
         break
       }
@@ -1157,6 +1485,14 @@ export class StormFrontParser {
         // open-url refuses them too).
         if (!selfClosing && attrs.href && /^https?:\/\//i.test(attrs.href.trim())) {
           this.linkHref = attrs.href.trim()
+        }
+        // A game link (rich stream). `noun` is trimmed: one creature type is
+        // sent as noun=" moth" (DR rich reference §2.3).
+        if (!selfClosing && attrs.exist) {
+          this.linksSeen = true
+          if (!this.richAnnounced) { this.richAnnounced = true; this.emit({ type: 'rich-stream' }) }
+          this.linkExist = attrs.exist
+          this.linkNoun  = attrs.noun?.trim() || undefined
         }
         break
 
@@ -1217,12 +1553,23 @@ export class StormFrontParser {
           .filter(k => k !== 'exist' && attrs[k] && attrs[k] !== '0')
           .map(k => k.toLowerCase())
         if (!this.rosterPending) this.rosterPending = { names: null, list: [] }
-        this.rosterPending.list.push({ id, flags })
+        // The newest tag is the whole state. A rich move sends a creature's tag
+        // twice before its prompt (after the room objs component, and again
+        // inside the <room> block), which would otherwise list it twice.
+        const at = this.rosterPending.list.findIndex(c => c.id === id)
+        if (at >= 0) this.rosterPending.list[at] = { id, flags }
+        else this.rosterPending.list.push({ id, flags })
         break
       }
 
       case 'prompt': {
         this.flushRoster()
+        this.bareSpellBlock = false
+        // Legacy: a spell clear still held at the prompt had no push (see linksSeen).
+        if (this.spellClearHeldAt !== null && !this.linksSeen) {
+          this.spellClearHeldAt = null
+          this.emit({ type: 'clear-stream', stream: 'spells' })
+        }
         // The prompt carries the SERVER's current time — anchor any pending
         // RT/CT to it: duration = end − serverNow, expressed as a LOCAL-clock
         // expiry (Date.now() + durationMs) so the renderer's countdown is
@@ -1296,7 +1643,9 @@ export class StormFrontParser {
     }
 
     if (name === 'a') {
-      this.linkHref = undefined
+      this.linkHref  = undefined
+      this.linkExist = undefined
+      this.linkNoun  = undefined
       return
     }
 
@@ -1340,7 +1689,12 @@ export class StormFrontParser {
       // inside a pushStream, so the main-stream gate (same one the `Name:`
       // detection uses, line ~232) keeps them out while honouring the real
       // game compass. A genuine exitless room now clears immediately.
-      if (this.remoteView) {
+      if (this.captureCtx?.tag === 'component' && this.captureCtx.id === 'room exits') {
+        // B549: the <compass></compass> INSIDE the rich stream's room exits
+        // component is always empty; it used to emit `exits: []` here and
+        // blank the compass on every arrival DR sent without a <room> block.
+        // The component handler below emits the exits from its <d> tokens.
+      } else if (this.remoteView) {
         // The exits of a room we're only looking at (Locate) — not ours.
       } else if (this.compassDirs.length > 0) {
         this.emit({ type: 'exits', directions: this.compassDirs })
@@ -1383,6 +1737,29 @@ export class StormFrontParser {
         // In mono mode preserve leading/trailing spaces — they carry column alignment.
         // Outside mono mode trim normally so stray whitespace doesn't pollute display.
         const content = this.monoMode ? rawBuf.replace(/[\r\n]/g, '') : text
+        // A game link inside the preset (the rich stream's speaker,
+        // `<preset id='speech'><a exist=…>Delphine</a> politely says</preset>`)
+        // keeps its own segment, so the name stays clickable. The joined text
+        // is exactly `content` (the same trim), so highlights, substitutes and
+        // the log see the same line. Without a link: one segment, as before.
+        if (content && !this.monoMode && capturedSegments.some(s => s.exist)) {
+          this.claimPending()
+          const topColor = this.colorStack[this.colorStack.length - 1]
+          const pieces = presetLinkPieces(capturedSegments)
+          for (const p of pieces) {
+            this.pendingSegments.push({
+              text: p.text,
+              preset: this.currentPreset,
+              ...(p.bold || this.boldDepth > 0 ? { bold: true } : {}),
+              ...(topColor?.fg ? { fg: topColor.fg } : {}),
+              ...(topColor?.bg ? { bg: topColor.bg } : {}),
+              ...(p.exist ? { exist: p.exist } : {}),
+              ...(p.noun ? { noun: p.noun } : {}),
+            })
+          }
+          this.currentPreset = undefined
+          break
+        }
         // Emit captured text with preset style into current stream
         if (content) {
           this.claimPending()
@@ -1414,15 +1791,23 @@ export class StormFrontParser {
           // paths-vs-exits and dropped the "none." case entirely). Emitted
           // even when empty so a stale sentence clears.
           this.emit({ type: 'room-exits-text', text })
+          // B549: and the direction TOKENS from its <d> words, so the compass
+          // follows an arrival with no <room> block and clears in a room with
+          // none ("Obvious exits: none." and The Heavens' empty component both
+          // give []). Same gates as the top-level compass: our own room, the
+          // real main stream. In every captured session the component comes
+          // BEFORE the authoritative compass, so where one follows it repeats
+          // these; where none does, this is the compass.
+          if (!this.remoteView && this.activeStream === 'main' && this.streamStack.length === 0) {
+            this.emit({ type: 'exits', directions: this.componentExitDirs.map(d => d === 'down' ? 'dn' : COMPASS_DIRS[d]) })
+          }
+          this.componentExitDirs = []
         } else {
           const stream = COMPONENT_STREAM[id]
           // A creature-list refresh opens the roster its <crtrStatus> tags fill.
           // The bold spans are the creatures, in the same order as the tags.
           if (id === 'room objs') {
-            this.rosterPending = {
-              names: capturedSegments.filter(sg => sg.bold).map(sg => sg.text.trim()).filter(Boolean),
-              list: [],
-            }
+            this.rosterPending = { names: boldRuns(capturedSegments), list: [] }
           }
           if (stream) {
             this.emit({ type: 'clear-stream', stream })
@@ -1472,6 +1857,11 @@ export class StormFrontParser {
         this.colorStack    = []
         this.linkCmd       = undefined
         this.linkCmdIsText = false
+        // A link never spans a prompt: an <a> whose </a> was lost (a truncated
+        // line, a script's stray tag) must not stamp every later segment.
+        this.linkHref      = undefined
+        this.linkExist     = undefined
+        this.linkNoun      = undefined
         // A view of another room ends at its prompt, and so does the burst.
         this.remoteView       = false
         this.movedSincePrompt = false
@@ -1525,7 +1915,7 @@ export class StormFrontParser {
   // article form), which is cosmetic and corrected by the next tag update.
   private inferHandsFromGlance(rawLine: string) {
     // Cheap substring gate before any regex/strip work runs on the hot path.
-    if (!rawLine.includes('You are holding ') && !rawLine.includes('You glance down at')) return
+    if (!rawLine.includes('You are holding ') && !rawLine.includes('You glance down ')) return
     if (this.activeStream !== 'main' || this.streamStack.length > 0) return
     if (/<(?:push|pop)stream/i.test(rawLine)) return
     if (this.events.some(e => e.type === 'hand')) return
@@ -1539,8 +1929,8 @@ export class StormFrontParser {
     }
     let m = text.match(GLANCE_BOTH_RE)
     if (m) {
-      this.emit({ type: 'hand', hand: 'right', item: stripArticle(m[1]) })
-      this.emit({ type: 'hand', hand: 'left',  item: stripArticle(m[2]) })
+      this.emit({ type: 'hand', hand: 'right', item: glanceItem(m[1]) })
+      this.emit({ type: 'hand', hand: 'left',  item: glanceItem(m[2]) })
       return
     }
     // The single-hand captures reject anything containing another " in your "
@@ -1575,7 +1965,9 @@ export class StormFrontParser {
    *     roomName and adds the PLAYER'S ids — the same for any room, so only the
    *     name can tell a located room apart (Profanity #248). A `(uNNN)` after
    *     the bracket is that rewrite too, so it is not used as the view's id.
-   * Two rooms sharing a name read as ours; that only costs a description.
+   * With no id to compare, a view of a room sharing our room's NAME reads as
+   * ours. Since B558 that costs the compass, the Room panel, the roster and the
+   * cast until the next move, not just a description (Known Limitations).
    */
   private isRemoteRoomName(view: { name: string; gameId?: number }): boolean {
     if (this.movedSincePrompt) return false
@@ -1585,7 +1977,7 @@ export class StormFrontParser {
   }
 
   private flushSegments() {
-    if (this.pendingSegments.length === 0) return
+    if (this.pendingSegments.length === 0) { this.monoPending = false; return }
 
     // Genie behaviour: if the line already emitted a typed event (indicator,
     // prompt, vital, etc.) and the only remaining text is whitespace, drop it.
@@ -1593,6 +1985,7 @@ export class StormFrontParser {
     const allWhitespace = this.pendingSegments.every(s => !s.text.trim())
     if (allWhitespace && this.events.length > 0) {
       this.pendingSegments = []
+      this.monoPending = false
       return
     }
 
@@ -1601,13 +1994,16 @@ export class StormFrontParser {
     // longer flush. Emitting under `activeStream` here would misfile a line
     // whose stream changed after the text was written.
     const defaultPreset = STREAM_DEFAULT_PRESET[this.pendingStream]
-    const segments = defaultPreset
+    let segments = defaultPreset
       ? this.pendingSegments.map(s =>
           (!s.preset && !s.fg && !s.bg) ? { ...s, preset: defaultPreset } : s)
       : this.pendingSegments
 
     // An inline roomName on main: ours, or a view of another room (Locate)?
     if (this.pendingStream === 'main') {
+      if (this.crtrSeen && this.rosterLinks.size < 200 && segments.some(s => s.bold && s.exist)) {
+        for (const n of boldRuns(segments)) if (n.exist) this.rosterLinks.set(n.exist, n.name)
+      }
       const nameSegs = segments.filter(s => s.preset === 'roomname')
       if (nameSegs.length > 0) {
         const view = parseInlineRoomName(nameSegs.map(s => s.text).join(''))
@@ -1617,6 +2013,22 @@ export class StormFrontParser {
           if (!this.remoteView && this.movedSincePrompt && view.name) this.ownRoomName = view.name
         }
       }
+      // B548: FLAG DESCRIPTION OFF on LEGACY-shaped input. The rich stream
+      // ignores the flag, and Lich 5.23 rewrites it into legacy lines WITH
+      // the description for a client that declared nothing — the default
+      // here — so flag-OFF players saw their descriptions come back. The
+      // <room> rebuild already drops it (parse()); this is the same rule for
+      // the inline `<preset id='roomDesc'>` line: the player's own room only
+      // (a Locate keeps its description, as Lich's without_description does),
+      // and only once the game has told us the flag is off. What is left,
+      // "  You also see …", is byte-for-byte what the rebuild produces. The
+      // text still reaches the map matchers through `room-desc` (C5).
+      if (this.descriptionsOff && !this.remoteView && segments.some(s => s.preset === 'roomdesc')) {
+        const hidden = segments.filter(s => s.preset === 'roomdesc').map(s => s.text).join('').trim()
+        segments = segments.filter(s => s.preset !== 'roomdesc')
+        if (hidden) this.emit({ type: 'room-desc', text: hidden })
+        if (segments.every(s => !s.text.trim())) { this.pendingSegments = []; this.monoPending = false; return }
+      }
     }
 
     const evt: GameEvent = {
@@ -1624,9 +2036,10 @@ export class StormFrontParser {
       stream: this.pendingStream,
       segments,
       timestamp: Date.now(),
-      ...(this.monoMode ? { mono: true } : {}),
+      ...(this.monoMode || this.monoPending ? { mono: true } : {}),
       ...(this.remoteView && this.pendingStream === 'main' ? { remoteView: true } : {}),
     }
+    this.monoPending = false
     this.emit(evt)
     this.pendingSegments = []
   }

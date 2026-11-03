@@ -14,6 +14,15 @@
 [data-preset="roomname"]     { color: var(--preset-roomname); background-color: var(--preset-roomname-bg); font-weight: var(--ui-bold-weight); }
 [data-preset="roomdesc"]     { color: var(--preset-roomdesc); background-color: var(--preset-roomdesc-bg); }
 [data-preset="bold"]         { color: var(--preset-bold);     background-color: var(--preset-bold-bg);     font-weight: var(--ui-bold-weight); }
+/* A creature's state from <crtrStatus>, in the Room panel's objects line only
+   (v0.21.0, RoomPanel markCreatureStates; ProfanityFE #265). Dead reads as no
+   longer a threat (muted, not bold); sleeping and prone keep monsterbold and add
+   a quieter cue, since prone comes and goes all fight long. */
+[data-preset="creature-dead"]     { color: var(--text-muted); font-weight: normal; }
+[data-preset="creature-sleeping"] { color: var(--preset-bold); background-color: var(--preset-bold-bg); font-weight: var(--ui-bold-weight); font-style: italic; }
+[data-preset="creature-prone"]    { color: var(--preset-bold); background-color: var(--preset-bold-bg); font-weight: var(--ui-bold-weight); text-decoration: underline solid color-mix(in srgb, var(--preset-bold) 60%, transparent); text-underline-offset: 0.2em; }
+/* Prone is a SOLID underline: a game link's hover cue (below) is dotted, and a
+   prone linked creature must not look permanently hovered. */
 [data-preset="expiry"]       { color: var(--preset-expiry);   background-color: var(--preset-expiry-bg); }
 [data-preset="store"]        { color: var(--preset-store);    background-color: var(--preset-store-bg); }
 [data-preset="command-echo"]   { color: var(--preset-cmd);      background-color: var(--preset-cmd-bg); }
@@ -70,6 +79,24 @@
 
 .url-link:hover {
   opacity: 0.8;
+}
+
+/* A game link (rich stream, v0.21.0): a name the game linked to an object,
+   creature or player; a click opens its menu (gameLinks.ts). Quiet at rest —
+   on the rich stream nearly every name is one, so a colour would repaint the
+   screen, and highlights, presets and bold keep their own colour (DR rich
+   reference §3.4). It shows itself only under the pointer, in the text's own
+   colour, so it needs no theme var. A command link inside one keeps its look.
+   Scoped to the surfaces that open the menu on a click: an Overview card's
+   feed shows the same markup, but a click there selects the card. */
+.text-window .game-link,
+.stream-panel .game-link,
+.room-panel .game-link { cursor: pointer; }
+.text-window .game-link:hover:not(.cmd-link),
+.stream-panel .game-link:hover:not(.cmd-link),
+.room-panel .game-link:hover:not(.cmd-link) {
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
 }
 
 /* ── Injuries Panel ───────────────────────────────────────── */

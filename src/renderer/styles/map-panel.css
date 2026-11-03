@@ -271,6 +271,9 @@
   100% { stroke-dashoffset: -32; }
 }
 .genie-coin-glint {
+  /* Linear on purpose. steps(8) was tried (pitfall #173 saves a repaint per
+     frame) and read as a jumpy dash (Sekmeht, 2026-10-29); with the glint
+     already capped to EFFECT_CAP nearby rooms the smooth sweep is affordable. */
   animation: genie-coin-glint 2.8s linear infinite;
   opacity: 0.85;
 }
@@ -427,6 +430,8 @@
   85%  { opacity: 0.22; }
   100% { opacity: 0.15; }
 }
+/* B551: only the `fireAuras` layer carries this class now (nearby rooms,
+   capped); the zone-wide aura layer draws fire rooms static. */
 .genie-aura-fire {
   animation: genie-aura-fire 2.5s linear infinite;
 }
@@ -1305,6 +1310,8 @@
 .map-empty-icon  { font-size: 2.67em; opacity: 0.3; }
 .map-empty-msg   { font-size: 1.08em; color: var(--map-text-muted); }
 .map-empty-sub   { font-size: 0.92em; color: var(--map-text-muted); opacity: 0.6; }
+/* The overlay is click-through; the "Try Genie Maps" button inside it is not. */
+.map-empty .map-btn { pointer-events: auto; margin-top: 4px; }
 
 /* ── Room detail ──────────────────────────────────────────── */
 /* B338: the room detail is READING text, so everything below sizes in em off

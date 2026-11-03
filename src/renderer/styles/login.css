@@ -199,6 +199,12 @@
 
 /* ── Games List (read-only inventory in Lich Setup) ────────────────────── */
 
+/* The explanation under Lich Setup's "Game stream" select (v0.21.0): sits
+   close to its field rather than a full form gap away. */
+.lich-stream-hint {
+  margin-top: -6px;
+}
+
 .games-list {
   margin-top: 4px;
   padding: 8px 10px 10px;

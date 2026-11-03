@@ -1071,6 +1071,10 @@ export default function GenieMapView({
   // way a drag does (see `showEffects` and the freeze classes). It once also
   // switched off the camera glide, which no longer exists (v0.20.5).
   const [zooming, setZooming] = useState(false)
+  // The SVG's layout size, cached by the ResizeObserver below so a memo that
+  // culls by viewport never reads clientWidth during render (B551 rework: that
+  // read forced a layout on every wheel tick and made zooming stutter).
+  const svgSizeRef = useRef({ w: 0, h: 0 })
   const zoomQuietRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Wheel deltas COALESCE into one rAF-batched transform update.
@@ -1161,7 +1165,10 @@ export default function GenieMapView({
     // Genie-loading early-return — a mount-time `useEffect` would see a null
     // ref and never attach. A 0×0 callback is the tab being hidden; ignore it.
     const ro = new ResizeObserver(() => {
-      if (el.clientWidth > 0 && el.clientHeight > 0) recenterRef.current()
+      if (el.clientWidth > 0 && el.clientHeight > 0) {
+        svgSizeRef.current = { w: el.clientWidth, h: el.clientHeight }
+        recenterRef.current()
+      }
     })
     ro.observe(el)
     ;(el as any).__resizeObserver = ro
@@ -1625,13 +1632,16 @@ export default function GenieMapView({
       .map(n => {
         const intensified = AURA_INTENSIFIED_COLORS.has(n.color!)
         const fire        = AURA_FIRE_COLORS.has(n.color!)
-        const cls = fire ? 'genie-aura-fire' : undefined
-        // Skip the `opacity` SVG attribute when an animated class is
-        // applied — the keyframe owns opacity, and setting both creates
-        // attribute-vs-CSS ambiguity. CSS wins per SVG2 spec, but the
-        // cleaner contract is "if animated, opacity is owned by CSS."
-        // Non-animated rooms still use the inline attribute as before.
-        const opacityAttr = fire ? undefined : (intensified ? 0.28 : 0.15)
+        // B551: this layer is now STATIC for every room, fire included — it is
+        // the colour map, so it stays zone-wide. The fire FLICKER is drawn by
+        // `fireAuras` below over `nearbyNodes` only: this layer used to put
+        // an infinite keyframe on every lime room in the zone (56 in the
+        // Crossing), with no cap and no viewport cull, which with the healer
+        // beats was most of an idle renderer at 35–45% of a core. When the
+        // flicker is unmounted (motion, animations off) a fire room shows this
+        // resting halo at 0.15 rather than a frozen mid-keyframe frame.
+        const cls = undefined
+        const opacityAttr = intensified ? 0.28 : 0.15
         // Fire auras (Lime) get a slightly larger halo so the flicker
         // has more area to "glow" through — without bumping size the
         // irregular opacity changes read as a tiny pulse instead of a
@@ -1657,6 +1667,62 @@ export default function GenieMapView({
         )
       })
   ), [visibleNodes])
+
+  // Fire flicker (B551) — the animated halo for lime rooms, drawn only for the
+  // EFFECT_CAP fire rooms nearest the viewport centre among those on screen
+  // (56 in the Crossing used to animate zone-wide). Deliberately NOT the
+  // `nearbyNodes` set and NOT gated on `showEffects`: those unmount during a
+  // zoom or a move, and a flicker that vanished to its halo and restarted from
+  // keyframe 0 afterwards read as glitchy (Sekmeht). These stay mounted while
+  // the camera moves and the pan-dragging class PAUSES them in place, exactly
+  // as the zone-wide version behaved; only the set changes as rooms enter and
+  // leave the view. The viewport comes from `svgSizeRef` (ResizeObserver), so
+  // this recomputes on every `transform` change without a layout read. Same
+  // geometry as the static halo it sits on, 1.3× so the flicker reads as
+  // firelight. No `opacity` attribute: the keyframe owns it.
+  const fireAuras = useMemo(() => {
+    // Animations off: the static halo alone, or a frozen flicker doubles it (B606).
+    if (!mapAnimations) return null
+    const fire = visibleNodes.filter(n => n.color && AURA_FIRE_COLORS.has(n.color))
+    if (fire.length === 0) return null
+    const { w: W, h: H } = svgSizeRef.current
+    const { x: tx, y: ty, scale } = transform
+    let picked: GenieNode[]
+    if (W <= 0 || H <= 0) {
+      picked = fire.length <= EFFECT_CAP ? fire : fire.slice(0, EFFECT_CAP)
+    } else {
+      const M = 48
+      const inView = fire.filter(n => {
+        const sx = n.x * scale + tx, sy = n.y * scale + ty
+        return sx >= -M && sx <= W + M && sy >= -M && sy <= H + M
+      })
+      if (inView.length <= EFFECT_CAP) picked = inView
+      else {
+        const cx = (W / 2 - tx) / scale, cy = (H / 2 - ty) / scale
+        picked = inView
+          .sort((p, q) => ((p.x - cx) ** 2 + (p.y - cy) ** 2) - ((q.x - cx) ** 2 + (q.y - cy) ** 2))
+          .slice(0, EFFECT_CAP)
+      }
+    }
+    return picked.map(n => {
+        const auraSize = NODE_SIZE * 1.3
+        const auraOffset = auraSize / 2
+        return (
+          <rect
+            key={`fire-${n.id}`}
+            className="genie-aura-fire"
+            x={n.x - auraOffset}
+            y={n.y - auraOffset}
+            width={auraSize}
+            height={auraSize}
+            fill={n.color}
+            rx={2}
+            ry={2}
+            pointerEvents="none"
+          />
+        )
+      })
+  }, [visibleNodes, transform, mapAnimations])
 
   // Sparkle motes for the "magical 4" — Transport, Shrine, Favor Altar,
   // Stat Training. Each color picks a motion motif from MOTE_EFFECTS:
@@ -1892,6 +1958,8 @@ export default function GenieMapView({
   // so a healer pulses everywhere in the zone and keeps pulsing during travel.
   // Healers are rare (a handful per zone) so always-on is cheap, and finding
   // one fast matters. Still respects the `mapAnimations` master switch.
+  // (B551 briefly culled these by viewport with a `transform` dep; reverted —
+  // the cull read clientWidth per wheel tick and the handful was never the cost.)
   const heartbeats = useMemo(() => (
     visibleNodes
       .filter(n => n.color && HEARTBEAT_COLORS.has(n.color))
@@ -2514,6 +2582,7 @@ export default function GenieMapView({
                 so every other layer paints over them; auras are
                 background "this room is special" signaling, not foreground. */}
             {auras}
+            {fireAuras}
             {/* Arc UNDER-pass — full opacity. Drawn first so node rects
                 paint on top; outside clusters this is the only arc layer
                 you ever see. Inside clusters the rects hide this layer —

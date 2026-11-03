@@ -31,7 +31,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import type { LineStyleHint } from '../../shared/types'
 import {
   type TriggerRule, type TriggerAction, type StateGate, type GateOperator,
-  buildTriggerRegex, interpolate, echoLineStyle, actionWaitsForRt,
+  buildTriggerRegex, interpolate, echoLineStyle, actionWaitsForRt, GATE_VARIABLES,
 } from '../triggers'
 import { isRuleActive } from '../groups'
 import { literalGate } from '../regexLiteral'
@@ -170,10 +170,16 @@ function getGateActual(gate: StateGate, state: TriggerGameState): string {
   }
 }
 
-function compareGate(actual: string, op: GateOperator, expected: string): boolean {
+// B543: whether a gate compares as a NUMBER is decided by the variable, not by
+// whether both values happen to start with a digit — a stance or room name
+// like "2nd Floor" must compare as text. GateVariable is a closed union, so
+// every variable is in GATE_VARIABLES.
+const NUMERIC_GATE = new Set(GATE_VARIABLES.filter(v => v.numeric).map(v => v.value))
+
+export function compareGate(actual: string, op: GateOperator, expected: string, numeric: boolean): boolean {
   const numA = parseFloat(actual)
   const numE = parseFloat(expected)
-  if (!isNaN(numA) && !isNaN(numE)) {
+  if (numeric && !isNaN(numA) && !isNaN(numE)) {
     switch (op) {
       case '<':  return numA <  numE
       case '<=': return numA <= numE
@@ -195,9 +201,9 @@ function compareGate(actual: string, op: GateOperator, expected: string): boolea
 
 function checkGates(gates: StateGate[], state: TriggerGameState): boolean {
   if (gates.length === 0) return true
-  let result = compareGate(getGateActual(gates[0], state), gates[0].operator, gates[0].value)
+  let result = compareGate(getGateActual(gates[0], state), gates[0].operator, gates[0].value, NUMERIC_GATE.has(gates[0].variable))
   for (let i = 1; i < gates.length; i++) {
-    const curr = compareGate(getGateActual(gates[i], state), gates[i].operator, gates[i].value)
+    const curr = compareGate(getGateActual(gates[i], state), gates[i].operator, gates[i].value, NUMERIC_GATE.has(gates[i].variable))
     result = (gates[i].connector ?? 'and') === 'or' ? result || curr : result && curr
   }
   return result

@@ -34,7 +34,7 @@ export const CONTRIBUTORS = [
   'Vaddon',
   // Promoted from TESTERS in v0.20.4 (Sekmeht). No item logged in BUGS.md
   // under this name yet, so the tail of the volume ordering.
-  'Crobin',
+  'Crobin', 'Horibu',
 ]
 
 // All still at zero logged reports, so alphabetical is the stable order here —

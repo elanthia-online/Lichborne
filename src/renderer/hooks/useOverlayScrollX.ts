@@ -19,6 +19,7 @@
 // pitfall #154's note on the root).
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { IS_MAC } from '../lichSettings'
 
 export interface OverlayScrollState {
   overflow: boolean
@@ -109,6 +110,9 @@ export function useOverlayScrollX(ref: RefObject<HTMLElement | null>) {
   const onThumbPointerDown = useCallback((e: React.PointerEvent<HTMLElement>) => {
     const el = ref.current
     if (!el || e.button !== 0) return
+    // B601: on a Mac Ctrl+press is a right-click. The contextmenu event handles
+    // it; a drag starting here would also send a plain click to the tab.
+    if (IS_MAC && e.ctrlKey) return
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
     dragRef.current = { x: e.clientX, sl: el.scrollLeft, moved: false }

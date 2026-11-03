@@ -578,7 +578,8 @@
      shows on hover; .cmd-input-wrap's mousedown focuses the input for a press
      here, so clicking the strip still starts typing. */
   cursor: text;
-  transition: width 0.1s linear;
+  /* B552: no width transition — the bar is written at 10 Hz during roundtime,
+     so a 0.1 s transition never finished and re-laid the strip every frame. */
   z-index: 1;
   animation: chip-pulse 1.1s ease-in-out infinite;
 }

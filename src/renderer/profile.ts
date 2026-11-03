@@ -48,7 +48,7 @@ import { getOverviewPersisted, applyOverviewState } from './overviewStore'
 import { loadSessionLogSettings, saveSessionLogSettings, DEFAULT_SESSION_LOG_SETTINGS } from './sessionLogSettings'
 import { loadAIConfig, saveAIConfig, DEFAULT_AI_CONFIG } from './aiConfig'
 import { loadCustomColors, saveCustomColors, coerceCustomColors } from './colors'
-import { DEFAULT_RUBY, DEFAULT_LICH, GAMES } from './lichSettings'
+import { DEFAULT_RUBY, DEFAULT_LICH, GAMES, coerceRichStream } from './lichSettings'
 import { loadSimuCoinConfig, saveSimuCoinConfig, coerceSimuCoinConfig } from './simucoinConfig'
 
 // ── Default game definitions ──────────────────────────────────────────────────
@@ -64,7 +64,7 @@ const DEFAULT_GAMES = Object.fromEntries(GAMES.map(g =>
 // PREVIOUS version (e.g. bumping CHARACTER from 2 → 3 means add
 // `characterMigrations[2]` that upgrades v2-shaped data into v3-shaped data).
 const SHARED_PROFILE_VERSION    = 1 as const
-const CHARACTER_PROFILE_VERSION = 2 as const
+export const CHARACTER_PROFILE_VERSION = 2 as const
 
 // ── Last session (F62, v0.15.2) ──────────────────────────────────────────────
 // "Reconnect last session": the primary window snapshots the live roster (ALL
@@ -128,6 +128,10 @@ export function buildSharedProfile(): SharedProfile {
       lichPort:       adv.lichPort       ?? 11024,
       portLocked:     adv.portLocked     ?? true,
       modeLocked:     adv.modeLocked     ?? true,
+      // Only a CHOSEN mode is written (B544): absent means "Lichborne's
+      // default", and it must stay absent so a later default reaches this
+      // machine. So the key is left out rather than set to undefined.
+      ...(coerceRichStream(adv.richStream) !== undefined ? { richStream: coerceRichStream(adv.richStream) } : {}),
     },
     mapDir:      localStorage.getItem('lichborne.mapDir')      ?? '',
     genieMapsDir: localStorage.getItem('lichborne.genieMapsDir') ?? '',
@@ -247,12 +251,63 @@ export async function exportSharedProfile(): Promise<void> {
   await window.api.writeSharedProfile(buildSharedProfile())
 }
 
+// ── Unchanged-profile skip (B550, v0.21.0) ───────────────────────────────────
+// Every save blocks MAIN — which owns every game socket — for 60–150 ms while
+// it loads, dumps and fsyncs a 600 KB profile, and most saves in ordinary play
+// carried NOTHING new: ~15 layout effects re-save their loaded value on every
+// mount, a panel tab click saves the same layout, and so on. So the renderer
+// signs what it would write — every scoped key's RAW string, no JSON.parse, in
+// a sorted order (localStorage.key() order is not stable), plus the theme — and
+// skips the IPC and the write when the signature equals the last one written.
+// ~1 ms for 600 KB. The signature is set only after a write RESOLVES (a refused
+// or failed write must not look saved) and seeded from the YAML an import just
+// loaded (what localStorage now holds IS the file), so the mount-time echo of
+// saves costs nothing without touching any of those effects. Launcher-owned
+// fields are never in it: the launcher writes those itself, and the merge
+// below preserves them whenever we do write.
+const _lastSavedSig = new Map<string, string>()
+
+// Characters whose last import stopped part-way because localStorage was full
+// (B613). Saving rebuilds the file from localStorage, so until an import
+// succeeds every save would replace the full file with the part that fitted.
+const _importFailed = new Set<string>()
+
+function stateSignature(entries: Array<[string, string]>, theme: string): string {
+  return entries
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([k, v]) => k + '\u0000' + v)
+    .join('\u0001') + '\u0002' + theme
+}
+
+export function characterStateSignature(character: string): string {
+  const prefix = `lichborne.${normalizeCharacter(character)}.`
+  const entries: Array<[string, string]> = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (!key || !key.startsWith(prefix)) continue
+    const raw = localStorage.getItem(key)
+    if (raw !== null) entries.push([key.slice(prefix.length), raw])
+  }
+  return stateSignature(entries, rememberedCharacterTheme(character) ?? '')
+}
+
+/** Harness hook: forget the last-written signature for a character. */
+export function forgetSavedSignature(character: string): void {
+  _lastSavedSig.delete(normalizeCharacter(character))
+}
+
 export async function exportCharacterProfile(
   account: string,
   character: string,
   game: string,
   useLich: boolean,
 ): Promise<void> {
+  const sigKey = normalizeCharacter(character)
+  if (_importFailed.has(sigKey)) {
+    console.warn(`[profile] ${character}: the last import didn't fit in localStorage; not saving a partial copy over the file.`)
+    return
+  }
+  if (_lastSavedSig.get(sigKey) === characterStateSignature(character)) return
   // Read-merge-write so launcher-managed fields survive a save triggered from
   // the GameWindow (v0.8.0, B97). `buildCharacterProfile` only knows about
   // {account, character, game, useLich, theme, state} — when the active
@@ -277,6 +332,9 @@ export async function exportCharacterProfile(
     console.warn(`[profile] ${character}.yaml is version ${existing.profileVersion}, newer than ${CHARACTER_PROFILE_VERSION}; not overwriting it`)
     return
   }
+  // Taken here, not before the read above: a change made during that await is
+  // in `built`, so the signature must describe it too (B616).
+  const sig = characterStateSignature(character)
   const built = buildCharacterProfile(account, character, game, useLich)
   // THIS character's theme, not whichever the window is showing (see above).
   built.theme = rememberedCharacterTheme(character) ?? existing?.theme ?? built.theme
@@ -284,6 +342,10 @@ export async function exportCharacterProfile(
     ? {
         ...built,
         // Launcher owns these — preserve whatever the YAML currently has.
+        // The account too (B542): the Add Account wizard re-files a character
+        // that was transferred to another account, and a tab still holding
+        // the old account must not write it back on its next save.
+        account:  existing.account  || built.account,
         game:     existing.game     ?? built.game,
         useLich:  existing.useLich  ?? built.useLich,
         hidden:   existing.hidden,
@@ -295,6 +357,7 @@ export async function exportCharacterProfile(
       }
     : built
   await window.api.writeCharacterProfile(character, merged)
+  _lastSavedSig.set(sigKey, sig)
 }
 
 // ── Import (YAML file → localStorage) ────────────────────────────────────────
@@ -334,6 +397,12 @@ export async function importSharedProfile(): Promise<void> {
       lichPort:       adv.lichPort       ?? existing.lichPort,
       portLocked:     adv.portLocked     ?? existing.portLocked,
       modeLocked:     adv.modeLocked     ?? existing.modeLocked,
+      // Present → that choice (coerced; an unreadable value reads as no
+      // choice). Absent → whatever this machine has, so a file written before
+      // the player chose never clears a choice made here.
+      ...(adv.richStream !== undefined
+        ? { richStream: coerceRichStream(adv.richStream) }
+        : existing.richStream !== undefined ? { richStream: existing.richStream } : {}),
     }))
   }
 
@@ -418,6 +487,7 @@ export async function importSharedProfile(): Promise<void> {
 }
 
 export async function importCharacterProfile(character: string): Promise<CharacterProfile | null> {
+  _importFailed.delete(normalizeCharacter(character))
   const raw = await window.api.readCharacterProfile(character)
   void reportUnreadableProfiles()
   if (!raw || typeof raw !== 'object') return null
@@ -435,21 +505,41 @@ export async function importCharacterProfile(character: string): Promise<Charact
   }
   const data = migrated as Partial<CharacterProfile>
 
-  // Shared boot-fallback theme, and this character's own record of it.
-  if (data.theme) {
-    localStorage.setItem('lichborne.theme', data.theme)
-    rememberCharacterTheme(character, data.theme)
-  }
-
-  // v2 dynamic state map. Pre-v0.6.0 profiles aren't supported — testers wipe
-  // profiles/{Character}.yaml to start fresh.
-  if (data.state && typeof data.state === 'object') {
-    for (const [suffix, value] of Object.entries(data.state)) {
-      if (value === undefined || value === null) continue
-      const stringValue = typeof value === 'string' ? value : JSON.stringify(value)
-      localStorage.setItem(scopedKey(character, suffix), stringValue)
+  const loaded: Array<[string, string]> = []
+  try {
+    // Shared boot-fallback theme, and this character's own record of it.
+    if (data.theme) {
+      localStorage.setItem('lichborne.theme', data.theme)
+      rememberCharacterTheme(character, data.theme)
     }
+
+    // v2 dynamic state map. Pre-v0.6.0 profiles aren't supported — testers wipe
+    // profiles/{Character}.yaml to start fresh.
+    if (data.state && typeof data.state === 'object') {
+      for (const [suffix, value] of Object.entries(data.state)) {
+        if (value === undefined || value === null) continue
+        const stringValue = typeof value === 'string' ? value : JSON.stringify(value)
+        localStorage.setItem(scopedKey(character, suffix), stringValue)
+        loaded.push([suffix, stringValue])
+      }
+    }
+  } catch (err) {
+    // localStorage is full (B613). Saves stay off until an import succeeds.
+    _importFailed.add(normalizeCharacter(character))
+    _lastSavedSig.delete(normalizeCharacter(character))
+    showToast({
+      kind: 'error',
+      title: `${character}'s settings didn't all load`,
+      message: `Lichborne's local storage is full. ${character}'s saved profile is safe and won't be changed, but changes you make to this character this session won't be kept.`,
+      durationMs: 20000,
+    })
+    throw err
   }
+  // B550: what the file holds is what localStorage now holds, so the mount-time re-saves of these same
+  // values are skipped. Computed from the FILE's entries, not localStorage:
+  // if anything else is in localStorage the signatures differ and the next
+  // save runs as it always did.
+  _lastSavedSig.set(normalizeCharacter(character), stateSignature(loaded, rememberedCharacterTheme(character) ?? ''))
 
   return buildCharacterProfile(
     data.account ?? '',
@@ -469,6 +559,8 @@ export function clearCharacterLocalStorage(character: string): void {
   // characterThemeKey); a character re-created under the same name must not
   // inherit the old one's theme.
   try { localStorage.removeItem(characterThemeKey(character)) } catch { /* ignore */ }
+  _lastSavedSig.delete(normalizeCharacter(character))
+  _importFailed.delete(normalizeCharacter(character))
   const prefix = `lichborne.${normalizeCharacter(character)}.`
   const toRemove: string[] = []
   for (let i = 0; i < localStorage.length; i++) {
@@ -519,6 +611,30 @@ export function scheduleProfileSave(
   }, delayMs)
   _saveTimers.set(key, { timer, account, character, game, useLich })
 }
+
+// A LAZY save for telemetry-grade state (B550): contact last-seen / time
+// together, a floating window's z-order. These change every few seconds in
+// ordinary play, and each save blocks main (which owns every game socket) for
+// 60–150 ms while it loads, dumps and fsyncs a 600 KB profile — the "text
+// freezes, then catches up" report. So they ask for a save only if none is
+// pending, 60 s out, and NEVER extend a timer that is already running: a real
+// settings change still saves in 2.5 s (scheduleProfileSave replaces this
+// timer through its clearTimeout), and the shutdown flush / the disconnect
+// export pick up anything still waiting. localStorage is written at once by
+// the caller, so nothing is lost in between.
+export function scheduleProfileSaveIfIdle(
+  account: string,
+  character: string,
+  game: string,
+  useLich: boolean,
+  delayMs = 60_000,
+): void {
+  if (_saveTimers.has(normalizeCharacter(character))) return
+  scheduleProfileSave(account, character, game, useLich, delayMs)
+}
+
+/** Harness hook: how many character saves are pending. */
+export function pendingProfileSaveCount(): number { return _saveTimers.size }
 
 // Fire every pending debounced save IMMEDIATELY and wait for all writes to
 // complete. Called from the renderer's before-close handler so the latest

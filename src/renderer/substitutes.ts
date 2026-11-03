@@ -126,85 +126,129 @@ export function compileSubstitutes(
 // segment, which is exactly why those "worked" and the game's own thoughts
 // didn't — B195.)
 //
-// Strategy (preserve styling where we can, match the line where we must):
-//  1. Run the per-segment pass first — an in-segment match (recolor a word, fix
-//     a name inside a monsterbold span) keeps every segment's styling, no
-//     regression.
-//  2. Run a JOINED-line pass. If the joined result differs from what the
-//     per-segment pass produced, the match crossed a segment boundary, so
-//     COLLAPSE the line to ONE segment carrying the joined-substituted text,
-//     styled like the first non-empty segment (the line's primary preset, e.g.
-//     'thought' / 'speech') — VISUAL fields only, never link fields, so a
-//     reshaped line can't inherit a stray click target. This mirrors how the
-//     siblings re-emit a substituted line as a single styled unit.
-// A single-segment line skips the joined pass entirely (no boundary to cross).
+// Each rule matches the WHOLE line, and the result is mapped back onto the
+// segments, so styling survives wherever the rule didn't touch (B564/B565). The
+// rich stream splits a line at every linked name, which made the old per-segment
+// pass match `^`/`$` at each link, and the old collapse flatten a whole line (its
+// bold and links) for one match that spanned a name:
+//  • a match inside one segment is replaced in place and keeps that segment's
+//    styling and link;
+//  • a match that crosses a boundary becomes its own segment, styled like the
+//    segment it starts in — VISUAL fields only, never link fields, so the new
+//    text can't inherit a stray click target (pitfall #89).
 // Returns the SAME array reference when nothing changed (so the caller's
-// identity check can skip the line rebuild). See CLAUDE.md pitfall #89.
-// `onFired` (Automation Analytics, v0.14.4) reports each substitute that acted on
-// the line, ONCE per line — a `fired` Set dedups the per-segment + joined double
-// pass. Wired only when analytics is on.
+// identity check can skip the line rebuild). `onFired` (Automation Analytics,
+// v0.14.4) reports each substitute that changed the line, once per line.
 export function applySubstitutesToSegments(
   segments: TextSegment[],
   subs: CompiledSubstitute[],
   onFired?: (ruleId: string) => void,
 ): TextSegment[] {
   if (subs.length === 0) return segments
-  const fired = onFired ? new Set<string>() : null
-  const flush = () => { if (fired && onFired) fired.forEach(onFired) }
 
-  // ONE lowercase of the whole line, shared by every gate in both passes
-  // (pitfall #82a). A rule whose literal appears nowhere in the line cannot
-  // match any segment of it, so gating here skips it for EVERY segment —
-  // which is where the per-segment × per-rule cost came from.
-  const fullText = segments.map(s => s.text).join('')
-  const lower = fullText.toLowerCase()
+  // ONE lowercase of the whole line for every gate (pitfall #82a).
+  const lower = segments.map(s => s.text).join('').toLowerCase()
   const live = subs.filter(s => !s.fastLower || lower.includes(s.fastLower))
   if (live.length === 0) return segments
 
-  // (1) Per-segment pass — preserves styling for matches contained in one
-  // segment; drops a segment whose text a substitute emptied.
-  let perChanged = false
-  const perSeg: TextSegment[] = []
-  for (const seg of segments) {
-    let t = seg.text
-    if (t) {
-      for (const s of live) {
-        s.regex.lastIndex = 0
-        const next = t.replace(s.regex, s.rule.replacement)
-        if (next !== t) { t = next; perChanged = true; fired?.add(s.rule.id) }
+  let current = segments
+  for (const s of live) {
+    const next = applyOneSubstitute(current, s)
+    if (next !== current) { current = next; onFired?.(s.rule.id) }
+  }
+  return current
+}
+
+// `$&`, `$1`, `$<name>`… exactly as String.prototype.replace expands them. The
+// callback form of replace can't be used here: the result has to be placed by
+// match position across segments.
+function expandReplacement(rep: string, m: RegExpExecArray, text: string): string {
+  if (!rep.includes('$')) return rep
+  return rep.replace(/\$(?:\$|&|`|'|(\d\d?)|<([^>]*)>)/g, (tok, num: string | undefined, name: string | undefined) => {
+    if (tok === '$$') return '$'
+    if (tok === '$&') return m[0]
+    if (tok === '$`') return text.slice(0, m.index)
+    if (tok === "$'") return text.slice(m.index + m[0].length)
+    if (name !== undefined) return m.groups ? (m.groups[name] ?? '') : tok
+    if (num !== undefined) {
+      const groups = m.length - 1
+      const n = parseInt(num, 10)
+      if (n >= 1 && n <= groups) return m[n] ?? ''
+      // `$12` with one group is `$1` then a literal 2.
+      if (num.length === 2) {
+        const first = parseInt(num[0], 10)
+        if (first >= 1 && first <= groups) return (m[first] ?? '') + num[1]
       }
     }
-    if (t.length > 0) perSeg.push(t === seg.text ? seg : { ...seg, text: t })
+    return tok
+  })
+}
+
+function applyOneSubstitute(segments: TextSegment[], s: CompiledSubstitute): TextSegment[] {
+  const text = segments.map(seg => seg.text).join('')
+  const matches: { start: number; end: number; rep: string }[] = []
+  let changed = false
+  s.regex.lastIndex = 0
+  let hit: RegExpExecArray | null
+  while ((hit = s.regex.exec(text)) !== null) {
+    const rep = expandReplacement(s.rule.replacement, hit, text)
+    if (rep !== hit[0]) changed = true
+    matches.push({ start: hit.index, end: hit.index + hit[0].length, rep })
+    if (hit[0].length === 0) s.regex.lastIndex++   // zero-width match (pitfall #29)
+    if (!s.regex.global) break
+  }
+  if (!changed) return segments
+
+  // Segment boundaries: `starts[i]` is where segment i begins in the line.
+  const starts: number[] = []
+  let at = 0
+  for (const seg of segments) { starts.push(at); at += seg.text.length }
+  const segAt = (pos: number): number => {
+    for (let i = segments.length - 1; i >= 0; i--) if (pos >= starts[i] && (pos < starts[i] + segments[i].text.length)) return i
+    return segments.length - 1
   }
 
-  // A single segment can't have a cross-boundary match — the per-segment pass
-  // already saw the whole line.
-  if (segments.length <= 1) { if (perChanged) flush(); return perChanged ? perSeg : segments }
-
-  // (2) Joined-line pass — catches a match the per-segment pass split apart.
-  const full = fullText
-  let joined = full
-  for (const s of live) {
-    s.regex.lastIndex = 0
-    const next = joined.replace(s.regex, s.rule.replacement)
-    if (next !== joined) { joined = next; fired?.add(s.rule.id) }
+  // Pieces in order, each tagged with its source segment (-1 = a match that
+  // crossed a boundary), then merged per source so an in-segment match stays
+  // one segment.
+  const pieces: { src: number; text: string; visual?: TextSegment }[] = []
+  const copyRange = (from: number, to: number) => {
+    if (to <= from) return
+    for (let i = 0; i < segments.length; i++) {
+      const a = Math.max(from, starts[i]), b = Math.min(to, starts[i] + segments[i].text.length)
+      if (b > a) pieces.push({ src: i, text: text.slice(a, b) })
+    }
   }
-
-  // No line-level change → trust the per-segment result (styled or original).
-  if (joined === full) { if (perChanged) flush(); return perChanged ? perSeg : segments }
-  flush()
-  // Per-segment already produced the joined text → every match was in-segment;
-  // keep the styled output.
-  if (perSeg.map(s => s.text).join('') === joined) return perSeg
-  // A match crossed a boundary → collapse to one styled segment.
-  if (joined.length === 0) return []   // a substitute emptied the whole line
-  const base = segments.find(s => s.text.length > 0)
-  const collapsed: TextSegment = { text: joined }
-  if (base) {
-    if (base.preset !== undefined) collapsed.preset = base.preset
-    if (base.bold) collapsed.bold = true
-    if (base.fg !== undefined) collapsed.fg = base.fg
-    if (base.bg !== undefined) collapsed.bg = base.bg
+  let pos = 0
+  for (const m of matches) {
+    copyRange(pos, m.start)
+    const first = segAt(m.start)
+    const inside = m.end <= starts[first] + segments[first].text.length
+    if (m.rep) {
+      if (inside) pieces.push({ src: first, text: m.rep })
+      else {
+        const base = segments[first]
+        const visual: TextSegment = { text: '' }
+        if (base.preset !== undefined) visual.preset = base.preset
+        if (base.bold) visual.bold = true
+        if (base.fg !== undefined) visual.fg = base.fg
+        if (base.bg !== undefined) visual.bg = base.bg
+        pieces.push({ src: -1, text: m.rep, visual })
+      }
+    }
+    pos = m.end
   }
-  return [collapsed]
+  copyRange(pos, text.length)
+
+  const out: TextSegment[] = []
+  let lastSrc: number | null = null
+  for (const p of pieces) {
+    if (p.src !== -1 && p.src === lastSrc) {
+      out[out.length - 1] = { ...out[out.length - 1], text: out[out.length - 1].text + p.text }
+    } else {
+      out.push(p.src === -1 ? { ...p.visual, text: p.text } : { ...segments[p.src], text: p.text })
+    }
+    lastSrc = p.src
+  }
+  return out
 }

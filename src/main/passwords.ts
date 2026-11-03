@@ -43,7 +43,10 @@ export function savePassword(account: string, password: string): void {
   if (!safeStorage.isEncryptionAvailable()) return
   const store = readStore()
   if (!store) { console.error('[persist] not saving: the store file can\'t be read right now'); return }
-  store[account] = safeStorage.encryptString(password).toString('base64')
+  // B595: isEncryptionAvailable says nothing about a Keychain prompt the player
+  // denied, and that throws. Connecting must still work, so it just isn't saved.
+  try { store[account] = safeStorage.encryptString(password).toString('base64') }
+  catch (err) { console.error('[persist] password not saved:', err); return }
   writeStore(store)
 }
 

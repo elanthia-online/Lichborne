@@ -68,8 +68,8 @@ contextBridge.exposeInMainWorld('api', {
   // session then connects a new character on the same account. Without
   // awaiting, the SGE server still sees the old session and rejects the new
   // login with "Invalid login key".
-  disconnectAwait: (sessionId: SessionId): Promise<void> =>
-    ipcRenderer.invoke('disconnect-await', sessionId),
+  disconnectAwait: (sessionId: SessionId, waitForRelease?: boolean): Promise<void> =>
+    ipcRenderer.invoke('disconnect-await', sessionId, waitForRelease),
 
   // Explicit teardown — call when the renderer is done with a session entry
   // (tab closed, app shutting down). Idempotent: main looks up by id and
@@ -90,6 +90,9 @@ contextBridge.exposeInMainWorld('api', {
   getWindowInfo: (): Promise<{ windowId: number; isPrimary: boolean }> =>
     ipcRenderer.invoke('get-window-info'),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
+  // "Capture XML" (v0.21.0): the received stream to Logs/raw, per session.
+  setRawCapture: (sessionId: string, on: boolean): Promise<string | null> => ipcRenderer.invoke(CH.RAW_CAPTURE_SET, sessionId, on),
+  getRawCapture: (sessionId: string): Promise<boolean> => ipcRenderer.invoke(CH.RAW_CAPTURE_GET, sessionId),
   setSessionName: (sessionId: SessionId, character: string) =>
     ipcRenderer.send('session:set-name', sessionId, character),
 

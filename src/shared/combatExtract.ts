@@ -423,7 +423,9 @@ export interface StrikeEvent {
   part?: string
 }
 
-const STRIKE_HIT_RE = /\blands? an? ([a-z -]+? (?:hit|strike))(?: \(\d+\/\d+\))? to your ([a-z ]+?)\s*(?=[.!,]|$)/i
+// The damage count can sit on either side of the noun: "lands a light hit (1/23)
+// to your chest", and "lands a gentle (0/23) hit to your right leg" (B569).
+const STRIKE_HIT_RE = /\blands? an? ([a-z -]+?)(?: \(\d+\/\d+\))? (hit|strike)(?: \(\d+\/\d+\))? to your ([a-z ]+?)\s*(?=[.!,]|$)/i
 
 // A PARRY, in every wording DR uses for it (Sekmeht, 2026-10-01, a zweihander
 // and a bracer): "You <verb> <how much> of the <weapon> with <yours>." — knock
@@ -433,7 +435,10 @@ const STRIKE_HIT_RE = /\blands? an? ([a-z -]+? (?:hit|strike))(?: \(\d+\/\d+\))?
 // first; none of them has "of".)
 // "of THE/A/ITS …" (bug check): the parried thing is the attack or weapon,
 // never yours — "You lose some of your footing" is not a parry.
-const STRIKE_PARRY_RE = /\bYou [a-z]+(?: [a-z]+)? (?:some|most|little|much|all|part|a bit|bits) of (?:the|an?|its|his|her|their)\b/
+// "nearly all the sword" has no "of" (B569).
+const STRIKE_PARRY_RE = /\bYou [a-z]+(?: [a-z]+)? (?:(?:some|most|little|much|part|a bit|bits) of|(?:(?:nearly|almost) )?all(?: of)?) (?:the|an?|its|his|her|their)\b/
+// "You block", and the partial wordings "You partially block" / "You barely block" (B569).
+const STRIKE_BLOCK_RE = /\bYou (?:[a-z]+ly )?block\b/
 // The stomp has no "at you": "An ice archon attempts to stomp on your left leg,
 // and you raise your weapon to deflect part of the foot so it lands next to you
 // instead of on you." — a deflect with your weapon, so a parry.
@@ -458,7 +463,7 @@ export function parseStrikeLine(text: string): Omit<StrikeEvent, 'id' | 'at'> | 
   const at = atM ? atM.index : -1
   const attacker = t.startsWith('*') && at > 0 ? t.slice(1, at).trim().toLowerCase() : null
   const hit = STRIKE_HIT_RE.exec(t)
-  if (hit) return { outcome: 'hit', attacker, severity: hit[1].toLowerCase(), part: hit[2].toLowerCase() }
+  if (hit) return { outcome: 'hit', attacker, severity: `${hit[1]} ${hit[2]}`.toLowerCase(), part: hit[3].toLowerCase() }
   const deflect = STRIKE_DEFLECT_RE.exec(t)
   if (deflect) return { outcome: 'parry', attacker: deflect[1].trim().toLowerCase() }
   const sidestep = STRIKE_SIDESTEP_RE.exec(t)
@@ -467,7 +472,7 @@ export function parseStrikeLine(text: string): Omit<StrikeEvent, 'id' | 'at'> | 
   const rest = t.slice(at)
   if (/\bYou (?:fail|attempt) to\b/.test(rest)) return null
   if (/\bYou (?:dodge|evade)\b/.test(rest)) return { outcome: 'dodge', attacker }
-  if (/\bYou block\b/.test(rest)) return { outcome: 'block', attacker }
+  if (STRIKE_BLOCK_RE.test(rest)) return { outcome: 'block', attacker }
   if (STRIKE_PARRY_RE.test(rest)) return { outcome: 'parry', attacker }
   return null
 }
