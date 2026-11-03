@@ -4889,6 +4889,8 @@ export default function GameWindow({
       stamina:       String(vitalPercent(s.vitals.stamina)),
       spirit:        String(vitalPercent(s.vitals.spirit)),
       concentration: String(vitalPercent(s.vitals.concentration)),
+      mindstate:     String(vitalPercent(s.vitals.mindstate)),
+      encumbrance:   String(vitalPercent(s.vitals.encumbrance)),
       rt:            String(secondsLeft(s.rtExpires)),
       ct:            String(secondsLeft(s.ctExpires)),
       casttime:      String(secondsLeft(s.ctExpires)),

@@ -183,6 +183,8 @@ function snapshotKey(evt: GameEvent): string | null {
     // not wait for the next server refresh), one snapshot slot per dialog.
     case 'effects-update': return `effects:${evt.dialog}`
     // GS4's experience and encumbrance readouts — sticky state the same way.
+    // gs-experience MERGES into its slot (mergeGsExperience): training points
+    // arrive once at login and the pulses that follow don't repeat them.
     case 'gs-experience':  return 'gs-experience'
     case 'gs-encumbrance': return 'gs-encumbrance'
     // §35: the cast is sticky state — a window taking over the session must
@@ -206,6 +208,18 @@ function snapshotKey(evt: GameEvent): string | null {
     case 'rich-stream':   return 'rich-stream'
     default:              return null
   }
+}
+
+// GS4's experience comes in two blocks: training points once at login, then
+// pulses without them. The renderer merges the two (GameWindow); the replay
+// slot must too, or a window takeover replays the last pulse and the panel
+// loses PTPs/MTPs/ATPs until the next login. Same rule as the renderer:
+// later fields win, an undefined one keeps the earlier value.
+function mergeGsExperience(prev: GameEvent | undefined, evt: GameEvent): GameEvent {
+  if (!prev || prev.type !== 'gs-experience' || evt.type !== 'gs-experience') return evt
+  const merged: Record<string, unknown> = { ...prev }
+  for (const [k, v] of Object.entries(evt)) if (v !== undefined) merged[k] = v
+  return merged as unknown as GameEvent
 }
 
 const sessions = new Map<SessionId, Session>()
@@ -466,7 +480,7 @@ function scheduleFlush(s: Session) {
       // snapshot (latest wins), scrollback into the ring buffer.
       for (const evt of s.eventQueue) {
         const key = snapshotKey(evt)
-        if (key) s.stateSnapshot.set(key, evt)
+        if (key) s.stateSnapshot.set(key, key === 'gs-experience' ? mergeGsExperience(s.stateSnapshot.get(key), evt) : evt)
         else s.historyBuffer.push(evt)
       }
       if (s.historyBuffer.length > HISTORY_BUFFER_MAX) {

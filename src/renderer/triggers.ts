@@ -28,6 +28,7 @@ export type WatchStream = 'any' | string
 
 export type GateVariable =
   | 'health' | 'mana' | 'stamina' | 'spirit' | 'concentration'
+  | 'mindstate' | 'encumbrance'
   | 'rt' | 'ct' | 'stance' | 'spell'
   | 'bleeding' | 'stunned' | 'dead' | 'hidden' | 'invisible'
   | 'room'
@@ -308,6 +309,9 @@ export const GATE_VARIABLES: { value: GateVariable; label: string; numeric: bool
   { value: 'stamina',       label: 'Stamina %',       numeric: true  },
   { value: 'spirit',        label: 'Spirit %',        numeric: true  },
   { value: 'concentration', label: 'Concentration %', numeric: true  },
+  // GemStone IV's own bars (0 on a DR character, which has neither).
+  { value: 'mindstate',     label: 'Mind % (GS4)',    numeric: true  },
+  { value: 'encumbrance',   label: 'Encumbrance % (GS4)', numeric: true  },
   { value: 'rt',            label: 'Roundtime (sec)', numeric: true  },
   { value: 'ct',            label: 'Cast time (sec)', numeric: true  },
   { value: 'stance',        label: 'Stance',          numeric: false },
@@ -355,6 +359,8 @@ export const INTERPOLATABLE_VARS: { name: string; desc: string; group: VarGroupI
   { name: 'stamina',       group: 'vitals', desc: 'stamina %' },
   { name: 'spirit',        group: 'vitals', desc: 'spirit %' },
   { name: 'concentration', group: 'vitals', desc: 'concentration %' },
+  { name: 'mindstate',     group: 'vitals', desc: 'how full your mind is, % (GemStone IV)' },
+  { name: 'encumbrance',   group: 'vitals', desc: 'encumbrance % (GemStone IV)' },
   { name: 'rt',            group: 'combat', desc: 'roundtime seconds left' },
   { name: 'ct',            group: 'combat', desc: 'cast time seconds left' },
   { name: 'stance',        group: 'combat', desc: 'current stance' },

@@ -1025,13 +1025,13 @@ function renderPanel(
     case 'encumbrance':
       // Same carried-over-tab guard as `effects`.
       if (gameFamily === 'DR') {
-        return <div className="stream-panel-empty">Encumbrance is a GemStone IV panel.</div>
+        return <div className="ui-empty">Encumbrance is a GemStone IV panel.</div>
       }
       return <EncumbrancePanel enc={gsEncumbrance} />
     case 'creatures':
       // Same carried-over-tab guard as `effects`.
       if (gameFamily === 'DR') {
-        return <div className="stream-panel-empty">Creatures is a GemStone IV panel. DragonRealms creatures are in the Room panel.</div>
+        return <div className="ui-empty">Creatures is a GemStone IV panel. DragonRealms creatures are in the Room panel.</div>
       }
       return <CreaturesPanel roster={creatureRoster} targetId={creatureTarget} onSendCommand={onSendCommand} />
     case 'familiar':      return sp('familiar',      streamLines.familiar      ?? EMPTY_ARRAY)
