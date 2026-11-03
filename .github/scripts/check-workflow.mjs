@@ -99,10 +99,19 @@ ok(/CSC_IDENTITY_AUTO_DISCOVERY:\s*'false'/.test(tbPkg), 'test-build: packaging 
 ok(/^permissions:\s*\n\s+contents: read\s*$/m.test(tbCode), 'test-build: read-only token')
 ok(!/^\s*(push|pull_request\w*):/m.test(tbCode.split('jobs:')[0]), 'test-build: manual-only')
 ok(/retention-days: 7/.test(tbCode), 'test-build: artifacts expire after 7 days')
-const tbOs = [...tbCode.matchAll(/^\s+- os:\s*(\S+)/gm)].map(m => m[1])
+const tbOs = [...tbCode.matchAll(/"os":"([^"]+)"/g)].map(m => m[1])
 ok(JSON.stringify([...tbOs].sort()) === JSON.stringify([...osEntries].sort()),
-   `test-build matrix [${tbOs}] matches release matrix [${osEntries}]`)
-for (const needle of ['container: ubuntu:22.04', 'container: ${{ matrix.container }}',
+   `test-build targets [${tbOs}] match release matrix [${osEntries}]`)
+ok(/"platform":"linux","os":"ubuntu-latest","args":"--linux","container":"ubuntu:22\.04"/.test(tbCode),
+   'test-build: Linux builds in the ubuntu:22.04 container')
+ok(/matrix: \$\{\{ fromJSON\(needs\.plan\.outputs\.matrix\) \}\}/.test(tbCode), 'test-build: matrix comes from the plan job')
+for (const [box, env, plat] of [['windows', 'WINDOWS', 'win'], ['linux', 'LINUX', 'linux'], ['macos', 'MACOS', 'mac']]) {
+  ok(new RegExp(`^\\s+${box}:\\s*\\n(?:\\s+\\w+:.*\\n)*?\\s+type: boolean`, 'm').test(tbCode) &&
+     tbCode.includes(`BUILD_${env}: \${{ inputs.${box} }}`) &&
+     new RegExp(`if \\[ "\\$BUILD_${env}" = true \\]; then\\s+targets\\+=\\('\\{"platform":"${plat}"`).test(tbCode),
+     `test-build: "${box}" checkbox gates the ${plat} build`)
+}
+for (const needle of ['container: ${{ matrix.container }}',
   'npm_config_build_from_source=true', 'CXXFLAGS=-UV8_DEPRECATION_WARNINGS', "if: matrix.os == 'macos-latest'"]) {
   ok(tbCode.includes(needle), `test-build mirrors release: ${needle}`)
 }

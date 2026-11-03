@@ -10,7 +10,10 @@
 #     - leave "Use workflow from" on main and type the thing to build in the
 #       `ref` box: a branch (stack/gs4-09-org-cutover), a tag, a commit SHA,
 #       or a PR head (refs/pull/13/head, which also works for PRs from forks).
+#   Untick Windows / macOS / Linux to skip that platform (all ticked by
+#   default; the run fails at once if none is ticked).
 #   CLI: gh workflow run test-build.yml -f ref=refs/pull/13/head
+#        (add e.g. -f macos=false to skip a platform)
 #   When it's green: open the run → Artifacts (bottom of the summary page) →
 #   download lichborne-<os>-<sha>.
 #
@@ -18,7 +21,8 @@
 # default branch, and it then builds whatever `ref` names — which is why the
 # `ref` input exists: the branch under test usually predates this file.
 #
-# KEEP THE BUILD STEPS IN STEP WITH release.yml. The matrix, the Linux
+# KEEP THE BUILD STEPS IN STEP WITH release.yml. The targets (in the plan
+# job), the Linux
 # container setup and the mac signature check are copied from there (read its
 # comments for the why); check-workflow.mjs asserts the two matrices match and
 # that this file can never publish. Deliberate differences:
@@ -39,32 +43,69 @@ run-name: Test build of ${{ inputs.ref || github.ref_name }}
         required: false
         default: ''
         type: string
+      windows:
+        description: 'Build Windows (NSIS installer .exe)'
+        type: boolean
+        default: true
+      macos:
+        description: 'Build macOS (arm64 .dmg + .zip)'
+        type: boolean
+        default: true
+      linux:
+        description: 'Build Linux (.AppImage)'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
-# A second run for the same ref replaces the first; different refs build side
-# by side.
+# A second run for the same ref and platform selection replaces the first;
+# anything else builds side by side.
 concurrency:
-  group: test-build-${{ inputs.ref || github.ref }}
+  group: test-build-${{ inputs.ref || github.ref }}-${{ inputs.windows }}-${{ inputs.macos }}-${{ inputs.linux }}
   cancel-in-progress: true
 
 jobs:
+  # Turns the platform checkboxes into the build matrix. A static matrix can't
+  # do this: `exclude` never filters `include` entries, and an include entry
+  # left with nothing to merge into is ADDED back as its own job, so an
+  # unticked platform would still build. Each target below is the matrix entry
+  # release.yml has for that platform (keep them in step).
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - name: Pick platforms
+        id: pick
+        env:
+          BUILD_WINDOWS: ${{ inputs.windows }}
+          BUILD_LINUX: ${{ inputs.linux }}
+          BUILD_MACOS: ${{ inputs.macos }}
+        run: |
+          targets=()
+          if [ "$BUILD_WINDOWS" = true ]; then
+            targets+=('{"platform":"win","os":"windows-latest","args":"--win nsis"}')
+          fi
+          if [ "$BUILD_LINUX" = true ]; then
+            targets+=('{"platform":"linux","os":"ubuntu-latest","args":"--linux","container":"ubuntu:22.04"}')
+          fi
+          if [ "$BUILD_MACOS" = true ]; then
+            targets+=('{"platform":"mac","os":"macos-latest","args":"--mac"}')
+          fi
+          if [ ${#targets[@]} -eq 0 ]; then
+            echo "::error::No platform ticked -- tick at least one of Windows, macOS, Linux."
+            exit 1
+          fi
+          matrix=$(printf '%s\n' "${targets[@]}" | jq -cs '{include: .}')
+          echo "Building: $matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: plan
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform: win
-            args: --win nsis
-          - os: ubuntu-latest
-            platform: linux
-            args: --linux
-            container: ubuntu:22.04
-          - os: macos-latest
-            platform: mac
-            args: --mac
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     # Empty on Windows and macOS, which then run directly on the runner.
     container: ${{ matrix.container }}
