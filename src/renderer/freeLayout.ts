@@ -5,6 +5,7 @@
 // (main text / vitals / icon / compass / command).
 import { nanoid } from 'nanoid'
 import { makeTab, type TabDef } from './components/PanelFrame'
+import type { GameFamily } from '../shared/types'
 
 export type WinKind = 'panel' | 'main' | 'vitals' | 'icon' | 'compass' | 'command'
 
@@ -129,17 +130,23 @@ function isFloatWindow(w: unknown): w is FloatWindow {
 // fully blocking the main text. Phase 2 replaces this with the
 // measure-and-mint conversion (§33.6) that snapshots the user's ACTUAL
 // current layout (panels + chrome + main text).
-export function seedDefaultWindows(): FloatWindow[] {
+// GS4: no `spells` (DR's percWindow stream) or `exp` (DR's mindstate panel);
+// Effects carries GS4's spells/buffs/debuffs/cooldowns instead — the same
+// split as GameWindow's defaultMidTabs/defaultBottomTabs.
+export function seedDefaultWindows(family: GameFamily = 'DR'): FloatWindow[] {
+  const gs4 = family === 'GS4'
   return [
     { id: nanoid(), kind: 'panel', z: 1, showTitle: true, title: 'Panel 1',
       rect: { x: 0.60, y: 0.04, w: 0.36, h: 0.30 },
       tabs: [makeTab('room'), makeTab('conversation')], activeId: 'room' },
     { id: nanoid(), kind: 'panel', z: 2, showTitle: true, title: 'Panel 2',
       rect: { x: 0.60, y: 0.36, w: 0.36, h: 0.30 },
-      tabs: [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths'), makeTab('spells')], activeId: 'thoughts' },
+      tabs: gs4
+        ? [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths')]
+        : [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths'), makeTab('spells')], activeId: 'thoughts' },
     { id: nanoid(), kind: 'panel', z: 3, showTitle: true, title: 'Panel 3',
       rect: { x: 0.60, y: 0.68, w: 0.36, h: 0.28 },
-      tabs: [makeTab('exp'), makeTab('log')], activeId: 'exp' },
+      tabs: gs4 ? [makeTab('effects'), makeTab('log')] : [makeTab('exp'), makeTab('log')], activeId: gs4 ? 'effects' : 'exp' },
   ]
 }
 
