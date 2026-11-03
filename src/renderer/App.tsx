@@ -1425,11 +1425,11 @@ function AppShell() {
     const key = `bg:${c.account}|${c.name}`.toLowerCase()
     setShowAdd(false)
     if (bgConnectsRef.current.some(b => b.key === key)) return
-    // One character per account (DR's rule): a second login on an account
+    // One character per account, across both games: a second login on an account
     // already logging in would only fail with "invalid login key".
     const sameAccount = bgConnectsRef.current.find(b => b.c.account.toLowerCase() === c.account.toLowerCase())
     if (sameAccount) {
-      showToast({ title: `${c.name} was not connected`, message: `${sameAccount.c.name} is already logging in on account ${c.account}, and DragonRealms allows one character per account.` })
+      showToast({ title: `${c.name} was not connected`, message: `${sameAccount.c.name} is already logging in on account ${c.account}, and an account can have one character on at a time.` })
       return
     }
     const cancel = { current: false }
@@ -2551,7 +2551,7 @@ function AppShell() {
             <div className="launcher-dialog-body">
               <div>Some accounts from your last session already have a character connected.</div>
               <div className="launcher-dialog-note">
-                DragonRealms allows one character per account at a time — choose which character to
+                An account can have one character on at a time — choose which character to
                 use on each account. Switching disconnects the current character first (its tab stays
                 open in case you want to log back into it later).
               </div>

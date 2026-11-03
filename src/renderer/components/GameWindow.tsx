@@ -319,7 +319,9 @@ function fmtCount(n: number): string {
 
 // Naming the character is the highest-value line in this prompt: without it the
 // model has to GUESS which name in raw game text is the player.
-function catchupSystem(character: string, tier: CatchupTier, windowLabel: string, persona: string): string {
+// `gameName` is the session's game ("DragonRealms" / "GemStone IV"), so a GS4
+// recap isn't told it runs inside a DragonRealms client.
+function catchupSystem(character: string, gameName: string, tier: CatchupTier, windowLabel: string, persona: string): string {
   const p = persona.trim()
   // Refer-to-as-"you" mechanic stays regardless of voice; only the TONE swaps.
   const refer = `Refer to their character as "you" (the player IS ${character}); a script may have kept their character acting while they were away, so "you" covers that too.`
@@ -333,7 +335,7 @@ function catchupSystem(character: string, tier: CatchupTier, windowLabel: string
     // up — warm, natural, flowing — NOT a report generator emitting disjointed
     // "The character was primarily stationary" lines. A user persona (Settings →
     // AI → Response voice) swaps that tone while keeping the facts intact.
-    `You are ${character}'s personal assistant inside their DragonRealms game client. ${character} stepped away and just came back, and you're filling them in on what they missed over ${windowLabel}.`,
+    `You are ${character}'s personal assistant inside their ${gameName} game client. ${character} stepped away and just came back, and you're filling them in on what they missed over ${windowLabel}.`,
     voiceLine,
     'The text below is their game log. Lines tagged like [thoughts] are side channels; untagged lines are the main game window. "You"/"your" inside the log refer to them.',
     '',
@@ -5206,7 +5208,7 @@ export default function GameWindow({
       acc = ''
       try {
         handle = aiChatStream(
-          { system: catchupSystem(session.character, tier, label, persona), messages: [{ role: 'user', content: buffer }], maxTokens: tier.maxTokens },
+          { system: catchupSystem(session.character, gameFamily === 'GS4' ? 'GemStone IV' : 'DragonRealms', tier, label, persona), messages: [{ role: 'user', content: buffer }], maxTokens: tier.maxTokens },
           {
             onDelta: d => { acc += d; live(acc, 'ai') },
             onDone: usage => {
