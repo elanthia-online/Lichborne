@@ -3184,6 +3184,9 @@ export default function GameWindow({
       const labelUpdates: Record<string, string> = {}
       const indicatorUpdates: Record<string, boolean> = {}
       const newDiscovered: string[] = []
+      // Ids that actually had text pushed to them this batch (see the
+      // family-hidden builtin rule in the discovery filter below).
+      const pushedStreams = new Set<string>()
       // Inline room description capture (Genie/Lich map matching). DR streams the
       // room desc inline as `<preset id='roomDesc'>…</preset>` in the `main`
       // stream — it is NOT a `<component id='room desc'>`, so the only path that
@@ -3800,6 +3803,7 @@ export default function GameWindow({
           }
           case 'stream-push':
             newDiscovered.push(evt.stream)
+            pushedStreams.add(evt.stream)
             break
           case 'rich-stream':
             richStreamSeenRef.current = true
@@ -4121,11 +4125,17 @@ export default function GameWindow({
             if (seenInBatch.has(id)) return false
             const lower = id.toLowerCase()
             if (NEVER_DISCOVER.has(lower)) return false
-            // Family-gated like the + menu: GS4 declares a `Spells` window,
-            // which lowercases to DR's builtin `spells` (now DR-only), so
-            // without the gate it could never be discovered on GS4. (No capture
-            // has pushed text to it yet; this keeps it reachable if one does.)
-            if (ALL_PANEL_TYPES.includes(lower as PanelType) && panelTypeAvailable(lower as PanelType, gameFamily)) return false
+            // A builtin id is never discovered (pitfall #27) — except one this
+            // character's game hides (PANEL_GAMES), and only once text is
+            // actually PUSHED to it. GS4 declares a `Spells` window at login,
+            // which lowercases to DR's builtin `spells` (DR-only); no capture
+            // has ever filled it, so a declaration alone would offer an
+            // always-empty "Spells" everywhere. If a script ever pushes to it,
+            // it becomes reachable as a discovered stream.
+            if (ALL_PANEL_TYPES.includes(lower as PanelType)) {
+              if (panelTypeAvailable(lower as PanelType, gameFamily)) return false
+              if (!pushedStreams.has(id)) return false
+            }
             seenInBatch.add(id)
             return true
           })
@@ -6327,7 +6337,7 @@ export default function GameWindow({
     // A DR-only Experience carried onto a GS4 character (Profile Transfer
     // copies open instances and tabs) says so instead of drawing DR data.
     if (!experienceAvailable(def, gameFamily)) {
-      return <div className="stream-panel-empty">{def.label} is a DragonRealms Experience; there is nothing for it to show in GemStone IV.</div>
+      return <div className="ui-empty">{def.label} is a DragonRealms Experience; there is nothing for it to show in GemStone IV.</div>
     }
     const C = def.component
     return (

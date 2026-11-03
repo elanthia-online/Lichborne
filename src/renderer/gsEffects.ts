@@ -38,7 +38,19 @@ export const WARNING_SECONDS = 60
 export const WARNING_PERCENT = 25
 
 export function isWarning(entry: EffectEntry, left: number | null): boolean {
-  return left !== null && left > 0 && left <= WARNING_SECONDS && entry.percent <= WARNING_PERCENT
+  return left !== null && left > 0 && left <= WARNING_SECONDS && currentPercent(entry, left) <= WARNING_PERCENT
+}
+
+// The share of its duration an entry has left NOW. The game's `percent` is
+// right only when the dialog arrives; a dialog that isn't resent would freeze
+// it (a 60s Rapid Fire received at 46% would never reach 25%, a long spell
+// received at 100% never warn). So scale it by the seconds counted down since:
+// percent × left ÷ the seconds left on arrival. No end (left null) or no
+// parseable time keeps the game's figure.
+export function currentPercent(entry: EffectEntry, left: number | null): number {
+  const s = effectSeconds(entry.time)
+  if (left === null || s === null || s <= 0) return entry.percent
+  return entry.percent * Math.min(1, left / s)
 }
 
 const HMS = /^(\d+):(\d{1,2}):(\d{1,2})$/

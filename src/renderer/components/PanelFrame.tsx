@@ -83,7 +83,9 @@ export type PanelType = 'room' | 'thoughts' | 'arrivals' | 'conversation' | 'dea
 // the other way: it is DR's `percWindow` stream ("Active Spells"), which no
 // GS4 capture has ever carried (0 of 184 sessions) — GS4's active spells are
 // a section of `effects`, so offering both put two "Active Spells" in a GS4
-// character's + menu, one always empty.
+// character's + menu, one always empty. A hidden type's id can still become a
+// discovered stream, but only once text is pushed to it (GameWindow's
+// discovery filter): GS4 declares a `Spells` window at login and never fills it.
 export const PANEL_GAMES: Partial<Record<PanelType, GameFamily[]>> = {
   exp: ['DR'],
   spells: ['DR'],
@@ -981,7 +983,7 @@ function renderPanel(
       // Same defense-in-depth as `exp` below: a transferred DR layout can carry
       // this tab onto a GS4 character. Point at where the data really is.
       if (gameFamily === 'GS4') {
-        return <div className="stream-panel-empty">GemStone IV's active spells are in the Effects panel.</div>
+        return <div className="ui-empty">GemStone IV's active spells are in the Effects panel.</div>
       }
       return sp('spells',        streamLines.spells        ?? EMPTY_ARRAY)
     case 'exp':
@@ -1002,7 +1004,7 @@ function renderPanel(
       // character can carry this tab onto a DR one, where the dialogs it
       // reads never arrive — say so rather than wait forever.
       if (gameFamily === 'DR') {
-        return <div className="stream-panel-empty">Effects is a GemStone IV panel. DragonRealms spells are in Active Spells.</div>
+        return <div className="ui-empty">Effects is a GemStone IV panel. DragonRealms spells are in Active Spells.</div>
       }
       return <EffectsPanel effects={effectsState} />
     case 'familiar':      return sp('familiar',      streamLines.familiar      ?? EMPTY_ARRAY)

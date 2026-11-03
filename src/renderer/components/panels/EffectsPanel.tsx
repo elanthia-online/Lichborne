@@ -14,7 +14,7 @@
 import { memo, useEffect, useState } from 'react'
 import type { EffectEntry } from '../../../shared/types'
 import {
-  EFFECT_SECTIONS, anyTicking, formatRemaining, isWarning, remainingSeconds,
+  EFFECT_SECTIONS, anyTicking, formatRemaining, isWarning, currentPercent, remainingSeconds,
   type EffectsState,
 } from '../../gsEffects'
 
@@ -29,7 +29,7 @@ const INDEFINITE_TIP = 'No set duration — it lasts until something ends it.'
 function EffectRow({ entry, at, now, warns }: { entry: EffectEntry; at: number; now: number; warns: boolean }) {
   const left = remainingSeconds(entry, at, now)
   const state = left === null ? 'indef' : left === 0 ? 'ending' : warns && isWarning(entry, left) ? 'warn' : 'normal'
-  const pct = Math.max(0, Math.min(100, entry.percent))
+  const pct = Math.round(Math.max(0, Math.min(100, currentPercent(entry, left))))
   return (
     <div className={`gs-effects-row gs-effects-row--${state}`}>
       <span className="gs-effects-fill" style={{ width: `${pct}%` }} aria-hidden="true" />
