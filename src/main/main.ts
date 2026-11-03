@@ -80,7 +80,7 @@ import { savePassword, loadPassword, deletePassword } from './passwords'
 import { registerAIHandlers } from './ai'
 import { registerSimuCoinHandlers } from './simucoin'
 import { restoredBoundsFor, trackWindowState, flushWindowState } from './windowState'
-import { IPC } from '../shared/types'
+import { IPC, gameFamilyFromCode } from '../shared/types'
 import { makeCharacterId } from '../shared/characterId'
 import type {
   AttachCredentials, GameEvent, GameEventBatch, LoginCredentials, LoginResult,
@@ -1191,6 +1191,7 @@ ipcMain.handle(CH.LOGIN, async (event, creds: LoginCredentials): Promise<LoginRe
   // connect resolves — see below.
   s.replayTarget = s.ownerWindowId
   s.holdingForReplay = true
+  s.parser.family = gameFamilyFromCode(creds.game)   // the inline-roomName gate
   s.meta = {
     characterId: makeCharacterId(creds.account, creds.character, creds.game),
     account: creds.account,
@@ -1262,6 +1263,7 @@ ipcMain.handle(CH.LOGIN_ATTACH, async (event, creds: AttachCredentials): Promise
   // subscriber and dropped on the floor.
   s.replayTarget = s.ownerWindowId
   s.holdingForReplay = true
+  s.parser.family = gameFamilyFromCode(creds.game)   // the inline-roomName gate
   s.meta = {
     characterId: makeCharacterId(creds.account, creds.character, creds.game),
     account: creds.account,

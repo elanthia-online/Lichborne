@@ -66,19 +66,24 @@
 //  • In mono mode (`<output class="mono">`) leading/trailing whitespace IS the
 //    layout — don't trim it.
 //  • GS4 support (added on top of the original DR-only build): this tokenizer
-//    is ONE shared instance for both game families, with no family parameter
-//    or per-family config threaded in. DR and GS4 speak the same StormFront/
+//    is ONE shared instance for both game families, with no per-family config
+//    threaded in (one `family` field gates the single ambiguous case below).
+//    DR and GS4 speak the same StormFront/
 //    Wrayth wire grammar and their known-vocabulary tag ids DON'T COLLIDE
 //    (verified against VellumFE's GemStoneIV-XML-Elements.md and cross-checked
 //    against Saga's own DR/GS handling — e.g. `pbarStance`/`mindState`/
 //    `encumlevel` are GS4-only, `concentration`/`conclevel` DR-only), so a
 //    session's wire never sends the other family's ids and both can be
-//    recognized unconditionally. Only content that's genuinely ambiguous
-//    between families (none found yet) would need a real `family` gate here —
-//    don't add one speculatively; extend the recognized-id lists instead, the
-//    same way the progressbar/vitals case does.
+//    recognized unconditionally. Content that's genuinely ambiguous between
+//    families needs a real gate on `family` (set by main from the login's game
+//    code). ONE such case exists: the inline `<style id="roomName"/>[Title]
+//    (uid)` line is GS4's room-title source, and DR sends the same shape on
+//    room displays and Moon Mage Locates — replaying lich-5's DR fixtures
+//    showed the ungated fallback adopting a located room as the player's own.
+//    Don't add gates speculatively; extend the recognized-id lists instead,
+//    the same way the progressbar/vitals case does.
 
-import type { GameEvent, StreamTarget, TextSegment, EffectsDialog, EffectsUpdateEvent } from '../../shared/types'
+import type { GameEvent, StreamTarget, TextSegment, EffectsDialog, EffectsUpdateEvent, GameFamily } from '../../shared/types'
 import { STREAM_ID_ALIASES, normalizeStreamId } from '../../shared/streamAliases'
 import { runSceneCapturers } from './sceneCapturers'
 import { TAG_PATTERN, stripTags } from '../../shared/xmlTag'
@@ -478,6 +483,12 @@ export class StormFrontParser {
   // GS4 accounts' never do. Gates the inline-roomName title fallback in parse()
   // so it only runs for sessions with no other title source.
   private subtitleTitled = false
+
+  // The session's game family, set by main at login/attach from the game code
+  // and kept across reset() (it describes the session, not the wire state).
+  // Undefined = unknown (a harness): the inline-roomName fallback then keeps
+  // its subtitle heuristic.
+  family: GameFamily | undefined = undefined
 
   // A view of ANOTHER room on main (v0.20.5, from ProfanityFE #247–#249): a Moon
   // Mage's Locate prints the located person's room in the same form as a LOOK —
@@ -936,8 +947,11 @@ export class StormFrontParser {
     // Locate's inline roomName has the same `[Name] (uid)` shape,
     // flushSegments() above has already flagged it as another room, and
     // extractAndEmitRoomTitle would clear that flag and adopt the located room
-    // as ours.
-    if (!this.subtitleTitled && line.includes('roomName') && !this.remoteView && this.activeStream === 'main' && this.streamStack.length === 0) {
+    // as ours. Never for a DR session (`family`): before DR's first bracketed
+    // subtitle (a Lich rich-stream session may send none, and reset() on a
+    // reconnect clears subtitleTitled) a Locate isn't yet recognisable as
+    // remote, so the fallback would take the located room as ours.
+    if (this.family !== 'DR' && !this.subtitleTitled && line.includes('roomName') && !this.remoteView && this.activeStream === 'main' && this.streamStack.length === 0) {
       const rm = line.match(/<style id=["']roomName["']\s*\/>([^<]*)/)
       if (rm) this.extractAndEmitRoomTitle(rm[1], true)
     }
