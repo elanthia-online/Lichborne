@@ -75,6 +75,7 @@ import { LichBridge } from './lichbridge'
 import { registerLichSqliteHandlers } from './lichbridge/sqliteReader'
 import { registerSessionLogHandlers, flushAllSessionLogs } from './sessionLog'
 import { recordRawLine, flushRawRecorders, startRawCapture, stopRawCapture, isRawCaptureOn } from './rawRecorder'
+import { profileKey } from '../shared/profileKey'
 import { migrateProfileKeys, pendingProfileKeyRenames, ackProfileKeyRenames } from './profileKeyMigration'
 import { readSharedProfile, writeSharedProfile, readCharacterProfile, writeCharacterProfile, characterProfileExists, takeProfileNotices, listCharacterProfiles, deleteCharacterProfile, archiveCharacterProfile, restoreCharacterProfile, listArchivedProfiles, backupAllProfiles, ensureProfilesDir, ensureExportsDir, getExportsDir } from './profiles'
 import { savePassword, loadPassword, deletePassword } from './passwords'
@@ -257,6 +258,13 @@ function getSession(id: SessionId): Session | undefined {
   return sessions.get(id)
 }
 
+// Capture XML (rawRecorder.ts) is filed by the session's profile key, so two
+// namesakes on different shards never share a file or an on/off switch
+// (DESIGN §56.7.3). A session with no meta yet falls back to its id.
+function rawKey(s: Session): string {
+  return s.meta ? profileKey(s.meta.character, s.meta.game) : String(s.id)
+}
+
 function createSession(): Session {
   const id = crypto.randomUUID()
   const connection = new ConnectionManager()
@@ -363,7 +371,7 @@ function wireSession(s: Session) {
   s.connection.on('line', (line: string) => {
     clearNoReply(s)
     // "Capture XML" (rawRecorder.ts): every received line to Logs/raw while on.
-    recordRawLine(s.meta?.character ?? String(s.id), line)
+    recordRawLine(rawKey(s), line)
     if (s.debugPanelOpen) {
       const payload: RawXmlPayload = { sessionId: s.id, line }
       ownerWindow(s)?.webContents.send(CH.RAW_XML, payload)
@@ -594,7 +602,7 @@ function armNoReply(s: Session) {
 
 function destroySession(id: SessionId) {
   // Capture XML dies with the session, so it can't be left on by accident.
-  { const s = sessions.get(id); if (s) { stopRawCapture(s.meta?.character ?? String(s.id)); clearNoReply(s) } }
+  { const s = sessions.get(id); if (s) { stopRawCapture(rawKey(s)); clearNoReply(s) } }
   const s = sessions.get(id)
   if (!s) return
   // Kill any pending re-attach FIRST: the timer closes over the session and
@@ -1336,14 +1344,14 @@ ipcMain.handle('get-app-version', () => app.getVersion())
   ipcMain.handle(CH.RAW_CAPTURE_SET, (_e, sessionId: SessionId, on: boolean): string | null => {
     const s = getSession(sessionId)
     if (!s) return null
-    const who = s.meta?.character ?? String(s.id)
+    const who = rawKey(s)
     if (on) return startRawCapture(who)
     stopRawCapture(who)
     return null
   })
   ipcMain.handle(CH.RAW_CAPTURE_GET, (_e, sessionId: SessionId): boolean => {
     const s = getSession(sessionId)
-    return !!s && isRawCaptureOn(s.meta?.character ?? String(s.id))
+    return !!s && isRawCaptureOn(rawKey(s))
   })
 
 // The owner window's GameWindow reports the server-canonical character name
@@ -1513,7 +1521,7 @@ ipcMain.on(CH.SEND_COMMAND, (_event, sessionId: SessionId, command: string) => {
   // Capture XML: stamp WHEN a command left for the game (first word only, so a long
   // line or an argument never lands in a file the player may share). Without it a
   // capture cannot tell a slow reply from a late send. No-op unless capture is on.
-  recordRawLine(s.meta?.character ?? String(s.id), `<!-- sent: ${trimmed.split(/\s+/)[0].replace(/[^\w;./#]/g, '').slice(0, 24)} -->`)
+  recordRawLine(rawKey(s), `<!-- sent: ${trimmed.split(/\s+/)[0].replace(/[^\w;./#]/g, '').slice(0, 24)} -->`)
   // A `;` command is Lich's own and may answer nothing; a logout is meant to.
   if (s.connected && trimmed && !trimmed.startsWith(';') && !s.cleanDisconnect) armNoReply(s)
   s.connection.send(command)
