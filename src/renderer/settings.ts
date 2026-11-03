@@ -369,8 +369,10 @@ const COLORBLIND_VARS: Record<string, Partial<ThemeVars>> = {
     // the hue, mixed with the theme's text, holds 4.5:1 against --bg-app,
     // --bg-base and --bg-raised on Dark, Classic Light, Ivory, Mist and
     // Parchment (lowest: danger 4.67 on Parchment's raised background; 65%
-    // fell to 3.5 there). Red and teal stay well apart at 50% (CIE76 ΔE ≈ 55
-    // on every theme, against ≈ 70 at 65%). The -bg/-border/-dim variants are
+    // fell to 3.5 there). Red and teal stay apart at 50%: CIE76 ΔE 49–59 on
+    // every theme except Terminal (≈ 31: its green text pulls both towards
+    // it), for normal colour vision; through a protanopia simulation (Machado
+    // 2009) the gap is 18–26, still clearly two colours. The -bg/-border/-dim variants are
     // left to the theme: they are fills behind text that already carries the
     // meaning.
     '--color-success':   'color-mix(in srgb, #18a8b8 50%, var(--text-primary))',
