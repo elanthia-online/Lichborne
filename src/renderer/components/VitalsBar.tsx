@@ -91,7 +91,10 @@ export default function VitalsBar({ vitals, labels, compact = false, thresholds 
             <div key={id} className="vital-bar"
               title={compact ? `${fullLabel}${v.max > 0 ? `: ${Math.round(pct)}%` : ''}` : undefined}>
               <div className="vital-track">
-                <div className={vitalFillClass(id, pct, thresholds)} style={{ width: `${pct}%` }} />
+                {/* Clamped fill only: GS4 mana can run above its max (558/508,
+                    a mana boost; the game's own bar shows 100), and the text
+                    beside it keeps the true percentage. */}
+                <div className={vitalFillClass(id, pct, thresholds)} style={{ width: `${Math.min(100, pct)}%` }} />
               </div>
               <span className="vital-text">
                 {/* GS4 support: shows the COMPUTED percentage, not raw

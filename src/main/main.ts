@@ -182,6 +182,9 @@ function snapshotKey(evt: GameEvent): string | null {
     // takeover must repaint current Active Spells/Buffs/Debuffs/Cooldowns,
     // not wait for the next server refresh), one snapshot slot per dialog.
     case 'effects-update': return `effects:${evt.dialog}`
+    // GS4's experience and encumbrance readouts — sticky state the same way.
+    case 'gs-experience':  return 'gs-experience'
+    case 'gs-encumbrance': return 'gs-encumbrance'
     // §35: the cast is sticky state — a window taking over the session must
     // repaint the Tableau without waiting for the next room update.
     // scene-arrive/depart stay history events (transient edges; future

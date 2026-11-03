@@ -45,6 +45,8 @@ import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { GameEvent, StreamTextEvent, TextLine, LineStyleHint, RoomState, TextSegment, InjuryState, FireLogEntry, SessionLogRecord, SimuCoinStatus, CreatureStatus, RichStreamMode } from '../../shared/types'
 import { gameFamilyFromCode, type GameFamily } from '../../shared/types'
 import type { EffectsState } from '../gsEffects'
+import type { GsExperienceState } from './panels/GsExperiencePanel'
+import type { GsEncumbranceState } from './panels/EncumbrancePanel'
 import { normalizeStreamId } from '../../shared/streamAliases'
 import { redactForAI } from '../../shared/redact'
 import { TextLineRow } from './TextLineRow'
@@ -658,16 +660,14 @@ const TimerDisplay = memo(function TimerDisplay({ rtExpires, ctExpires, aimExpir
   </>)
 })
 
-// GS4 support: 'exp' (<ExpPanel/>) is DR-only (PANEL_GAMES in PanelFrame.tsx)
-// — defaulting a fresh GS4 character's bottom zone to it would render the DR
-// mindstate-ladder panel with meaningless data, not just an empty one. No
-// GS4-native experience panel exists yet, so GS4 gets the Effects panel
-// (its timed spells/buffs/debuffs/cooldowns — Saga ships its Timers panel
-// visible too) beside Log instead. Module-level (not per-component) so both the initial useState default
+// GS4 support: GS4's bottom zone gets the Effects panel (its timed spells/
+// buffs/debuffs/cooldowns — Saga ships its Timers panel visible too) and the
+// `exp` tab, which on GS4 renders GsExperiencePanel rather than DR's skill
+// ladder (renderPanel), beside Log. Module-level (not per-component) so both the initial useState default
 // and resetLayout()'s "Reset Panels" default read the SAME function and can't
 // drift (pitfall #113's class of bug).
 function defaultBottomTabs(family: GameFamily): TabDef[] {
-  return family === 'GS4' ? [makeTab('effects'), makeTab('log')] : [makeTab('exp'), makeTab('log')]
+  return family === 'GS4' ? [makeTab('effects'), makeTab('exp'), makeTab('encumbrance'), makeTab('log')] : [makeTab('exp'), makeTab('log')]
 }
 function defaultBottomActiveId(family: GameFamily): string {
   return family === 'GS4' ? 'effects' : 'exp'
@@ -1956,6 +1956,8 @@ export default function GameWindow({
   const [streamTitles, setStreamTitles]           = useState<Record<string, string>>({})
   const [injuryState, setInjuryState]             = useState<InjuryState>({})
   const [effectsState, setEffectsState]           = useState<EffectsState>({})
+  const [gsExperience, setGsExperience]           = useState<GsExperienceState | null>(null)
+  const [gsEncumbrance, setGsEncumbrance]         = useState<GsEncumbranceState | null>(null)
 
   // ── Views: per-session accumulators (v0.19.0, DESIGN §47) ─────────────────
   // Placed here so every input above is in scope. The counters run ALWAYS, even
@@ -2044,7 +2046,7 @@ export default function GameWindow({
     // `injuries`, so a feed of it could only ever be empty.
     const skip = new Set([
       'main', 'raw', 'debug', 'room',
-      'map', 'lichscripts', 'injuries', 'effects',
+      'map', 'lichscripts', 'injuries', 'effects', 'encumbrance',
     ])
     const ids: string[] = []
     // Lowercase for the COMPARISON only — the id pushed is the original, because
@@ -2053,9 +2055,10 @@ export default function GameWindow({
     // lowercase set silently matches nothing.
     // panelTypeAvailable: same gate the panel `+` menu uses (Sekmeht's rule
     // above — this list should match what that character's panel menu
-    // offers). Catches 'exp' for GS4: DR's compact mindstate view would
-    // otherwise be offered on a GS4 character's card with meaningless data.
-    for (const t of ALL_PANEL_TYPES) if (!skip.has(t.toLowerCase()) && !t.startsWith('room') && panelTypeAvailable(t, gameFamily)) ids.push(t)
+    // offers). `exp` is the one exception: GS4 has an `exp` tab (it renders
+    // GsExperiencePanel), but a card's compact view of `exp` is DR's skill
+    // ladder, meaningless for GS4, so it stays off a GS4 card.
+    for (const t of ALL_PANEL_TYPES) if (!skip.has(t.toLowerCase()) && !t.startsWith('room') && panelTypeAvailable(t, gameFamily) && !(t === 'exp' && gameFamily === 'GS4')) ids.push(t)
     // Normalize discovered ids through the alias table before listing them, or
     // an alias arrives as its own entry beside the canonical one — two rows
     // pointing at the same feed (`whispers` next to `conversation`).
@@ -3684,6 +3687,16 @@ export default function GameWindow({
           // land in this same batch and only the refill is ever painted.
           case 'effects-update':
             setEffectsState(prev => ({ ...prev, [evt.dialog]: { entries: evt.entries, at: evt.at } }))
+            break
+          // GS4's experience/encumbrance dialogs. A block carries every field
+          // in practice; merging keeps a partial one from blanking the rest.
+          case 'gs-experience': {
+            const { type: _t, ...fields } = evt
+            setGsExperience(prev => ({ ...(prev ?? {}), ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined)) }))
+            break
+          }
+          case 'gs-encumbrance':
+            setGsEncumbrance({ level: evt.level, text: evt.text, description: evt.description })
             break
           // §35 scene events. The cast is sticky state (replay-snapshotted in
           // main) feeding the Experiences; arrive/depart are transient edges
@@ -5887,6 +5900,8 @@ export default function GameWindow({
     streamTitles,
     injuryState,
     effectsState,
+    gsExperience,
+    gsEncumbrance,
     unreadIds: unreadStreams,
     streamTimestamps,
     onToggleTimestamp: toggleStreamTimestamp,

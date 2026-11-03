@@ -269,6 +269,74 @@
 
 .gs-effects-row--indef .gs-effects-time { color: var(--text-muted); cursor: help; }
 
+/* ── GS4 Experience and Encumbrance panels ───────────────────── */
+/* The `exp` tab on GemStone IV and the `encumbrance` panel share these. Same
+   anchoring as the Effects panel (Principle #9), em-sized inside. */
+
+.gsx-panel {
+  padding: 6px 8px;
+  font-size: var(--panel-font-size, var(--game-font-size));
+  line-height: var(--game-line-height);
+  overflow-y: auto;
+  height: 100%;
+}
+
+
+.gsx-waiting { color: var(--text-muted); font-style: italic; cursor: help; }
+
+.gsx-head { display: flex; align-items: baseline; gap: 0.5em; flex-wrap: wrap; margin-bottom: 0.3em; }
+.gsx-level { font-weight: var(--ui-bold-weight); color: var(--text-primary); font-size: 1.1em; }
+.gsx-chip {
+  font-size: 0.8em;
+  line-height: 1;
+  padding: 2px 0.5em;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: color-mix(in srgb, var(--accent) 70%, var(--text-primary));
+  cursor: help;
+}
+
+.gsx-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6em;
+  color: var(--text-secondary);
+}
+.gsx-mind { color: var(--text-primary); }
+.gsx-num { font-variant-numeric: tabular-nums; font-size: 0.9em; }
+
+.gsx-bar {
+  height: 0.45em;
+  border-radius: 999px;
+  margin: 2px 0 0.5em;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-muted) 18%, transparent);
+  --gsx-hue: var(--accent);
+}
+.gsx-bar-fill { display: block; height: 100%; background: var(--gsx-hue); border-radius: inherit; }
+.gsx-bar--level { --gsx-hue: var(--vital-mana-end, var(--accent)); }
+.gsx-enc--ok    .gsx-bar { --gsx-hue: var(--color-success); }
+.gsx-enc--mid   .gsx-bar { --gsx-hue: var(--color-warning); }
+.gsx-enc--heavy .gsx-bar { --gsx-hue: var(--color-danger); }
+
+.gsx-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5em, 1fr));
+  gap: 0.35em 0.8em;
+}
+.gsx-stat { display: flex; flex-direction: column; cursor: help; min-width: 0; }
+.gsx-stat-label {
+  font-size: 0.75em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.gsx-stat-value { font-variant-numeric: tabular-nums; color: var(--text-primary); }
+
+.gsx-caption { color: var(--text-muted); font-size: 0.85em; font-style: italic; }
+
 /* ============================================================
    Room panel
    ============================================================ */

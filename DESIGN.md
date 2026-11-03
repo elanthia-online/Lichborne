@@ -11444,8 +11444,8 @@ Verified against 184 GS4 session captures (2026-10-26 to 10-29, 123,261 effect b
 ### 56.2 The panel
 
 - **One panel, `effects`, GS4-only** (`PANEL_GAMES`), labelled "Effects". The DR `spells` panel is already labelled "Active Spells", and no `percWindow` appeared in the 184 captures.
-- **`spells` is now DR-only** (`PANEL_GAMES`), the reverse of `effects`. It is DR's `percWindow` stream, which none of the 184 GS4 captures carried, so a GS4 character's + menu offered two "Active Spells", one always empty. The fresh-character defaults follow: `defaultMidTabs` and `seedDefaultWindows(family)` leave `spells` out for GS4, and the free-layout seed gives GS4 Effects instead of DR's Experience panel (it had been seeding `exp` for GS4 too). A `spells` tab carried onto GS4 by Profile Transfer points at the Effects panel.
-- **On DR, a placeholder.** Profile Transfer can carry an `effects` tab from a GS4 character to a DR one, so on DR the panel says it is GemStone-only instead of waiting for timers that never come (the mirror of the `exp` guard on GS4).
+- **`spells` is now DR-only** (`PANEL_GAMES`), the reverse of `effects`. It is DR's `percWindow` stream, which none of the 184 GS4 captures carried, so a GS4 character's + menu offered two "Active Spells", one always empty. The fresh-character defaults follow: `defaultMidTabs` and `seedDefaultWindows(family)` leave `spells` out for GS4, and the free-layout seed gives GS4 the same bottom tabs as the static layout (it had been seeding DR's Experience view for GS4 too; §56.4 made `exp` per-family). A `spells` tab carried onto GS4 by Profile Transfer points at the Effects panel.
+- **On DR, a placeholder.** Profile Transfer can carry an `effects` tab from a GS4 character to a DR one, so on DR the panel says it is GemStone-only instead of waiting for timers that never come (the mirror of the `spells` guard on GS4).
 - **Order by severity** (UX #3, ProfanityFE's `DRAW_ORDER`): Debuffs, Cooldowns, Buffs, Active Spells. Each section always renders its header (UX #2), and an empty one is muted with no count (UX #1).
 - **Rows keep the game's order**, so nothing jumps as times change. A fill bar behind each row shows `value`. The time reads h:mm:ss from an hour up and m:ss below (Saga's format). Indefinite shows `∞`, with a tooltip.
 - **The warning:** a Buff or Active Spell with at most 60 s left (ProfanityFE's `WARNING_SECONDS`; Saga's 10 s is too late to recast) and at most 25% of its duration left. The row gets an edge stripe and a bold time in `--color-warning`, and keeps its category fill.
@@ -11455,27 +11455,57 @@ Verified against 184 GS4 session captures (2026-10-26 to 10-29, 123,261 effect b
 - **Category hues:** `--color-danger`, `--color-warning`, `--color-success`, and the mana bar's bright end (`--vital-mana-end`) for spells. `--accent` is gold on the dark theme and read as a warning. Each hue is mixed into transparent.
 - **Colour-blind modes now cover the semantic colours, app-wide.** The deuteranopia and protanopia overlays (`COLORBLIND_VARS` in settings.ts) remapped specific surfaces, such as the health bar, indicators, exits and the Spell Monitor bands, but never `--color-success` or `--color-danger`, which ~250 style rules use. Success now becomes teal under both, and protanopia also lightens danger, the Spell Monitor's own choices (§34.7). Each is mixed at 65% with the THEME's `--text-primary` rather than set as a fixed hex, because the overlay sits on light and dark themes alike: 65% holds 4.5:1 on Dark, Classic Light and Ivory, where the band's 80% fell to 3.2–3.9. The `-bg`/`-border`/`-dim` variants are left to the theme; they are fills behind text that already carries the meaning. Tritanopia is unchanged, since red/green/amber separate for it.
 - **The countdown runs locally** from `EffectsUpdateEvent.at`, the epoch ms when main parsed the block. Main stamps it, not the renderer, so a takeover replay counts from when the game sent the block. The 1 s tick lives inside the panel and runs only while some row still counts down. A tick in GameWindow would re-render the whole character every second (B172).
-- **Default layout:** a fresh GS4 character's bottom zone is Effects + Log (`defaultBottomTabs`). Saga also ships its timers panel visible.
+- **Default layout:** a fresh GS4 character's bottom zone starts with Effects (`defaultBottomTabs`; the full set is in §56.4). Saga also ships its timers panel visible.
 - **Slash commands:** no new noun. `/panel open effects` covers it, and `getOpenableStreams` now applies the same family gate as the + menu, so `/panel open exp` can't open DR's Experience panel on GS4 (Principle #11).
 
 ### 56.3 GS4 configuration fixes (the parity audit)
 
 Found by replaying the 184 GS4 captures through the parser and checking each stream and dialog against what the renderer does with it:
 
-- **`speech` → Conversation** (`STREAM_ID_ALIASES`). GS4's speech window is DR's `talk`: every line is also sent to main (30 of 30), so it takes the B136 rule of an alias with no main fallback. Before this, a GS4 Conversation panel stayed empty. No DR source pushes `speech`.
-- **`loot` falls back to main.** GS4's SEARCH results arrive only in `loot`, an append-only log (0 of 609 lines reached main), so with no panel open a SEARCH printed nothing.
+- **`speech` → Conversation** (`STREAM_ID_ALIASES`). GS4's speech window is DR's `talk`: every line is also sent to main (30 of 30), so it takes the B136 rule of an alias with no main fallback. Before this, a GS4 Conversation panel stayed empty. The game never pushes `speech` on DR; a Lich script's `stream_window(…, "speech")` now reaches Conversation too. No saved profile on the test machine had a `speech` tab or rule scope, so nothing needed migrating.
+- **`loot` falls back to main.** GS4's SEARCH results arrive only in `loot`, an append-only log (0 of 609 lines reached main), so with no panel open a SEARCH printed nothing. DR is unaffected in practice: lich-5's `Messaging.stream_window` only pushes `loot` for GemStone, and sends DR script text to main directly.
 - **`bounty` and `society` have no fallback, by the `group` rule.** Both are state windows, a `<clearStream>` followed by the whole task, repainted after every kill or sale (up to 30 times a session), while the progress line itself goes to main. A fresh GS4 character gets a Bounties tab instead (`defaultMidTabs`, `seedDefaultWindows`).
 - **`Spells` stays discoverable on GS4.** Discovery drops an id whose lowercase matches a builtin type, and `Spells` matches DR's `spells`. The drop now applies only where that type is available, so GS4's declared Spells window can still be found. No capture has pushed text to it yet.
 - **The rich-stream declaration is DR-only** (`ConnectionManager`, both connect paths). GemStone's `adapt_for_frontend` is a no-op in lich-5 (`games.rb`), so the line did nothing on GS4 except print "Connected via Lich, with DragonRealms' rich stream". `/richstream` on a GS4 character now says the setting is DR-only.
 - **DR-only Experiences are gated.** `ExperienceDef.games`: Moons (DR's sky) and Spell Monitor (DR's `percWindow`) are `['DR']`, so they are left out of a GS4 character's shelf and + menu. An instance carried over by Profile Transfer shows a one-line placeholder. The Tableau reads room components, which GS4 sends too, so it stays.
 
-### 56.4 Not built
+### 56.4 GS4 Experience and Encumbrance panels
 
-- **Skipped on purpose:**
-  - ProfanityFE's script-pushed `ProfanityCustom` timers.
-  - Saga's tracked/"missing" spells and its per-effect colour rules.
-- **Still open from the PR:** the rest of the GS4-native UI (Spellbook, Combat HUD, PSM tracker, an Infomon-style tab).
-- **References:**
-  - ProfanityFE `lib/effect_tracker.rb` and `lib/windows/effects_window.rb`.
-  - Saga 0.7.10 `EffectSectionBody` / `CombinedTimersBody` / `EffectList`.
-  - warlock3 draws these dialogs generically from the server's own layout, with the server's static `18s` labels and no local countdown.
+- **The `exp` tab works in both games.** On GS4 it renders [GsExperiencePanel.tsx](src/renderer/components/panels/GsExperiencePanel.tsx) in place of DR's skill ladder, so `/panel open exp` and a transferred layout work in either game. `exp` left `PANEL_GAMES`. The one place it stays DR-only is a Views card, whose compact `exp` view is DR's ladder.
+- **Encumbrance is its own GS4-only panel** (`encumbrance`, [EncumbrancePanel.tsx](src/renderer/components/panels/EncumbrancePanel.tsx)), as in Saga, showing the load name, its 0–100 bar and the game's description line. A fresh GS4 layout's bottom zone is Effects, Experience, Encumbrance and Log.
+- **The wire.** The parser gathers each `expr` / `encum` `<dialogData>` and emits one `gs-experience` / `gs-encumbrance` event at its close. Both are replay-sticky in main, and `reset()` clears them. The `mindstate` / `encumbrance` vital-updates that trigger variables read are unchanged.
+  - Attributes seen in all 184 captures: `mindState`'s `field_exp`, `max_field_exp`, `exp`, `ascension_exp` and `until_next`.
+  - Only while active: `rpa` (1.5, 2 or 3) and `lumnis` (stage 2–5).
+  - Also read: the `yourLvl` label and `nextLvlPB`'s percent, plus `encum`'s `encumlevel` and its `encumblurb` label.
+  - **Training points come in a separate `expr` block, sent once at login** (`PTPs`, `MTPs`, `p2m`, `m2p`, `ATPs` labels; lich-5's `spec/fixtures/streams/gs_saga_login.xml`). Steady-state pulses never resend them, so the renderer MERGES expr events. A third login block holds only two command links (Details, Skill Goals) and emits nothing.
+  - These labels no longer land in the `unknown` events.
+- **What the panel shows** (read from Saga 0.10.7, keeping only what the captures carry):
+  - the level, with RPA and Lumnis chips only while active
+  - the mind bar, from field experience
+  - experience to the next level, or to the next training point at 100+ (Saga's TP↑)
+  - Experience, Ascension, and Total (Experience plus Ascension, the Total Exp line of EXP)
+  - PTPs, MTPs and ATPs, with the conversions in the tooltips
+- **Not drawn:** Fash'lo'nae's Tutelage, which appears in neither the captures nor lich-5's fixtures. Saga's session and last-pulse gains, which Saga hides by default and which a window takeover would reset.
+- **Unverified:** the below-100 level bar and the "of cap" figure follow Saga's code. Every capture is one level-100 character, about 8× past the 7,572,500 cap, so the figure is shown only under 100%, where it measures progress.
+- **Vitals:** GS4 mana can exceed its max (6 of 1,222 readings, e.g. 558/508). The text keeps the true percentage and the bar's fill is clamped to its track.
+
+### 56.5 GS4 parity: not built yet
+
+From a census of the GS4 captures, largest first:
+
+- **Quickbar and combat dialogs**: `cmdButton`, `dropDownBox`, `switchQuickBar` and `menuLink` in the `quick*` and `combat` dialogs, about 37k elements in a 16-file sample and most of what is left as `unknown`. These are Saga's Hotbar and Combat board, command buttons the server lays out. This is the largest remaining gap.
+- **`<roommeta>`** (weather, climate, terrain, sanctuary, realm, bonfire), one per room. Saga draws terrain and environment icons from it.
+- **Objectives / world events** (`<objectives>`, `<task>`, 17 in the sample). Saga has an Objectives panel.
+- **Spellbook:** the `Spells` window is declared and cleared at login but never filled in the captures, so there is no data to design against yet.
+- **PSM tracker** (CMan, shield, weapon and armor techniques, feats): nothing on the wire in the captures; it would come from Lich/infomon rather than the game stream.
+- **`ifClosedStyle="watching"`.** Lich marks script stream pushes this way (show in main when that window is closed). Lichborne decides main fallbacks from its own `STREAM_FALLBACK` table instead; honouring the attribute would cover script streams generally.
+
+**Still skipped on purpose:**
+- ProfanityFE's script-pushed `ProfanityCustom` timers.
+- Saga's tracked/"missing" spells and its per-effect colour rules.
+
+**References:**
+- ProfanityFE: `lib/effect_tracker.rb`, `lib/windows/effects_window.rb`.
+- Saga 0.7.10, readable: `EffectSectionBody` / `CombinedTimersBody` / `EffectList`, `ExperiencePanel`, `EncumbranceBody`.
+- Saga 0.10.7, minified: the `expr` / `encum` parse, plus the Experience rows (Total, Capped, Session, Pulse, Tutelage).
+- warlock3: draws these dialogs generically from the server's layout.
