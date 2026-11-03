@@ -3365,7 +3365,7 @@ Defined in `package.json` under the `"build"` key:
 | `productName` | `Lichborne` |
 | `win.target` | `nsis` (x64) — the table said `portable` until v0.19.2, stale since the NSIS switch; linux `AppImage` (x64) and mac `dmg`+`zip` (arm64) joined in v0.18.0 |
 | `publish.provider` | `github` |
-| `publish.owner` | `SekmehtDR` |
+| `publish.owner` | `elanthia-online` (was `SekmehtDR` until the Phase-3 cut-over, §18.4.1) |
 | `publish.repo` | `Lichborne` |
 | Output dir | `release/` (gitignored) |
 
@@ -3437,9 +3437,9 @@ The repository was **transferred** (GitHub "Transfer ownership", not a fork; don
 2. **Phase 2 (transfer day):** transfer the repo on GitHub. Releases/issues/stars move; redirects arm. No release needed that day. Do NOT pre-create the org repo (a partial repo with some releases would answer the check with stale data — the transfer moves everything atomically).
 3. **Phase 3 (first org release):** flip the hardcoded owner strings (checklist below), cut the release from the org via Actions. Dual-feed installs get it from the new feed; older installs via the redirect.
 
-**Phase-3 cut-over checklist (every hardcoded `SekmehtDR`):** `package.json` `build.publish.owner` · `build/app-update.yml` `owner` · `publish.mjs` `owner` · the local-run fallback literals in `.github/scripts/release-prepare.mjs` + `release-verify.mjs` (the Actions path self-corrects via `GITHUB_REPOSITORY`) · main.ts Help-menu links (GitHub Repository / Report a Bug) · ~~`credits.ts` `REPO_URL` + `AI_NOTICE_URL` · `AboutModal.tsx` displayed link text~~ (done early in v0.20.4 at Sekmeht's ask; Help → About now points at `elanthia-online/Lichborne`) · ~~README (3 links) · Lichborne-User-Guide (2 links)~~ (done with the GS4 stack's docs PR, #12) · this file's §18.2 table · release-notes.md. Keep `UPDATE_FEEDS` itself unchanged — it already names both homes, and the legacy entry stays as belt-and-braces.
+**Phase-3 cut-over checklist (every hardcoded `SekmehtDR`; all done):** ~~`package.json` `build.publish.owner` · `build/app-update.yml` `owner` · `publish.mjs` `owner` · the local-run fallback literals in `.github/scripts/release-prepare.mjs` + `release-verify.mjs` (the Actions path self-corrects via `GITHUB_REPOSITORY`) · main.ts Help-menu links (GitHub Repository / Report a Bug) · this file's §18.2 table~~ (done in the GS4 stack's cut-over PR) · ~~`credits.ts` `REPO_URL` + `AI_NOTICE_URL` · `AboutModal.tsx` displayed link text~~ (done early in v0.20.4 at Sekmeht's ask; Help → About now points at `elanthia-online/Lichborne`) · ~~README (3 links) · Lichborne-User-Guide (2 links)~~ (done with the GS4 stack's docs PR, #12) · release-notes.md (it has no repo link). Keep `UPDATE_FEEDS` itself unchanged — it already names both homes, and the legacy entry stays as belt-and-braces.
 
-**Org-side pre-flight for Phase 3:** the release workflow's `GITHUB_TOKEN` must be able to create releases — check org **Settings → Actions → Workflow permissions** is "Read and write" (many orgs default to read-only, which 403s the draft pre-create in `release-prepare.mjs`).
+**Org-side pre-flight for Phase 3:** the release workflow's `GITHUB_TOKEN` must be able to create releases — check org **Settings → Actions → Workflow permissions** is "Read and write" (many orgs default to read-only, which 403s the draft pre-create in `release-prepare.mjs`). (Checked at the cut-over: the repo's default is read-only, but `release.yml` declares `permissions: contents: write` itself, which overrides the default, so it needs no change unless that line is removed.)
 
 ### 18.5 Version Display
 

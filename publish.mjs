@@ -9,7 +9,7 @@ import { execSync } from 'child_process'
 const pkg = JSON.parse(readFileSync('package.json', 'utf-8'))
 const version = pkg.version
 const tag = `v${version}`
-const owner = 'SekmehtDR'
+const owner = 'elanthia-online'
 const repo = 'Lichborne'
 
 const token = process.env.GH_TOKEN
