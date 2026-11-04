@@ -16,7 +16,7 @@ import { newHighlight, type HighlightRule, HIGHLIGHT_EFFECTS, effectiveEffect } 
 import { CMD_HISTORY_MIN_MAX } from './commandHistorySettings'
 import { richStreamSettingText, type ResolvedLichInstall } from './lichSettings'
 import type { RichStreamMode } from '../shared/types'
-import type { CompassOptions } from './settings'
+import type { CompassOptions, VitalsText } from './settings'
 import { newMute, type MuteRule } from './mutes'
 import { newSubstitute, type SubstituteRule } from './substitutes'
 import { newContact, newTemplate, formatLastSeen, DR_GUILDS, type Contact, type ContactTemplate, findContactByName } from './contacts'
@@ -50,6 +50,10 @@ export interface SlashContext {
   applyTriggers: (rules: TriggerRule[]) => void
   getMainTimestamps: () => boolean
   /** v0.20.1 — the floating compass options (per character). */
+  /** The vitals bar's text mode, and whether this game sends real numbers
+   *  (GemStone IV) rather than percentages (DR). */
+  getVitalsText: () => { text: VitalsText; hasValues: boolean }
+  setVitalsText: (text: VitalsText) => void
   getCompass: () => CompassOptions
   setCompass: (patch: Partial<CompassOptions>) => void
   /** App-wide command-history minimum length (F82). Read/write via the ctx so
@@ -279,6 +283,26 @@ const COMPASS_CORNER_WORDS: Record<string, CompassOptions['compassCorner']> = {
 }
 
 /** The bare /compass report — one line, every option. */
+// /vitals text's words → the setting. Wrayth's terms and the obvious synonyms.
+const VITALS_TEXT_WORDS: Record<string, VitalsText> = {
+  percent: 'percent', percentage: 'percent', pct: 'percent',
+  numbers: 'values', values: 'values', numeric: 'values',
+  name: 'label', label: 'label', none: 'label', off: 'label',
+}
+const VITALS_TEXT_DESC: Record<VitalsText, string> = {
+  percent: 'a percentage (Health 87%)',
+  values: "the game's numbers (Health 310/355)",
+  label: 'the name only (Health); hover a bar for its numbers',
+}
+
+function vitalsTextSummary(s: { text: VitalsText; hasValues: boolean }, justSet?: VitalsText): string {
+  const head = `${justSet ? 'Vitals bars now show' : 'Vitals bars show'} ${VITALS_TEXT_DESC[s.text]}.`
+  const note = s.text === 'values' && !s.hasValues
+    ? ' DragonRealms sends percentages, so this character\'s bars keep them.'
+    : ''
+  return `${head}${note} Change it with /vitals text percent|numbers|name, or Settings → Layout → Vitals bar text.`
+}
+
 function compassSummary(c: CompassOptions): string {
   if (!c.compassVisible) return 'Compass: hidden. /compass on shows it.'
   return `Compass: ${c.compassSize}, ${c.compassCorner.replace('-', ' ')} corner, `
@@ -1263,6 +1287,32 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
       const next = want ? want === 'on' : !cur
       if (next !== cur) ctx.toggleMainTimestamps()
       return ok(`Main-window timestamps ${next ? 'ON' : 'OFF'}.`)
+    },
+  },
+
+  // ── /vitals (GS4 stack) ────────────────────────────────────────────────
+  // The vitals bar's text, as Wrayth offers it: percentage, the game's own
+  // numbers (GemStone IV), or the name only. Bare reports; `text` sets it.
+  // Settings → Layout → Vitals bar text is the same per-character setting.
+  {
+    noun: 'vitals', nounAliases: [], verb: '',
+    args: [], options: [], flags: [],
+    description: 'Show what the vitals bars display beside each name',
+    example: '/vitals',
+    run: (ctx) => ok(vitalsTextSummary(ctx.getVitalsText())),
+  },
+  {
+    noun: 'vitals', nounAliases: [], verb: 'text',
+    args: [{ name: 'percent|numbers|name', required: true, kind: 'word', hint: 'percent is the default; numbers is GemStone IV only' }],
+    options: [], flags: [],
+    description: 'Show a percentage, the game\'s numbers (GemStone IV), or just the name on each vitals bar',
+    example: '/vitals text numbers',
+    run: (ctx, p) => {
+      const raw = String(p.args[0] ?? '').toLowerCase()
+      const v = VITALS_TEXT_WORDS[raw]
+      if (!v) return err(`/vitals text takes percent, numbers or name — not "${raw}".`)
+      ctx.setVitalsText(v)
+      return ok(vitalsTextSummary(ctx.getVitalsText(), v))
     },
   },
 

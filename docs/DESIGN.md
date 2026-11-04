@@ -11730,3 +11730,18 @@ Planned in PR #7 and built in the order at the end (§56.7.4): the filter in #7,
 - The swapped-pair variants not hit above (#8): the default install's editor warning, and the refusal for a character's own install or an inherited Ruby. They are covered by rendering the real components and by probes of the real resolver and hint.
 - The old-name map held in every window (#10). It only matters on a full localStorage, and was checked with two instances of the real modules.
 - The first release from the org has its own checks (#13).
+
+### 56.8 Vitals bar text: percentage, numbers or name only
+
+GemStone IV sends real numbers for its vitals (`310/355`), where DragonRealms sends a percentage. The vitals bar always showed a percentage. Wrayth lets the player pick, so Lichborne does too: **Settings → Layout → Vitals bar text** (`AppSettings.vitalsText`, per character).
+
+- **`percent`** (the default, so no existing look changes): `Health 87%`.
+- **`values`**: the game's numbers, `Health 310/355`. GemStone IV only. A DR character's vitals are already percentages (max 100), so its bars keep the percent rather than showing a meaningless `87/100`. `VitalsBar` takes `hasValues`, which GameWindow sets from the session's family.
+- **`label`**: the name only, `Health`; the fill carries the level.
+
+Compact mode applies to all three (`H: 87%`, `H: 310/355`, `H`). The tooltip gives the full reading (name, percent and, on GS4, the numbers) whenever the bar leaves any of it out. A GS4 mana above its max reads `558/508` (110%), with the fill clamped as before; a negative reading keeps its sign.
+
+The Overview cards keep their own compact percentage display; their options are `/view set`'s.
+
+**Slash command (Principle #11):** `/vitals` reports the setting, and `/vitals text percent|numbers|name` sets it. Synonyms are accepted: `percentage`, `values`, `label`, `none`.
+

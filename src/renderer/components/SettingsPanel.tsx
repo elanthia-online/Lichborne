@@ -638,6 +638,7 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
 
   const vVitalsPos     = vis('Layout', 'Vitals bar position')
   const vCompactVitals = vis('Layout', 'Compact vitals')
+  const vVitalsText    = vis('Layout', 'Vitals bar text', 'percent', 'percentage', 'numbers', 'values', 'wrayth', 'health')
   const vCompactExp    = vis('Layout', 'Compact experience panel')
   const vIconBarPos    = vis('Layout', 'Icon bar position', 'status bar', 'compass')
   // B336: the label spells out roundtime / cast time; the old "RT / CT" stays
@@ -650,7 +651,7 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
   // The look/click rows only render while the compass is shown, so they only
   // count toward the section then — or a search for "opacity" with the compass
   // hidden would show a Layout header with nothing under it.
-  const secLayout      = vVitalsPos || vCompactVitals || vCompactExp || vIconBarPos || vTimerStyle
+  const secLayout      = vVitalsPos || vCompactVitals || vVitalsText || vCompactExp || vIconBarPos || vTimerStyle
                       || vCompassShow || ((vCompassLook || vCompassClick) && settings.compassVisible)
 
   // Views (v0.19.0). App-wide, like Session Log / AI / SimuCoins — the Overview
@@ -1058,6 +1059,17 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
             description="Slimmer half-height bars with short labels (H: 100%) — frees up ~half a line of game text"
             checked={settings.compactVitals}
             onChange={v => set('compactVitals', v)}
+          />}
+
+          {vVitalsText && <RadioGroup
+            label="Vitals bar text"
+            value={settings.vitalsText}
+            onChange={v => set('vitalsText', v)}
+            options={[
+              { value: 'percent', label: 'Percentage', description: 'Health 87%' },
+              { value: 'values',  label: 'Numbers',    description: 'Health 310/355 — GemStone IV only; DragonRealms sends percentages, so its bars keep them' },
+              { value: 'label',   label: 'Name only',  description: 'Health — the bar shows the level; hover it for the numbers' },
+            ]}
           />}
 
           {vCompactExp && <Toggle

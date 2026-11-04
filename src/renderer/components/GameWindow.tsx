@@ -5399,6 +5399,13 @@ export default function GameWindow({
       applyTriggers: rules => { saveTriggers(profile, rules); setTriggers(rules); saveProfile() },
       getMainTimestamps: () => !!streamTimestamps['main'],
       // v0.20.1 — per character, the Settings panel's own save path.
+      getVitalsText: () => ({ text: settings.vitalsText, hasValues: gameFamily === 'GS4' }),
+      setVitalsText: text => {
+        const next = { ...settings, vitalsText: text }
+        setSettings(next)
+        saveSettings(profile, next)
+        scheduleProfileSave(session.account, profile, session.game, session.useLich)
+      },
       getCompass: () => settings,
       setCompass: patch => {
         const next = { ...settings, ...patch }
@@ -6490,7 +6497,7 @@ export default function GameWindow({
           />
         )
       }
-      case 'vitals': return <VitalsBar vitals={vitals} labels={vitalLabels} compact={settings.compactVitals} />
+      case 'vitals': return <VitalsBar vitals={vitals} labels={vitalLabels} compact={settings.compactVitals} text={settings.vitalsText} hasValues={gameFamily === 'GS4'} />
       case 'icon':   return (
         <IconBar stance={stance} spell={spell}
                  indicators={indicators} rightHand={rightHand} leftHand={leftHand}
@@ -6864,7 +6871,7 @@ export default function GameWindow({
       {/* Free Layout (§33) replaces the skeleton: in free mode the chrome
           strips / zones / right column / main text / command are ALL floating
           windows (renderFreeContent), so the central column renders nothing. */}
-      {layoutMode === 'panels' && settings.vitalsBarPosition === 'top' && <VitalsBar vitals={vitals} labels={vitalLabels} compact={settings.compactVitals} />}
+      {layoutMode === 'panels' && settings.vitalsBarPosition === 'top' && <VitalsBar vitals={vitals} labels={vitalLabels} compact={settings.compactVitals} text={settings.vitalsText} hasValues={gameFamily === 'GS4'} />}
       {layoutMode === 'panels' && settings.iconBarPosition === 'top' && (
         <IconBar stance={stance} spell={spell}
                  indicators={indicators} rightHand={rightHand} leftHand={leftHand}
@@ -6893,7 +6900,7 @@ export default function GameWindow({
           {/* Free mode: the main text is its own window (§33 2b-ii); the
               central column renders it only in panels mode. */}
           {layoutMode === 'panels' && textAreaNode}
-          {layoutMode === 'panels' && settings.vitalsBarPosition === 'bottom' && <VitalsBar vitals={vitals} labels={vitalLabels} compact={settings.compactVitals} />}
+          {layoutMode === 'panels' && settings.vitalsBarPosition === 'bottom' && <VitalsBar vitals={vitals} labels={vitalLabels} compact={settings.compactVitals} text={settings.vitalsText} hasValues={gameFamily === 'GS4'} />}
           {/* In free mode the command bar is its own floating window (§33 2b);
               the central column renders it only in panels mode. */}
           {layoutMode === 'panels' && commandBarNode}
