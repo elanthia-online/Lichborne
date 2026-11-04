@@ -1,10 +1,10 @@
 # Lichborne
 
-A DragonRealms client for people who've spent years in StormFront, Genie, or Frostbite — and have opinions about all three.
+A DragonRealms and GemStone IV client for people who've spent years in Wrayth, Genie, or Frostbite — and have opinions about all three.
 
 It connects through [Lich5](https://github.com/elanthia-online/lich-5) (recommended) or straight to the game server, and it's free.
 
-**[Download the latest release →](https://github.com/SekmehtDR/Lichborne/releases/latest)** · Windows · Linux (beta) · macOS (beta)
+**[Download the latest release →](https://github.com/elanthia-online/Lichborne/releases/latest)** · Windows · Linux (beta) · macOS (beta)
 
 <!-- A screenshot belongs here — a client is a visual product, and one image of a
      real layout says more than any paragraph below. Ideally a populated window:
@@ -15,6 +15,8 @@ It connects through [Lich5](https://github.com/elanthia-online/lich-5) (recommen
 ## What it is
 
 A front-end for DragonRealms: the window you actually play in. It renders the game, gives you somewhere to put your streams, and remembers how you like things.
+
+It plays GemStone IV too (Prime and Shattered), with panels of its own for effects, encumbrance and creatures. A few views are still DragonRealms-only; the [User Guide](docs/Lichborne-User-Guide.md#dragonrealms-and-gemstone-iv) lists which.
 
 It isn't a replacement for Lich — Lich still owns your scripts, maps, and automation. Lichborne is the display and configuration layer on top, and it makes what Lich already knows visible. You can also play without Lich entirely; you'll just be doing more by hand.
 
@@ -28,8 +30,8 @@ It isn't a replacement for Lich — Lich still owns your scripts, maps, and auto
 - **Every character in one window.** Tabs, `Ctrl+Tab` to switch, and Quick Send to fire a command at another character without leaving the one you're on. Pop any character into its own window and it all still works.
 - **See every character at once.** DragonRealms is one character per account, so multi-boxing means tabbing around to find out who needs you. Switch to **Overview** and every character in the window becomes a live card — vitals, what's wrong, the room, and a feed of their game text — with an input bar to type at one of them or all of them. Switch back and nothing has moved.
 - **Panels that float or dock.** Keep the tidy docked layout, or switch to Windowed Panels and drag everything where you want it — windows snap to each other, then lock so nothing moves by accident.
-- **Your session can outlive the client.** Start Lich headless and Lichborne will *attach* to that already-logged-in session, so closing the window doesn't log you out — reopen later, recover from a crash, or pick the same character up from another machine. ([how](Lichborne-User-Guide.md#3b-or-attach-to-a-lich-thats-already-running))
-- **Ready for DragonRealms' rich stream.** With Lich 5.23 or later, Lichborne can read the newer game stream the Saga client uses (on by default; switch back in Lich Setup → Game stream). Click a creature, an item or a player in game text to look at it, face it or pick it up, aimed at exactly that one even among identical creatures. ([more](Lichborne-User-Guide.md#the-game-stream-rich-or-legacy))
+- **Your session can outlive the client.** Start Lich headless and Lichborne will *attach* to that already-logged-in session, so closing the window doesn't log you out — reopen later, recover from a crash, or pick the same character up from another machine. ([how](docs/Lichborne-User-Guide.md#3b-or-attach-to-a-lich-thats-already-running))
+- **Ready for DragonRealms' rich stream.** With Lich 5.23 or later, Lichborne can read the newer game stream the Saga client uses (on by default; switch back in Lich Setup → Game stream). Click a creature, an item or a player in game text to look at it, face it or pick it up, aimed at exactly that one even among identical creatures. ([more](docs/Lichborne-User-Guide.md#the-game-stream-rich-or-legacy))
 - **Bring your old config with you.** The import wizard reads Genie, Frostbite, and Wrayth configs: highlights with their colours, macros, name lists, gags, substitutions, and colour presets. It shows you exactly what it will import before it does.
 - **Graphical Experiences.** Optional views that float over your layout — or dock into a panel: a Living Tableau that draws the room and everyone in it, and turns into a battlefield when you fight (right-click someone to say or whisper to them), a Moons view that puts Elanthia's sky — phases, weather, sunrise — in front of you, and a Spell Monitor showing everything currently on you as live countdowns. All beta, and all cost nothing until you open them.
 - **Configure it without a mouse.** Type `/` in the command bar and a palette lists every client command. `/highlight add "goblin" red` while you're hunting, `/mute add "swirling fog"` when the spam starts, `/help` when you forget.
@@ -39,7 +41,7 @@ It isn't a replacement for Lich — Lich still owns your scripts, maps, and auto
 
 ## What you get out of it
 
-If you've spent years tuning Genie highlights or rebuilding a StormFront layout after a reinstall, the thing you get here is **not losing that work again**. Your configuration is a folder of readable files that you own.
+If you've spent years tuning Genie highlights or rebuilding a Wrayth layout after a reinstall, the thing you get here is **not losing that work again**. Your configuration is a folder of readable files that you own.
 
 If you run several characters, they live in one app that knows about all of them — one place to look, one set of settings, one click to bring the whole team back online, and a heads-up in whatever window you're looking at when one of them drops.
 
@@ -49,7 +51,7 @@ And if you already run Lich, Lichborne sits alongside it. Same install, same pat
 
 ## Getting started
 
-**1. Download and install.** Grab the [latest release](https://github.com/SekmehtDR/Lichborne/releases/latest).
+**1. Download and install.** Grab the [latest release](https://github.com/elanthia-online/Lichborne/releases/latest).
 
 - **Windows** — run the installer. SmartScreen may warn you (the app isn't code-signed yet): **More info → Run anyway**.
 - **Linux** — download `Lichborne.AppImage`, `chmod +x` it, run it. On Ubuntu 22.04 or newer you may need FUSE 2 first: `sudo apt install libfuse2t64` (24.04) or `libfuse2` (22.04). If you have an older download with a version number in its name, rename it once to `Lichborne.AppImage` so updates keep the same name.
@@ -57,7 +59,7 @@ And if you already run Lich, Lichborne sits alongside it. Same install, same pat
 
 **2. Set up Lich (recommended).** If you already run [Lich5](https://github.com/elanthia-online/lich-5), point Lichborne at it: **⚙ Lich Setup → Auto-detect**. On macOS and Linux you'll need Ruby 4 installed too. Skipping this is fine — pick **Direct** on a character tile and you'll connect straight to the game without Lich's features.
 
-**3. Add your account.** Click **+ Add account** and sign in. Lichborne finds your characters and makes a tile for each one. You do this once per account.
+**3. Add your account.** Click **+ Add account**, sign in and pick your game. Lichborne finds your characters and makes a tile for each one. You do this once per account, for each game you play on it.
 
 **4. Connect and arrange.** Click a character, then open **Layout** to place your panels. Whatever you change is saved for that character automatically.
 
@@ -95,9 +97,9 @@ Worth knowing before you install:
 
 ## Documentation
 
-- **[User Guide](Lichborne-User-Guide.md)** — the full tour: every feature, what it does, and how to set it up.
+- **[User Guide](docs/Lichborne-User-Guide.md)** — the full tour: every feature, what it does, and how to set it up.
 - **[AI Notice](AINOTICE.md)** — what the AI features send, what's scrubbed, and where your key lives.
-- **[Knowledge](Knowledge.md)** — verified notes on how Lich and DragonRealms actually behave.
+- **[Knowledge](docs/Knowledge.md)** — verified notes on how Lich and DragonRealms actually behave.
 
 ---
 
@@ -117,14 +119,14 @@ Thanks also to [Thires](https://github.com/Thires/SimuCoins), whose Genie SimuCo
 
 ## Building from source
 
-Most people want the [releases page](https://github.com/SekmehtDR/Lichborne/releases/latest), not this section.
+Most people want the [releases page](https://github.com/elanthia-online/Lichborne/releases/latest), not this section.
 
 ```bash
 npm install
 npm start
 ```
 
-Needs Node 24+. Build commands, project layout, conventions, and the release pipeline are documented in [CLAUDE.md](CLAUDE.md) and [DESIGN.md](DESIGN.md) — and every source file opens with a comment block saying what it is, where it sits in the pipeline, and what not to break, so the code itself is a reasonable place to start reading.
+Needs Node 24+. Build commands, project layout, conventions, and the release pipeline are documented in [CLAUDE.md](CLAUDE.md) and [DESIGN.md](docs/DESIGN.md) — and every source file opens with a comment block saying what it is, where it sits in the pipeline, and what not to break, so the code itself is a reasonable place to start reading.
 
 ---
 
@@ -132,4 +134,4 @@ Needs Node 24+. Build commands, project layout, conventions, and the release pip
 
 Lichborne is open source under the [BSD 3-Clause License](LICENSE) — the same license as [Lich](https://github.com/elanthia-online/lich-5) itself. Copyright © 2026 Sekmeht and Binu.
 
-DragonRealms and StormFront are trademarks or registered trademarks of Simutronics Corp. Lichborne is an independent, unofficial community project — not affiliated with, sponsored by, or endorsed by Simutronics. Playing DragonRealms through Lichborne requires your own Simutronics account and is subject to Simutronics' terms of service.
+DragonRealms, GemStone IV and Wrayth (formerly StormFront) are trademarks or registered trademarks of Simutronics Corp. Lichborne is an independent, unofficial community project — not affiliated with, sponsored by, or endorsed by Simutronics. Playing through Lichborne requires your own Simutronics account and is subject to Simutronics' terms of service.

@@ -1,4 +1,4 @@
-// xmlTag — where a StormFront tag ENDS (v0.20.5, from ProfanityFE #100).
+// xmlTag — where a Wrayth tag ENDS (v0.20.5, from ProfanityFE #100).
 //
 // A tag ends at the first `>` OUTSIDE a quoted attribute value, so
 // `<d cmd="look >here">` stays one tag instead of leaking `here">` into the game

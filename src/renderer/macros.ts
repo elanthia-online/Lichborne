@@ -210,7 +210,7 @@ export function interpolate(template: string, vars: Record<string, string>): str
 
 // ── Cursor marker (B137, v0.8.10) ─────────────────────────────────────────────
 // `@` in a macro command is the cursor-position marker (matches Genie's
-// FormMain.cs:1140 behavior and Wrayth's convention — both Stormfront-family
+// FormMain.cs:1140 behavior and Wrayth's convention — both
 // clients use `@` for the same purpose). When a macro command contains an
 // unescaped `@`:
 //   1. The macro fires "type-and-wait" mode instead of "send" mode
@@ -369,7 +369,7 @@ export const MACRO_VARS: { name: string; desc: string }[] = [
 // like `cast spell ; {RepeatLast}` is sent literally — keeps the parser
 // trivial and matches Frostbite's surface syntax. Seeded into new character
 // profiles as Ctrl+Enter / Alt+Enter / NumpadEnter macros so the
-// Stormfront/Wrayth repeat-command convention works out of the box.
+// Wrayth repeat-command convention works out of the box.
 
 export type MacroTokenName =
   | 'RepeatLast'

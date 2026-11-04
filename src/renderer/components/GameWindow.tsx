@@ -1835,7 +1835,7 @@ export default function GameWindow({
     [matchRules, lineRules, renderContacts, activeContactTemplates, nameRegex],
   )
 
-  // v0.8.3: One-time seed of Stormfront/Wrayth repeat-command macros so
+  // v0.8.3: One-time seed of Wrayth repeat-command macros so
   // the convention works out of the box on a fresh character. Skipped if
   // an existing macro already binds the key — never silently overrides
   // user customization. The per-character flag in localStorage means the
@@ -1861,7 +1861,7 @@ export default function GameWindow({
   }, [session.character])
 
   // v0.15.2 (F56): One-time seed of the classic numpad movement pad — the
-  // layout every Stormfront-family client ships. Verified against Frostbite's
+  // layout every Wrayth-family client ships. Verified against Frostbite's
   // bundled default profile (deploy-files/profiles/frostbite/macros.ini):
   // Num8/2/4/6 = n/s/w/e, corners = the diagonals, Num5 = out, Num0 = down,
   // Num. = up — the muscle memory Genie/Wrayth/Frostbite converts arrive with.
@@ -5832,15 +5832,15 @@ export default function GameWindow({
       // B120 (Binu): clamp at -1 so pressing Down past the "current empty"
       // state doesn't accumulate negative counts. Without the clamp,
       // three Downs took the ref to -4 and the user had to press Up
-      // four times to climb back to history[0]. Matches Stormfront /
-      // Wrayth behavior where pressing Down at the bottom is a no-op.
+      // four times to climb back to history[0]. Matches Wrayth's behavior,
+      // where pressing Down at the bottom is a no-op.
       const next = Math.max(-1, historyIdxRef.current - 1)
       historyIdxRef.current = next
       // F57: index -1 restores the stashed draft (was '' — the half-typed
       // line used to be discarded by a history browse).
       setCommand(next < 0 ? historyDraftRef.current : (h[next] ?? ''))
     } else if (e.key === 'Escape' && command !== '') {
-      // Classic Stormfront/Genie reflex: Esc clears the command line. The
+      // Classic Wrayth/Genie reflex: Esc clears the command line. The
       // slash palette consumed Esc above while open, so the two layer
       // naturally — first Esc dismisses the palette, second clears the line.
       // Gated on non-empty so an Esc on an empty bar stays inert/native.

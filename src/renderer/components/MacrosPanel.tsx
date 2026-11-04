@@ -129,7 +129,7 @@ function CommandList({ commands, onChange, vars, tokens }: CommandListProps) {
               // command bar, places the cursor where the `@` was, and
               // waits for you to finish typing and press Enter
               // yourself. Use `\@` for a literal `@` character. Matches
-              // Genie / Wrayth / Stormfront convention.
+              // Genie / Wrayth convention.
               title={
                 'Include `@` to mark where the cursor should land — Lichborne will\n'
                 + 'type the text and wait for you to finish typing instead of sending.\n'

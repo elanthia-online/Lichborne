@@ -1,4 +1,4 @@
-// StormFrontParser — the stateful StormFront/DR XML tokenizer: one raw line in, typed GameEvent[] out.
+// StormFrontParser — the stateful Wrayth/DR XML tokenizer: one raw line in, typed GameEvent[] out.
 //
 // Where it sits: ConnectionManager 'line' → LichBridge.interceptLine →
 // parse(line) here → main.ts's session line handler consumes the events
@@ -68,8 +68,8 @@
 //  • GS4 support (added on top of the original DR-only build): this tokenizer
 //    is ONE shared instance for both game families, with no per-family config
 //    threaded in (one `family` field gates the single ambiguous case below).
-//    DR and GS4 speak the same StormFront/
-//    Wrayth wire grammar and their known-vocabulary tag ids DON'T COLLIDE
+//    DR and GS4 speak the same Wrayth
+//    wire grammar and their known-vocabulary tag ids DON'T COLLIDE
 //    (verified against VellumFE's GemStoneIV-XML-Elements.md and cross-checked
 //    against Saga's own DR/GS handling — e.g. `pbarStance`/`mindState`/
 //    `encumlevel` are GS4-only, `concentration`/`conclevel` DR-only), so a
@@ -784,7 +784,7 @@ export class StormFrontParser {
     // DR carries the room id in TWO subtitle formats — handle both:
     //   "[Whistling Wood, Barrows - 9479]"   id INSIDE the brackets after " - "
     //   "[Arthelun Ruins, Courtyard] (56107)" id in PARENS after the brackets
-    // The parens form is the StormFront standard `[Title] (uid)`, with
+    // The parens form is the Wrayth standard `[Title] (uid)`, with
     // "(**)" meaning unmapped (e.g. "[The Heavens] (**)" during a
     // telescope flip). Before v0.11.2 only the dash form was parsed, so
     // parens-form rooms got NO roomId — the Lich Map's instant
@@ -1589,7 +1589,7 @@ export class StormFrontParser {
 
       case 'inv':
         // <inv id='stow'>item name</inv> — container contents routed to a panel in
-        // Stormfront. We have no container panel, so absorb and discard the text.
+        // Wrayth. We have no container panel, so absorb and discard the text.
         if (!selfClosing) { this.captureCtx = { tag: 'inv' }; this.captureBuf = ''; this.captureSegments = [] }
         break
 

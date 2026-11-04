@@ -2,7 +2,7 @@
 
 *Your friendly primer for getting Lichborne up and running, and making it your own.*
 
-Welcome! Lichborne is a modern DragonRealms client for Windows, Linux, and macOS. Whether you're brand new or you've been playing since the StormFront days, this guide walks you from **download** to **fully set up** — and then tours everything the client can do. You don't need to read it front to back; jump to what you need using the contents below.
+Welcome! Lichborne is a modern DragonRealms and GemStone IV client for Windows, Linux, and macOS. Whether you're brand new or you've been playing since Wrayth was called StormFront, this guide walks you from **download** to **fully set up** — and then tours everything the client can do. You don't need to read it front to back; jump to what you need using the contents below.
 
 > **Stuck or something looks wrong?** Come say hi on **Discord**. The invite is inside Lichborne: [download it](#getting-started) first, then choose **Help → Discord**. (**Help → About Lichborne** shows your version, which is handy to mention.) We're a friendly bunch and love a good bug report.
 
@@ -23,6 +23,7 @@ Welcome! Lichborne is a modern DragonRealms client for Windows, Linux, and macOS
   - [4. One-time in-game setup](#4-one-time-in-game-setup)
 - [Connecting & Playing Your Whole Team](#connecting--playing-your-whole-team)
 - [Feature Tour](#feature-tour)
+  - [DragonRealms and GemStone IV](#dragonrealms-and-gemstone-iv)
   - [Views: Session and Overview](#views-session-and-overview)
   - [Your layout: Static vs Windowed Panels](#your-layout-static-vs-windowed-panels)
   - [Themes & accessibility](#themes--accessibility)
@@ -57,7 +58,7 @@ Welcome! Lichborne is a modern DragonRealms client for Windows, Linux, and macOS
 
 ## What is Lichborne?
 
-Lichborne is a DragonRealms client inspired by **StormFront**, **Genie**, and **Frostbite** — built for players who've had opinions about all three. If you've used any of them, you'll feel at home in minutes.
+Lichborne is a DragonRealms and GemStone IV client inspired by **Wrayth**, **Genie**, and **Frostbite** — built for players who've had opinions about all three. If you've used any of them, you'll feel at home in minutes.
 
 A few ideas shape everything:
 
@@ -86,10 +87,6 @@ A few ideas shape everything:
 
 Lichborne is actively developed. A few things we're heading toward — directional, not promises with dates:
 
-- **The move to Elanthia-Online.** Lichborne's repository is transferring to the
-  community organization that maintains Lich — the client built with the
-  community, stewarded by it. Updates and links carry over seamlessly (v0.19.2
-  installs are already transfer-ready, and GitHub redirects cover the rest).
 - **Windowed Panels becomes the default.** The floating-window layout is the future; the older docked "Static Panels" mode will eventually retire, with an automatic one-time conversion so no layout is ever lost.
 - **The rich stream everywhere.** v0.21.0 takes DragonRealms' rich stream through Lich 5.23 by default (switch back with **Lich Setup → Game stream → Legacy stream**); direct (no-Lich) connections follow once it has soaked with testers. The extra detail it carries (every name linked to the exact thing it names, the whole inventory tree) is what the next Experiences build on.
 - **More Lichborne Experiences.** The graphical scenes (Living Tableau, Moons, Spell Monitor) are the first of a larger set of "graphics for text players" — richer combat instruments, wound/status visuals, and more.
@@ -106,7 +103,7 @@ Three steps and a one-time in-game command, and you're playing.
 
 ### 1. Install
 
-All downloads are on the **[Releases page](https://github.com/SekmehtDR/Lichborne/releases/latest)**.
+All downloads are on the **[Releases page](https://github.com/elanthia-online/Lichborne/releases/latest)**.
 
 **Windows (stable):** run `Lichborne-X.Y.Z-setup.exe` — no admin rights needed. Windows may show a **SmartScreen** warning (no code-signing certificate yet); click **More info → Run anyway**. It's safe. Auto-updates with one click when a new version lands.
 
@@ -129,19 +126,25 @@ Then open Lichborne normally. You won't need it again: from v0.21.1 on, Lichborn
 
 ### 2. Set up Lich (recommended)
 
-**Lich** is a separate, community-maintained proxy that supercharges any DR client. It's what unlocks maps, spell timers, variables, and scripts in Lichborne.
+**Lich** is a separate, community-maintained proxy that supercharges any DragonRealms or GemStone IV client. It's what unlocks maps, spell timers, variables, and scripts in Lichborne.
 
 - Install it per the **[official Lich install guide](https://github.com/elanthia-online/lich-5/wiki/Documentation-for-Installing-and-Upgrading-Lich)** — Windows has a one-click installer; Linux/Mac follow the wiki's steps (Lich in `~/Lich5`, Ruby 4.0+ via rbenv or your distro).
 - **Already running Lich** for Genie, Profanity, or another client? You're set — no reinstall.
 - In Lichborne, open **Lich Setup** (the **⚙ Lich Setup** button on the launcher, or **Settings → Lich Setup → Open Lich Setup…**) and hit **↺ Auto-detect**. Green checkmarks mean you're good. It knows each platform's standard install spots (on a Mac, the first detect asks permission to look at your Desktop folder — that's where the wiki's install lands). If your Ruby is older than 4.0, the dialog warns you — current Lich won't start on it.
 
+**One Lich for both games, or one each.** Every character uses the install you just set up, unless you say otherwise. Under **Lich install by game** in Lich Setup, set DragonRealms or GemStone IV to **Its own install** to run that game's characters from a different Lich folder (**Same as the install above** puts it back). A single character can have its own too: on its tile, ⋯ → **Edit profile…** → **Lich install**. Changes apply from the next connect, and `/lich install` tells you which install the character in front of you is using.
+
 *Prefer no Lich? You can skip this entirely — see [Connecting](#connecting--playing-your-whole-team).*
 
 ### 3. Log in
 
-1. Enter your **account name**, **password**, and **character name** — just like any other client.
-2. Click **⚡ Connect via Lich** (or **⬡ Connect Direct** if you're going without Lich).
-3. Done — your account and Lich settings are remembered for next time.
+1. On the launcher, click **+ Add account**. Enter your **account name** and **password**, then pick a **Game**: the shards are grouped under **DragonRealms** (Prime, Platinum, The Fallen) and **GemStone IV** (Prime, Shattered). Click **Next →**.
+2. Lichborne lists the characters on that account for that game. Tick the ones you want and it makes a tile for each. Play both games on one account? Run **+ Add account** once for each game.
+3. On a tile, choose **LICH** or **DIRECT**, then click **Connect →**. Each tile names its shard (for example *GemStone IV Shattered*).
+
+The test instances aren't in the Game list: they mirror Prime, so pick Prime and flip the tile's **TEST** pill when you want the test server. The character keeps the same settings either way.
+
+Once your saved characters span both games, an **All** / **DR** / **GS** filter appears on the launcher to show one game at a time.
 
 ### 3b. Or: attach to a Lich that's already running
 
@@ -189,7 +192,7 @@ Once you're in, run this **once**:
 SET STATUSPROMPT
 ```
 
-This tells DragonRealms to put your current state (stunned, prone, unconscious and so on) in front of every `>` prompt. Lichborne reads it for the **Unconscious** marker on the icon bar and the `$unconscious` trigger variable, which DragonRealms reports nowhere else. Your vitals and roundtime don't depend on it. If you've used StormFront, you've likely done this already.
+This tells DragonRealms to put your current state (stunned, prone, unconscious and so on) in front of every `>` prompt. Lichborne reads it for the **Unconscious** marker on the icon bar and the `$unconscious` trigger variable, which DragonRealms reports nowhere else. Your vitals and roundtime don't depend on it. If you've used Wrayth, you've likely done this already.
 
 *(EXPBRIEF works either way — the Experience panel handles it on or off.)*
 
@@ -205,7 +208,7 @@ This tells DragonRealms to put your current state (stunned, prone, unconscious a
 - **Right-click any tab** for quick actions — Reconnect a dropped character, Disconnect, or move it between windows (only the choices that apply are shown).
 - **Windows remember where you left them** — size, position, and whether they were maximized, for the main window and for any character you've moved into its own window. If a window's monitor isn't connected any more, it opens on your main screen instead.
 - **⟲ Reconnect Last** on the launcher brings your whole crew back in one click. If an account already has a different character on, Lichborne asks which you want rather than bouncing anyone.
-- **Team Login** logs several characters in at once (DR allows one character per account, so it's one from each). Tick only the accounts you want, and tick **Save this line-up as a team** to remember it. Saved teams appear in a **Teams** section on the logon screen and in the **+** window — each one shows who is on it, and a single Connect logs the whole team in, skipping anyone already playing. Pin a team with the heart and it joins **Favorites** at the top; the ⋯ menu edits its name and notes, or deletes it. While the team logs in, a panel shows a tile for every character — waiting, connecting, ready, or what went wrong. **You don't have to wait for all of them:** click a ready character to choose it and press **Play** (or just double-click it), and the rest keep logging in behind you, appearing as tabs without pulling you away. The panel shrinks to a small pill in the top bar; click it to bring the panel back. A character that fails can be **retried** once the others finish. A long team run can be **stopped** part-way: whoever is connecting finishes, and the rest are skipped and listed so you can start them whenever you like.
+- **Team Login** logs several characters in at once (an account can have one character on at a time, across both games, so it's one from each). Tick only the accounts you want, and tick **Save this line-up as a team** to remember it. Saved teams appear in a **Teams** section on the logon screen and in the **+** window — each one shows who is on it, and a single Connect logs the whole team in, skipping anyone already playing. Pin a team with the heart and it joins **Favorites** at the top; the ⋯ menu edits its name and notes, or deletes it. While the team logs in, a panel shows a tile for every character — waiting, connecting, ready, or what went wrong. **You don't have to wait for all of them:** click a ready character to choose it and press **Play** (or just double-click it), and the rest keep logging in behind you, appearing as tabs without pulling you away. The panel shrinks to a small pill in the top bar; click it to bring the panel back. A character that fails can be **retried** once the others finish. A long team run can be **stopped** part-way: whoever is connecting finishes, and the rest are skipped and listed so you can start them whenever you like.
 - **Give each character a colour.** On the launcher, a character's ⋯ → **Edit profile…** has a **Color**. It marks that character everywhere: their tab, their toasts, their Team Login tile, their Overview card and their figure in the Living Tableau. Pick one of your named colours to keep it linked, or leave it on **Automatic**.
 - **Know what your other characters are up to.** When another character comes into the game, disconnects, or reconnects, a toast appears in the window you're using — click it to jump to that character, even in another window. Turn these off under **Settings → Character status notifications** or with `/notices off`.
 
@@ -214,6 +217,14 @@ This tells DragonRealms to put your current state (stunned, prone, unconscious a
 ## Feature Tour
 
 High-level tours of what each feature does and where to configure it. Most things live behind the buttons along the top **app bar** (Panels · Maps · Automations · Lich · Settings, with more under the **⋯** menu) or the **Experiences** shelf.
+
+### DragonRealms and GemStone IV
+
+Lichborne plays both games. Most of this guide applies to either one. A few panels and views read something only one game sends, so Lichborne offers them only for characters in that game:
+
+- **GemStone IV only:** the **Effects** panel (your Buffs, Debuffs, Cooldowns and Active Spells, with time left), the **Encumbrance** panel, and the **Creatures** panel (each creature in the room with its health; click one to target it). Add them from a panel's **+** button.
+- **DragonRealms only:** the **Active Spells** panel, the **Genie Maps** view (there are no Genie maps for GemStone IV; the Lich Map works for both), and the **Moons** and **Spell Monitor** Experiences.
+- **Different in each game:** the **Experience** panel shows skills and learning for DragonRealms, and level, experience and training points for GemStone IV. In **Edit profile…**, a GemStone IV character has a **Profession** and **Level** where a DragonRealms one has a **Guild** and **Circle**.
 
 ### Views: Session and Overview
 
@@ -365,7 +376,7 @@ Open the **Maps** button for two very different map views. Both track your curre
 
 **Lich Map — native, zero setup.** Lichborne reads Lich's built-in map **artwork** straight out of your Lich installation's `maps` folder — so once your [Lich path is set](#2-set-up-lich-recommended), it just works. It shows the real map image with your current room highlighted, and it's the **most reliable tracker** because it matches by room **id**. Tip: turn on DragonRealms' room-number display (so room titles show a number like `[Town Square] (12345)`) and your marker stays locked on.
 
-**Genie Maps — the community XML maps, from a folder you point it at.** This view renders the community-maintained **Genie XML map files** directly. Download them from [github.com/GenieClient/Maps](https://github.com/GenieClient/Maps) ([direct ZIP](https://github.com/GenieClient/Maps/archive/refs/heads/main.zip), then unzip). The first time, point it at the **folder** where those files live (Lichborne remembers it, and caches the parse so every launch after the first is instant). It draws one zone at a time at the hand-curated coordinates the Genie maps team has refined for years, follows you as you walk, and auto-switches zones as you cross boundaries — with a pulsing sonar "you are here" ring that's easy to find.
+**Genie Maps — the community XML maps, from a folder you point it at (DragonRealms only).** This view renders the community-maintained **Genie XML map files** directly. Download them from [github.com/GenieClient/Maps](https://github.com/GenieClient/Maps) ([direct ZIP](https://github.com/GenieClient/Maps/archive/refs/heads/main.zip), then unzip). The first time, point it at the **folder** where those files live (Lichborne remembers it, and caches the parse so every launch after the first is instant). It draws one zone at a time at the hand-curated coordinates the Genie maps team has refined for years, follows you as you walk, and auto-switches zones as you cross boundaries — with a pulsing sonar "you are here" ring that's easy to find.
 
 **Rooms are color-coded by what they are — and each color has its own tiny animation** so you can recognize a room type at a glance without reading the legend:
 
@@ -403,7 +414,7 @@ DragonRealms has two versions of its game stream: the **legacy** one every clien
 
 Room views, the compass, click-to-walk, the maps, your highlights, mutes, substitutes and triggers all work the same on either stream.
 
-**Choosing it:** **Lich Setup → Game stream** (the ⚙ on the launcher, or **Settings → Open Lich Setup…**):
+**Choosing it:** **Lich Setup → Game stream** (the ⚙ on the launcher, or **Settings → Lich Setup → Open Lich Setup…**):
 - **Rich (Saga) stream (default)**: on whenever your Lich is 5.23.0 or later; an older Lich keeps the legacy stream. The line under the setting says whether yours supports it.
 - **Legacy stream**: the older stream, as before v0.21.0. Pick this if you want to switch back.
 - **Rich (Saga) always**: also for an attach to a Lich on another machine, which Lichborne can't check. On an older Lich the game answers the request once as an unknown command.
@@ -417,6 +428,8 @@ Your health/mana/etc. show in the **vitals bar** (there's a **Compact Vitals** o
 ### The Experience panel
 
 Your skills, ranks, and learning-rate. Turn on **Compact Experience** in Settings for a dense, text-forward readout (Skill · Ranks · % · learning-rate per row, colored by how close each is to mind-lock), with a tidy summary on top. Pin your circle-up skills to the top.
+
+On a GemStone IV character the same panel shows your level, experience and training points instead.
 
 ### Session logs
 
@@ -441,7 +454,7 @@ Client commands **never reach the game** — a typo gets a hint instead of leaki
 - Each Experience **costs nothing until you open it**, respects your **theme** and **epilepsy-safe** setting, and always treats the game text as the source of truth.
 - Hover an Experience for its own controls: **A− / A+** sizes all its text, and **⚙ "Show in this scene"** ticks exactly which layers you want to see. Your choices are remembered **per character**.
 
-There are three Experiences today, all **[Beta]**:
+There are three Experiences today, all **[Beta]**. Moons and Spell Monitor read DragonRealms' sky and spell list, so they're offered to DragonRealms characters only:
 
 #### Living Tableau
 
@@ -489,7 +502,7 @@ Everything currently on you, as live countdowns.
 - **Skill badges** put a letter chip on each effect for its magic skill or ability type — **[A]**ugmentation, **[U]**tility, **[T]**argeted Magic, **[D]**ebilitation, **[W]**arding, **[C]**antrip, **[X]** metamagic, and for Barbarians and Bards **[F]**orm, **[B]**erserk, **[M]**editation, **[R]**oar and **[S]**cream. Each has its own colour, so one kind is easy to pick out; hover for the full name and guild.
 - **Abbreviations** switch the display to the game's short names — **ECRY** rather than *Eillie's Cry* — so what you see about to expire is what you type to renew it. Anything without a known abbreviation keeps its full name. (Thief Khri have no badge or abbreviation: they aren't in the reference data Lich publishes.)
 - **Group by skill** gathers effects under a heading for their skill or ability type — all your Wards together, all your Augmentations together. For a Barbarian that means Forms, Berserks, Roars and Meditations each in their own block. It combines with Soonest first, which then orders within each group. (Thieves get one "Other" block: Khri aren't in the reference data.)
-- **Abbreviations**, **Soonest first** and **Group by skill** all start **off** — the window opens with full names in the order the game itself lists them, which stays put as timers tick. Turn on whichever you want from the **⚙**. Your choices are remembered per character and travel with a [Profile Transfer](#profile-transfer).
+- **Abbreviations**, **Soonest first** and **Group by skill** all start **off** — the window opens with full names in the order the game itself lists them, which stays put as timers tick. Turn on whichever you want from the **⚙**. Your choices are remembered per character and travel with a [Profile Transfer](#transfer-a-setup-between-your-characters).
 - Every colour here — the twelve badges and the three countdown states — is editable in the **Theme Editor** under **HUD**, if you want your own scheme.
 - **The header bar shows the feed's status** — *updated 3s ago · every ~6s* — when DragonRealms last sent the list, and roughly how often it's been sending it. It answers the question a motionless grid otherwise raises: the list only changes when your effects do, so a number ticking up beside a still grid means everything is working and nothing has changed. The cadence appears once Lichborne has seen enough refreshes to say so honestly, and it's measured rather than assumed — DragonRealms decides when to send, and there's no command known to ask it for one. (⚙ **Feed status**, on by default; it lives in the header bar, so hiding that hides this too.)
 - **It shrinks to a strip.** The window can be dragged down to roughly the height of a single row of cells, so it can sit as a thin band across the top of your layout rather than a box — turn off the header bar in the **⚙** for the tightest fit.
@@ -507,7 +520,7 @@ Lichborne can use **Claude** to help you out — entirely on your terms.
 - **Bring your own key.** You plug in *your own* Anthropic API key in **Settings → AI**, stored **encrypted on your machine** (never in your profile files, never sent to any Lichborne server — there isn't one). Pick your model there too — **Haiku 4.5** (fast & cheap, the default), **Sonnet 5**, **Opus 4.8**, or **Fable 5** (premium); higher tiers cost more per request, billed to your key.
 - **Opt-in per feature.** Each AI feature has a one-time disclosure you accept before it can send anything.
 - **AI advises and summarizes — it never plays the game.** It **cannot** send commands to DragonRealms, ever. That's a hard line, which keeps every AI feature inside Simutronics' rules.
-- **Your private info is protected.** Your account **PIN / identification numbers, passwords, and account username** are scrubbed from the text before anything is sent — while your log on disk stays untouched. Full details in **[AINOTICE.md](AINOTICE.md)** (also linked in Help → About).
+- **Your private info is protected.** Your account **PIN / identification numbers, passwords, and account username** are scrubbed from the text before anything is sent — while your log on disk stays untouched. Full details in **[AINOTICE.md](../AINOTICE.md)** (also linked in Help → About).
 
 **The first feature — Catch Me Up.** Wandered off and came back? Type **`/ai catchup`** and it fills you in like a companion sitting in your client.
 
@@ -643,6 +656,8 @@ Lich is the **recommended** way to play — it unlocks the map, timers, variable
 
 *Legend: ✅ works · ⚠️ works in a reduced form · ❌ needs Lich. More detail in [Appendix B](#appendix-b--lich-vs-direct-in-depth).*
 
+*This table is about Lich, not the game. Some rows (Genie Maps, Moons, Spell Monitor) are DragonRealms-only, and GemStone IV characters get their own Effects, Encumbrance and Creatures panels. See [DragonRealms and GemStone IV](#dragonrealms-and-gemstone-iv).*
+
 > **A note on Lich-powered data.** Some features draw on things only **Lich** provides — the **map data**, community **scripts** (like `moonwatch`), Lich's **`drinfomon`** game-state modules, and **DRStat** variables. **Anything that relies on those may be reduced, degraded, or simply unavailable on a direct (no-Lich) connection** — and can also be affected if the underlying Lich script or a future Lich version changes. Lichborne always tries to degrade gracefully (fall back or hide, never crash), but if a feature depends on script- or Lich-provided data, treat full functionality as a **Lich** thing.
 
 ---
@@ -680,7 +695,7 @@ Plain `Home`/`End` edit the command box (where your cursor usually is); hold `Ct
 
 - **Discord** — the friendliest place for questions, bug reports, and chat. The invite is inside Lichborne, so download it first, then choose **Help → Discord**.
 - **Help → About Lichborne** — shows your exact version, the credits, and links to the project on GitHub and the Discord. Handy to have open when reporting an issue (mention your version!).
-- **GitHub** — [issues and releases](https://github.com/SekmehtDR/Lichborne) live here.
+- **GitHub** — [issues and releases](https://github.com/elanthia-online/Lichborne) live here.
 
 When something looks off, a quick note with **your version number** and **what you were doing** is gold. Thank you!
 
@@ -693,7 +708,7 @@ Type `/` for the live palette; type `/help` in-game for the always-current list,
 **Automation**
 - `/highlight add "pattern" <color>` · `/highlight edit "pattern"` · `/highlight list`
 - `/trigger add "pattern" do "command"` (add `rt=now` to send without waiting for roundtime) · `/trigger edit …` · `/trigger list`
-- `/macro …` · `/alias add "hh" "health;heal"` · `/alias list`
+- `/alias add "hh" "health;heal"` · `/alias list`
 - `/mute add "pattern"` · `/sub add "find" "replace"` (with a live before→after preview)
 - `/contact add "Name" <Template>` · `/template add "Name" <color> tag="[T]"`
 
@@ -703,6 +718,9 @@ Type `/` for the live palette; type `/help` in-game for the always-current list,
 - `/timestamps on|off` · `/log search "text"`
 - `/compass` (settings) · `/compass on|off` · `/compass size small|medium|large` · `/compass corner br|bl|tr|tl` · `/compass backing none|subtle|solid` · `/compass dim 25` · `/compass click on|off`
 - `/notices on|off` (toasts when your other characters come in, drop, or reconnect)
+- `/history` (status) · `/history min N` (skip remembering commands shorter than N characters)
+- `/view` (switch Session / Overview) · `/view status` · `/view sort` · `/view set` · `/view stream` (see [Views](#views-session-and-overview))
+- `/lich install` (which Lich install this character uses, and where that choice comes from)
 - `/richstream` (which game stream you're getting) · `/richstream auto|on|off|default` (from your next connect)
 - `/log xml on|off` (write everything the game sends, time-stamped, to `Logs/raw` for a bug report; stops at logout) · `/log xml` (status)
 - `/colors` (shows every named color) · `/colors add "Buff drop" #ff9040` · `/colors rename "Buff drop" "Buffs"` · `/colors remove "Buffs"` · `/colors manage` (opens the Colors tab)
@@ -742,22 +760,24 @@ Your setup is saved as plain **YAML** files you own — back them up, copy them 
 ```
 lichborne/
   profiles/
-    {Character}.yaml   — one file per character (your per-character setup)
+    {Name}@{SHARD}.yaml — one file per character (your per-character setup)
     _shared.yaml       — app-wide settings shared by every character
   Exports/             — Transfer bundles (.lb.yaml) you export
   Logs/
-    {Character}/       — session logs, one folder per character
+    {Name}@{SHARD}/    — session logs, one folder per character
   TriggerLogs/         — files written by a trigger's "log to file" action
   window-state.json    — where each window was last placed (this computer only)
 ```
 
+A character is its name on a shard, so `Tysong@GS3.yaml` and `Tysong@GSF.yaml` are two characters with their own setups. The shard is the game code (`DR`, `DRX`, `DRF`, `GS3`, `GSF`); a test server uses its Prime's file, so a character on DRT or GST keeps its `@DR` or `@GS3` setup. Files from before this naming (`{Character}.yaml`, `Logs/{Character}/`) are renamed once, the first time a newer Lichborne starts, and a copy of each old profile is kept in `profiles/PreKeyBackup/`.
+
 Because it's all plain text, nothing is locked in. You almost never need to touch these by hand — Lichborne saves automatically, and [Transfer](#transfer-a-setup-between-your-characters) is the friendly way to move a setup between your own characters. But here's what's where:
 
-### Your character profile (`{Character}.yaml`)
+### Your character profile (`{Name}@{SHARD}.yaml`)
 
 One file per character, holding everything that's *about that character*:
 
-- **Who it is** — account, character name, game/shard, whether it uses Lich, plus launcher extras: favorite, hidden, guild, circle, and your free-text **notes**.
+- **Who it is** — account, character name, game/shard, whether it uses Lich, plus launcher extras: favorite, hidden, guild (or profession), circle (or level), your free-text **notes**, and the character's own Lich install if you gave it one.
 - **Its theme.**
 - **Everything you've set up for it** — panel layout & sizes, fonts & accessibility, all your highlights / triggers / macros / aliases / mutes / substitutes, contacts, groups & modes, your Experience scene options, map view preferences, and even your per-character command history.
 
@@ -765,7 +785,7 @@ One file per character, holding everything that's *about that character*:
 
 One file, for the things that make sense **app-wide** rather than per character:
 
-- **Your Lich setup** — the Lich path, Ruby path, port, and frontend.
+- **Your Lich setup** — the Lich path, Ruby path, port, and frontend, plus any per-game installs.
 - **Where your map folders are** (the Lich and Genie map directories).
 - **Session-log preferences** (see below).
 - **Custom themes** you've made and your **named colors**.
@@ -773,13 +793,13 @@ One file, for the things that make sense **app-wide** rather than per character:
 - **AI settings** (your model choice and consent flags — *not* your API key; see below).
 - **App preferences** — "open each character in its own window," whether Analytics is on, whether you get character status toasts, each character's **colour** (from Edit profile), and the "Reconnect Last" roster.
 
-> Your **API key** (if you use AI) is stored **separately and encrypted** by your operating system (DPAPI on Windows, the Keychain on macOS, libsecret or KWallet on Linux) — it's never part of these YAML files and never leaves your machine except to talk to Anthropic. See [AINOTICE.md](AINOTICE.md).
+> Your **API key** (if you use AI) is stored **separately and encrypted** by your operating system (DPAPI on Windows, the Keychain on macOS, libsecret or KWallet on Linux) — it's never part of these YAML files and never leaves your machine except to talk to Anthropic. See [AINOTICE.md](../AINOTICE.md).
 
 *(Heads up: these are **Lichborne's** profiles. Your **Lich script** profiles are different files, inside your Lich installation — edit those from the [Lich Dashboard → Profiles](#the-lich-dashboard).)*
 
 ### Logging
 
-Lichborne keeps a clean, dated **plain-text log** of every session — the game text, side-channels, the commands you typed, and connect/disconnect notices. Files are organized one **folder per character**, one **file per day** (`Logs\{Character}\`), so they're easy to browse or archive. They're yours: plain text, nothing proprietary.
+Lichborne keeps a clean, dated **plain-text log** of every session — the game text, side-channels, the commands you typed, and connect/disconnect notices. Files are organized one **folder per character**, one **file per day** (`Logs\{Name}@{SHARD}\`), so they're easy to browse or archive. They're yours: plain text, nothing proprietary.
 
 - **On by default**, and fully configurable in **Settings → Session Log** — what gets captured, how long logs are kept, and whether older days are compressed to save space.
 - Read them without leaving the app via the **[Logs button](#session-logs)** (recent tail, search across days, jump-to-line), and build a clean transcript with the **Export** tool.
@@ -796,6 +816,7 @@ Lichborne keeps a clean, dated **plain-text log** of every session — the game 
 - **Mac: the Keychain asks for your password?** Choose **Always Allow**. It can ask once when you first install v0.21.1, because the app's signature changed; updates after that keep the same one. If you deny it, Lichborne still connects, but your password isn't saved and you type it each time.
 - **Linux: the Lich Dashboard shows "Couldn't read Lich's database"?** The message gives the reason. If it mentions `GLIBC`, your Linux is older than this build supports (Ubuntu 22.04, Debian 12 and Mint 21 are fine from v0.21.0 on).
 - **Linux: "Remember password" greyed out?** No keyring service found — install GNOME Keyring or KWallet; until then, type the password each session.
+- **Lich won't launch and says the Ruby and Lich paths look swapped (or, in older builds, `spawn EFTYPE`)?** The Ruby path must point at the Ruby program (`rubyw.exe` or `ruby.exe` on Windows) and the Lich path at `lich.rbw`. Wherever a pair is reversed, the editor shows a warning and a **Swap them** button: the default install and each **Lich install by game** row in **⚙ Lich Setup**, and a character's own install under its tile's **⋯ → Edit profile… → Lich install**. The launch message says which of those the character uses.
 - **Linux/Mac: Lich won't launch from Lichborne but runs in a terminal?** Point the Ruby path at the **full rbenv path** (`~/.rbenv/shims/ruby`) — apps launched from the desktop don't see your shell's PATH. Auto-detect does this for you.
 - **Map marker stuck?** The Lich Map tracks by room id and is most reliable — turn on DR's room-number display so titles show a number like `[Town Square] (12345)`. The Genie Map matches by room name + description (its data has no ids), so in areas full of identically-named rooms it can briefly lag. A **`LOOK`** resyncs either map.
 - **Hand bar says "Empty" but you're holding something?** The common cause was fixed in v0.13.3. For rare genuine gaps (e.g. spell-summoned items DR doesn't announce), a **`GLANCE`** always resyncs your hands.
@@ -817,7 +838,7 @@ Still stuck? **Join us on Discord** (**Help → Discord** in the app) — we're 
 
 ## License
 
-Lichborne is free, open-source software under the [BSD 3-Clause License](LICENSE) (© 2026 Sekmeht and Binu) — the same license as Lich itself. DragonRealms and StormFront are trademarks of Simutronics Corp.; Lichborne is an independent community project, not affiliated with or endorsed by Simutronics, and playing through it requires your own Simutronics account under Simutronics' terms of service.
+Lichborne is free, open-source software under the [BSD 3-Clause License](../LICENSE) (© 2026 Sekmeht and Binu) — the same license as Lich itself. DragonRealms, GemStone IV and Wrayth (formerly StormFront) are trademarks of Simutronics Corp.; Lichborne is an independent community project, not affiliated with or endorsed by Simutronics, and playing through it requires your own Simutronics account under Simutronics' terms of service.
 
 ---
 
