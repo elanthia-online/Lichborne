@@ -291,11 +291,13 @@ const VITALS_TEXT_WORDS: Record<string, VitalsText> = {
 const VITALS_TEXT_DESC: Record<VitalsText, string> = {
   percent: 'a percentage (Health 87%)',
   values: "the game's numbers (Health 310/355)",
-  label: 'the name only (Health); hover a bar for its numbers',
+  label: 'the name only (Health); hover a bar for the full reading',
 }
 
 function vitalsTextSummary(s: { text: VitalsText; hasValues: boolean }, justSet?: VitalsText): string {
-  const head = `${justSet ? 'Vitals bars now show' : 'Vitals bars show'} ${VITALS_TEXT_DESC[s.text]}.`
+  // No GS4-style example (310/355) for a DR character: its bars never show it.
+  const what = s.text === 'values' && !s.hasValues ? "the game's numbers" : VITALS_TEXT_DESC[s.text]
+  const head = `${justSet ? 'Vitals bars now show' : 'Vitals bars show'} ${what}.`
   const note = s.text === 'values' && !s.hasValues
     ? ' DragonRealms sends percentages, so this character\'s bars keep them.'
     : ''
