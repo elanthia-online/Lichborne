@@ -11723,6 +11723,7 @@ Planned in PR #7 and built in the order at the end (§56.7.4): the filter in #7,
 
 **Not yet verified live:**
 - The swapped-pair handling (#8): the warning and **Swap them**, and the launch refusal's sentence. It is in `106434b` but wasn't exercised.
+- **Anything on the v0.21.1 toolchain.** Both builds above predate the stack's move onto v0.21.1 (Electron 45, React 19, js-yaml 5, better-sqlite3 13, and the #8 and #10 conflict fixes), so a live pass on a build of the restacked tip is still to come. It includes #10's migration re-check (test build run 41757653131).
 - Everything after `106434b`:
   - the same check on the default install's editor, and the refusal naming a character's or game's install (#8);
   - the old-name map held in every window (#10);
