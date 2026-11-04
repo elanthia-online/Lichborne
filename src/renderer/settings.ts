@@ -322,6 +322,15 @@ const COLORBLIND_VARS: Record<string, Partial<ThemeVars>> = {
     // same teal the health bar uses here. Amber and red are left alone — teal /
     // amber / red separate comfortably for a deuteranope.
     '--spell-band-ok':   'color-mix(in srgb, #18a8b8 80%, var(--text-primary))',
+    // The app-wide semantic success colour (~90 uses: connected pills, saved
+    // marks, the GS4 Effects panel's Buffs) gets the same teal, so success never
+    // depends on telling green from red. Mixed with the THEME's text rather
+    // than a fixed hex: these overlays sit on light and dark themes alike.
+    // 50% holds 4.5:1 or better against --bg-app, --bg-base AND --bg-raised on
+    // Dark, Classic Light, Ivory, Mist and Parchment (lowest: 5.2, Parchment
+    // raised). 65% fell to 3.9 on Parchment and 4.3 on Mist; 80%, the band's
+    // share, to 3.9 on Ivory — fine for a bar, not for text.
+    '--color-success':   'color-mix(in srgb, #18a8b8 50%, var(--text-primary))',
     '--ind-hidden-color':  '#60a8ff',
     '--ind-hidden-bg':     '#061428',
     '--ind-hidden-border': '#103058',
@@ -355,6 +364,19 @@ const COLORBLIND_VARS: Record<string, Partial<ThemeVars>> = {
     // either way: the bar's LENGTH and the printed time say the same thing (§34.7).
     '--spell-band-ok':   'color-mix(in srgb, #18a8b8 80%, var(--text-primary))',
     '--spell-band-crit': 'color-mix(in srgb, #ff7a5a 85%, var(--text-primary))',
+    // The app-wide semantic colours, same reasoning: success to teal, danger
+    // to the lightened red so it separates from --color-warning's amber. 50% of
+    // the hue, mixed with the theme's text, holds 4.5:1 against --bg-app,
+    // --bg-base and --bg-raised on Dark, Classic Light, Ivory, Mist and
+    // Parchment (lowest: danger 4.67 on Parchment's raised background; 65%
+    // fell to 3.5 there). Red and teal stay apart at 50%: CIE76 ΔE 49–59 on
+    // every theme except Terminal (≈ 31: its green text pulls both towards
+    // it), for normal colour vision; through a protanopia simulation (Machado
+    // 2009) the gap is 18–26, still clearly two colours. The -bg/-border/-dim variants are
+    // left to the theme: they are fills behind text that already carries the
+    // meaning.
+    '--color-success':   'color-mix(in srgb, #18a8b8 50%, var(--text-primary))',
+    '--color-danger':    'color-mix(in srgb, #ff7a5a 50%, var(--text-primary))',
     '--vital-health-low-start':  '#7a4800',
     '--vital-health-low-end':    '#e09000',
     '--ind-bleeding-color':  '#ff8030',

@@ -160,6 +160,116 @@
 .injury-scar .injuries-part-name { color: var(--text-muted); }
 .injury-scar .injuries-part-severity { color: var(--text-dim); font-style: italic; }
 
+/* ── Effects Panel (GS4) ──────────────────────────────────── */
+/* Anchored like the Injuries panel so the font size, line height and Large
+   Print reach it (Principle #9); everything inside is em-sized. Each section
+   sets --fx-hue once and the header, count and fill bar mix from it, so the
+   four categories read apart while contrast follows the theme (UX #6).
+   Spells take the MANA bar's bright end, not --accent: the dark theme's accent is
+   gold, which made every spell row read as the last-minute warning. */
+
+.gs-effects-panel {
+  padding: 6px 8px;
+  font-size: var(--panel-font-size, var(--game-font-size));
+  line-height: var(--game-line-height);
+  overflow-y: auto;
+  height: 100%;
+}
+
+.gs-effects-waiting {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 2px 0 6px;
+}
+
+.gs-effects-section { margin-bottom: 0.6em; --fx-hue: var(--vital-mana-end, var(--accent)); }
+.gs-effects-section--debuff   { --fx-hue: var(--color-danger); }
+.gs-effects-section--cooldown { --fx-hue: var(--color-warning); }
+.gs-effects-section--buff     { --fx-hue: var(--color-success); }
+.gs-effects-section--spell    { --fx-hue: var(--vital-mana-end, var(--accent)); }
+
+.gs-effects-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-weight: var(--ui-bold-weight);
+  font-size: 0.8em;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: color-mix(in srgb, var(--fx-hue) 70%, var(--text-primary));
+  padding: 2px 0 3px;
+  border-bottom: 1px solid color-mix(in srgb, var(--fx-hue) 35%, transparent);
+  margin-bottom: 3px;
+  cursor: help;
+}
+
+.gs-effects-count {
+  font-variant-numeric: tabular-nums;
+  padding: 1px 0.45em;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fx-hue) 18%, transparent);
+  letter-spacing: 0;
+}
+
+/* UX #2: an empty section keeps its header, muted, so the layout never jumps. */
+.gs-effects-section--empty .gs-effects-label {
+  opacity: 0.5;
+  color: var(--text-muted);
+  border-bottom-color: var(--border-subtle, var(--border));
+}
+
+.gs-effects-row {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+  padding: 1px 0.4em;
+  margin-bottom: 1px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--fx-hue) 6%, transparent);
+}
+
+/* The share of its duration left, behind the text. */
+.gs-effects-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: color-mix(in srgb, var(--fx-hue) 20%, transparent);
+  pointer-events: none;
+}
+
+.gs-effects-name {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.gs-effects-time {
+  position: relative;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  font-size: 0.9em;
+}
+
+/* The last minute: an edge stripe and a bold time in the warning hue. Only
+   Buffs and Active Spells warn (`warns` in gsEffects.ts EFFECT_SECTIONS):
+   those are what you would recast, while a Debuff or Cooldown ending is good
+   news. The row keeps its category fill under the stripe. */
+.gs-effects-row--warn { box-shadow: inset 3px 0 0 var(--color-warning); }
+.gs-effects-row--warn .gs-effects-time { color: var(--color-warning); font-weight: var(--ui-bold-weight); }
+
+/* Time is up but the game hasn't dropped it: dim, never alarming. */
+.gs-effects-row--ending { opacity: 0.5; }
+.gs-effects-row--ending .gs-effects-time { color: var(--text-muted); }
+
+.gs-effects-row--indef .gs-effects-time { color: var(--text-muted); cursor: help; }
+
 /* ============================================================
    Room panel
    ============================================================ */
