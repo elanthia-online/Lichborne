@@ -49,12 +49,26 @@ jobs:
           case "$REQ" in
             ''|*cdhash*) echo "::error::Not a certificate requirement, so updates would fail."; exit 1 ;;
           esac
-          codesign --verify --deep --strict --verbose=2 -R="=$REQ" "$B"
+          # The requirement is a SEPARATE argument with a leading "=" (literal
+          # text, not a file). Written as -R="=$REQ" the shell glued it into
+          # -R==..., codesign saw "=identifier ..." and failed with a syntax
+          # error, which the ad-hoc check below then counted as a refusal.
+          codesign --verify --deep --strict --verbose=2 -R "=$REQ" "$B"
           echo "An ad-hoc copy must FAIL the same check, or this proves nothing:"
           cp -R "$B" adhoc.app
           codesign --force --deep --sign - adhoc.app
-          if codesign --verify --deep --strict -R="=$REQ" adhoc.app; then
+          # codesign exits 3 when the code doesn't satisfy the requirement. Any
+          # other failure (a bad requirement, a broken bundle) means this check
+          # didn't run, so it must not read as a refusal.
+          set +e
+          codesign --verify --deep --strict -R "=$REQ" adhoc.app
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -eq 0 ]; then
             echo "::error::An ad-hoc build passed the requirement, so the check can't tell them apart."
+            exit 1
+          elif [ "$STATUS" -ne 3 ]; then
+            echo "::error::codesign exited $STATUS, not 3 (requirement not met), so the refusal wasn't tested."
             exit 1
           fi
           echo "Refused, as it should be."
