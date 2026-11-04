@@ -94,7 +94,7 @@
     ],
     "publish": {
       "provider": "github",
-      "owner": "SekmehtDR",
+      "owner": "elanthia-online",
       "repo": "Lichborne",
       "releaseType": "draft"
     },
