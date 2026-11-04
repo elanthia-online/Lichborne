@@ -152,8 +152,12 @@ export function withInstallHint(error: string, install: ResolvedLichInstall, nam
     : s === 'game' ? 'in Lich Setup → Lich install by game'
     : 'in Lich Setup'
   const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
-  const rubyProblem = /^(No Ruby interpreter|Ruby was not found|The Ruby path should be)/.test(error)
-  const swapped = error.startsWith('The Ruby and Lich paths look swapped')
+  // Classify on the sentence itself: what App receives is main's String(err),
+  // which starts "Error: " (review of #8, round 6). The hint still appends to
+  // `error` as given.
+  const sentence = error.replace(/^Error: /, '')
+  const rubyProblem = /^(No Ruby interpreter|Ruby was not found|The Ruby path should be)/.test(sentence)
+  const swapped = sentence.startsWith('The Ruby and Lich paths look swapped')
   if (rubyProblem) {
     if (install.rubySource === 'default') {
       // The base sentence (Lich Setup, Auto Detect) is the fix; only say how
