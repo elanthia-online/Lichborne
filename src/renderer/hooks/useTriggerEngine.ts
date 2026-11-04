@@ -156,6 +156,8 @@ function getGateActual(gate: StateGate, state: TriggerGameState): string {
     case 'stamina':       return String(vitalPercent(state.vitals.stamina))
     case 'spirit':        return String(vitalPercent(state.vitals.spirit))
     case 'concentration': return String(vitalPercent(state.vitals.concentration))
+    case 'mindstate':     return String(vitalPercent(state.vitals.mindstate))
+    case 'encumbrance':   return String(vitalPercent(state.vitals.encumbrance))
     case 'rt':            return String(secondsLeft(state.rtExpires))
     case 'ct':            return String(secondsLeft(state.ctExpires))
     case 'stance':        return state.stance.toLowerCase()
@@ -229,6 +231,10 @@ function buildVars(
     stamina:       String(vitalPercent(state.vitals.stamina)),
     spirit:        String(vitalPercent(state.vitals.spirit)),
     concentration: String(vitalPercent(state.vitals.concentration)),
+    // GS4's mind and encumbrance bars (vital-updates `mindstate` and
+    // `encumbrance`, both 0-100); 0 for DR. Keep in step with buildMacroVars.
+    mindstate:     String(vitalPercent(state.vitals.mindstate)),
+    encumbrance:   String(vitalPercent(state.vitals.encumbrance)),
     rt:            String(secondsLeft(state.rtExpires)),
     ct:            String(secondsLeft(state.ctExpires)),
     casttime:      String(secondsLeft(state.ctExpires)),

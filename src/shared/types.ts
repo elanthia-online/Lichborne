@@ -448,6 +448,8 @@ export type GameEvent =
   | RoomExitsTextEvent
   | InjuryUpdateEvent
   | EffectsUpdateEvent
+  | GsExperienceEvent
+  | GsEncumbranceEvent
   | PlayerInfoEvent
   | LaunchUrlEvent
   | GameExitEvent
@@ -461,6 +463,7 @@ export type GameEvent =
   | SceneLogonEvent
   | CharacterGuildEvent
   | CreatureRosterEvent
+  | CreatureTargetEvent
   | RichStreamEvent
   | RoomDescEvent
 
@@ -696,6 +699,40 @@ export interface EffectsUpdateEvent {
   at: number  // epoch ms the block was parsed
 }
 
+// GS4's `expr` dialog, one event per block (StormFrontParser.gsExpFromBar).
+// Every field is what the wire carried; absent = not in this block. rpa 0 /
+// lumnis 0 = not active. `untilNext` is experience to the next LEVEL below
+// 100 and to the next training point at 100+ (Saga labels it TP↑ there).
+export interface GsExperienceEvent {
+  type: 'gs-experience'
+  level?: number
+  mindText?: string        // "must rest", "saturated", "clear", …
+  mindValue?: number       // the bar's 0-100
+  fieldExp?: number
+  fieldExpMax?: number
+  totalExp?: number
+  ascensionExp?: number
+  untilNext?: number
+  rpa?: number             // absorption multiplier: 1.5, 2, 3
+  lumnis?: number          // Gift of Lumnis stage
+  nextLvlPercent?: number
+  // Training points, from the separate login-time `expr` block.
+  ptps?: number            // physical
+  mtps?: number            // mental
+  atps?: number            // available ascension training points
+  p2m?: number             // physical converted to mental
+  m2p?: number             // mental converted to physical
+}
+
+// GS4's `encum` dialog: the level bar (0-100) with its name, and the
+// description label ("You are not encumbered enough to notice.").
+export interface GsEncumbranceEvent {
+  type: 'gs-encumbrance'
+  level: number
+  text: string
+  description: string
+}
+
 export interface PlayerInfoEvent {
   type: 'player-info'
   char: string  // character name from <app char="Agan" .../>
@@ -756,10 +793,21 @@ export interface SceneCreature {
 // (Lich's own all-or-nothing rule, xmlparser.rb); null otherwise. A complete
 // snapshot each time — an id missing from it has left the room (decayed,
 // skinned, walked off). STICKY state, snapshotted for replay.
-export interface CreatureStatus { id: string; name: string | null; flags: string[] }
+//
+// GS4's tags also carry the creature's exact `health` and `maxhealth` (DR's
+// carry neither), kept as numbers. A pet or familiar sends 0/0. A tag sent on
+// its own mid-fight updates an id already listed (StormFrontParser.flushRoster).
+export interface CreatureStatus { id: string; name: string | null; flags: string[]; health?: number; maxHealth?: number }
 export interface CreatureRosterEvent {
   type: 'creature-roster'
   creatures: CreatureStatus[]
+}
+
+// GS4's current target (the combat dialog's dDBTarget picker): the creature's
+// id, or null for none. Emitted only on change. STICKY state.
+export interface CreatureTargetEvent {
+  type: 'creature-target'
+  id: string | null
 }
 
 // The full current cast. STICKY state (snapshotted for window-handoff replay,
