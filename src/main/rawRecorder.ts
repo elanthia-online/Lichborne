@@ -3,7 +3,8 @@
 //
 // While capture is on for a session, main appends every line it receives from
 // Lich (or the game, on a direct connection), stamped with the local time, to
-// `{userData}/Logs/raw/{Character}_{YYYY-MM-DD}.xml`. The point is diagnosis:
+// `{userData}/Logs/raw/{Name@SHARD}_{YYYY-MM-DD}.xml`, keyed by the session's
+// profile key (DESIGN §56.7.3) so two namesakes on different shards keep apart. The point is diagnosis:
 // a thing noticed in play can be cut out of the file by the clock and replayed
 // through the real parser and the render harness (`tmp-v0210-rich/replayraw.ts`),
 // with the character's profile YAML as the settings that were in force.
@@ -30,7 +31,8 @@ const enabled = new Set<string>()   // character keys with capture on
 const writers = new Map<string, { file: string; buf: string[]; timer: ReturnType<typeof setTimeout> | null }>()
 
 function safeName(character: string): string {
-  return character.replace(/[^A-Za-z0-9_-]/g, '_') || 'unknown'
+  // '@' is kept: callers pass the `Name@SHARD` profile key.
+  return character.replace(/[^A-Za-z0-9_@-]/g, '_') || 'unknown'
 }
 // Case-blind: a session's name can change case when the game reports it, and that
 // must not orphan a capture started under the old spelling.

@@ -34,6 +34,7 @@
 // NOT transferred until listed (the safe default: a forgotten key is a papercut,
 // never a target-breaker). See CLAUDE.md "Profile Transfer allowlist" rule.
 
+import { profileNameOf } from '../shared/profileKey'
 import * as yaml from 'js-yaml'
 import { nanoid } from 'nanoid'
 import { scopedKey, GLOBAL_RULES_SCOPE, asGlobalRules } from './characterScope'
@@ -273,7 +274,7 @@ export async function buildProfileExport(
     kind: 'lichborne-profile',
     formatVersion: EXPORT_FORMAT_VERSION,
     exportedFrom: 'Lichborne',
-    exportedBy: sourceCharacter,
+    exportedBy: profileNameOf(sourceCharacter),
     exportedAt: new Date().toISOString(),
     categories,
     ...(linkedColors.length > 0 ? { linkedColors } : {}),
@@ -413,7 +414,7 @@ export async function applyProfileImport(
   opts: ApplyOptions,
 ): Promise<TargetResult> {
   const result: TargetResult = {
-    character: targetCharacter, active: isActive, appliedCategories: [], themeAppWideNote: false, clashes: [],
+    character: profileNameOf(targetCharacter), active: isActive, appliedCategories: [], themeAppWideNote: false, clashes: [],
   }
   const clash = (kind: string) => (it: unknown, where: RuleClash['where']) =>
     result.clashes.push({ kind, label: ruleLabel(it), where })

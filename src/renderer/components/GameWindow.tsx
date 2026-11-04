@@ -98,6 +98,7 @@ import SettingsPanel from './SettingsPanel'
 import SessionLogModal from './SessionLogModal'
 import ContextMenu, { type CtxItem } from './ContextMenu'
 import { SessionLichPathContext, sessionLichPath } from '../sessionLich'
+import { profileKey } from '../../shared/profileKey'
 import { GameLinkContext, buildLinkMenu, buildPlayerMenu, linkAtElement, hasOwnClick, noteSelectionEnded, selectionJustEnded, type GameLinkActions, type GameLinkMenu } from '../gameLinks'
 // B391: the one text context-menu builder, shared with every stream panel.
 import { buildTextMenu, joinMenuGroups } from './panels/StreamPanel'
@@ -705,6 +706,10 @@ export default function GameWindow({
   // PanelFrame/PanelManager (panelTypeAvailable) and MapPanel (Genie-view
   // gating) rather than re-derived at each use site.
   const gameFamily = useMemo(() => gameFamilyFromCode(session.game), [session.game])
+  // What this character's data is filed under (DESIGN §56.7.3): its profile
+  // YAML, every scopedKey, its Session Log folder. `session.character` stays
+  // the NAME — for the game, Lich, contacts and anything shown.
+  const profile = profileKey(session.character, session.game)
   const isActiveRef = useRef(isActive)
   useEffect(() => { isActiveRef.current = isActive }, [isActive])
   // v0.19.0 Views. `isActive` is deliberately NOT touched by the view flip — the
@@ -815,6 +820,10 @@ export default function GameWindow({
   // They gate the card menu's window-move entries exactly as they gate the tab's.
   const { updateStatus, updateCharacterName, setActive, sessions: allSessions } = useSessions()
   const { isPrimary } = useRoster()
+  // The NAME, not the profile key: this must equal the id SessionsContext and
+  // main mint (makeCharacterId(account, character, game)), or updateStatus,
+  // setActive and every tab/card action miss this session. The game is already
+  // in the id, so same-name characters on two shards stay distinct.
   const characterId = useMemo(
     () => makeCharacterId(session.account, session.character, session.game),
     [session.account, session.character, session.game],
@@ -880,10 +889,10 @@ export default function GameWindow({
   // only one that actually runs once (and it is the house pattern here — see
   // pinnedSkills below). Never setState'd; this is a read-once snapshot.
   const [expSort] = useState<{ mode: SortMode; desc: boolean }>(() => {
-    const stored = loadStr(scopedKey(session.character, 'expSort'), 'alpha')
+    const stored = loadStr(scopedKey(profile, 'expSort'), 'alpha')
     return {
       mode: (SORT_MODES.includes(stored as SortMode) ? stored : 'alpha') as SortMode,
-      desc: loadStr(scopedKey(session.character, 'expSortDesc'), 'desc') !== 'asc',
+      desc: loadStr(scopedKey(profile, 'expSortDesc'), 'desc') !== 'asc',
     }
   })
   const rankUpTimersRef                 = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
@@ -895,9 +904,9 @@ export default function GameWindow({
   // no match → keep the dropdown's default. The launcher profile's guild
   // field seeds it asynchronously below.
   const [expFocus, setExpFocus] = useState<string>(() => {
-    const stored = localStorage.getItem(scopedKey(session.character, 'focus'))
+    const stored = localStorage.getItem(scopedKey(profile, 'focus'))
     if (stored) return stored
-    return guildToFocusOption(localStorage.getItem(scopedKey(session.character, 'detectedGuild'))) ?? 'None'
+    return guildToFocusOption(localStorage.getItem(scopedKey(profile, 'detectedGuild'))) ?? 'None'
   })
   // Secondary guild seed: the launcher profile's (manually set) guild field.
   // Read-only profile access — never write launcher-owned fields from here
@@ -906,18 +915,18 @@ export default function GameWindow({
     // A GS4 profile's field holds a PROFESSION (Edit Profile per family,
     // DESIGN §56.7.2), which must not pick a DR guild badge.
     if (gameFamily !== 'DR') return
-    if (localStorage.getItem(scopedKey(session.character, 'focus'))) return
-    if (localStorage.getItem(scopedKey(session.character, 'detectedGuild'))) return
+    if (localStorage.getItem(scopedKey(profile, 'focus'))) return
+    if (localStorage.getItem(scopedKey(profile, 'detectedGuild'))) return
     let cancelled = false
-    window.api.readCharacterProfile(session.character).then(raw => {
+    window.api.readCharacterProfile(profile).then(raw => {
       if (cancelled || !raw) return
       const mapped = guildToFocusOption((raw as { guild?: string }).guild)
       // Re-check BOTH sources: the user may have picked a badge, or an `info`
       // line may have detected the live guild, while the read was in flight —
       // either outranks the launcher's manual field.
       if (mapped
-        && !localStorage.getItem(scopedKey(session.character, 'focus'))
-        && !localStorage.getItem(scopedKey(session.character, 'detectedGuild'))) {
+        && !localStorage.getItem(scopedKey(profile, 'focus'))
+        && !localStorage.getItem(scopedKey(profile, 'detectedGuild'))) {
         setExpFocus(mapped)
       }
     }).catch(() => {})
@@ -928,30 +937,30 @@ export default function GameWindow({
   // the user's badge pick (a badge choice says nothing about the guild): the
   // own-sheet `info` detection first, then Edit Profile's Guild field.
   const [characterGuild, setCharacterGuild] = useState<string | null>(() =>
-    localStorage.getItem(scopedKey(session.character, 'detectedGuild')))
+    localStorage.getItem(scopedKey(profile, 'detectedGuild')))
   useEffect(() => {
     if (characterGuild) return
     // DR guilds only: a GS4 profession (an "empath" among them) must not
     // light up DR guild actions such as the Tableau's Touch.
     if (gameFamily !== 'DR') return
     let cancelled = false
-    window.api.readCharacterProfile(session.character).then(raw => {
+    window.api.readCharacterProfile(profile).then(raw => {
       const g = (raw as { guild?: string } | null)?.guild
-      if (!cancelled && g && !localStorage.getItem(scopedKey(session.character, 'detectedGuild'))) setCharacterGuild(g)
+      if (!cancelled && g && !localStorage.getItem(scopedKey(profile, 'detectedGuild'))) setCharacterGuild(g)
     }).catch(() => {})
     return () => { cancelled = true }
   }, [session.character]) // eslint-disable-line react-hooks/exhaustive-deps
   const [pinnedSkills, setPinnedSkills] = useState<Set<string>>(() => {
     try {
-      const raw = localStorage.getItem(scopedKey(session.character, 'expPins'))
+      const raw = localStorage.getItem(scopedKey(profile, 'expPins'))
       return raw ? new Set(JSON.parse(raw) as string[]) : new Set()
     } catch { return new Set() }
   })
 
   const handleFocusChange = useCallback((focus: string) => {
     setExpFocus(focus)
-    localStorage.setItem(scopedKey(session.character, 'focus'), focus)
-    scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+    localStorage.setItem(scopedKey(profile, 'focus'), focus)
+    scheduleProfileSave(session.account, profile, session.game, session.useLich)
   }, [session.character]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleTogglePin = useCallback((skill: string) => {
@@ -959,10 +968,10 @@ export default function GameWindow({
       const next = new Set(prev)
       if (next.has(skill)) next.delete(skill)
       else next.add(skill)
-      localStorage.setItem(scopedKey(session.character, 'expPins'), JSON.stringify([...next]))
+      localStorage.setItem(scopedKey(profile, 'expPins'), JSON.stringify([...next]))
       return next
     })
-    scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+    scheduleProfileSave(session.account, profile, session.game, session.useLich)
   }, [session.character]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [command, setCommand] = useState('')
@@ -976,7 +985,7 @@ export default function GameWindow({
   // via lazy state (a bare useRef(load(...)) would re-run the localStorage
   // read on every render); the same initial load drives the first-session
   // command-bar hint below.
-  const [initialCmdHistory] = useState<string[]>(() => loadCommandHistory(session.character))
+  const [initialCmdHistory] = useState<string[]>(() => loadCommandHistory(profile))
   const historyRef    = useRef<string[]>(initialCmdHistory)
   const historyIdxRef = useRef(-1)
   // F57: pressing ↑ from the live line (index -1) stashes the in-progress
@@ -1066,11 +1075,11 @@ export default function GameWindow({
     }
   }, [])
   const [streamTimestamps, setStreamTimestamps] = useState<Record<string, boolean>>(() => {
-    try { return JSON.parse(localStorage.getItem(scopedKey(session.character, 'streamTimestamps')) ?? '{}') } catch { return {} }
+    try { return JSON.parse(localStorage.getItem(scopedKey(profile, 'streamTimestamps')) ?? '{}') } catch { return {} }
   })
   const toggleStreamTimestamp = useCallback((id: string) => setStreamTimestamps(prev => {
     const next = { ...prev, [id]: !prev[id] }
-    localStorage.setItem(scopedKey(session.character, 'streamTimestamps'), JSON.stringify(next))
+    localStorage.setItem(scopedKey(profile, 'streamTimestamps'), JSON.stringify(next))
     saveProfile()
     return next
   }), [session.character, saveProfile])
@@ -1197,14 +1206,14 @@ export default function GameWindow({
   const lichOverrideRef = useRef<LichInstall | undefined>(undefined)
   useEffect(() => {
     const read = () => {
-      window.api.readCharacterProfile(session.character)
+      window.api.readCharacterProfile(profile)
         .then(raw => { lichOverrideRef.current = raw && typeof raw === 'object' ? coerceLichInstall((raw as { lich?: unknown }).lich) : undefined })
         .catch(() => {})
     }
     read()
-    const onChanged = (e: Event) => { if ((e as CustomEvent<string>).detail === session.character) read() }
+    const onChanged = (e: Event) => { if ((e as CustomEvent<string>).detail === profile) read() }
     const onStorage = (e: StorageEvent) => {
-      if (e.key === CHARACTER_LICH_CHANGED_KEY && e.newValue?.startsWith(`${session.character}:`)) read()
+      if (e.key === CHARACTER_LICH_CHANGED_KEY && e.newValue?.startsWith(`${profile}|`)) read()
     }
     window.addEventListener(CHARACTER_LICH_CHANGED_EVENT, onChanged)
     window.addEventListener('storage', onStorage)
@@ -1222,22 +1231,22 @@ export default function GameWindow({
           pauseScript, resumeScript, killScript, refresh: refreshScripts } = useLichBridge(session.sessionId, !dropped, lichPollRef, lichPath)
 
   // Layout sizes
-  const [panelWidth, setPanelWidth]       = useState(() => loadInt(scopedKey(session.character, 'panelWidth'), DEFAULT_PANEL_WIDTH, MIN_PANEL_WIDTH, MAX_PANEL_WIDTH))
-  const [topPanelHeight, setTopPanelHeight] = useState(() => loadInt(scopedKey(session.character, 'topPanelHeight'), DEFAULT_TOP_HEIGHT, MIN_TOP_HEIGHT, MAX_TOP_HEIGHT))
-  const [midPanelHeight, setMidPanelHeight] = useState(() => loadInt(scopedKey(session.character, 'midPanelHeight'), DEFAULT_MID_HEIGHT, MIN_MID_HEIGHT, MAX_MID_HEIGHT))
+  const [panelWidth, setPanelWidth]       = useState(() => loadInt(scopedKey(profile, 'panelWidth'), DEFAULT_PANEL_WIDTH, MIN_PANEL_WIDTH, MAX_PANEL_WIDTH))
+  const [topPanelHeight, setTopPanelHeight] = useState(() => loadInt(scopedKey(profile, 'topPanelHeight'), DEFAULT_TOP_HEIGHT, MIN_TOP_HEIGHT, MAX_TOP_HEIGHT))
+  const [midPanelHeight, setMidPanelHeight] = useState(() => loadInt(scopedKey(profile, 'midPanelHeight'), DEFAULT_MID_HEIGHT, MIN_MID_HEIGHT, MAX_MID_HEIGHT))
   // Main-text-area top zone (v0.8.1, F24). Sits ABOVE the main scrolling
   // text + command bar; full width of the left side (right panel column
   // is unaffected). Defaults to Room + Combat. Resizable via a horizontal
   // divider just below the zone.
-  const [mainTopHeight, setMainTopHeight] = useState(() => loadInt(scopedKey(session.character, 'mainTopHeight'), DEFAULT_MAIN_TOP_HEIGHT, MIN_MAIN_TOP_HEIGHT, MAX_MAIN_TOP_HEIGHT))
+  const [mainTopHeight, setMainTopHeight] = useState(() => loadInt(scopedKey(profile, 'mainTopHeight'), DEFAULT_MAIN_TOP_HEIGHT, MIN_MAIN_TOP_HEIGHT, MAX_MAIN_TOP_HEIGHT))
 
   // Panel tabs — 3 right-column zones + 1 main-top zone, persisted to localStorage (per-character)
-  const [topTabs, setTopTabs]       = useState<TabDef[]>(() => loadTabs(scopedKey(session.character, 'topTabs'),    [makeTab('conversation')]))
-  const [topActiveId, setTopActiveId]   = useState(() => loadStr(scopedKey(session.character, 'topActiveId'),    'conversation'))
-  const [midTabs, setMidTabs]       = useState<TabDef[]>(() => loadTabs(scopedKey(session.character, 'midTabs'),    defaultMidTabs(gameFamily)))
-  const [midActiveId, setMidActiveId]   = useState(() => loadStr(scopedKey(session.character, 'midActiveId'),    'thoughts'))
-  const [bottomTabs, setBottomTabs] = useState<TabDef[]>(() => loadTabs(scopedKey(session.character, 'bottomTabs'), defaultBottomTabs(gameFamily)))
-  const [bottomActiveId, setBottomActiveId] = useState(() => loadStr(scopedKey(session.character, 'bottomActiveId'), defaultBottomActiveId(gameFamily)))
+  const [topTabs, setTopTabs]       = useState<TabDef[]>(() => loadTabs(scopedKey(profile, 'topTabs'),    [makeTab('conversation')]))
+  const [topActiveId, setTopActiveId]   = useState(() => loadStr(scopedKey(profile, 'topActiveId'),    'conversation'))
+  const [midTabs, setMidTabs]       = useState<TabDef[]>(() => loadTabs(scopedKey(profile, 'midTabs'),    defaultMidTabs(gameFamily)))
+  const [midActiveId, setMidActiveId]   = useState(() => loadStr(scopedKey(profile, 'midActiveId'),    'thoughts'))
+  const [bottomTabs, setBottomTabs] = useState<TabDef[]>(() => loadTabs(scopedKey(profile, 'bottomTabs'), defaultBottomTabs(gameFamily)))
+  const [bottomActiveId, setBottomActiveId] = useState(() => loadStr(scopedKey(profile, 'bottomActiveId'), defaultBottomActiveId(gameFamily)))
   // New main-top zone — empty by default. v0.8.1 (F24). Adding the panel
   // gets an empty placeholder; the user picks what goes in it from
   // Available Streams. Streams not assigned to any zone fall back via
@@ -1246,7 +1255,7 @@ export default function GameWindow({
   // tabs poisoned watchedStreamsRef so combat didn't fall back to main
   // while Main-Top was un-added; (2) the first Add Main-Top click silently
   // re-populated [room, combat] instead of giving the expected empty slot.
-  const [mainTopTabs, setMainTopTabs] = useState<TabDef[]>(() => loadTabs(scopedKey(session.character, 'mainTopTabs'), []))
+  const [mainTopTabs, setMainTopTabs] = useState<TabDef[]>(() => loadTabs(scopedKey(profile, 'mainTopTabs'), []))
 
   // v0.8.1 (Panel Manager V2): each of the 4 panel locations is independently
   // "added" or "removed" from the layout. Add = slot snaps into the game
@@ -1264,21 +1273,21 @@ export default function GameWindow({
   //     were always visible; preserving them keeps the upgrade silent for
   //     anyone who never touched the new Panel Manager.
   const [mainTopAdded, setMainTopAdded] = useState(() =>
-    loadZoneAdded(scopedKey(session.character, 'mainTopAdded'), false))
+    loadZoneAdded(scopedKey(profile, 'mainTopAdded'), false))
   const [topAdded, setTopAdded] = useState(() =>
-    loadZoneAdded(scopedKey(session.character, 'topAdded'), true))
+    loadZoneAdded(scopedKey(profile, 'topAdded'), true))
   const [midAdded, setMidAdded] = useState(() =>
-    loadZoneAdded(scopedKey(session.character, 'midAdded'), true))
+    loadZoneAdded(scopedKey(profile, 'midAdded'), true))
   const [bottomAdded, setBottomAdded] = useState(() =>
-    loadZoneAdded(scopedKey(session.character, 'bottomAdded'), true))
-  const [mainTopActiveId, setMainTopActiveId] = useState(() => loadStr(scopedKey(session.character, 'mainTopActiveId'), 'room'))
+    loadZoneAdded(scopedKey(profile, 'bottomAdded'), true))
+  const [mainTopActiveId, setMainTopActiveId] = useState(() => loadStr(scopedKey(profile, 'mainTopActiveId'), 'room'))
 
   // ── Free Layout (DESIGN.md §33) — floating-window mode ─────────────────────
   // Phase 1: the window shell rendered as a pointer-through OVERLAY on top of
   // the normal panel skeleton (so the delicate main-text / chrome rendering is
   // untouched until Phase 2). `freeWindows` undefined-vs-[] distinguishes
   // "never converted → seed" from "intentionally emptied → respect" (§33.3).
-  const freeWindowsKey = scopedKey(session.character, 'freeWindows')
+  const freeWindowsKey = scopedKey(profile, 'freeWindows')
   // Lazy state -> ref, for the same reason. This one was the expensive
   // instance: the bare form ran localStorage.getItem PLUS a JSON.parse and a
   // filter over the whole floating-window array on every render of the
@@ -1286,13 +1295,13 @@ export default function GameWindow({
   const [initialFreeSeeded] = useState(() => loadFreeWindows(freeWindowsKey) !== undefined)
   const freeInitRef = useRef(initialFreeSeeded)
   const [layoutMode, setLayoutMode] = useState<LayoutMode>(() =>
-    loadStr(scopedKey(session.character, 'layoutMode'), 'panels') === 'free' ? 'free' : 'panels')
+    loadStr(scopedKey(profile, 'layoutMode'), 'panels') === 'free' ? 'free' : 'panels')
   const [freeWindows, setFreeWindows] = useState<FloatWindow[]>(() => loadFreeWindows(freeWindowsKey) ?? [])
   const gameLayoutRef = useRef<HTMLDivElement>(null)     // measured by the conversion (§33.6)
   const pendingRebuildRef = useRef(false)                // "Rebuild from panels" two-step
   // Lock free-layout windows against accidental drag/resize (§33.8). Per-char.
   const [freeLayoutLocked, setFreeLayoutLocked] = useState(() =>
-    loadStr(scopedKey(session.character, 'freeLayoutLocked'), '0') === '1')
+    loadStr(scopedKey(profile, 'freeLayoutLocked'), '0') === '1')
 
   // ── Lichborne Experiences (DESIGN.md §34) ──────────────────────────────────
   // Open floating Experience surfaces, hosted in BOTH layout modes by the
@@ -1300,7 +1309,7 @@ export default function GameWindow({
   // shelf's reopen restores it exactly (§34.5). Persisted under the
   // `experiences` scopedKey → dynamic state: pipeline → YAML (Principle #1).
   const [experiences, setExperiences] = useState<ExperienceInstance[]>(() =>
-    loadExperiences(scopedKey(session.character, 'experiences')))
+    loadExperiences(scopedKey(profile, 'experiences')))
   const [showExpShelf, setShowExpShelf] = useState(false)
   // Experiences hosted as TABS (§34 dual-hosting, v0.15.1 — `exp:<id>` tab
   // ids, type 'experience'). Pitfall #79: "which tabs are visible" MUST
@@ -1359,7 +1368,7 @@ export default function GameWindow({
   // #1): observe one sunrise once and the sky works every session after.
   const [sunState, setSunState] = useState<{ riseAt?: number; setAt?: number } | null>(() => {
     try {
-      const raw = localStorage.getItem(scopedKey(session.character, 'moonSun'))
+      const raw = localStorage.getItem(scopedKey(profile, 'moonSun'))
       if (raw) {
         const p = JSON.parse(raw)
         if (p && (typeof p.riseAt === 'number' || typeof p.setAt === 'number')) return p
@@ -1369,7 +1378,7 @@ export default function GameWindow({
   })
   useEffect(() => {
     if (!sunState) return
-    localStorage.setItem(scopedKey(session.character, 'moonSun'), JSON.stringify(sunState))
+    localStorage.setItem(scopedKey(profile, 'moonSun'), JSON.stringify(sunState))
     saveProfile()
   }, [session.character, sunState, saveProfile])
   // PRIMARY sun seed: the dr-scripts Firebase (`moon_data_v2.json` — the SAME
@@ -1675,8 +1684,8 @@ export default function GameWindow({
   // global store under the same id.
   const [highlightOpenFireId,  setHighlightOpenFireId]  = useState<string | undefined>(undefined)
 
-  const [contacts,  setContacts]  = useState(() => loadContacts(session.character))
-  const [contactTemplates, setContactTemplates] = useState(() => loadContactTemplates(session.character))
+  const [contacts,  setContacts]  = useState(() => loadContacts(profile))
+  const [contactTemplates, setContactTemplates] = useState(() => loadContactTemplates(profile))
 
   // ── Contacts: RENDER identity vs TRACKING data (v0.18.0 perf audit) ────────
   // The presence tracker rewrites the contacts array on every room change
@@ -1708,7 +1717,7 @@ export default function GameWindow({
   // re-mint ONLY when a render-relevant field changed (see above).
   const renderContacts = useMemo(() => contacts, [contactsRenderKey])
   const nameRegex = useMemo(() => buildNameRegex(renderContacts), [renderContacts])
-  const [highlights, setHighlights] = useState<HighlightRule[]>(() => loadHighlights(session.character))
+  const [highlights, setHighlights] = useState<HighlightRule[]>(() => loadHighlights(profile))
   const { activeGroupStates, modes, applyMode, activeModeId, groups, toggleGroup, clearMode } = useGroups()
   const activeContactTemplates = useMemo(
     () => contactTemplates.filter(t => isRuleActive(t.groupIds ?? [], activeGroupStates, t.allGroups ?? true)),
@@ -1723,7 +1732,7 @@ export default function GameWindow({
   const activeModeIdInitRef = useRef(false)
   useEffect(() => {
     if (!activeModeIdInitRef.current) { activeModeIdInitRef.current = true; return }
-    scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+    scheduleProfileSave(session.account, profile, session.game, session.useLich)
   }, [activeModeId]) // eslint-disable-line react-hooks/exhaustive-deps
   // ── Global cross-character rules (F37, v0.15.2; mutes/subs joined at
   // Sekmeht's ask same release) ─────────────────────────────────────────────
@@ -1768,7 +1777,7 @@ export default function GameWindow({
 
   // Mutes (DESIGN.md §31): compiled + group-gated, kept in a ref for the render
   // hot-path that filters newMain before commit.
-  const [mutes, setMutes] = useState<MuteRule[]>(() => loadMutes(session.character))
+  const [mutes, setMutes] = useState<MuteRule[]>(() => loadMutes(profile))
   const activeMutesRef = useRef<CompiledMute[]>([])
   useEffect(() => {
     // F37 (mutes joined at Sekmeht's ask): compile character + global mutes
@@ -1779,7 +1788,7 @@ export default function GameWindow({
     )
   }, [mutes, globalMutes, activeGroupStates])
   // Substitutes (DESIGN.md §31): compiled + group-gated, applied after mutes.
-  const [substitutes, setSubstitutes] = useState<SubstituteRule[]>(() => loadSubstitutes(session.character))
+  const [substitutes, setSubstitutes] = useState<SubstituteRule[]>(() => loadSubstitutes(profile))
   const activeSubsRef = useRef<CompiledSubstitute[]>([])
   // Tracks the last main line actually COMMITTED to the display (text + whether
   // it was a server prompt). The prompt-collapse pass (pitfall #88/#98) uses it
@@ -1798,15 +1807,15 @@ export default function GameWindow({
       (groupIds, allGroups) => isRuleActive(groupIds, activeGroupStates, allGroups),
     )
   }, [substitutes, globalSubs, activeGroupStates])
-  const [triggers, setTriggers] = useState<TriggerRule[]>(() => loadTriggers(session.character))
+  const [triggers, setTriggers] = useState<TriggerRule[]>(() => loadTriggers(profile))
   // Latest-value mirror, so `disableTrigger` can compute the next list WITHOUT
   // doing its persistence side effects inside a setState updater — StrictMode
   // double-invokes updaters in dev, and this file's own house rule is that
   // updaters stay pure (the toggleMusic lesson). Same inline shape as linesRef.
   const triggersRef = useRef<TriggerRule[]>(triggers)
   triggersRef.current = triggers
-  const [aliases,   setAliases]   = useState<AliasRule[]>(() => loadAliases(session.character))
-  const [macros,    setMacros]    = useState<MacroRule[]>(() => loadMacros(session.character))
+  const [aliases,   setAliases]   = useState<AliasRule[]>(() => loadAliases(profile))
+  const [macros,    setMacros]    = useState<MacroRule[]>(() => loadMacros(profile))
 
   const allTriggers = useMemo(() => [...triggers, ...globalTriggers], [triggers, globalTriggers])
   // F37: compile character + global highlights together (character first —
@@ -1833,7 +1842,7 @@ export default function GameWindow({
   // seed runs at most once; a user who deletes the defaults won't see
   // them reappear on next launch.
   useEffect(() => {
-    const flagKey = scopedKey(session.character, 'seededRepeatMacros')
+    const flagKey = scopedKey(profile, 'seededRepeatMacros')
     if (localStorage.getItem(flagKey) === '1') return
     const SEED: { key: string; token: string; name: string }[] = [
       { key: 'Ctrl+Enter', token: '{RepeatLast}',         name: 'Repeat last command' },
@@ -1846,7 +1855,7 @@ export default function GameWindow({
       localStorage.setItem(flagKey, '1')
       if (toAdd.length === 0) return prev
       const next = [...prev, ...toAdd.map(s => ({ ...newMacro(s.key), name: s.name, commands: [s.token] }))]
-      saveMacros(session.character, next)
+      saveMacros(profile, next)
       return next
     })
   }, [session.character])
@@ -1863,7 +1872,7 @@ export default function GameWindow({
   // globally, so the numpad becomes a movement pad exactly like the legacy
   // clients — digits still type from the top row.
   useEffect(() => {
-    const flagKey = scopedKey(session.character, 'seededNumpadMovement')
+    const flagKey = scopedKey(profile, 'seededNumpadMovement')
     if (localStorage.getItem(flagKey) === '1') return
     const SEED: { key: string; cmd: string; name: string }[] = [
       { key: 'Num8', cmd: 'n',    name: 'North' },
@@ -1884,7 +1893,7 @@ export default function GameWindow({
       localStorage.setItem(flagKey, '1')
       if (toAdd.length === 0) return prev
       const next = [...prev, ...toAdd.map(s => ({ ...newMacro(s.key), name: s.name, commands: [s.cmd] }))]
-      saveMacros(session.character, next)
+      saveMacros(profile, next)
       return next
     })
   }, [session.character])
@@ -1920,7 +1929,7 @@ export default function GameWindow({
     })
     if (kept.length === 0) return
     window.api.sessionLogAppend({
-      character: session.character,
+      character: profile,
       records: kept,
       retentionDays: s.retentionDays,
       compress: s.compress,
@@ -1970,8 +1979,8 @@ export default function GameWindow({
   // character last painted the window, which is wrong for a tab that remounts
   // (a Transfer, a window move) while another character is showing.
   const [currentThemeId, setCurrentThemeId]     = useState(() =>
-    rememberedCharacterTheme(session.character) ?? localStorage.getItem('lichborne.theme') ?? 'classic')
-  useEffect(() => { rememberCharacterTheme(session.character, currentThemeId) }, [session.character, currentThemeId])
+    rememberedCharacterTheme(profile) ?? localStorage.getItem('lichborne.theme') ?? 'classic')
+  useEffect(() => { rememberCharacterTheme(profile, currentThemeId) }, [session.character, currentThemeId])
   const [myThemes, setMyThemes]                 = useState<CustomTheme[]>(() => loadMyThemes())
   // Keep this tab's copy of the custom-theme list current (see saveMyThemes).
   useEffect(() => {
@@ -1984,7 +1993,7 @@ export default function GameWindow({
       window.removeEventListener('storage', onStorage)
     }
   }, [])
-  const [settings, setSettings]                 = useState<AppSettings>(() => loadSettings(session.character))
+  const [settings, setSettings]                 = useState<AppSettings>(() => loadSettings(profile))
   // Seed the AI output stream so it's always addable in Panel Manager even before
   // any AI feature has produced output (the user wants to pin it up front).
   const [discoveredStreams, setDiscoveredStreams] = useState<string[]>([AI_STREAM])
@@ -2007,9 +2016,9 @@ export default function GameWindow({
   // scopedKey → `state:` → YAML pipeline like every other per-character setting
   // (Principle #1), so it needs no profile-shape change.
   const [overviewStream, setOverviewStream] = useState<string>(() =>
-    loadStr(scopedKey(session.character, 'overviewStream'), 'main'))
+    loadStr(scopedKey(profile, 'overviewStream'), 'main'))
   useEffect(() => {
-    localStorage.setItem(scopedKey(session.character, 'overviewStream'), overviewStream)
+    localStorage.setItem(scopedKey(profile, 'overviewStream'), overviewStream)
     saveProfile()
   }, [session.character, overviewStream, saveProfile])
 
@@ -2250,12 +2259,12 @@ export default function GameWindow({
       const updated = triggersRef.current.map(r => r.id === id ? { ...r, enabled: false } : r)
       triggersRef.current = updated
       setTriggers(updated)
-      saveTriggers(session.character, updated)
+      saveTriggers(profile, updated)
       // Same gap the theme pick had: saving to localStorage is only HALF of a
       // per-character change, because importCharacterProfile restores `state`
       // from the YAML on the next connect. Without this, a ONE-SHOT trigger
       // that fired would come back ARMED next launch and fire a second time.
-      scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+      scheduleProfileSave(session.account, profile, session.game, session.useLich)
     },
     flashWindow:  () => window.api.flashWindow(),
     writeLog:     (file: string, content: string) => window.api.writeLog(file, content),
@@ -2266,7 +2275,7 @@ export default function GameWindow({
     onFire: (name: string, matched: string, detail: string, stream: string, ruleId: string) => {
       // Analytics: count the fire even when the Debug panel is closed (the
       // engine only calls onFire after gates/cooldown pass, and not on replay).
-      if (analyticsEnabledRef.current) recordFire(session.character, ruleId)
+      if (analyticsEnabledRef.current) recordFire(profile, ruleId)
       if (!showDebugRef.current) return
       const entry: FireLogEntry = {
         id: fireLogId++,
@@ -2354,7 +2363,7 @@ export default function GameWindow({
         cr.regex.lastIndex++ // avoid infinite loop on zero-width match
       }
       if (firstMatch !== null) {
-        if (analytics) recordFire(session.character, cr.rule.id)
+        if (analytics) recordFire(profile, cr.rule.id)
         if (!showDebugRef.current) continue   // analytics-only: counted, skip building a log entry
         const { style, soundFile, pattern, name, mode, scope } = cr.rule
         const nameFallback = name || pattern.slice(0, 60)
@@ -2550,8 +2559,8 @@ export default function GameWindow({
             : clampFontSize(settings.fontSize + (action === 'font-increase' ? 1 : -1))
           const next = { ...settings, fontSize: size }
           setSettings(next)
-          saveSettings(session.character, next)
-          scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+          saveSettings(profile, next)
+          scheduleProfileSave(session.account, profile, session.game, session.useLich)
           break
         }
       }
@@ -2908,9 +2917,9 @@ export default function GameWindow({
       clearTimeout(lastSeenTimerRef.current)
       lastSeenTimerRef.current = null
     }
-    saveContacts(session.character, next)
+    saveContacts(profile, next)
     setContacts(next)
-    if (opts.lazy) scheduleProfileSaveIfIdle(session.account, session.character, session.game, session.useLich)
+    if (opts.lazy) scheduleProfileSaveIfIdle(session.account, profile, session.game, session.useLich)
     else saveProfile()
   }, [session.character, session.account, session.game, session.useLich, saveProfile])
   // For a panel that has already saved the list itself: the same rule applies,
@@ -2921,7 +2930,7 @@ export default function GameWindow({
       clearTimeout(lastSeenTimerRef.current)
       lastSeenTimerRef.current = null
     }
-    setContacts(loadContacts(session.character))
+    setContacts(loadContacts(profile))
   }, [session.character])
   const commitContactsRef = useRef(commitContacts)
   useEffect(() => { commitContactsRef.current = commitContacts }, [commitContacts])
@@ -3057,7 +3066,7 @@ export default function GameWindow({
     if (!ownsDom) { savedThemeRef.current = null; return }  // only one window writes the document
     // Remember whose display settings these are, so the next launch starts in
     // them (initSettings) and the first connect doesn't re-font the window.
-    try { localStorage.setItem(LAST_DISPLAY_CHARACTER_KEY, session.character) } catch { /* storage full or blocked: boot uses defaults */ }
+    try { localStorage.setItem(LAST_DISPLAY_CHARACTER_KEY, profile) } catch { /* storage full or blocked: boot uses defaults */ }
     // B114: register a post-apply hook that re-runs the accessibility
     // overlays (high contrast + color blind) whenever applyTheme /
     // applyCustomTheme is called from anywhere — ThemePicker preview,
@@ -3085,17 +3094,17 @@ export default function GameWindow({
 
   // Persist panel layout state to per-character localStorage AND schedule a
   // YAML save so the change reaches disk even if no other event triggers one.
-  useEffect(() => { localStorage.setItem(scopedKey(session.character, 'topTabs'),       JSON.stringify(topTabs));      saveProfile() }, [session.character, topTabs, saveProfile])
-  useEffect(() => { localStorage.setItem(scopedKey(session.character, 'topActiveId'),   topActiveId);                  saveProfile() }, [session.character, topActiveId, saveProfile])
-  useEffect(() => { localStorage.setItem(scopedKey(session.character, 'midTabs'),       JSON.stringify(midTabs));      saveProfile() }, [session.character, midTabs, saveProfile])
-  useEffect(() => { localStorage.setItem(scopedKey(session.character, 'midActiveId'),   midActiveId);                  saveProfile() }, [session.character, midActiveId, saveProfile])
-  useEffect(() => { localStorage.setItem(scopedKey(session.character, 'bottomTabs'),    JSON.stringify(bottomTabs));   saveProfile() }, [session.character, bottomTabs, saveProfile])
-  useEffect(() => { localStorage.setItem(scopedKey(session.character, 'bottomActiveId'), bottomActiveId);              saveProfile() }, [session.character, bottomActiveId, saveProfile])
-  useEffect(() => { localStorage.setItem(scopedKey(session.character, 'mainTopTabs'),    JSON.stringify(mainTopTabs));  saveProfile() }, [session.character, mainTopTabs, saveProfile])
-  useEffect(() => { localStorage.setItem(scopedKey(session.character, 'mainTopActiveId'), mainTopActiveId);             saveProfile() }, [session.character, mainTopActiveId, saveProfile])
-  useEffect(() => { localStorage.setItem(scopedKey(session.character, 'mainTopHeight'),  String(mainTopHeight));        saveProfile() }, [session.character, mainTopHeight, saveProfile])
-  useEffect(() => { localStorage.setItem(scopedKey(session.character, 'layoutMode'), layoutMode); saveProfile() }, [session.character, layoutMode, saveProfile])
-  useEffect(() => { localStorage.setItem(scopedKey(session.character, 'freeLayoutLocked'), freeLayoutLocked ? '1' : '0'); saveProfile() }, [session.character, freeLayoutLocked, saveProfile])
+  useEffect(() => { localStorage.setItem(scopedKey(profile, 'topTabs'),       JSON.stringify(topTabs));      saveProfile() }, [session.character, topTabs, saveProfile])
+  useEffect(() => { localStorage.setItem(scopedKey(profile, 'topActiveId'),   topActiveId);                  saveProfile() }, [session.character, topActiveId, saveProfile])
+  useEffect(() => { localStorage.setItem(scopedKey(profile, 'midTabs'),       JSON.stringify(midTabs));      saveProfile() }, [session.character, midTabs, saveProfile])
+  useEffect(() => { localStorage.setItem(scopedKey(profile, 'midActiveId'),   midActiveId);                  saveProfile() }, [session.character, midActiveId, saveProfile])
+  useEffect(() => { localStorage.setItem(scopedKey(profile, 'bottomTabs'),    JSON.stringify(bottomTabs));   saveProfile() }, [session.character, bottomTabs, saveProfile])
+  useEffect(() => { localStorage.setItem(scopedKey(profile, 'bottomActiveId'), bottomActiveId);              saveProfile() }, [session.character, bottomActiveId, saveProfile])
+  useEffect(() => { localStorage.setItem(scopedKey(profile, 'mainTopTabs'),    JSON.stringify(mainTopTabs));  saveProfile() }, [session.character, mainTopTabs, saveProfile])
+  useEffect(() => { localStorage.setItem(scopedKey(profile, 'mainTopActiveId'), mainTopActiveId);             saveProfile() }, [session.character, mainTopActiveId, saveProfile])
+  useEffect(() => { localStorage.setItem(scopedKey(profile, 'mainTopHeight'),  String(mainTopHeight));        saveProfile() }, [session.character, mainTopHeight, saveProfile])
+  useEffect(() => { localStorage.setItem(scopedKey(profile, 'layoutMode'), layoutMode); saveProfile() }, [session.character, layoutMode, saveProfile])
+  useEffect(() => { localStorage.setItem(scopedKey(profile, 'freeLayoutLocked'), freeLayoutLocked ? '1' : '0'); saveProfile() }, [session.character, freeLayoutLocked, saveProfile])
   // Toggling modes reflows the main text (panel column / chrome strips appear
   // or vanish) — re-pin to the bottom (gated on pinned inside stickToBottom).
   useEffect(() => {
@@ -3128,14 +3137,14 @@ export default function GameWindow({
     const next = freeLayoutSignatures(freeWindows)
     freeSavedSigRef.current = next
     if (next.geom !== prev.geom) saveProfile()
-    else if (next.z !== prev.z) scheduleProfileSaveIfIdle(session.account, session.character, session.game, session.useLich)
+    else if (next.z !== prev.z) scheduleProfileSaveIfIdle(session.account, profile, session.game, session.useLich)
   }, [session.character, session.account, session.game, session.useLich, freeWindows, freeWindowsKey, saveProfile])
   // Persist Experiences (§34.6). Skip the mount echo — the initial state IS
   // the loaded value, so writing it back would only churn the profile saver.
   const expDidMountRef = useRef(false)
   useEffect(() => {
     if (!expDidMountRef.current) { expDidMountRef.current = true; return }
-    saveExperiences(scopedKey(session.character, 'experiences'), experiences); saveProfile()
+    saveExperiences(scopedKey(profile, 'experiences'), experiences); saveProfile()
   }, [session.character, experiences, saveProfile])
   // §35.6 perf gate: tell main whether this session needs scene events AT
   // ALL. While no Experience is open (the default), the speech capturers
@@ -3161,10 +3170,10 @@ export default function GameWindow({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  useEffect(() => { localStorage.setItem(scopedKey(session.character, 'mainTopAdded'),  mainTopAdded ? '1' : '0'); saveProfile() }, [session.character, mainTopAdded, saveProfile])
-  useEffect(() => { localStorage.setItem(scopedKey(session.character, 'topAdded'),      topAdded     ? '1' : '0'); saveProfile() }, [session.character, topAdded,     saveProfile])
-  useEffect(() => { localStorage.setItem(scopedKey(session.character, 'midAdded'),      midAdded     ? '1' : '0'); saveProfile() }, [session.character, midAdded,     saveProfile])
-  useEffect(() => { localStorage.setItem(scopedKey(session.character, 'bottomAdded'),   bottomAdded  ? '1' : '0'); saveProfile() }, [session.character, bottomAdded,  saveProfile])
+  useEffect(() => { localStorage.setItem(scopedKey(profile, 'mainTopAdded'),  mainTopAdded ? '1' : '0'); saveProfile() }, [session.character, mainTopAdded, saveProfile])
+  useEffect(() => { localStorage.setItem(scopedKey(profile, 'topAdded'),      topAdded     ? '1' : '0'); saveProfile() }, [session.character, topAdded,     saveProfile])
+  useEffect(() => { localStorage.setItem(scopedKey(profile, 'midAdded'),      midAdded     ? '1' : '0'); saveProfile() }, [session.character, midAdded,     saveProfile])
+  useEffect(() => { localStorage.setItem(scopedKey(profile, 'bottomAdded'),   bottomAdded  ? '1' : '0'); saveProfile() }, [session.character, bottomAdded,  saveProfile])
 
   // One-time migration: pre-v0.8.1 users had Room as a default tab in the
   // right-column top zone. v0.8.1 moved Room to the new main-top zone but
@@ -3173,7 +3182,7 @@ export default function GameWindow({
   // the `mainTopMigrated` flag prevents re-running if the user ever
   // re-adds Room to topTabs deliberately.
   useEffect(() => {
-    const key = scopedKey(session.character, 'mainTopMigrated')
+    const key = scopedKey(profile, 'mainTopMigrated')
     if (localStorage.getItem(key) === '1') return
     const hasRoomInMainTop = mainTopTabs.some(t => t.id === 'room')
     const hasRoomInTop = topTabs.some(t => t.id === 'room')
@@ -3800,7 +3809,7 @@ export default function GameWindow({
             if (!ownName.test(evt.name)) break
             const mapped = guildToFocusOption(evt.guild)
             if (mapped) {
-              localStorage.setItem(scopedKey(session.character, 'detectedGuild'), evt.guild)
+              localStorage.setItem(scopedKey(profile, 'detectedGuild'), evt.guild)
               setCharacterGuild(evt.guild)
               handleFocusChange(mapped)
             }
@@ -4002,7 +4011,7 @@ export default function GameWindow({
       if (activeMutesRef.current.length > 0 || activeSubsRef.current.length > 0) {
         // Analytics (v0.14.4): tally each mute/sub that acts. Rides the existing
         // match loop — only built when tracking is on.
-        const fired = analyticsEnabledRef.current ? (id: string) => recordFire(session.character, id) : undefined
+        const fired = analyticsEnabledRef.current ? (id: string) => recordFire(profile, id) : undefined
         const applyTextMods = (buf: TextLine[], streamId: string) => {
           if (buf.length === 0) return
           const mu  = activeMutesRef.current.filter(m => !m.rule.stream || m.rule.stream === streamId)
@@ -4322,7 +4331,7 @@ export default function GameWindow({
         // event; users who want to inspect can click Debug.
         // document.title is owned by AppShell — it watches session.status.connected
         // and re-applies on tab switch, so we don't write it here.
-        exportCharacterProfile(session.account, session.character, session.game, session.useLich)
+        exportCharacterProfile(session.account, profile, session.game, session.useLich)
           .catch(console.error)
       }
     })
@@ -4577,7 +4586,7 @@ export default function GameWindow({
         const activeMacros = macrosRef.current.filter(r => isRuleActive(r.groupIds ?? [], activeGroupStatesRef.current, r.allGroups ?? false))
         // B347: mac Option chords are matched by physical key (macros.ts).
         const resolved = resolveMacro(e, activeMacros, buildMacroVars(), { mac: IS_MAC })
-        if (resolved && analyticsEnabledRef.current) recordFire(session.character, resolved.ruleId)
+        if (resolved && analyticsEnabledRef.current) recordFire(profile, resolved.ruleId)
         if (resolved && resolved.commands.length > 0) {
           e.preventDefault()
           // v0.8.3: expand {RepeatLast} / {RepeatSecondToLast} /
@@ -4756,19 +4765,19 @@ export default function GameWindow({
         isDraggingColRef.current = false
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
-        localStorage.setItem(scopedKey(session.character, 'panelWidth'), String(panelWidthRef.current))
+        localStorage.setItem(scopedKey(profile, 'panelWidth'), String(panelWidthRef.current))
         saveProfile()
       }
       if (draggingRow.current === 'top-mid') {
-        localStorage.setItem(scopedKey(session.character, 'topPanelHeight'), String(topHeightRef.current))
+        localStorage.setItem(scopedKey(profile, 'topPanelHeight'), String(topHeightRef.current))
         saveProfile()
       }
       if (draggingRow.current === 'mid-bot') {
-        localStorage.setItem(scopedKey(session.character, 'midPanelHeight'), String(midHeightRef.current))
+        localStorage.setItem(scopedKey(profile, 'midPanelHeight'), String(midHeightRef.current))
         saveProfile()
       }
       if (draggingRow.current === 'main-top') {
-        localStorage.setItem(scopedKey(session.character, 'mainTopHeight'), String(mainTopHeightRef.current))
+        localStorage.setItem(scopedKey(profile, 'mainTopHeight'), String(mainTopHeightRef.current))
         saveProfile()
       }
       if (draggingRow.current) {
@@ -4808,10 +4817,10 @@ export default function GameWindow({
     topHeightRef.current = DEFAULT_TOP_HEIGHT;         setTopPanelHeight(DEFAULT_TOP_HEIGHT)
     midHeightRef.current = DEFAULT_MID_HEIGHT;         setMidPanelHeight(DEFAULT_MID_HEIGHT)
     mainTopHeightRef.current = DEFAULT_MAIN_TOP_HEIGHT; setMainTopHeight(DEFAULT_MAIN_TOP_HEIGHT)
-    localStorage.setItem(scopedKey(session.character, 'panelWidth'),    String(DEFAULT_PANEL_WIDTH))
-    localStorage.setItem(scopedKey(session.character, 'topPanelHeight'), String(DEFAULT_TOP_HEIGHT))
-    localStorage.setItem(scopedKey(session.character, 'midPanelHeight'), String(DEFAULT_MID_HEIGHT))
-    localStorage.setItem(scopedKey(session.character, 'mainTopHeight'),  String(DEFAULT_MAIN_TOP_HEIGHT))
+    localStorage.setItem(scopedKey(profile, 'panelWidth'),    String(DEFAULT_PANEL_WIDTH))
+    localStorage.setItem(scopedKey(profile, 'topPanelHeight'), String(DEFAULT_TOP_HEIGHT))
+    localStorage.setItem(scopedKey(profile, 'midPanelHeight'), String(DEFAULT_MID_HEIGHT))
+    localStorage.setItem(scopedKey(profile, 'mainTopHeight'),  String(DEFAULT_MAIN_TOP_HEIGHT))
     saveProfile()
     // v0.8.1 (F24): Room moved from right-column top into the new main-top
     // zone; right-column top default is just Conversations now.
@@ -5213,7 +5222,9 @@ export default function GameWindow({
         aiCancelRef.current = null
         updateLive(liveId, [{ text: `— Catch Me Up · ${label}\n(stopped)\n`, preset: 'internal-system' }])
       }
-      window.api.sessionLogCatchupDigest(requestId, session.character, from, now, tier.maxChars, [session.account])
+      // The log is filed by profile key (DESIGN §56.7.3), the same key the
+      // append above writes under, never the bare name.
+      window.api.sessionLogCatchupDigest(requestId, profile, from, now, tier.maxChars, [session.account])
         .then(d => {
           if (buildCancelled) return
           offProgress()
@@ -5371,29 +5382,29 @@ export default function GameWindow({
     const ctx: SlashContext = {
       character: session.character,
       getHighlights: () => highlights,
-      applyHighlights: rules => { saveHighlights(session.character, rules); setHighlights(rules); saveProfile() },
+      applyHighlights: rules => { saveHighlights(profile, rules); setHighlights(rules); saveProfile() },
       getMutes: () => mutes,
-      applyMutes: rules => { saveMutes(session.character, rules); setMutes(rules); saveProfile() },
+      applyMutes: rules => { saveMutes(profile, rules); setMutes(rules); saveProfile() },
       getSubstitutes: () => substitutes,
-      applySubstitutes: rules => { saveSubstitutes(session.character, rules); setSubstitutes(rules); saveProfile() },
+      applySubstitutes: rules => { saveSubstitutes(profile, rules); setSubstitutes(rules); saveProfile() },
       // Contacts go through the pitfall-#36 blessed path — save + set TOGETHER,
       // so the B119 cleanup effect drops any in-flight room-tracking buffer.
       getContacts: () => contacts,
       applyContacts: next => commitContacts(next),
       getContactTemplates: () => contactTemplates,
-      applyContactTemplates: next => { saveContactTemplates(session.character, next); setContactTemplates(next); saveProfile() },
+      applyContactTemplates: next => { saveContactTemplates(profile, next); setContactTemplates(next); saveProfile() },
       getAliases: () => aliases,
-      applyAliases: rules => { saveAliases(session.character, rules); setAliases(rules); saveProfile() },
+      applyAliases: rules => { saveAliases(profile, rules); setAliases(rules); saveProfile() },
       getTriggers: () => triggers,
-      applyTriggers: rules => { saveTriggers(session.character, rules); setTriggers(rules); saveProfile() },
+      applyTriggers: rules => { saveTriggers(profile, rules); setTriggers(rules); saveProfile() },
       getMainTimestamps: () => !!streamTimestamps['main'],
       // v0.20.1 — per character, the Settings panel's own save path.
       getCompass: () => settings,
       setCompass: patch => {
         const next = { ...settings, ...patch }
         setSettings(next)
-        saveSettings(session.character, next)
-        scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+        saveSettings(profile, next)
+        scheduleProfileSave(session.account, profile, session.game, session.useLich)
       },
       // v0.21.0 — the rich-stream request (app-wide, Lich Setup's setting) and
       // what THIS session is actually receiving.
@@ -5677,7 +5688,7 @@ export default function GameWindow({
         historyRef.current = [text, ...historyRef.current].slice(0, COMMAND_HISTORY_MAX)
         // F57: persist so ↑ recall survives restarts. Synchronous but tiny
         // (≤200 short strings); try/catch'd inside — never throws mid-send.
-        saveCommandHistory(session.character, historyRef.current)
+        saveCommandHistory(profile, historyRef.current)
       }
       // Reset the browse position even when the command was NOT stored —
       // pressing Enter always returns you to the live line.
@@ -5719,7 +5730,7 @@ export default function GameWindow({
     for (const part of splitTypedCommands(text)) {
       const resolved = resolveAlias(part, activeAliases, buildMacroVars())
       if (resolved) {
-        if (analyticsEnabledRef.current) recordFire(session.character, resolved.ruleId)
+        if (analyticsEnabledRef.current) recordFire(profile, resolved.ruleId)
         sendCommandSequence(resolved.commands, resolved.delayMs)
         if (resolved.passThrough) {
           const delay = resolved.delayMs > 0 ? resolved.commands.length * resolved.delayMs : 0
@@ -5979,11 +5990,11 @@ export default function GameWindow({
       const nextMap = { ...(settings.panelFontSizes ?? {}), [tabId]: next }
       const nextSettings = { ...settings, panelFontSizes: nextMap }
       setSettings(nextSettings)
-      saveSettings(session.character, nextSettings)
+      saveSettings(profile, nextSettings)
       // Trigger the debounced YAML profile write so the new per-panel
       // size lands on disk, not just in localStorage. Matches the
       // pattern the Settings panel's onChange uses (line ~2113).
-      scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+      scheduleProfileSave(session.account, profile, session.game, session.useLich)
     },
     // §34 dual-hosting: the + menu's [e] section + the tab renderer. Both
     // MUST ride sharedFrameProps (B193) so zone tabs and floating windows
@@ -7113,7 +7124,7 @@ export default function GameWindow({
 
       {/* Docked strip is panels-mode only (B166) — in free mode it would render
           UNDER the WindowLayer; Debug opens as a floating window there. */}
-      {showDebug && layoutMode === 'panels' && <DebugPanel events={debugEvents} onClear={clearDebugEvents} rawXmlLines={rawXmlLines} onClearRawXml={clearRawXmlLines} fireLog={fireLog} onClearFireLog={clearFireLog} onGotoFireRule={gotoFireRule} onClose={() => setShowDebug(false)} resizable character={session.character} sessionId={session.sessionId} />}
+      {showDebug && layoutMode === 'panels' && <DebugPanel events={debugEvents} onClear={clearDebugEvents} rawXmlLines={rawXmlLines} onClearRawXml={clearRawXmlLines} fireLog={fireLog} onClearFireLog={clearFireLog} onGotoFireRule={gotoFireRule} onClose={() => setShowDebug(false)} resizable character={profile} sessionId={session.sessionId} />}
 
       {showMapOverlay && (
         <MapOverlay onClose={() => setShowMapOverlay(false)}>
@@ -7179,9 +7190,9 @@ export default function GameWindow({
             // writing localStorage is HALF a per-character setting change —
             // Principle #1 means the YAML is the truth, so schedule the save in
             // the same handler.
-            scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+            scheduleProfileSave(session.account, profile, session.game, session.useLich)
           }}
-          onMyThemesChange={themes => { setMyThemes(themes); saveMyThemes(themes); scheduleProfileSave(session.account, session.character, session.game, session.useLich); scheduleSharedProfileSave() }}
+          onMyThemesChange={themes => { setMyThemes(themes); saveMyThemes(themes); scheduleProfileSave(session.account, profile, session.game, session.useLich); scheduleSharedProfileSave() }}
           onClose={() => setShowThemePicker(false)}
         />
       )}
@@ -7189,8 +7200,8 @@ export default function GameWindow({
       {showSettings && (
         <SettingsPanel
           settings={settings}
-          character={session.character}
-          onChange={s => { setSettings(s); saveSettings(session.character, s); scheduleProfileSave(session.account, session.character, session.game, session.useLich) }}
+          character={profile}
+          onChange={s => { setSettings(s); saveSettings(profile, s); scheduleProfileSave(session.account, profile, session.game, session.useLich) }}
           layoutMode={layoutMode}
           simucoin={simucoin}
           jumpToSection={settingsJump}
@@ -7201,7 +7212,7 @@ export default function GameWindow({
       {showSessionLog && (
         <SessionLogModal
           key={sessionLogKey}
-          character={session.character}
+          character={profile}
           initialSearch={sessionLogSearch}
           onClose={() => setShowSessionLog(false)}
         />
@@ -7232,8 +7243,8 @@ export default function GameWindow({
           }}
           onSaved={() => {
             reloadSavedContacts()
-            setContactTemplates(loadContactTemplates(session.character))
-            scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+            setContactTemplates(loadContactTemplates(profile))
+            scheduleProfileSave(session.account, profile, session.game, session.useLich)
           }}
         />
       )}
@@ -7279,18 +7290,18 @@ export default function GameWindow({
               setCurrentThemeId(themeId)
               localStorage.setItem('lichborne.theme', themeId)
               scheduleSharedProfileSave()
-              scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+              scheduleProfileSave(session.account, profile, session.game, session.useLich)
             }}
             onSaved={() => {
-              setHighlights(loadHighlights(session.character))
-              setTriggers(loadTriggers(session.character))
-              setAliases(loadAliases(session.character))
-              setMacros(loadMacros(session.character))
-              setMutes(loadMutes(session.character))
-              setSubstitutes(loadSubstitutes(session.character))
+              setHighlights(loadHighlights(profile))
+              setTriggers(loadTriggers(profile))
+              setAliases(loadAliases(profile))
+              setMacros(loadMacros(profile))
+              setMutes(loadMutes(profile))
+              setSubstitutes(loadSubstitutes(profile))
               reloadSavedContacts()
-              setContactTemplates(loadContactTemplates(session.character))
-              scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+              setContactTemplates(loadContactTemplates(profile))
+              scheduleProfileSave(session.account, profile, session.game, session.useLich)
             }}
             onClose={() => {
               setShowAutomations(false)
@@ -7304,13 +7315,13 @@ export default function GameWindow({
               setMutePrefill(undefined)
               setSubstitutePrefill(undefined)
               setSlashOpenRule(null)
-              setHighlights(loadHighlights(session.character))
-              setTriggers(loadTriggers(session.character))
-              setAliases(loadAliases(session.character))
-              setMacros(loadMacros(session.character))
-              setMutes(loadMutes(session.character))
-              setSubstitutes(loadSubstitutes(session.character))
-              scheduleProfileSave(session.account, session.character, session.game, session.useLich)
+              setHighlights(loadHighlights(profile))
+              setTriggers(loadTriggers(profile))
+              setAliases(loadAliases(profile))
+              setMacros(loadMacros(profile))
+              setMutes(loadMutes(profile))
+              setSubstitutes(loadSubstitutes(profile))
+              scheduleProfileSave(session.account, profile, session.game, session.useLich)
             }}
           />
         </LiveVarsContext.Provider>

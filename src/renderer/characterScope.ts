@@ -1,12 +1,13 @@
 // Per-character localStorage scoping. Each character's per-tab state lives
-// under `lichborne.{normalizedCharacter}.{suffix}` so two tabs in the same app
-// instance can independently read/write without clobbering each other.
+// under `lichborne.{name@shard}.{suffix}` (the lowercased profile key, DESIGN
+// §56.7.3) so two tabs in the same app instance can independently read/write
+// without clobbering each other.
 //
 // Shared keys (account, advancedSettings, mapDir, genieMapsDir, myThemes,
 // rememberPassword) stay unnamespaced — they apply to all characters.
 //
-// YAML files (profiles/{character}.yaml) remain authoritative. localStorage is
-// just a fast cache that gets repopulated from YAML on each login.
+// YAML files (profiles/{Name@SHARD}.yaml) remain authoritative. localStorage
+// is just a fast cache that gets repopulated from YAML on each login.
 
 import { showToast } from './toasts'
 
@@ -14,8 +15,17 @@ export function normalizeCharacter(character: string): string {
   return character.trim().toLowerCase() || '_'
 }
 
+// Every scope is a profile key, `Name@SHARD` (DESIGN §56.7.3), or the virtual
+// `_global`. A bare name is a caller that missed the key: it reads and writes
+// a scope nothing saves, so say so (once per scope) rather than stay silent.
+const warnedScopes = new Set<string>()
 export function scopedKey(character: string, suffix: string): string {
-  return `lichborne.${normalizeCharacter(character)}.${suffix}`
+  const scope = normalizeCharacter(character)
+  if (!scope.includes('@') && !scope.startsWith('_') && !warnedScopes.has(scope)) {
+    warnedScopes.add(scope)
+    console.error(`[storage] scopedKey("${character}", "${suffix}"): not a Name@SHARD profile key`)
+  }
+  return `lichborne.${scope}.${suffix}`
 }
 
 // ── Global rules scope (F37, v0.15.2) ────────────────────────────────────────

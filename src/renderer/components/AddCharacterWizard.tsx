@@ -27,6 +27,7 @@ import { useEscapeClose } from '../hooks/useEscapeClose'
 import { createPortal } from 'react-dom'
 import { GAMES, IS_MAC, IS_WINDOWS } from '../lichSettings'
 import { gameFamilyName, type GameFamily } from '../../shared/types'
+import { profileKey, profileNameOf, profileShard, profileShardOf, TEST_SHARDS } from '../../shared/profileKey'
 import { useSessions } from '../SessionsContext'
 import type { CharacterProfile } from '../profile-types'
 import {
@@ -113,7 +114,7 @@ export interface ProfileOwner {
 }
 
 // Which account (and game) each existing profile is filed under, keyed by the
-// lowercase character name.
+// lowercase profile key, `name@shard` (DESIGN §56.7.3): the file's own name.
 async function readProfileOwners(): Promise<Map<string, ProfileOwner>> {
   const owners = new Map<string, ProfileOwner>()
   const files = await window.api.listCharacterProfiles().catch(() => [] as string[])
@@ -121,12 +122,12 @@ async function readProfileOwners(): Promise<Map<string, ProfileOwner>> {
   files.forEach((file, i) => {
     const raw = reads[i]
     if (!raw || typeof raw !== 'object') {
-      owners.set(file.toLowerCase(), { file, character: file, account: '', game: 'DR', readable: false })
+      owners.set(file.toLowerCase(), { file, character: profileNameOf(file), account: '', game: profileShardOf(file) ?? 'DR', readable: false })
       return
     }
     const p = raw as Partial<CharacterProfile>
-    const character = p.character ?? file
-    owners.set(character.toLowerCase(), {
+    const character = p.character ?? profileNameOf(file)
+    owners.set(file.toLowerCase(), {
       file, character, account: p.account ?? '', game: p.game ?? 'DR', readable: true,
     })
   })
@@ -155,11 +156,6 @@ function finishLabel(adds: number, removes: number): string {
   return parts.join(', ')
 }
 
-// DRT shares DR's characters, so a DRT tile belongs to a DR fetch.
-function gameFamily(code: string): string {
-  return code === 'DRT' ? 'DR' : code
-}
-
 /** Sort a fetched roster against the profiles on disk (B542). Pure, so the
  *  rules harness can drive it. A profile filed under THIS account is "already
  *  added"; one under another account was transferred here; an unreadable one
@@ -174,19 +170,17 @@ export function classifyRoster(
 ): { annotated: DiscoveredCharacter[]; leftBehind: LeftBehind[] } {
   const me = account.trim().toLowerCase()
   const annotated: DiscoveredCharacter[] = roster.map(name => {
-    const owner = owners.get(name.toLowerCase())
+    // By name AND shard: the same name on another shard is another character
+    // with its own profile (DESIGN §56.7.3; this replaced B614's cross-game rule).
+    const owner = owners.get(profileKey(name, game).toLowerCase())
     if (!owner) return { name, existing: false }
     if (!owner.readable || owner.account.trim().toLowerCase() === me) return { name, existing: true, file: owner.file }
-    // The same name on another account in ANOTHER game is a different character,
-    // not a transfer: it shares this file (profiles are filed by name), and
-    // re-filing it would point the other tile at the wrong account (B614).
-    if (gameFamily(owner.game) !== gameFamily(game)) return { name, existing: true, file: owner.file }
     return { name, existing: false, movedFrom: owner.account, file: owner.file }
   })
   const listed = new Set(roster.map(n => n.toLowerCase()))
   const leftBehind = [...owners.values()]
     .filter(o => o.readable && o.account.trim().toLowerCase() === me
-      && gameFamily(o.game) === gameFamily(game)
+      && profileShard(o.game) === profileShard(game)
       && !listed.has(o.character.toLowerCase()))
     .map(o => ({ name: o.character, file: o.file }))
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -409,13 +403,14 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
       // guarded main-side too: restore refuses to clobber a live profile of the
       // same name, so a character recreated while archived keeps its real
       // settings and the stale archive copy is left alone.
-      if (archived.has(name.toLowerCase())) {
+      const key = profileKey(name, game)
+      if (archived.has(key.toLowerCase())) {
         try {
-          if (await window.api.restoreCharacterProfile(name)) {
+          if (await window.api.restoreCharacterProfile(key)) {
             // The archived copy names whichever account it was removed with,
             // which is not this one if the character was transferred while
             // archived (B542).
-            if (!(await refileProfile(name))) failed.push(name)
+            if (!(await refileProfile(key))) failed.push(name)
             added += 1
             continue
           }
@@ -425,7 +420,7 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
       }
       // Never over a real file: the list above can miss one if the folder couldn't
       // be read, and a refused restore means a live profile is there (B617).
-      if (await window.api.characterProfileExists(name).catch(() => true)) continue
+      if (await window.api.characterProfileExists(key).catch(() => true)) continue
       const stub: CharacterProfile = {
         profileVersion: 2,
         account,
@@ -436,7 +431,7 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
         state: {},
       }
       try {
-        await window.api.writeCharacterProfile(name, stub)
+        await window.api.writeCharacterProfile(key, stub)
         added += 1
       } catch (err) {
         console.error(`Failed to create profile for ${name}`, err)
@@ -515,12 +510,15 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
       console.error(`Failed to re-file profile ${file}`, err)
       return false
     }
-    const name = p.character ?? file
+    const name = p.character ?? profileNameOf(file)
     let sharedChanged = moveCharacterColor(from, account, name)
     const last = loadLastSessionCharacters()
-    if (last.some(e => e.account.toLowerCase() === from.toLowerCase() && e.name.toLowerCase() === name.toLowerCase())) {
+    const same = (e: { account: string; name: string; game?: string }) =>
+      e.account.toLowerCase() === from.toLowerCase() && e.name.toLowerCase() === name.toLowerCase()
+      && profileShard(e.game) === profileShard(p.game)
+    if (last.some(same)) {
       saveLastSessionCharacters(last.map(e =>
-        e.account.toLowerCase() === from.toLowerCase() && e.name.toLowerCase() === name.toLowerCase()
+        same(e)
           ? { ...e, account }
           : e))
       sharedChanged = true
@@ -644,7 +642,7 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
                   <div key={grp.family} className="wiz-game-group" role="radiogroup" aria-label={grp.label}>
                     <div className="wiz-game-group-label">{grp.label}</div>
                     <div className="wiz-game-list">
-                      {GAMES.filter(g => g.family === grp.family && g.code !== 'DRT').map(g => (
+                      {GAMES.filter(g => g.family === grp.family && !(g.code in TEST_SHARDS)).map(g => (
                         <label key={g.code} className={`wiz-game${game === g.code ? ' wiz-game--active' : ''}`} title={g.name}>
                           <input type="radio" checked={game === g.code} onChange={() => setGame(g.code)} disabled={busy} />
                           <span className="wiz-game-name">{g.name.slice(grp.label.length).trim() || g.name}</span>
@@ -656,7 +654,7 @@ export default function AddCharacterWizard({ onCompleted, onCancel, onOpenLichSe
                 ))}
               </div>
               <p className="wiz-hint" style={{ marginTop: 8 }}>
-                Prime Test (DRT) shares its characters with DR — pick DR here, then flip the Test toggle on individual tiles after.
+                The test instances (DRT, GST) mirror Prime — pick Prime here, then flip the Test toggle on a tile. It keeps the same settings.
               </p>
             </>
           )}

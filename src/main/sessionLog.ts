@@ -44,6 +44,7 @@ import type {
   CatchupDigest, CatchupProgress, CatchupThread,
 } from '../shared/types'
 import { redactForAI } from '../shared/redact'
+import { isProfileKey } from '../shared/profileKey'
 
 // ── Session Log writer ────────────────────────────────────────────────────────
 // Per-character buffered writer. Captured records arrive from the renderer via
@@ -917,6 +918,12 @@ export function registerSessionLogHandlers(): void {
 
   ipcMain.on('session-log:append', (_e, payload: SessionLogAppendPayload) => {
     if (!payload?.character || !Array.isArray(payload.records) || payload.records.length === 0) return
+    // Log folders are per profile key (DESIGN §56.7.3); a bare name would
+    // start a second folder beside the migrated one.
+    if (!isProfileKey(payload.character)) {
+      console.error(`[sessionLog] dropping records for "${payload.character}": not a Name@SHARD key`)
+      return
+    }
     const buf = getBuffer(
       payload.character,
       payload.retentionDays ?? 30,
@@ -960,6 +967,10 @@ export function registerSessionLogHandlers(): void {
   // `redactLiterals` = extra strings scrubbed from the AI copy (the account
   // username). Generic credential/PIN patterns are handled by redactForAI itself.
   ipcMain.handle('session-log:catchup-digest', async (e, requestId: string, character: string, fromTs: number, toTs: number, maxBodyChars: number, redactLiterals: string[]): Promise<CatchupDigest> => {
+    // Same rule as the append: a bare name would read a pre-migration (or
+    // another shard's namesake's) folder and send it to the AI. The renderer
+    // treats a rejection as "log unreadable" and falls back to the screen.
+    if (!isProfileKey(character ?? '')) throw new Error(`not a Name@SHARD key: "${character}"`)
     const buf = buffers.get(character?.toLowerCase() ?? '')
     if (buf) flushBuffer(buf)
     const send = (p: { phase: 'reading' | 'deduping' | 'extracting'; done: number; total: number; lines: number }) => {
