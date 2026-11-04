@@ -84,7 +84,11 @@ export interface LichInstall {
 export type LichInstallSource = 'character' | 'game' | 'default'
 
 export interface ResolvedLichInstall extends LichInstall {
+  /** Where the Lich path came from. */
   source: LichInstallSource
+  /** Where the Ruby came from. Not always `source`: a blank Ruby falls back to
+   *  the game's, then the default's. */
+  rubySource: LichInstallSource
 }
 
 /** A stored install, or undefined for anything without a Lich path. */
@@ -117,22 +121,53 @@ export function resolveLichInstall(
   // A blank Ruby falls through the same chain as the install: a character's
   // own Lich with no Ruby of its own uses its game's Ruby, then the default's.
   const forGame = adv.installs?.[gameFamilyFromCode(game)]
-  const gameRuby = (forGame?.lichPath && forGame.rubyPath) || adv.rubyPath
-  if (override?.lichPath) return { lichPath: override.lichPath, rubyPath: override.rubyPath || gameRuby, source: 'character' }
-  if (forGame?.lichPath) return { lichPath: forGame.lichPath, rubyPath: gameRuby, source: 'game' }
-  return { lichPath: adv.lichPath, rubyPath: adv.rubyPath, source: 'default' }
+  const gameHasRuby = !!(forGame?.lichPath && forGame.rubyPath)
+  const gameRuby = gameHasRuby ? forGame!.rubyPath : adv.rubyPath
+  const gameRubySource: LichInstallSource = gameHasRuby ? 'game' : 'default'
+  if (override?.lichPath) {
+    return override.rubyPath
+      ? { lichPath: override.lichPath, rubyPath: override.rubyPath, source: 'character', rubySource: 'character' }
+      : { lichPath: override.lichPath, rubyPath: gameRuby, source: 'character', rubySource: gameRubySource }
+  }
+  if (forGame?.lichPath) return { lichPath: forGame.lichPath, rubyPath: gameRuby, source: 'game', rubySource: gameRubySource }
+  return { lichPath: adv.lichPath, rubyPath: adv.rubyPath, source: 'default', rubySource: 'default' }
 }
 
 /** A launch the pre-flight refused (a Ruby or Lich path missing or of the wrong
  *  kind) says "Open Lich Setup". That is right for the default install, but a
  *  character's own install lives in Edit Profile and a game's in Lich Setup's
- *  per-game rows, and Auto Detect only fills in the default. So name where
- *  THIS character's paths came from. Any other error passes through as is. */
+ *  per-game rows, and Auto Detect only fills in the default. So say where the
+ *  paths that failed are set. The Ruby is judged on its OWN source: a blank
+ *  Ruby is inherited (game's, then default's), so a Ruby refusal on a
+ *  character's own Lich install is often the default Ruby, which Auto Detect
+ *  does fill in (a fresh Mac/Linux install's default Ruby is empty on purpose).
+ *  Any other error passes through as is. */
 export function withInstallHint(error: string, install: ResolvedLichInstall, name: string, game: string): string {
-  if (!error.includes('Open Lich Setup') || install.source === 'default') return error
-  return install.source === 'character'
-    ? `${error} These are ${name}'s own install, so fix them on its tile: ⋯ → Edit profile… → Lich install. Auto Detect only fills in the default install.`
-    : `${error} These are the ${gameFamilyName(gameFamilyFromCode(game))} install, so fix them in Lich Setup → Lich install by game. Auto Detect only fills in the default install.`
+  if (!error.includes('Open Lich Setup')) return error
+  const gameName = gameFamilyName(gameFamilyFromCode(game))
+  const owner = (s: LichInstallSource) =>
+    s === 'character' ? `${name}'s own install` : s === 'game' ? `the ${gameName} install` : 'the default install'
+  const where = (s: LichInstallSource) =>
+    s === 'character' ? "on its tile: ⋯ → Edit profile… → Lich install"
+    : s === 'game' ? 'in Lich Setup → Lich install by game'
+    : 'in Lich Setup'
+  const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
+  const rubyProblem = /^(No Ruby interpreter|Ruby was not found|The Ruby path should be)/.test(error)
+  const swapped = error.startsWith('The Ruby and Lich paths look swapped')
+  if (rubyProblem) {
+    if (install.rubySource === 'default') {
+      // The base sentence (Lich Setup, Auto Detect) is the fix; only say how
+      // an install of its own could have its own Ruby instead.
+      return install.source === 'default' ? error
+        : `${error} (${cap(owner(install.source))} has no Ruby of its own, so it uses the default one; you can also give it its own Ruby ${where(install.source)}.)`
+    }
+    return `${error} This Ruby comes from ${owner(install.rubySource)}, so fix it ${where(install.rubySource)}.`
+  }
+  if (swapped && install.rubySource !== install.source) {
+    return `${error} The Lich path comes from ${owner(install.source)} (${where(install.source)}), and the Ruby from ${owner(install.rubySource)} (${where(install.rubySource)}).`
+  }
+  if (install.source === 'default') return error
+  return `${error} These paths come from ${owner(install.source)}, so fix them ${where(install.source)}. Auto Detect only fills in the default install.`
 }
 
 /** Dispatched on `window` (detail: the character's name) when Edit Profile
