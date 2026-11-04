@@ -51,7 +51,7 @@ import { loadCustomColors, saveCustomColors, coerceCustomColors } from './colors
 import { DEFAULT_RUBY, DEFAULT_LICH, GAMES, coerceRichStream, coerceInstalls } from './lichSettings'
 import { loadSimuCoinConfig, saveSimuCoinConfig, coerceSimuCoinConfig } from './simucoinConfig'
 import { profileNameOf, profileShardOf } from '../shared/profileKey'
-import { keyForLegacyName, rememberLegacyNames } from './legacyProfileNames'
+import { keyForLegacyName, rememberLegacyNames, seedLegacyNames } from './legacyProfileNames'
 import { LAST_DISPLAY_CHARACTER_KEY } from './settings'
 
 // ── Default game definitions ──────────────────────────────────────────────────
@@ -654,6 +654,13 @@ export async function applyProfileKeyRenames(): Promise<void> {
     return
   }
   await window.api.ackProfileKeyRenames().catch(() => {})
+}
+
+/** For a window that didn't run the migration: hold any renames still pending
+ *  in memory, so bare names resolve the way the main window resolves them. */
+export async function seedPendingLegacyNames(): Promise<void> {
+  const renames = await window.api.takeProfileKeyRenames().catch(() => [])
+  if (renames.length) seedLegacyNames(renames)
 }
 
 /** The profile keys filed for a character name, on any shard. */

@@ -86,7 +86,7 @@ import { TeamLoginPanel, SoloConnectPanel, TeamLoginPill, teamCounts, trackConne
 import { RosterProvider, useRoster } from './RosterContext'
 import { CharacterProvider } from './CharacterContext'
 import { profileKey } from '../shared/profileKey'
-import { forgetSavedSignature, flushPendingProfileSaves, exportCharacterProfile, importCharacterProfile, clearCharacterLocalStorage, importSharedProfile, applyProfileKeyRenames, findProfileKeysByName, exportSharedProfile, saveLastSessionCharacters, scheduleSharedProfileSave } from './profile'
+import { forgetSavedSignature, flushPendingProfileSaves, exportCharacterProfile, importCharacterProfile, clearCharacterLocalStorage, importSharedProfile, applyProfileKeyRenames, seedPendingLegacyNames, findProfileKeysByName, exportSharedProfile, saveLastSessionCharacters, scheduleSharedProfileSave } from './profile'
 import { planReconnect } from './reconnectPlan'
 import { loadAdvanced, saveAdvanced, gameOptionByCode, IS_MAC, effectiveRichStream, resolveCharacterLichInstall, withInstallHint } from './lichSettings'
 import { initTheme } from './themes'
@@ -149,7 +149,16 @@ let sharedProfileLoad: Promise<void> | null = null
 function loadSharedProfileOnce(): Promise<void> {
   sharedProfileLoad ??= window.api.claimSharedImport()
     // The localStorage half of the profile-key migration first (DESIGN §56.7.3).
-    .then(async first => { if (first) { await applyProfileKeyRenames(); await importSharedProfile() } })
+    .then(async first => {
+      if (first) { await applyProfileKeyRenames(); await importSharedProfile() }
+      // Every OTHER window (a reload, a decoupled window) reads the renames
+      // still pending too, into memory only (review of #10): with the stored
+      // map missing (full storage), its next shared save would otherwise write
+      // a DRX or DRF team member or Reconnect Last entry as DR Prime. It never
+      // moves scopes or acknowledges; that stays with the first window. One
+      // IPC, and nothing to do once the list is acknowledged.
+      else await seedPendingLegacyNames()
+    })
   return sharedProfileLoad
 }
 

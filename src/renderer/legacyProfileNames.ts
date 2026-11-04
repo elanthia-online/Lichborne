@@ -74,6 +74,20 @@ export function rememberLegacyNames(renames: { from: string; to: string; archive
   }
 }
 
+/** In memory only, never stored: a window other than the one that ran the
+ *  migration holds the pending renames the same way, live over archived, so
+ *  its shared save can't write a DRX member as DR. */
+export function seedLegacyNames(renames: { from: string; to: string; archived?: true }[]): void {
+  const map: Record<string, string> = { ...(unsaved?.map ?? {}) }
+  const live = new Set(unsaved?.live ?? [])
+  for (const { from, to, archived } of renames) {
+    const name = from.toLowerCase()
+    if (archived) { if (!live.has(name) && !(name in map)) map[name] = to }
+    else { map[name] = to; live.add(name) }
+  }
+  unsaved = { map, live: [...live] }
+}
+
 /** A team member or similar: a key stays as it is; a bare name becomes its key. */
 export function keyForLegacyName(nameOrKey: string): string {
   if (isProfileKey(nameOrKey)) return nameOrKey
