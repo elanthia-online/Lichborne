@@ -11511,7 +11511,7 @@ The golden run now covers all 24 fixtures (`golden-eol.ts`, baseline `golden-v02
 
 ## 56. GemStone IV support — panels, login by game, Lich installs, profile keys (PRs 4–10, the gs4 stack)
 
-GemStone IV support landed as a stack of seven PRs, #4–#10, split from the single PR #1 (closed): #4 the connectivity foundation, #5 the Effects panel and GS4 stream routing (§56.1–§56.3, except the DR Infomon gate), #6 the Experience, Encumbrance and Creatures panels and the DR Infomon gate (§56.4–§56.5), #7 the login filter and the §56.7 plan, #8 per-game and per-character Lich installs (§56.7.1), #9 shard names, the grouped wizard and GS4 professions (§56.7.2), #10 profile keys and their migration (§56.7.3).
+GemStone IV support landed as a stack of seven PRs, #4–#10, split from the single PR #1 (closed): #4 the connectivity foundation, #5 the Effects panel and GS4 stream routing (§56.1–§56.3, except the DR Infomon gate), #6 the Experience, Encumbrance and Creatures panels and the DR Infomon gate (§56.4–§56.5), #7 the login filter and the §56.7 plan, #8 per-game and per-character Lich installs (§56.7.1), #9 shard names, the grouped wizard and GS4 professions (§56.7.2), #10 profile keys and their migration (§56.7.3). Three more PRs sit on top: #12 these docs, #13 the release config for elanthia-online, and #15 the vitals bar text option (§56.8).
 
 **The foundation (#4).** `GameFamily` (`'DR' | 'GS4'`) is derived from the shard code by `gameFamilyFromCode` (types.ts), never stored: anything not starting with `DR` is GS4, and an empty code is DR. The GS4 shards are in the `GAMES` table (lichSettings.ts) with their ports and Lich flags: GS3 10024 `--gemstone`, GST 10624 `--gemstone --test`, GSF 10324 `--shattered`. Main sets `parser.family` from the login or attach game code (main.ts), and the parser's one family gate is the inline-roomName title fallback, which never runs for DR. The Lich Map works for both games and `find-lich-map-file` takes the family, so a Lich install holding both games' map data loads the right one. Genie Maps is DR-only: there is no GS4 Genie map data, so on GS4 the button is hidden and the view is forced to the Lich Map (MapPanel.tsx).
 
@@ -11730,3 +11730,18 @@ Planned in PR #7 and built in the order at the end (§56.7.4): the filter in #7,
 - The swapped-pair variants not hit above (#8): the default install's editor warning, and the refusal for a character's own install or an inherited Ruby. They are covered by rendering the real components and by probes of the real resolver and hint.
 - The old-name map held in every window (#10). It only matters on a full localStorage, and was checked with two instances of the real modules.
 - The first release from the org has its own checks (#13).
+
+### 56.8 Vitals bar text: percentage, numbers or name only
+
+GemStone IV sends real numbers for its vitals (`310/355`), where DragonRealms sends a percentage. The vitals bar always showed a percentage. Wrayth lets the player pick, so Lichborne does too: **Settings → Layout → Vitals bar text** (`AppSettings.vitalsText`, per character).
+
+- **`percent`** (the default, so no existing look changes): `Health 87%`.
+- **`values`**: the game's numbers, `Health 310/355`. GemStone IV only. A DR character's vitals are already percentages (max 100), so its bars keep the percent rather than showing a meaningless `87/100`. `VitalsBar` takes `hasValues`, which GameWindow sets from the session's family.
+- **`label`**: the name only, `Health`; the fill carries the level.
+
+Compact mode applies to all three (`H: 87%`, `H: 310/355`, `H`). The tooltip gives the full reading (name, percent and, on GS4, the numbers) whenever the bar leaves any of it out. A GS4 mana above its max reads `558/508` (110%), with the fill clamped as before; a negative reading keeps its sign.
+
+The Overview cards keep their own compact percentage display; their options are `/view set`'s.
+
+**Slash command (Principle #11):** `/vitals` reports the setting, and `/vitals text percent|numbers|name` sets it. Synonyms are accepted: `percentage`, `values`, `label`, `none`.
+

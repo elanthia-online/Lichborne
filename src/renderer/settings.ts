@@ -2,7 +2,8 @@
 //
 // `AppSettings` is the PER-CHARACTER settings record: game font size / family
 // / line height, large print, high contrast, colour-blind mode, epilepsy-safe,
-// vitals/icon bar positions, compact vitals / compact exp, timer style, URL
+// vitals/icon bar positions, compact vitals, the vitals text (percent / values
+// / name only), compact exp, timer style, URL
 // auto-linking + web-link safety (F23), map animations, text weight (B113),
 // the per-panel font overrides (F31, `panelFontSizes`), and (v0.20.1) the
 // per-kind text styles and the compass options. Each field's own comment
@@ -46,6 +47,12 @@ export interface AppSettings {
   // changes unexpectedly. Per-character; rides the Display & Accessibility
   // Transfer category automatically (it's a field on `settings`).
   compactVitals: boolean
+  // What each vitals bar SAYS beside its name (Wrayth's choice): 'percent'
+  // ("Health 87%", the long-standing look and the default), 'values' ("Health
+  // 310/355", GemStone IV only — DR sends percentages, so a DR bar keeps its
+  // percent), or 'label' (just "Health": the bar's fill carries the level and
+  // the tooltip has the numbers). Per-character, like compactVitals.
+  vitalsText: VitalsText
   // Compact, text-forward Experience panel (Rakkor/Morress) — Skill · Ranks · %
   // · (n/34) with simplified top/bottom summary bars, no progress bars/pickers.
   compactExp: boolean
@@ -141,6 +148,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   vitalsBarPosition: 'bottom',
   iconBarPosition: 'top',
   compactVitals: false,
+  vitalsText: 'percent',
   compactExp: false,
   timerStyle: 'chips',
   autoLinkUrls: true,
@@ -239,6 +247,9 @@ const COMPASS_SIZES = new Set(['small', 'medium', 'large'])
 const COMPASS_CORNERS = new Set(['bottom-right', 'bottom-left', 'top-right', 'top-left'])
 const COMPASS_BACKINGS = new Set(['none', 'subtle', 'solid'])
 
+export type VitalsText = 'percent' | 'values' | 'label'
+export const VITALS_TEXTS: readonly VitalsText[] = ['percent', 'values', 'label']
+
 /** The v0.20.1 fields validated. The spread above only fills MISSING keys, so a
  *  hand-edited or imported value of the wrong shape would otherwise reach the
  *  DOM; each falls back to its default rather than to a restated literal
@@ -259,6 +270,7 @@ export function coerceSettings(s: AppSettings): AppSettings {
     compassBacking: COMPASS_BACKINGS.has(s.compassBacking) ? s.compassBacking : D.compassBacking,
     compassDimOpacity: Number.isFinite(dim) ? Math.min(1, Math.max(0.1, dim)) : D.compassDimOpacity,
     compassClickable: typeof s.compassClickable === 'boolean' ? s.compassClickable : D.compassClickable,
+    vitalsText: VITALS_TEXTS.includes(s.vitalsText) ? s.vitalsText : D.vitalsText,
   }
 }
 
