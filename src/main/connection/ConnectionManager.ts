@@ -35,7 +35,7 @@ import { EventEmitter } from 'events'
 import { LichConnection } from './LichConnection'
 import { AttachConnection } from './AttachConnection'
 import { SGEConnection } from './SGEConnection'
-import type { AttachCredentials, LoginCredentials } from '../../shared/types'
+import { gameFamilyFromCode, gameFamilyName, type AttachCredentials, type LoginCredentials } from '../../shared/types'
 import { FRONTEND_CAPS_LINE, shouldDeclareRichStream } from './frontendCaps'
 
 const CLIENT_ID = 'FE:WRAYTH /VERSION:1.0.1.22 /P:WIN_UNKNOWN /XML'
@@ -165,7 +165,7 @@ export class ConnectionManager extends EventEmitter {
     // connect() wrote synchronously, so the socket keeps them in order.
     if (shouldDeclareRichStream(creds.richStream, creds.lichPath)) {
       this.lich.send(FRONTEND_CAPS_LINE)
-      this.emit('status', "Connected via Lich, with DragonRealms' rich stream.")
+      this.emit('status', 'Connected via Lich, with the rich stream.')
       return
     }
     this.emit('status', 'Connected via Lich.')
@@ -223,13 +223,14 @@ export class ConnectionManager extends EventEmitter {
     const loginResult = await this.sge.getLoginKey(char.key)
     this.sge.disconnect()
 
-    this.emit('status', step(4, DIRECT_STEPS, `Connecting to DragonRealms (${loginResult.gameHost}:${loginResult.gamePort})…`))
+    const gameName = gameFamilyName(gameFamilyFromCode(creds.game))
+    this.emit('status', step(4, DIRECT_STEPS, `Connecting to ${gameName} (${loginResult.gameHost}:${loginResult.gamePort})…`))
     await this.connectToGameServer(
       loginResult.gameHost,
       loginResult.gamePort,
       loginResult.loginKey
     )
-    this.emit('status', 'Connected directly to DragonRealms.')
+    this.emit('status', `Connected directly to ${gameName}.`)
   }
 
   // Attach to an already-running detachable Lich (`--headless PORT` /
