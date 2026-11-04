@@ -1,0 +1,173 @@
+# Lichborne TEST build: the same per-OS packaging as release.yml, but the
+# installers land as downloadable workflow ARTIFACTS (kept 7 days), never in a
+# GitHub release. Use it to hand a tester a build of a branch or PR before it
+# merges.
+#
+# HOW TO RUN:
+#   GitHub → Actions tab → "Test build" → Run workflow, then either
+#     - pick the branch in "Use workflow from" (only works if that branch
+#       already contains this file), or
+#     - leave "Use workflow from" on main and type the thing to build in the
+#       `ref` box: a branch (stack/gs4-09-org-cutover), a tag, a commit SHA,
+#       or a PR head (refs/pull/13/head, which also works for PRs from forks).
+#   Untick Windows / macOS / Linux to skip that platform (all ticked by
+#   default; the run fails at once if none is ticked).
+#   CLI: gh workflow run test-build.yml -f ref=refs/pull/13/head
+#        (add e.g. -f macos=false to skip a platform)
+#   When it's green: open the run → Artifacts (bottom of the summary page) →
+#   download lichborne-<os>-<sha>.
+#
+# A workflow_dispatch workflow can only be started once the file is on the
+# default branch, and it then builds whatever `ref` names — which is why the
+# `ref` input exists: the branch under test usually predates this file.
+#
+# KEEP THE BUILD STEPS IN STEP WITH release.yml. The targets (in the plan
+# job), the Linux
+# container setup and the mac signature check are copied from there (read its
+# comments for the why); check-workflow.mjs asserts the two matrices match and
+# that this file can never publish. Deliberate differences:
+#   - `--publish never` and NO GH_TOKEN on the packaging step, so the github
+#     publish config in package.json cannot create or touch a draft release.
+#   - permissions are read-only, and there is no prepare/verify job (those
+#     exist only for the draft release).
+#   - its own concurrency group, so a test build never queues behind a release.
+name: Test build
+run-name: Test build of ${{ inputs.ref || github.ref_name }}
+
+# Quoted because YAML 1.1 parses a bare `on` as boolean true.
+"on":
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch, tag, SHA, or refs/pull/N/head to build (blank = the "Use workflow from" branch)'
+        required: false
+        default: ''
+        type: string
+      windows:
+        description: 'Build Windows (NSIS installer .exe)'
+        type: boolean
+        default: true
+      macos:
+        description: 'Build macOS (arm64 .dmg + .zip)'
+        type: boolean
+        default: true
+      linux:
+        description: 'Build Linux (.AppImage)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# A second run for the same ref and platform selection replaces the first;
+# anything else builds side by side.
+concurrency:
+  group: test-build-${{ inputs.ref || github.ref }}-${{ inputs.windows }}-${{ inputs.macos }}-${{ inputs.linux }}
+  cancel-in-progress: true
+
+jobs:
+  # Turns the platform checkboxes into the build matrix. A static matrix can't
+  # do this: `exclude` never filters `include` entries, and an include entry
+  # left with nothing to merge into is ADDED back as its own job, so an
+  # unticked platform would still build. Each target below is the matrix entry
+  # release.yml has for that platform (keep them in step).
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - name: Pick platforms
+        id: pick
+        env:
+          BUILD_WINDOWS: ${{ inputs.windows }}
+          BUILD_LINUX: ${{ inputs.linux }}
+          BUILD_MACOS: ${{ inputs.macos }}
+        run: |
+          targets=()
+          if [ "$BUILD_WINDOWS" = true ]; then
+            targets+=('{"platform":"win","os":"windows-latest","args":"--win nsis"}')
+          fi
+          if [ "$BUILD_LINUX" = true ]; then
+            targets+=('{"platform":"linux","os":"ubuntu-latest","args":"--linux","container":"ubuntu:22.04"}')
+          fi
+          if [ "$BUILD_MACOS" = true ]; then
+            targets+=('{"platform":"mac","os":"macos-latest","args":"--mac"}')
+          fi
+          if [ ${#targets[@]} -eq 0 ]; then
+            echo "::error::No platform ticked -- tick at least one of Windows, macOS, Linux."
+            exit 1
+          fi
+          matrix=$(printf '%s\n' "${targets[@]}" | jq -cs '{include: .}')
+          echo "Building: $matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    # Empty on Windows and macOS, which then run directly on the runner.
+    container: ${{ matrix.container }}
+    steps:
+      - name: Prepare the Linux build container
+        if: matrix.container
+        run: |
+          apt-get update
+          apt-get install -y git python3 make g++-12 binutils xz-utils zstd ca-certificates
+          {
+            echo "CI=true"
+            echo "CC=gcc-12"
+            echo "CXX=g++-12"
+            echo "CXXFLAGS=-UV8_DEPRECATION_WARNINGS"
+            echo "npm_config_build_from_source=true"
+          } >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Blank falls back to the ref the run was started from.
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Build main + renderer
+        run: npm run build
+      - name: Package (no publish)
+        run: npx electron-builder ${{ matrix.args }} --publish never
+        env:
+          # See release.yml: keep this INSIDE this step's env, not orphaned
+          # into the next step's run: script.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Verify macOS signature
+        if: matrix.os == 'macos-latest'
+        run: |
+          APP=$(find release -maxdepth 2 -name '*.app' -print -quit)
+          if [ -z "$APP" ]; then echo "::error::No .app found under release/"; exit 1; fi
+          echo "Verifying $APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign --display --verbose=2 "$APP"
+      # Names the artifact after the commit actually built (not the branch,
+      # whose slashes an artifact name can't hold), so downloads from two runs
+      # can't be confused.
+      - name: Name the artifact
+        id: meta
+        shell: bash
+        # safe.directory: in the Linux container the workspace belongs to the
+        # runner's user, not root, and git refuses to read it otherwise.
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          echo "sha=$(git rev-parse --short=8 HEAD)" >> "$GITHUB_OUTPUT"
+      # Only the deliverables: release/ also holds the unpacked app
+      # (win-unpacked/, mac-arm64/Lichborne.app, linux-unpacked/), which is
+      # large and not something a tester installs.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lichborne-${{ matrix.platform }}-${{ steps.meta.outputs.sha }}
+          path: |
+            release/*.exe
+            release/*.AppImage
+            release/*.dmg
+            release/*.zip
+          if-no-files-found: error
+          retention-days: 7
