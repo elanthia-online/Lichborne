@@ -11714,9 +11714,17 @@ Planned in PR #7 and built in the order at the end (§56.7.4): the filter in #7,
 
 **Tests run (from the PR test plans):** a harness for `resolveLichInstall`, the `_shared.yaml` round-trip (including a file without `installs`) and an in-game save keeping a character's install (#8); the Lich Dashboard, script list and Lich Map inside a GS4 session on its own install, all reading that install (#10); the key migration on a scratch userData (DR, DRX, DRT, GS3, no game, unreadable, existing target, Archive, backups, logs; run three times) plus an interruption harness (#10); two Tysongs (GS3 and GSF) keeping separate files and scopes, the localStorage move, legacy team and Reconnect Last names, and the wizard's roster match (#10).
 
-**Seen live** (Horibu, 2026-11-03, a Windows build of the stack tip):
-- GS4 panels: Effects, SEARCH output in main, speech in Conversation and the Bounties tab (#5); Experience, Encumbrance, Creatures and click-to-target (#6).
-- A GS4 character on its own install from Lich Setup, and another on its own install from Edit Profile (#8).
-- A first launch migrating a real profiles folder, with existing DR characters keeping their settings, layouts and Session Logs; Genie Maps gated on GS4; Team Login and Profile Transfer with a GS4 character (#10).
+**Seen live** (Horibu, 2026-11-03, on two Windows builds of the stack):
+- **Build `1469b29`** (the stack tip after round 3 of the review, so it has #10's legacy-name-map fix): the first launch migrated a real profiles folder, and existing DR characters kept their settings, layouts and Session Logs (#10).
+- **Build `106434b`** (`1469b29` plus the swapped Ruby/Lich fix that became #8's `1ea7b7b`):
+  - GS4 panels: Effects, SEARCH output in main, speech in Conversation and the Bounties tab (#5); Experience, Encumbrance, Creatures and click-to-target (#6).
+  - A GS4 character on its own install from Lich Setup, and another on its own install from Edit Profile (#8).
+  - Genie Maps gated on GS4, including a second GS4 account, and Team Login and Profile Transfer with a GS4 character (#10).
 
-Nothing in #4 to #10 is left unverified. The first release from the org still has its own checks (#13).
+**Not yet verified live:**
+- The swapped-pair handling (#8): the warning and **Swap them**, and the launch refusal's sentence. It is in `106434b` but wasn't exercised.
+- Everything after `106434b`:
+  - the same check on the default install's editor, and the refusal naming a character's or game's install (#8);
+  - the old-name map held in every window (#10);
+  - the vitals text option (#15).
+- The first release from the org has its own checks (#13).
