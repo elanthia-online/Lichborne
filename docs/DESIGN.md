@@ -11714,4 +11714,9 @@ Planned in PR #7 and built in the order at the end (§56.7.4): the filter in #7,
 
 **Tests run (from the PR test plans):** a harness for `resolveLichInstall`, the `_shared.yaml` round-trip (including a file without `installs`) and an in-game save keeping a character's install (#8); the Lich Dashboard, script list and Lich Map inside a GS4 session on its own install, all reading that install (#10); the key migration on a scratch userData (DR, DRX, DRT, GS3, no game, unreadable, existing target, Archive, backups, logs; run three times) plus an interruption harness (#10); two Tysongs (GS3 and GSF) keeping separate files and scopes, the localStorage move, legacy team and Reconnect Last names, and the wizard's roster match (#10).
 
-**Not yet verified:** a live GS4 character on its own install (#8), a first launch migrating a real profiles folder (#10), Genie Maps gating on a second GS4 account, and Team Login and Profile Transfer with a GS4 character (#10).
+**Seen live** (Horibu, 2026-11-03, a Windows build of the stack tip):
+- GS4 panels: Effects, SEARCH output in main, speech in Conversation and the Bounties tab (#5); Experience, Encumbrance, Creatures and click-to-target (#6).
+- A GS4 character on its own install from Lich Setup, and another on its own install from Edit Profile (#8).
+- A first launch migrating a real profiles folder, with existing DR characters keeping their settings, layouts and Session Logs; Genie Maps gated on GS4; Team Login and Profile Transfer with a GS4 character (#10).
+
+Nothing in #4 to #10 is left unverified. The first release from the org still has its own checks (#13).
