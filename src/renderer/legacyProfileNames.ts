@@ -95,5 +95,10 @@ export function seedLegacyNames(renames: Rename[]): void {
 /** A team member or similar: a key stays as it is; a bare name becomes its key. */
 export function keyForLegacyName(nameOrKey: string): string {
   if (isProfileKey(nameOrKey)) return nameOrKey
-  return load()[nameOrKey.trim().toLowerCase()] ?? profileKey(nameOrKey, 'DR')
+  // Own keys only: the map is a plain object, so a name with no entry of its
+  // own ("Constructor") would otherwise find Object.prototype.constructor, and
+  // `??` doesn't fall through a function (review of #10, round 6).
+  const map = load()
+  const name = nameOrKey.trim().toLowerCase()
+  return (Object.prototype.hasOwnProperty.call(map, name) ? map[name] : undefined) ?? profileKey(nameOrKey, 'DR')
 }
