@@ -44,14 +44,15 @@ function load(): Record<string, string> {
   return unsaved ? { ...loadStored(), ...unsaved.map } : loadStored()
 }
 
-/** Remember the migration's old→new names (merged into any kept before).
- *  A live profile wins over an archived one for the same name: live `Bob.yaml`
- *  (DR) beside `Archive/Bob.yaml` (DRX) must map Bob to `Bob@DR`, or a legacy
- *  team or Reconnect Last entry would point at the archived character.
- *  Returns whether the map reached storage. On a full storage it is kept in
- *  memory for this session, and the caller must not acknowledge the renames
- *  until a later call stores it (review of #10). */
-export function rememberLegacyNames(renames: { from: string; to: string; archived?: true }[]): boolean {
+type Rename = { from: string; to: string; archived?: true }
+
+/** THE merge rule, shared by the window that migrates and every other window,
+ *  so the two can't drift (review of #10). Starts from everything known
+ *  already, stored and in memory. A live profile wins over an archived one for
+ *  the same name: live `Bob.yaml` (DR) beside `Archive/Bob.yaml` (DRX) must
+ *  map Bob to `Bob@DR`, or a legacy team or Reconnect Last entry would point at
+ *  the archived character. Among archived renames for one name, the last wins. */
+function merged(renames: Rename[]): { map: Record<string, string>; live: Set<string> } {
   const map = load()
   const live = loadLive()
   for (const { from, to, archived } of renames) {
@@ -63,6 +64,15 @@ export function rememberLegacyNames(renames: { from: string; to: string; archive
       live.add(name)
     }
   }
+  return { map, live }
+}
+
+/** Remember the migration's old→new names (merged into any kept before).
+ *  Returns whether the map reached storage. On a full storage it is kept in
+ *  memory for this session, and the caller must not acknowledge the renames
+ *  until a later call stores it (review of #10). */
+export function rememberLegacyNames(renames: Rename[]): boolean {
+  const { map, live } = merged(renames)
   try {
     localStorage.setItem(KEY, JSON.stringify(map))
     localStorage.setItem(LIVE_KEY, JSON.stringify([...live]))
@@ -75,16 +85,10 @@ export function rememberLegacyNames(renames: { from: string; to: string; archive
 }
 
 /** In memory only, never stored: a window other than the one that ran the
- *  migration holds the pending renames the same way, live over archived, so
- *  its shared save can't write a DRX member as DR. */
-export function seedLegacyNames(renames: { from: string; to: string; archived?: true }[]): void {
-  const map: Record<string, string> = { ...(unsaved?.map ?? {}) }
-  const live = new Set(unsaved?.live ?? [])
-  for (const { from, to, archived } of renames) {
-    const name = from.toLowerCase()
-    if (archived) { if (!live.has(name) && !(name in map)) map[name] = to }
-    else { map[name] = to; live.add(name) }
-  }
+ *  migration merges the pending renames by the same rule (`merged`), so its
+ *  shared save can't write a DRX member as DR. */
+export function seedLegacyNames(renames: Rename[]): void {
+  const { map, live } = merged(renames)
   unsaved = { map, live: [...live] }
 }
 
