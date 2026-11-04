@@ -1,6 +1,7 @@
 // CharacterNotesEditor — the launcher's "Edit profile — <name>" modal for the
 // three LAUNCHER-OWNED profile fields: guild (from the canonical `GUILDS` list
-// exported here), circle, and free-form notes.
+// exported here, or `GS4_PROFESSIONS` for a GemStone IV character, labelled
+// Profession), circle (labelled Level for GS4), and free-form notes.
 //
 // Controlled by the Launcher: it seeds the initial values, and `onSave`
 // receives a patch that Launcher writes via `patchCharacterProfile` — the
@@ -60,9 +61,32 @@ export const GUILDS: { key: string; label: string }[] = [
   { key: 'warriormage', label: 'Warrior Mage' },
 ]
 
-export function guildLabel(key: string | undefined): string | null {
+// GemStone IV's professions (DESIGN §56.7.2). A GS4 profile keeps them in the
+// same `guild` field, and its level in `circle`; only the list and the labels
+// change. Alphabetical by label, like GUILDS.
+export const GS4_PROFESSIONS: { key: string; label: string }[] = [
+  { key: 'bard',     label: 'Bard'     },
+  { key: 'cleric',   label: 'Cleric'   },
+  { key: 'empath',   label: 'Empath'   },
+  { key: 'monk',     label: 'Monk'     },
+  { key: 'paladin',  label: 'Paladin'  },
+  { key: 'ranger',   label: 'Ranger'   },
+  { key: 'rogue',    label: 'Rogue'    },
+  { key: 'sorcerer', label: 'Sorcerer' },
+  { key: 'warrior',  label: 'Warrior'  },
+  { key: 'wizard',   label: 'Wizard'   },
+]
+
+/** The guild list and field names for a character's game. */
+export function guildTerms(game: string | undefined) {
+  return gameFamilyFromCode(game ?? '') === 'GS4'
+    ? { options: GS4_PROFESSIONS, guild: 'Profession', circle: 'Level' }
+    : { options: GUILDS, guild: 'Guild', circle: 'Circle' }
+}
+
+export function guildLabel(key: string | undefined, game?: string): string | null {
   if (!key) return null
-  return GUILDS.find(g => g.key === key)?.label ?? null
+  return guildTerms(game).options.find(g => g.key === key)?.label ?? null
 }
 
 export type ProfilePatch = { guild: string | undefined; circle: number | undefined; notes: string | undefined; lich: LichInstall | undefined }
@@ -115,6 +139,12 @@ export default function CharacterNotesEditor({
   // What "the game's install" means for this character right now.
   const [inherited] = useState(() => resolveLichInstall(loadAdvanced(), game))
   const familyName = gameFamilyName(gameFamilyFromCode(game))
+  const terms = guildTerms(game)
+  // A stored key this game's list doesn't know (a DR guild on a profile now
+  // filed as GS4) stays selectable, so opening the editor never drops it.
+  const options = guild && !terms.options.some(g => g.key === guild)
+    ? [...terms.options, { key: guild, label: guild }]
+    : terms.options
   // '' = no colour of your own (the automatic one shows instead).
   const [initialColor] = useState(() => characterColor(loadCharacterColors(), { characterId }) ?? '')
   const [color,  setColor]  = useState(initialColor)
@@ -182,7 +212,7 @@ export default function CharacterNotesEditor({
         <div className="cne-body">
           <div className="cne-row">
             <label className="cne-label">
-              Guild
+              {terms.guild}
               {/* B397: the first field takes focus on open. */}
               <select
                 value={guild}
@@ -193,13 +223,13 @@ export default function CharacterNotesEditor({
                 autoFocus
               >
                 <option value="">— None —</option>
-                {GUILDS.map(g => (
+                {options.map(g => (
                   <option key={g.key} value={g.key}>{g.label}</option>
                 ))}
               </select>
             </label>
             <label className="cne-label cne-label--circle">
-              Circle
+              {terms.circle}
               <input
                 type="number"
                 value={circle}
