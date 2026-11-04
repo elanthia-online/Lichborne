@@ -11723,11 +11723,10 @@ Planned in PR #7 and built in the order at the end (§56.7.4): the filter in #7,
 - **Test build `da63d12`** (2026-11-04, run 41846706616; the restacked tip on v0.21.1: Electron 45, React 19, js-yaml 5, better-sqlite3 13):
   - The migration re-run on the same real profiles folder, restored from `PreKeyBackup/`. Both files were renamed with size and timestamp unchanged, the originals were copied to `PreKeyBackup/`, and the launcher showed both characters with their settings, layouts and Session Logs (#10).
   - A swapped Ruby/Lich pair in the DragonRealms per-game row: the warning, **Swap them** (which swapped it), and a connect refused with "… These paths come from the DragonRealms install, so fix them in Lich Setup → Lich install by game." (#8).
-  - `/vitals` on a GS4 character (#15).
+  - The vitals bar text option on a GS4 character: Settings → Layout → Vitals bar text in all three modes, and `/vitals` (#15).
   - A sanity pass on the new toolchain: the GS4 panels, own installs and Team Login.
 
 **Not yet verified live:**
 - The swapped-pair variants not hit above (#8): the default install's editor warning, and the refusal for a character's own install or an inherited Ruby. They are covered by rendering the real components and by probes of the real resolver and hint.
 - The old-name map held in every window (#10). It only matters on a full localStorage, and was checked with two instances of the real modules.
-- Switching **Settings → Layout → Vitals bar text** between its three modes (#15).
 - The first release from the org has its own checks (#13).
