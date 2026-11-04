@@ -87,7 +87,7 @@ import { RosterProvider, useRoster } from './RosterContext'
 import { CharacterProvider } from './CharacterContext'
 import { forgetSavedSignature, flushPendingProfileSaves, exportCharacterProfile, importCharacterProfile, clearCharacterLocalStorage, importSharedProfile, exportSharedProfile, saveLastSessionCharacters, scheduleSharedProfileSave } from './profile'
 import { planReconnect } from './reconnectPlan'
-import { loadAdvanced, saveAdvanced, gameOptionByCode, IS_MAC, effectiveRichStream, resolveCharacterLichInstall } from './lichSettings'
+import { loadAdvanced, saveAdvanced, gameOptionByCode, IS_MAC, effectiveRichStream, resolveCharacterLichInstall, withInstallHint } from './lichSettings'
 import { initTheme } from './themes'
 import type { LoginCredentials, SessionId, RosterEntry, SimuCoinStatus } from '../shared/types'
 import { isSessionAction } from '../shared/menuActions'
@@ -1591,7 +1591,7 @@ function AppShell() {
       return
     }
     if (!result.ok) {
-      const raw = result.error ?? 'Connection failed'
+      const raw = withInstallHint(result.error ?? 'Connection failed', install, c.name, c.game)
       const friendly = /invalid login key/i.test(raw)
         ? `${raw} — another character on account ${c.account} may already be connected.`
         : raw
@@ -1970,7 +1970,7 @@ function AppShell() {
         lichPort: gameOpt.port, lichMode: adv.lichMode, richStream: effectiveRichStream(adv),
       }
       const result = await window.api.login(creds)
-      if (!result.ok) return { error: result.error ?? 'Connection failed' }
+      if (!result.ok) return { error: withInstallHint(result.error ?? 'Connection failed', install, c.name, c.game) }
       try {
         // Same rule as runConnect: clear only when no profile file exists.
         const existed = await window.api.characterProfileExists(c.name).catch(() => true)

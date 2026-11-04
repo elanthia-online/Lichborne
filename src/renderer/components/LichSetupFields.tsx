@@ -20,7 +20,7 @@ import { useState, useEffect } from 'react'
 import { type AdvancedSettings, type LichInstall, ADV_DEFAULTS, GAMES, IS_WINDOWS, IS_MAC, richStreamSettingText, effectiveRichStream, RICH_STREAM_DEFAULT_LABEL } from '../lichSettings'
 import type { GameFamily, RichStreamMode } from '../../shared/types'
 import { gameFamilyName } from '../../shared/types'
-import LichInstallFields from './LichInstallFields'
+import LichInstallFields, { pathKindProblem } from './LichInstallFields'
 
 // Platform-aware copy (v0.18.0): where the canonical Lich install lives and
 // what the interpreter file is called — Windows = the Ruby4Lich5 one-click
@@ -163,8 +163,14 @@ export default function LichSetupFields({ adv, setAdv, disabled = false, alwaysS
   // found). The per-field icons prefer the live existence check, so they always
   // describe the path actually in the box — falling back to the discovery view
   // only before the first check resolves.
-  const rubyOk = pathsExist ? pathsExist.ruby : dr ? (dr.rubyAlreadyValid || dr.rubyPath !== null) : null
-  const lichOk = pathsExist ? pathsExist.lich : dr ? (dr.lichAlreadyValid || dr.lichPath !== null) : null
+  // The same wrong-kind check the per-game and per-character rows run
+  // (pathKindProblem): a swapped default install showed two ✓ and failed to
+  // launch, while the rows beneath it would have flagged it.
+  const kindProblem = pathKindProblem(lichPath, rubyPath)
+  const rubyExists = pathsExist ? pathsExist.ruby : dr ? (dr.rubyAlreadyValid || dr.rubyPath !== null) : null
+  const lichExists = pathsExist ? pathsExist.lich : dr ? (dr.lichAlreadyValid || dr.lichPath !== null) : null
+  const rubyOk = kindProblem?.ruby ? false : rubyExists
+  const lichOk = kindProblem?.lich ? false : lichExists
   // Banner-only view, so the Auto Detect summary keeps its original meaning.
   const drRubyOk = dr ? (dr.rubyAlreadyValid || dr.rubyPath !== null) : null
   const drLichOk = dr ? (dr.lichAlreadyValid || dr.lichPath !== null) : null
@@ -285,6 +291,20 @@ export default function LichSetupFields({ adv, setAdv, disabled = false, alwaysS
           {lichOk === false && <span className="path-status-icon path-status-icon--invalid">✕</span>}
         </div>
       </label>
+      {kindProblem && (
+        <div className="lich-discovery-status lich-discovery-status--warn" role="alert">
+          <span className="lich-discovery-icon">⚠</span>
+          <span>{kindProblem.message}</span>
+          {kindProblem.swapped && (
+            <button
+              type="button"
+              className="ui-btn"
+              disabled={disabled}
+              onClick={() => setAdv(prev => ({ ...prev, lichPath: prev.rubyPath, rubyPath: prev.lichPath }))}
+            >Swap them</button>
+          )}
+        </div>
+      )}
       {/* "Frontend" is Lich's own term for these flags — each (--stormfront,
           --wizard, --avalon, --frostbite, --genie) sets Lich's $frontend
           (lib/main/argv_options.rb: determine_frontend / $frontend). Labeled to

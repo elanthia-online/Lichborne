@@ -2,7 +2,7 @@
 // and SettingsPanel (in-session edits). Persisted to localStorage; replicated
 // to _shared.yaml by callers so concurrent Electron processes stay in sync.
 
-import { RICH_STREAM_DEFAULT, gameFamilyFromCode, type GameFamily, type RichStreamMode } from '../shared/types'
+import { RICH_STREAM_DEFAULT, gameFamilyFromCode, gameFamilyName, type GameFamily, type RichStreamMode } from '../shared/types'
 
 // Cross-platform (v0.18.0): which OS we're on, from the preload bridge.
 // Guarded so non-renderer contexts (the tmp-* harnesses stub window.api
@@ -121,6 +121,18 @@ export function resolveLichInstall(
   if (override?.lichPath) return { lichPath: override.lichPath, rubyPath: override.rubyPath || gameRuby, source: 'character' }
   if (forGame?.lichPath) return { lichPath: forGame.lichPath, rubyPath: gameRuby, source: 'game' }
   return { lichPath: adv.lichPath, rubyPath: adv.rubyPath, source: 'default' }
+}
+
+/** A launch the pre-flight refused (a Ruby or Lich path missing or of the wrong
+ *  kind) says "Open Lich Setup". That is right for the default install, but a
+ *  character's own install lives in Edit Profile and a game's in Lich Setup's
+ *  per-game rows, and Auto Detect only fills in the default. So name where
+ *  THIS character's paths came from. Any other error passes through as is. */
+export function withInstallHint(error: string, install: ResolvedLichInstall, name: string, game: string): string {
+  if (!error.includes('Open Lich Setup') || install.source === 'default') return error
+  return install.source === 'character'
+    ? `${error} These are ${name}'s own install, so fix them on its tile: ⋯ → Edit profile… → Lich install. Auto Detect only fills in the default install.`
+    : `${error} These are the ${gameFamilyName(gameFamilyFromCode(game))} install, so fix them in Lich Setup → Lich install by game. Auto Detect only fills in the default install.`
 }
 
 /** Dispatched on `window` (detail: the character's name) when Edit Profile

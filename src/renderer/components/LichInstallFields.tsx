@@ -41,7 +41,7 @@ export function pathKindProblem(lichPath: string, rubyPath: string):
   if (!lichBad && !rubyBad) return null
   const swapped = !!l && !!r && isScript(r) && !isScript(l)
   const message = swapped
-    ? 'These two look swapped: the Ruby path should be ruby.exe or rubyw.exe, and the Lich path lich.rbw.'
+    ? `These two look swapped: the Ruby path should be ${RUBY_FILE_LABEL}${IS_WINDOWS ? ' or rubyw.exe' : ''}, and the Lich path lich.rbw.`
     : lichBad
       ? 'The Lich path should be lich.rbw.'
       : `The Ruby path should be ${RUBY_FILE_LABEL}${IS_WINDOWS ? ' or rubyw.exe' : ''}.`
