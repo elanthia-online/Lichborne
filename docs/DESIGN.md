@@ -11714,18 +11714,20 @@ Planned in PR #7 and built in the order at the end (§56.7.4): the filter in #7,
 
 **Tests run (from the PR test plans):** a harness for `resolveLichInstall`, the `_shared.yaml` round-trip (including a file without `installs`) and an in-game save keeping a character's install (#8); the Lich Dashboard, script list and Lich Map inside a GS4 session on its own install, all reading that install (#10); the key migration on a scratch userData (DR, DRX, DRT, GS3, no game, unreadable, existing target, Archive, backups, logs; run three times) plus an interruption harness (#10); two Tysongs (GS3 and GSF) keeping separate files and scopes, the localStorage move, legacy team and Reconnect Last names, and the wizard's roster match (#10).
 
-**Seen live** (Horibu, 2026-11-03, on two Windows builds of the stack):
-- **Build `1469b29`** (the stack tip after round 3 of the review, so it has #10's legacy-name-map fix): the first launch migrated a real profiles folder, and existing DR characters kept their settings, layouts and Session Logs (#10).
-- **Build `106434b`** (`1469b29` plus the swapped Ruby/Lich fix that became #8's `1ea7b7b`):
+**Seen live** (Horibu), on three Windows builds of the stack:
+- **Build `1469b29`** (2026-11-03; the stack tip after round 3 of the review, so it has #10's legacy-name-map fix): the first launch migrated a real profiles folder, and existing DR characters kept their settings, layouts and Session Logs (#10).
+- **Build `106434b`** (2026-11-03; `1469b29` plus the swapped Ruby/Lich fix that became #8's `1ea7b7b`):
   - GS4 panels: Effects, SEARCH output in main, speech in Conversation and the Bounties tab (#5); Experience, Encumbrance, Creatures and click-to-target (#6).
   - A GS4 character on its own install from Lich Setup, and another on its own install from Edit Profile (#8).
   - Genie Maps gated on GS4, including a second GS4 account, and Team Login and Profile Transfer with a GS4 character (#10).
+- **Test build `da63d12`** (2026-11-04, run 41846706616; the restacked tip on v0.21.1: Electron 45, React 19, js-yaml 5, better-sqlite3 13):
+  - The migration re-run on the same real profiles folder, restored from `PreKeyBackup/`. Both files were renamed with size and timestamp unchanged, the originals were copied to `PreKeyBackup/`, and the launcher showed both characters with their settings, layouts and Session Logs (#10).
+  - A swapped Ruby/Lich pair in the DragonRealms per-game row: the warning, **Swap them** (which swapped it), and a connect refused with "… These paths come from the DragonRealms install, so fix them in Lich Setup → Lich install by game." (#8).
+  - `/vitals` on a GS4 character (#15).
+  - A sanity pass on the new toolchain: the GS4 panels, own installs and Team Login.
 
 **Not yet verified live:**
-- The swapped-pair handling (#8): the warning and **Swap them**, and the launch refusal's sentence. It is in `106434b` but wasn't exercised.
-- **Anything on the v0.21.1 toolchain.** Both builds above predate the stack's move onto v0.21.1 (Electron 45, React 19, js-yaml 5, better-sqlite3 13, and the #8 and #10 conflict fixes), so a live pass on a build of the restacked tip is still to come. It includes #10's migration re-check (test build run 41757653131).
-- Everything after `106434b`:
-  - the same check on the default install's editor, and the refusal naming a character's or game's install (#8);
-  - the old-name map held in every window (#10);
-  - the vitals text option (#15).
+- The swapped-pair variants not hit above (#8): the default install's editor warning, and the refusal for a character's own install or an inherited Ruby. They are covered by rendering the real components and by probes of the real resolver and hint.
+- The old-name map held in every window (#10). It only matters on a full localStorage, and was checked with two instances of the real modules.
+- Switching **Settings → Layout → Vitals bar text** between its three modes (#15).
 - The first release from the org has its own checks (#13).
