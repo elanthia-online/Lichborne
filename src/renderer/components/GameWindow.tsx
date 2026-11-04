@@ -5398,7 +5398,7 @@ export default function GameWindow({
       getTriggers: () => triggers,
       applyTriggers: rules => { saveTriggers(profile, rules); setTriggers(rules); saveProfile() },
       getMainTimestamps: () => !!streamTimestamps['main'],
-      // v0.20.1 — per character, the Settings panel's own save path.
+      // The vitals bar's text mode (per character), saved the same way.
       getVitalsText: () => ({ text: settings.vitalsText, hasValues: gameFamily === 'GS4' }),
       setVitalsText: text => {
         const next = { ...settings, vitalsText: text }
@@ -5406,6 +5406,7 @@ export default function GameWindow({
         saveSettings(profile, next)
         scheduleProfileSave(session.account, profile, session.game, session.useLich)
       },
+      // v0.20.1 — per character, the Settings panel's own save path.
       getCompass: () => settings,
       setCompass: patch => {
         const next = { ...settings, ...patch }

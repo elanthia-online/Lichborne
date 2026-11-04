@@ -49,11 +49,11 @@ export interface SlashContext {
   getTriggers: () => TriggerRule[]
   applyTriggers: (rules: TriggerRule[]) => void
   getMainTimestamps: () => boolean
-  /** v0.20.1 — the floating compass options (per character). */
   /** The vitals bar's text mode, and whether this game sends real numbers
    *  (GemStone IV) rather than percentages (DR). */
   getVitalsText: () => { text: VitalsText; hasValues: boolean }
   setVitalsText: (text: VitalsText) => void
+  /** v0.20.1 — the floating compass options (per character). */
   getCompass: () => CompassOptions
   setCompass: (patch: Partial<CompassOptions>) => void
   /** App-wide command-history minimum length (F82). Read/write via the ctx so
@@ -282,7 +282,6 @@ const COMPASS_CORNER_WORDS: Record<string, CompassOptions['compassCorner']> = {
   tl: 'top-left',     'top-left': 'top-left',         topleft: 'top-left',
 }
 
-/** The bare /compass report — one line, every option. */
 // /vitals text's words → the setting. Wrayth's terms and the obvious synonyms.
 const VITALS_TEXT_WORDS: Record<string, VitalsText> = {
   percent: 'percent', percentage: 'percent', pct: 'percent',
@@ -303,6 +302,7 @@ function vitalsTextSummary(s: { text: VitalsText; hasValues: boolean }, justSet?
   return `${head}${note} Change it with /vitals text percent|numbers|name, or Settings → Layout → Vitals bar text.`
 }
 
+/** The bare /compass report — one line, every option. */
 function compassSummary(c: CompassOptions): string {
   if (!c.compassVisible) return 'Compass: hidden. /compass on shows it.'
   return `Compass: ${c.compassSize}, ${c.compassCorner.replace('-', ' ')} corner, `
@@ -1309,10 +1309,14 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
     example: '/vitals text numbers',
     run: (ctx, p) => {
       const raw = String(p.args[0] ?? '').toLowerCase()
-      const v = VITALS_TEXT_WORDS[raw]
+      // hasOwnProperty, not a bare index: "constructor" would resolve to a function.
+      const v = Object.prototype.hasOwnProperty.call(VITALS_TEXT_WORDS, raw) ? VITALS_TEXT_WORDS[raw] : undefined
       if (!v) return err(`/vitals text takes percent, numbers or name — not "${raw}".`)
       ctx.setVitalsText(v)
-      return ok(vitalsTextSummary(ctx.getVitalsText(), v))
+      // The value just set, not a read-back: the context's settings are the
+      // ones captured when it was built, and setSettings lands on the next
+      // render, so getVitalsText() still returns the old mode here.
+      return ok(vitalsTextSummary({ ...ctx.getVitalsText(), text: v }, v))
     },
   },
 
@@ -1801,6 +1805,7 @@ const NOUN_HELP: Record<string, string> = {
   compass:    'The floating compass — show or hide it, resize it, move it, give it a backing',
   notices:    'Turn the "character is in the game / disconnected" notifications on or off',
   lich:       'See which Lich install (folder) this character runs from, and why',
+  vitals:     'Choose what the vitals bars show: a percentage, the game\'s numbers (GemStone IV) or just the name',
   richstream: "Ask Lich for DragonRealms' rich (Saga) stream, or see which stream you're getting",
   clear:      'Wipe the main window (your Session Log still keeps everything)',
   colors:     'Named colors — make your own, and everything using one changes when you change it (/colors manage)',

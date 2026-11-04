@@ -247,13 +247,13 @@ const COMPASS_SIZES = new Set(['small', 'medium', 'large'])
 const COMPASS_CORNERS = new Set(['bottom-right', 'bottom-left', 'top-right', 'top-left'])
 const COMPASS_BACKINGS = new Set(['none', 'subtle', 'solid'])
 
+export type VitalsText = 'percent' | 'values' | 'label'
+export const VITALS_TEXTS: readonly VitalsText[] = ['percent', 'values', 'label']
+
 /** The v0.20.1 fields validated. The spread above only fills MISSING keys, so a
  *  hand-edited or imported value of the wrong shape would otherwise reach the
  *  DOM; each falls back to its default rather than to a restated literal
  *  (pitfall #121). Older fields keep their existing behaviour. */
-export type VitalsText = 'percent' | 'values' | 'label'
-export const VITALS_TEXTS: readonly VitalsText[] = ['percent', 'values', 'label']
-
 export function coerceSettings(s: AppSettings): AppSettings {
   const D = DEFAULT_SETTINGS
   // typeof first: Number(null) is 0, which would clamp to 10% instead of the default.
