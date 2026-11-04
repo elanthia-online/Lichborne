@@ -48,7 +48,7 @@ import { getOverviewPersisted, applyOverviewState } from './overviewStore'
 import { loadSessionLogSettings, saveSessionLogSettings, DEFAULT_SESSION_LOG_SETTINGS } from './sessionLogSettings'
 import { loadAIConfig, saveAIConfig, DEFAULT_AI_CONFIG } from './aiConfig'
 import { loadCustomColors, saveCustomColors, coerceCustomColors } from './colors'
-import { DEFAULT_RUBY, DEFAULT_LICH, GAMES, coerceRichStream } from './lichSettings'
+import { DEFAULT_RUBY, DEFAULT_LICH, GAMES, coerceRichStream, coerceInstalls } from './lichSettings'
 import { loadSimuCoinConfig, saveSimuCoinConfig, coerceSimuCoinConfig } from './simucoinConfig'
 
 // ── Default game definitions ──────────────────────────────────────────────────
@@ -132,6 +132,8 @@ export function buildSharedProfile(): SharedProfile {
       // default", and it must stay absent so a later default reaches this
       // machine. So the key is left out rather than set to undefined.
       ...(coerceRichStream(adv.richStream) !== undefined ? { richStream: coerceRichStream(adv.richStream) } : {}),
+      // Same rule: per-game installs are written only when one is set.
+      ...(coerceInstalls(adv.installs) ? { installs: coerceInstalls(adv.installs) } : {}),
     },
     mapDir:      localStorage.getItem('lichborne.mapDir')      ?? '',
     genieMapsDir: localStorage.getItem('lichborne.genieMapsDir') ?? '',
@@ -354,6 +356,7 @@ export async function exportCharacterProfile(
         circle:   existing.circle,
         notes:    existing.notes,
         attach:   existing.attach,
+        lich:     existing.lich,      // the character's own Lich install (DESIGN §56.7.1)
       }
     : built
   await window.api.writeCharacterProfile(character, merged)
@@ -403,6 +406,11 @@ export async function importSharedProfile(): Promise<void> {
       ...(adv.richStream !== undefined
         ? { richStream: coerceRichStream(adv.richStream) }
         : existing.richStream !== undefined ? { richStream: existing.richStream } : {}),
+      // Same shape for per-game installs: present → the file's (a file that
+      // carries `installs` says what every game uses); absent → this machine's.
+      ...(adv.installs !== undefined
+        ? { installs: coerceInstalls(adv.installs) }
+        : existing.installs !== undefined ? { installs: existing.installs } : {}),
     }))
   }
 

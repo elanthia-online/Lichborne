@@ -49,6 +49,23 @@ const DEFAULT_MAX_WAIT_MS = 30_000
 // Safety net for launch() if the 'spawn' event never arrives.
 const SPAWN_FALLBACK_MS  = 1500
 
+// A path that exists but is the wrong KIND of file, as a sentence; null when
+// both look right. Lich is a Ruby script (.rbw/.rb). On Windows the
+// interpreter must be an .exe: spawning lich.rbw as the program fails with a
+// bare `spawn EFTYPE`, which is what a swapped pair (Ruby and Lich entered in
+// each other's fields) produced. Checked here so EVERY launch path gets it,
+// whichever install (default, game, character) the paths came from.
+function wrongKind(rubyPath: string, lichPath: string): string | null {
+  const script = (p: string) => /\.rbw?$/i.test(p)
+  if (process.platform === 'win32' && !/\.exe$/i.test(rubyPath)) {
+    return script(rubyPath) && !script(lichPath)
+      ? `The Ruby and Lich paths look swapped (Ruby is ${rubyPath}, Lich is ${lichPath})`
+      : `The Ruby path should be ruby.exe or rubyw.exe, not ${rubyPath}`
+  }
+  if (!script(lichPath)) return `The Lich path should be lich.rbw, not ${lichPath}`
+  return null
+}
+
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
 
 // Sanitize a character name into a safe per-session log filename (mirrors the
@@ -179,7 +196,8 @@ export class LichConnection extends EventEmitter {
       : !fs.existsSync(rubyPath)   ? `Ruby was not found at ${rubyPath}`
       : !lichPath                  ? 'No Lich path is configured'
       : !fs.existsSync(lichPath)   ? `Lich was not found at ${lichPath}`
-      : null
+      : wrongKind(rubywPath, lichPath)
+      ?? null
     if (missing) {
       throw new Error(
         `${missing}. Open Lich Setup (the launcher's ⚙ Lich Setup button, or Settings) ` +

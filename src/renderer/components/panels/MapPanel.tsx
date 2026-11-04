@@ -29,6 +29,7 @@ import { useProfileSaver } from '../../hooks/useProfileSaver'
 import MapImageView from './MapImageView'
 import GenieMapView, { type GenieMatch } from './GenieMapView'
 import type { GameFamily } from '../../../shared/types'
+import { useSessionLichPath } from '../../sessionLich'
 import '../../styles/map-panel.css'
 
 interface Props {
@@ -50,13 +51,6 @@ interface Props {
 }
 
 const GENIE_DIR_KEY  = 'lichborne.genieMapsDir'
-
-function getLichPath(): string {
-  try {
-    const adv = JSON.parse(localStorage.getItem('lichborne.advancedSettings') ?? '{}')
-    return adv.lichPath ?? ''
-  } catch { return '' }
-}
 
 // ── Shared parse caches — module scope, DELIBERATELY (v0.19.9) ───────────────
 //
@@ -186,6 +180,9 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
   const character = useCharacter()
   const saveProfile = useProfileSaver()
   const isGS4 = gameFamily === 'GS4'
+  // The install this character's session started from (DESIGN §56.7.1): a GS4
+  // character on its own install reads that install's maps/.
+  const lichPath = useSessionLichPath()
 
   // ── View mode (per-character) ────────────────────────────────────────────────
   // Two views: 'image' (Lich Map — image-tile renderer) and 'genie' (Genie
@@ -263,7 +260,6 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
   // below, where the file may have been rewritten at the SAME path and so
   // would otherwise be served stale from the module cache.
   const loadLichDb = useCallback(async (force = false) => {
-    const lichPath = getLichPath()
     if (!lichPath) { setDbStatus('error'); setDbError('no-lich-path'); return }
     setDbStatus('loading')
     const result = await window.api.findLichMapFile(lichPath, gameFamily)
@@ -290,7 +286,7 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
       setDbStatus('error')
       setDbError(String(e))
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lichPath]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadLichDb() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
