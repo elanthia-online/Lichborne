@@ -85,8 +85,8 @@ Plain `Home` and `End` move your cursor in the command box, where it usually is 
 
 Worth knowing before you install:
 
-- **No code signing yet on any platform.** Windows shows a SmartScreen warning; macOS needs the one-time `xattr -cr` above.
-- **macOS doesn't auto-update** while builds are unsigned — Mac updates are a manual download. Windows and Linux update themselves.
+- **No paid code signing yet.** Windows shows a SmartScreen warning; macOS needs the one-time `xattr -cr` above.
+- **All three platforms update themselves.** On a Mac that starts from v0.21.1, which you install by hand once.
 - **macOS builds are Apple Silicon only.** Ask on Discord (**Help → Discord** in the app) if you need Intel.
 - **Linux and macOS are beta.** Everything works; they're just younger than the Windows build.
 - **Map tracking depends on what the game sends.** The Lich Map follows room IDs and is the most reliable — more so if you turn on DragonRealms' room-number display. The Genie Map matches on room name and description, so it can lag in areas full of identically-named rooms; a `LOOK` resyncs it.

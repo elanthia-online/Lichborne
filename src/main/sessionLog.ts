@@ -1008,7 +1008,7 @@ export function registerSessionLogHandlers(): void {
     if (spec.target === 'clipboard') {
       const { rows, counts } = collectCombined(character, spec)
       if (rows.length === 0) return { ok: false, empty: true }
-      clipboard.writeText(assembleFile(character, spec, rows, spec.streams, counts))
+      await clipboard.writeText(assembleFile(character, spec, rows, spec.streams, counts))
       return { ok: true, lineCount: rows.length }
     }
 

@@ -25,7 +25,7 @@ export default function AboutModal({ onClose }: { onClose: () => void }) {
   useEffect(() => { window.api.getAppVersion().then(setVersion).catch(() => {}) }, [])
 
   // Build identity, for SUPPORT. The three platforms differ in ways that change
-  // the answer to a bug report — macOS ships unsigned with no auto-update, a
+  // the answer to a bug report — macOS has no Apple notarization, a
   // Linux AppImage resolves its own paths differently — so "v0.18.3" alone is
   // not actionable. Rendered NEXT TO the version rather than tucked away,
   // because the whole point is that it travels in a screenshot.

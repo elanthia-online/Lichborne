@@ -3399,7 +3399,7 @@ Powered by `electron-updater`. Only runs when the app is packaged (`app.isPackag
 
 **Diagnostics:** `updater-log` IPC channel forwards checking/error/no-update events to the renderer console. Open DevTools → Console to see `[auto-updater]` messages ~3 seconds after launch.
 
-**User-facing notices ride the same channel (B356/B364, v0.19.7).** A message main prefixes with exactly `[notice] ` is shown by App as an **"Updates" toast** instead of a console line; everything else stays diagnostics. Two senders today: the macOS menu check ("auto-update is unavailable on macOS … download from GitHub Releases") and a MANUAL check (Help menu or the launcher's button, `check-for-updates` passes `manual: true`) that finds no active updater — a non-AppImage Linux run, a dev build — which says this copy can't update itself. The automatic startup check never raises a notice. The prefix is the contract: change it in main and App together.
+**User-facing notices ride the same channel (B356/B364, v0.19.7).** A message main prefixes with exactly `[notice] ` is shown by App as an **"Updates" toast** instead of a console line; everything else stays diagnostics. The macOS menu check was one sender until v0.21.1 removed it (§41.8). Today's sender is a MANUAL check (Help menu or the launcher's button, `check-for-updates` passes `manual: true`) that finds no active updater — a non-AppImage Linux run, a dev build — which says this copy can't update itself. The automatic startup check never raises a notice. The prefix is the contract: change it in main and App together.
 
 ### 18.4.1 Dual-Feed Update Check — the Elanthia-Online Handover
 
@@ -3450,6 +3450,25 @@ A custom native menu replaces Electron's default. Built with `Menu.buildFromTemp
 | `0.1.x` | Bug fixes and polish |
 | `0.2.0` | Next meaningful feature batch |
 | `1.0.0` | Stable public release |
+
+### 18.8 Toolchain and platform versions (v0.21.1)
+
+Sekmeht asked for Electron and every module on its current stable version (2026-11-03). Every package was taken except `@types/node`.
+
+| Piece | Version | What changed for us |
+|---|---|---|
+| Electron | 45.2.2 (Node 24.22.2, Chrome 156) | `clipboard.writeText` is async since 44: main's `write-clipboard` catches it, the Session Log clipboard export awaits it. Sync `safeStorage` deprecated (F138). |
+| `@types/node` | 24.19.2 | Tracks the Node INSIDE Electron, so it stays 24 although npm has 26. The esbuild `target` stays `node24`. |
+| better-sqlite3 | 13.0.3 | N-API (ABI-stable) with prebuilt binaries in the package. `npmRebuild: false`; `@electron/rebuild` removed. `build.files` excludes `deps`, `src`, `binding.gyp` and every prebuild except `prebuilds/${platform}-${arch}.node`. |
+| React | 19.3 | One ref type (`RefObject<T \| null>`). |
+| Vite | 8.3 (Rolldown) | `vite.config.mts` (ES module); `rolldownOptions` with `format: 'iife'`, no `inlineDynamicImports`; `chunkSizeWarningLimit` raised because one file is intended. Bundle within 3% of Vite 5's, CSS order unchanged. |
+| TypeScript | 7.0 (native compiler) | `tsconfig.main.json`: `module: preserve`, `moduleResolution: bundler` (TS 7 removed `node10`). `src/renderer/assets.d.ts` declares `*.css`. |
+| nanoid | 6.0.2 | Now declared: five renderer files import it, and it had resolved only through Vite → postcss. |
+| js-yaml | 5.5 | Namespace imports (no default export); `load('')` throws, which every caller already treats as unreadable; Lich profiles validated with `YAML11_SCHEMA.withTags(mergeTag)`. Data identical on all 26 real profiles/exports in both directions. Pitfall #201. |
+
+**How it was verified:** both tsc configs, every harness, a golden replay of the 24 fixture captures, and a packaged Windows build driven over the DevTools protocol with an isolated `--user-data-dir`: the launcher and its dialogs, the Lich database readers, a real Transfer import, and an Attach session to a stand-in Lich serving 4,083 captured lines with every app-bar surface opened. Tracker v0.21.1 has the counts. Not covered: a real game login, Mac and Linux packages (CI), and the Validate button clicked by hand.
+
+**Before Electron 46:** F138 (async safeStorage) must land first, or saved passwords stop working.
 
 ---
 
@@ -5731,7 +5750,7 @@ Diff is line-by-line, unified format, with red/green coloring using `--color-dan
 **IPC handlers:**
 - `lich:list-profiles` — lists `*.yaml` files in `{LichDir}/scripts/profiles/`
 - `lich:read-profile` — returns raw YAML string for a given filename (already exists from Release B)
-- `lich:write-profile` — writes validated YAML string to a given filename; main process validates it parses as YAML before writing
+- `lich:write-profile` (`write-lich-profile`) — writes the string to the given filename, after a path guard that keeps it inside `scripts/profiles/`. **Corrected v0.21.1:** this said main validates the YAML first, and the paragraph above says the write is atomic; neither is true today — it is a plain `writeFileSync` (B621). The only YAML check is the editor's **Validate** button, which reads with YAML 1.1 plus merge keys, as Lich (Ruby/Psych) does (pitfall #201: js-yaml 5's default schema flagged four real dr-scripts profiles).
 
 **No schema enforcement** — Lichborne writes exactly what the user typed. It does not validate against script schemas. If the user breaks their training_list, that is their problem. The diff view is the safety net.
 
@@ -8753,7 +8772,7 @@ things that make a tester's report hard to act on. Two fixes:
   folder that disappears on quit. `$APPIMAGE` carries the real path. See
   pitfall #119 — it governs anything resolved relative to the executable.
 - **F95 — Help → About reports platform + arch.** "v0.18.3" alone is not
-  actionable when macOS is unsigned with no auto-update and Linux may be an
+  actionable when macOS isn't notarized and Linux may be an
   AppImage. Now `v0.18.3 · macOS arm64`, beside the version so it travels in a
   screenshot. `process.arch` and `isAppImage` joined `platform` on the bridge.
 
@@ -8791,11 +8810,11 @@ sweep is worth doing. See pitfall #125.
 
 ### 41.1 Stance
 
-v0.18.0 makes Lichborne cross-platform. **Windows x64 is the stable platform; Linux x64 (AppImage) and macOS arm64 (dmg+zip) ship as labeled BETAS.** The macOS build is deliberately **UNSIGNED** — a free-project decision (no Apple Developer account; the $99/yr Developer ID cert is revisited only if Mac demand proves out). Consequences of unsigned Mac builds, all handled explicitly:
+v0.18.0 makes Lichborne cross-platform. **Windows x64 is the stable platform; Linux x64 (AppImage) and macOS arm64 (dmg+zip) ship as labeled BETAS.** The macOS build is deliberately **NOT NOTARIZED** — a free-project decision (no Apple Developer account; the $99/yr Developer ID cert is revisited only if Mac demand proves out). It shipped unsigned at first and has carried our self-signed certificate since v0.21.1 (§41.8). Consequences, all handled explicitly:
 
 - First launch is blocked by Gatekeeper (macOS 15+ removed the right-click bypass). **CORRECTED v0.18.1 (B238, ohbeanz — the first real Mac tester):** the expectation written here was the friendly *"unidentified developer → Open Anyway"* prompt. What actually happens on Apple Silicon is **"Lichborne is damaged and can't be opened. You should move it to the Trash."** — a dead end with no Open Anyway button, and phrasing that tells the user to delete a perfectly good download. Two causes, both now addressed: **(a)** Apple Silicon requires *every* executable to carry a signature and the kernel refuses an unsigned arm64 binary, but `CSC_IDENTITY_AUTO_DISCOVERY=false` made electron-builder skip signing entirely — so [build/afterPack.cjs](build/afterPack.cjs) now **ad-hoc signs** (`codesign --sign -`) the packaged app before the dmg/zip are built, and FAILS the build if that errors rather than shipping an unrunnable artifact; **(b)** the download carries `com.apple.quarantine` regardless, so the docs now lead with `xattr -cr /Applications/Lichborne.app` instead of an Open Anyway step that may never be offered. **Whether ad-hoc signing alone converts "damaged" into the recoverable Open Anyway prompt is UNVERIFIED** — no Mac here, and CI can build but cannot exercise Gatekeeper — so the docs give the `xattr` route as the primary instruction and a tester has to confirm the rest.
-- **Auto-update is OFF on darwin** (Squirrel.Mac refuses unsigned apps): `setupAutoUpdater` returns early, and the menu's Check for Updates answers with a download-from-GitHub notice instead of erroring (main.ts). Windows (NSIS + latest.yml) and Linux (AppImage + latest-linux.yml) auto-update normally. **That notice used to be invisible (B356)** — it went out on `updater-log`, which the renderer only printed to the console, so the menu item appeared to do nothing. It now carries the `[notice] ` prefix and shows as an "Updates" toast (§18.4, Diagnostics).
-- When a cert ever lands: add cert + notarytool secrets to the mac CI job, drop `CSC_IDENTITY_AUTO_DISCOVERY=false`, un-gate the darwin updater. Nothing else changes — the zip artifact Squirrel.Mac needs is already published.
+- **Auto-update was OFF on darwin until v0.21.1 (§41.8):** `setupAutoUpdater` returned early, and the menu's Check for Updates answered with a download-from-GitHub notice (main.ts). Windows (NSIS + latest.yml) and Linux (AppImage + latest-linux.yml) auto-update normally. **That notice used to be invisible (B356)** — it went out on `updater-log`, which the renderer only printed to the console, so the menu item appeared to do nothing. It now carries the `[notice] ` prefix and shows as an "Updates" toast (§18.4, Diagnostics).
+- If an Apple cert ever lands: add it + notarytool secrets to the mac CI job and remove the afterPack signing. Moving certificates costs Mac players one manual install (§41.8).
 
 ### 41.2 Platform detection & defaults
 
@@ -8825,12 +8844,12 @@ Probe lists mirror the official install docs (elanthia-online wiki; verified 202
 - **Meta chords are never macro-bindable**: `formatKeyCombo` bails on `metaKey` (macros.ts). Pre-fix, Cmd+C formatted as bare `C`, so a macro bound to `C` would swallow the OS copy chord. No stored combo can contain Meta (the same function records combos), so nothing legitimate is lost.
 - Menu: darwin gets `{ role: 'appMenu' }` first (About/Hide/Quit under the app name); other platforms unchanged.
 - Fonts: Menlo (mac) / DejaVu + Liberation (linux) appended to the FONT_FAMILIES stacks AFTER the Windows names — Windows rendering byte-identical.
-- Linux keyring: `secure-storage-available` IPC (safeStorage.isEncryptionAvailable) → AddCharacterWizard disables "Remember password" with an explanation when no secret service exists (GNOME Keyring/KWallet). Windows/mac are always true.
+- Linux keyring: `secure-storage-available` IPC (safeStorage.isEncryptionAvailable — deprecated in Electron 45, removed in 46; F138, §18.8) → AddCharacterWizard disables "Remember password" with an explanation when no secret service exists (GNOME Keyring/KWallet). Windows/mac are always true.
 
 ### 41.5 Packaging & release pipeline
 
 - package.json: `build.mac` (dmg+zip, **arm64 only** — add x64 if an Intel-Mac tester appears) and `build.linux` (AppImage x64), each with an explicit `artifactName` template pinned to `PLATFORM_ARTIFACTS` in `.github/scripts/release-verify.mjs`. `build/icon.png` (512, upscaled from the ico's 256 frame) feeds mac/linux icons — a crisp ≥512 source is an open polish item.
-- `.github/workflows/release.yml`: manual-only (workflow_dispatch); prepare (validate notes + pre-create ONE draft) → 3-OS build matrix (`CSC_IDENTITY_AUTO_DISCOVERY=false` — no signing anywhere today) → verify (all seven artifacts in one draft + notes refresh). Same draft/Publish/tag semantics as publish.mjs, which remains the untouched local Windows-only fallback. `ci.yml` = Check zero on every push/PR.
+- `.github/workflows/release.yml`: manual-only (workflow_dispatch); prepare (validate notes + pre-create ONE draft) → 3-OS build matrix (`CSC_IDENTITY_AUTO_DISCOVERY=false` — electron-builder signs nothing; afterPack signs the Mac app, §41.8) → verify (all seven artifacts in one draft + notes refresh). Same draft/Publish/tag semantics as publish.mjs, which remains the untouched local Windows-only fallback. `ci.yml` = Check zero on every push/PR.
 - **Lockstep rules**: a matrix entry ↔ its `EXPECTED_PLATFORMS` token; artifact names ↔ `PLATFORM_ARTIFACTS` + publish.mjs's `expected` list. (Also recorded in CLAUDE.md's release section.)
 
 ### 41.6 What stays platform-agnostic (verified in the v0.18.0 sweep)
@@ -8846,6 +8865,34 @@ A native module needs at least the glibc and libstdc++ of the system that compil
 `build/afterPack.cjs` reads the packaged `.node` file's symbols with `objdump -T` and fails a CI build if any needs more than GLIBC 2.35 or GLIBCXX 3.4.30. It runs before an artifact exists, so a bad binary can't reach a draft. Finding no native module also fails, because that means the check looked in the wrong place.
 
 Every `lich.db3` read still catches its error and returns `[]`, but the Dashboard's Variables and Settings tabs ask `lich:db-info` and show the error. **The first real run proved one of these wrong:** g++-12 rejects `class [[deprecated]] __attribute__` in Electron 43's `v8-primitive.h`, so the build sets `CXXFLAGS=-UV8_DEPRECATION_WARNINGS` (node-gyp puts `CXXFLAGS` after its own `-D`, and the flag only removes deprecation notices). Reproduced and fixed against g++-12 12.4 in WSL; 22.04 ships 12.3. **Unverified:** the stages after the compile on Linux, and that the empty `container:` value leaves the Windows and macOS jobs on the runner. Both fail loudly in the first release run, before Publish.
+
+**v0.21.1: nothing compiles in the container any more.** better-sqlite3 13 is N-API and ships prebuilt binaries; its `prebuilds/linux-x64.node` needs GLIBC 2.34 and no GLIBCXX (objdump, 2026-11-03), so it passes afterPack's check, and `npmRebuild: false` stops electron-builder rebuilding it. Only the target platform's binary is packaged (§18.8), which also keeps afterPack's `objdump` from meeting a Mac or Windows binary. The container, g++-12 and the CXXFLAGS stay for any future native module.
+
+### 41.8 Mac auto-update with a self-signed certificate (v0.21.1)
+
+ohbeanz's report was that each Mac update meant a manual download and the `xattr` command again. It needs no Apple account to fix.
+
+**Why it works.** Read from Squirrel.Mac's source (master, 2026-11-03):
+- `SQRLCodeSignature.m` takes the running app's designated requirement and checks the update against it with `SecStaticCodeCheckValidityWithErrors` (`kSecCSCheckNestedCode | kSecCSStrictValidate | kSecCSCheckAllArchitectures`). That file never requires an Apple certificate.
+- `SQRLInstaller.m` verifies before replacing the app, and strips `com.apple.quarantine` from the update first.
+
+An ad-hoc requirement is tied to one build's hash, so no update can meet it (from memory; the sign-check workflow's ad-hoc case tests it). A stable certificate gives a requirement every build can meet.
+
+**What it doesn't do.** A first install is still quarantined and needs `xattr -cr`: only notarization removes that, and that needs the paid account. Builds before v0.21.1 have the updater off, so each player installs v0.21.1 by hand once.
+
+**The pieces.**
+- `tools/make-mac-cert.sh`: makes the certificate, once. 30 years, because an expired certificate with no trusted timestamp can fail the check.
+- `.github/scripts/mac-import-cert.sh`: temporary keychain on the runner; exports `MAC_SIGN_IDENTITY` as a hash, because a name lookup can skip an untrusted certificate.
+- `build/afterPack.cjs`: signs with it, and throws if CI has no certificate or the requirement doesn't name it. A local build falls back to ad-hoc.
+- electron-builder's own signing stays off: it looks up identities with `find-identity -v`, which lists only valid ones, and a self-signed certificate probably isn't (inferred from `macCodeSign.js`).
+- `test-build.yml` (PR #14, Horibu): its Mac build is ad-hoc signed through `LICHBORNE_TEST_BUILD=1`, never with the certificate, because it can build fork PRs; `check-workflow.mjs` keeps the flag off release.yml.
+- `mac-sign-check.yml`: manual; with a throwaway certificate, proves a newer build meets an older one's requirement, an ad-hoc copy doesn't, and a signed build starts.
+
+**Risks.** Losing or replacing the certificate makes every Mac player reinstall by hand, so keep an offline backup. A leaked key could sign an update that passes this check, though an attacker would still need to publish it through our GitHub releases.
+
+**Unverified:** the real download, install and relaunch on a player's Mac. `autoUpdater.quitAndInstall()` waits for the windows to close, and our shutdown closes them after its drain; that it relaunches through that path is expected, not observed. The first real test is a player on v0.21.1 receiving the next release; if it fails they download by hand, as today.
+
+**Slash surface:** no command by decision: updates already run from Help → Check for Updates and the update pill.
 
 ## 42. SimuCoin Claim (F71, v0.18.0)
 
@@ -9407,6 +9454,8 @@ Both run in MAIN ([profiles.ts](src/main/profiles.ts)), and main owns every sess
 **What this settles:** `saveCommandHistory` deliberately has **no** `scheduleProfileSave`, even though it shares the B266/B267 "localStorage is half a change" shape. It writes on every command, so wiring it up would mean a ~95 ms main-thread stall every 2.5 s during active play — a visible stutter on the same thread as the text pipeline. History reaching YAML therefore rides on other saves; that is a conscious trade, not an oversight.
 
 **Options if this is ever picked up, cheapest first:** (1) skip writes whose serialized payload is unchanged — needs to compare the exact payload, since a wrong comparison is silent data loss; (2) move the read-merge into main, dropping both IPC clones (doesn't reduce parse/dump — confirm the clone cost is material first); (3) split large collections into their own files so a settings change stops rewriting a 935 KB ruleset — the real fix, and a profile-shape migration under Principle #8, so its own release.
+
+**js-yaml 5 (v0.21.1) moved these numbers a little:** on Agan.yaml (~600 KB), measured warm, a dump went from 18.4 to 26.5 ms and a load from 16.6 to 14.4 ms, so a save costs main about 6 ms more. The v0.21.0 change-signature skip (§45.13) means most saves don't run at all.
 
 ### 45.10 The Spell Monitor's 1 Hz counter — profiled (v0.19.6)
 

@@ -1,0 +1,73 @@
+name: Mac signing check
+
+# Proves the self-signed update chain on a real Mac before a release depends on
+# it (DESIGN §41.8). Manual only. It uses a THROWAWAY certificate made by the
+# same script as the real one, so it needs no secrets and uploads nothing.
+#
+# What it proves: two builds signed with one certificate satisfy each other's
+# requirement (the check Squirrel.Mac runs), an ad-hoc copy does NOT, and a
+# signed build starts. What it can't prove: the real download-and-relaunch path
+# in a player's hands.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Build main + renderer
+        run: npm run build
+      - name: Make a throwaway certificate and import it
+        run: |
+          bash tools/make-mac-cert.sh "$RUNNER_TEMP/throwaway"
+          export MAC_SIGN_P12="$(cat "$RUNNER_TEMP/throwaway/signing.p12.b64")"
+          export MAC_SIGN_PASSWORD="$(cat "$RUNNER_TEMP/throwaway/password.txt")"
+          bash .github/scripts/mac-import-cert.sh
+      - name: Package two versions
+        run: |
+          npx electron-builder --mac dir --arm64 --publish never \
+            -c.directories.output=out-a -c.extraMetadata.version=0.0.1
+          npx electron-builder --mac dir --arm64 --publish never \
+            -c.directories.output=out-b -c.extraMetadata.version=0.0.2
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: The newer build must satisfy the older build's requirement
+        run: |
+          A="$(find out-a -maxdepth 2 -name '*.app' -print -quit)"
+          B="$(find out-b -maxdepth 2 -name '*.app' -print -quit)"
+          REQ="$(codesign -d -r- "$A" 2>/dev/null | sed -n 's/^designated => //p')"
+          echo "Requirement: $REQ"
+          case "$REQ" in
+            ''|*cdhash*) echo "::error::Not a certificate requirement, so updates would fail."; exit 1 ;;
+          esac
+          codesign --verify --deep --strict --verbose=2 -R="=$REQ" "$B"
+          echo "An ad-hoc copy must FAIL the same check, or this proves nothing:"
+          cp -R "$B" adhoc.app
+          codesign --force --deep --sign - adhoc.app
+          if codesign --verify --deep --strict -R="=$REQ" adhoc.app; then
+            echo "::error::An ad-hoc build passed the requirement, so the check can't tell them apart."
+            exit 1
+          fi
+          echo "Refused, as it should be."
+      - name: A signed build must start
+        run: |
+          B="$(find out-b -maxdepth 2 -name '*.app' -print -quit)"
+          "$B/Contents/MacOS/Lichborne" > launch.log 2>&1 &
+          PID=$!
+          sleep 20
+          if ! kill -0 "$PID" 2>/dev/null; then
+            echo "::error::The signed app exited within 20 seconds."
+            cat launch.log
+            exit 1
+          fi
+          kill "$PID"
+          echo "Still running after 20 seconds."

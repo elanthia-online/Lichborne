@@ -2,8 +2,12 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { readFileSync } from 'fs'
+import { fileURLToPath } from 'url'
 
-const pkg = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'))
+// An ES module (.mts), so Vite loads it natively and there is no CommonJS dirname.
+const root = path.dirname(fileURLToPath(import.meta.url))
+
+const pkg = JSON.parse(readFileSync(path.resolve(root, 'package.json'), 'utf-8'))
 
 export default defineConfig({
   plugins: [react()],
@@ -25,17 +29,19 @@ export default defineConfig({
     // Turn on for a profiling build:  LB_SOURCEMAPS=1 npm run build
     // (build-main.mjs reads the same flag, so one variable covers both.)
     sourcemap: !!process.env.LB_SOURCEMAPS,
-    rollupOptions: {
+    // Vite 8 bundles with Rolldown (was rollupOptions). One iife file, no code
+    // splitting: an iife can't split, so Rolldown turns splitting off itself.
+    // One file by design, so the 500 kB per-chunk warning only ever says that.
+    chunkSizeWarningLimit: 4096,
+    rolldownOptions: {
       output: {
-        // Avoid crossorigin attribute which breaks Electron file:// loading
         format: 'iife',
-        inlineDynamicImports: true
       }
     }
   },
   resolve: {
     alias: {
-      '@shared': path.resolve(__dirname, 'src/shared')
+      '@shared': path.resolve(root, 'src/shared')
     }
   }
 })

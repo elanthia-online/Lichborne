@@ -71,37 +71,16 @@ A few ideas shape everything:
 
 ## What's New in the Latest Version
 
-**v0.21.0**
+**v0.21.1**
 
-- **DragonRealms' rich stream, on by default with Lich 5.23.** The newer stream the
-  Saga client uses, passed through by Lich 5.23.0 or later (to switch back:
-  **Lich Setup → Game stream → Legacy stream**). You
-  get clickable names (click a creature, item or player in game text for
-  Look, Face, Get, Say to and more, aimed at exactly that one), creatures
-  matched to their state by the game's own id, and Lichborne following your
-  `FLAG DESCRIPTION` setting itself. See [The game stream](#the-game-stream-rich-or-legacy).
-- **Characters that moved to another account** can be picked up from the new
-  account's **Refresh**, with all their settings (thanks, Vaddon).
-- **Dead, sleeping and prone creatures** look different in the Room panel's
-  "You also see" line.
-- **Lines cut by "...wait N seconds."** show whole again.
-- **The Living Tableau names every creature after a LOOK**, and the spell
-  panels no longer blink empty mid-combat.
-- **The pauses while you play are gone.** Lichborne saved your profile every
-  few seconds during ordinary play (clicking between floating windows, a
-  contact in the room), and each save froze the text for a tenth of a second.
-  It now saves only when something you set actually changed.
-- **A quieter map and Spell Monitor.** The Genie map animated every lime room
-  in the zone whether you could see it or not; now only the ones in view do.
-  The Spell Monitor stopped re-starting an animation on every tick.
-- **Doors, signs and moons are not people.** On the rich stream they offer
-  **Look** only. Contacts: no Touch/Look for someone not in the room, no
-  duplicate from a stray space, no add or delete undone by the room tracker,
-  and the Tableau's right-click menu has the same contact items as the text.
-- **Capture XML, for bug reports.** Debug panel → **Capture XML** (or
-  `/log xml on`) writes everything the game sends, time-stamped, to
-  `Logs/raw` until you stop it or log out. Commands you send show only as their first word, so the file can tell a slow reply from a late send. See
-  [Troubleshooting](#appendix-d--troubleshooting--known-limits).
+- **Lichborne now updates itself on a Mac** (thanks, Zithri). Update from v0.21.0 or
+  earlier by downloading v0.21.1 and running `xattr -cr /Applications/Lichborne.app`
+  one last time. After that, updates arrive in the app, as on Windows and Linux.
+  A brand-new Mac install still needs that command once.
+- **Test builds** (thanks, Horibu). A tester can now be handed a build of an unreleased
+  change. Those expire after 7 days and, on a Mac, need `xattr -cr` each time.
+- **Everything under the hood is current.** Lichborne runs on Electron 45 (Chromium 156),
+  with the latest browser security fixes. Nothing looks or works differently.
 
 ## On the Horizon (Roadmap)
 
@@ -117,7 +96,7 @@ Lichborne is actively developed. A few things we're heading toward — direction
 - **More AI helpers.** Catch Me Up is the first BYOK ("bring your own key") AI feature. Others are designed and on the way — always optional, always with a working non-AI baseline, and always privacy-first.
 - **A proper Discord community** for feedback and bug reports (join from **Help → Discord** in the app).
 - **Linux and Mac out of beta.** The v0.18.0 platform betas graduate once they've soaked with testers — if you play on either, your reports are what get them there.
-- **Code signing**, to remove the first-install warnings (Windows SmartScreen now; the macOS certificate — which would also enable Mac auto-update — if Mac demand shows).
+- **Code signing**, to remove the first-install warnings (Windows SmartScreen now; Apple's paid certificate on a Mac if demand shows).
 
 ---
 
@@ -144,7 +123,7 @@ If "Remember password" is greyed out, your desktop lacks a keyring service — i
 xattr -cr /Applications/Lichborne.app
 ```
 
-Then open Lichborne normally; you'll never need it again. If macOS instead offers **System Settings → Privacy & Security → "Open Anyway"**, that route works too.
+Then open Lichborne normally. You won't need it again: from v0.21.1 on, Lichborne updates itself on a Mac too. If macOS instead offers **System Settings → Privacy & Security → "Open Anyway"**, that route works too.
 
 **Why?** Apple charges $99/yr for the certificate that makes this warning go away, and Lichborne is a free project. Without it macOS quarantines the download — and on Apple Silicon it phrases that as **"Lichborne is damaged and can't be opened. You should move it to the Trash."** Nothing is damaged and nothing needs trashing: that's simply how macOS says "not notarized by Apple." The app is safe and the source is public. **Mac updates are manual** — check the Releases page for new versions.
 
@@ -811,9 +790,9 @@ Lichborne keeps a clean, dated **plain-text log** of every session — the game 
 
 - **Platforms:** Windows x64 (stable), Linux x64 AppImage (beta), macOS Apple Silicon (beta). Linux/Mac are new in v0.18.0 — report anything odd on Discord (**Help → Discord**).
 - **First-install warnings** — expected on two platforms (no code-signing certs): Windows SmartScreen → **More info → Run anyway**. On macOS the download is quarantined, and Apple Silicon words that as **"Lichborne is damaged and can't be opened"** — it isn't damaged, that's Apple's phrasing for "not notarized". Clear it once with `xattr -cr /Applications/Lichborne.app` (or use **System Settings → Privacy & Security → Open Anyway** if macOS offers that instead).
-- **Mac: no auto-update.** Unsigned builds can't self-update (an Apple rule) — grab new versions from the Releases page. Windows and Linux auto-update normally.
+- **Mac: updates need v0.21.1 or later.** Earlier Mac builds can't update themselves, so get v0.21.1 from the Releases page once. After that, updates arrive in the app, as on Windows and Linux.
 - **Mac: "Lichborne wants to access your Desktop"?** That's the Lich **Auto-detect** looking for the wiki-standard `~/Desktop/Lich5` install — allow it (or browse to Lich manually).
-- **Mac: the Keychain keeps asking for your password?** Choose **Always Allow**. It can ask again after an update, because Lichborne has no Apple certificate to prove the new version is the same app. If you deny it, Lichborne still connects, but your password isn't saved and you type it each time.
+- **Mac: the Keychain asks for your password?** Choose **Always Allow**. It can ask once when you first install v0.21.1, because the app's signature changed; updates after that keep the same one. If you deny it, Lichborne still connects, but your password isn't saved and you type it each time.
 - **Linux: the Lich Dashboard shows "Couldn't read Lich's database"?** The message gives the reason. If it mentions `GLIBC`, your Linux is older than this build supports (Ubuntu 22.04, Debian 12 and Mint 21 are fine from v0.21.0 on).
 - **Linux: "Remember password" greyed out?** No keyring service found — install GNOME Keyring or KWallet; until then, type the password each session.
 - **Linux/Mac: Lich won't launch from Lichborne but runs in a terminal?** Point the Ruby path at the **full rbenv path** (`~/.rbenv/shims/ruby`) — apps launched from the desktop don't see your shell's PATH. Auto-detect does this for you.

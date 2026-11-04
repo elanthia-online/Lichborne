@@ -53,7 +53,7 @@ interface Props {
   // Snap targets (container + sibling edges, px) for a given window, measured
   // live from the DOM at gesture start. + the shared guide-line elements.
   getSnapTargets: (excludeId: string) => { x: number[]; y: number[] }
-  guideRefs: { v: React.RefObject<HTMLDivElement>; h: React.RefObject<HTMLDivElement> }
+  guideRefs: { v: React.RefObject<HTMLDivElement | null>; h: React.RefObject<HTMLDivElement | null> }
   locked: boolean   // §33.8 — no drag/resize/nudge/handles when true
   // Override the per-kind resize floor. An Experience whose natural shape is a
   // STRIP declares its own (ExperienceDef.minSize) — the panel floor is sized

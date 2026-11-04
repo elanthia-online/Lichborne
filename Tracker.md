@@ -6,6 +6,47 @@
 
 ---
 
+## v0.21.1 — Mac auto-update (F137) · platform update (Electron 45, React 19, Vite 8, TypeScript 7, better-sqlite3 13, js-yaml 5) · Test build workflow (PR #14, Horibu)
+
+ohbeanz's report: every Mac update meant a manual download and `xattr` again. Squirrel.Mac only requires an update to satisfy the running app's own signature requirement, so a stable self-signed certificate is enough, with no Apple account (DESIGN §41.8).
+
+- `tools/make-mac-cert.sh`, `.github/scripts/mac-import-cert.sh`, afterPack signs with the certificate and refuses a CI build without it, `release.yml` imports it and checks the requirement.
+- `mac-sign-check.yml`: manual proof on a real Mac with a throwaway certificate.
+- Both darwin updater gates removed from `main.ts`.
+
+Slash surface: no command by design (§41.8). No profile-shape change. `check-workflow.mjs` now 19. **Unverified:** the real install and relaunch on a player's Mac, which the release after this one tests.
+
+### PR #14 (Horibu): Test build workflow
+
+Merged at Tysong's request (merge commit 0390da6, ahead of the v0.21.1 work). `.github/workflows/test-build.yml` builds Windows / Linux / macOS packages for any branch, tag, SHA or `refs/pull/N/head` and uploads them as 7-day workflow artifacts; it packages with `--publish never`, holds no secrets and has read-only permissions. `check-workflow.mjs` asserts all of that.
+
+**Made compatible with v0.21.1:** v0.21.1's afterPack refuses any CI Mac build without the signing certificate, which would have failed every Mac test build, and a test build must never get the certificate (it can build fork PRs). The test build's packaging step now sets `LICHBORNE_TEST_BUILD: '1'` and afterPack signs those ad-hoc (and ignores `MAC_SIGN_IDENTITY` if one were present). Three new checks: the flag is on the test build, it is NOT on release.yml, and afterPack reads it. `check-workflow.mjs` 42/0; removing the flag, or adding it to release.yml, each fails one check. **Unverified:** the first real Test build run on GitHub.
+
+### Platform update (Sekmeht: "fully update Electron … and all of the modules")
+
+Every package moved to its current stable version except `@types/node`, which tracks the Node inside Electron (24.22), not npm's 26.
+
+- **Electron 43.7 → 45.2.2** (Node 24.22.2, Chrome 156). Electron 44 made `clipboard.writeText` async: main's `write-clipboard` handler catches it and the Session Log export awaits it. Electron 45 deprecates the sync `safeStorage` calls (removed in 46); passwords.ts and aiKeys.ts still use them, so moving to the async API is a required change before Electron 46.
+- **better-sqlite3 12 → 13:** N-API with prebuilt binaries, so no native rebuild for any Electron. `npmRebuild: false` (electron-builder's rebuild failed on Electron 45 anyway), `@electron/rebuild` removed, `build.files` ships only the target platform's `prebuilds/<platform>-<arch>.node` (all eight used to unpack, and afterPack's Linux objdump would have choked on the Mac/Windows ones). The Linux prebuild needs GLIBC 2.34, inside the 22.04 floor.
+- **React 18 → 19.3**: one ref type (`FloatingWindow` guide refs) needed `| null`.
+- **Vite 5 → 8.3** (Rolldown): `rollupOptions` → `rolldownOptions`, `inlineDynamicImports` dropped (an iife can't split), config is now `vite.config.mts`. Same bundle size within 3%, CSS order unchanged (pitfall #144 checked in the built bundle).
+- **TypeScript 5.9 → 7.0** (native): `tsconfig.main.json` → `module: preserve` / `moduleResolution: bundler`; new `src/renderer/assets.d.ts` declares `*.css`.
+- **js-yaml 4 → 5.5**: identical data on all 26 real profiles/exports both directions (`tmp-yaml-harness/`); namespace imports; the Lich Dashboard validates with `YAML11_SCHEMA.withTags(mergeTag)` (four of Sekmeht's dr-scripts profiles falsely failed otherwise). A profile dump is ~8 ms slower. Pitfall #201.
+- Also: electron-builder 26.18, electron-updater 6.8.11, react-virtuoso 4.18.20, `@types/better-sqlite3` 9.6. Production audit: 0 findings (the dev-only findings are inside electron-builder's own tree).
+
+**Bug check:** both tsc configs clean; rules harness 457/1 (the 1 is B442), hl render 70/0, links 31/0, golden replay of all 24 fixtures identical, caps/descflag/compass/speech/leadws/subtitle/textmods/b566 green, moon 20/0, cmd 58/0, check-workflow 19/0. Packaged Windows build driven over CDP with an isolated user-data dir: launcher, all four launcher dialogs, Lich DB readers (372 vars through the Marshal parser), a real export parsed in Transfer; then an Attach session to a fake Lich serving 4,083 captured lines, every app-bar surface and every Automations/Lich tab, four slash commands by real keypress, pin held at the bottom, a normal quit, and the written profiles read back identically under js-yaml 4 and 5. Zero exceptions or console errors. **Not covered:** a real game login, Mac and Linux packages (CI), and the Lich Dashboard's Validate button clicked by hand.
+
+**v0.21.1 bug check (Sekmeht, after the PR #14 merge).** Re-read the whole code diff and tested the parts nothing had exercised:
+- js-yaml 5 dumps `undefined`, functions and Dates exactly as 4 did (pitfall #193's "absent stays absent" holds).
+- `process.report.getReport()`, which better-sqlite3 13 calls on Linux to tell glibc from musl, works in Electron 45's main process (about 200 ms, once, on the first Lich database read).
+- The Mac arm64 prebuild already carries a code signature (LC_CODE_SIGNATURE), so it loads inside the certificate-signed app.
+- `tools/make-mac-cert.sh` produces a valid certificate and p12 under Git Bash's OpenSSL 3.2.3 (throwaway output, deleted).
+- No darwin update gate left anywhere; `check-workflow.mjs` 42/0.
+- **Fixed: `nanoid` was undeclared.** Five renderer files import it and it resolved only through Vite → postcss; now a devDependency (6.0.2, `nanoid()` unchanged). Rebuilt; rules 457/1 (B442), hl 70/0, and the full game-window replay over CDP again clean.
+- **Process slip, repaired:** the first packaged smoke test ran against the real `%APPDATA%\lichborne` before isolation was added (read-only use; `_shared.yaml` changed only in the SimuCoin `lastCheckedAt` stamps), and the unpackaged runs wrote into the repo's dev `profiles/` because `--user-data-dir` doesn't move it. The dev Reconnect Last list was restored from its `.bak` and the two test characters removed. Recorded in CLAUDE.md beside the CDP recipe.
+
+Docs: DESIGN §18.8 (new), §27 (corrected: the Lich profile save is neither validated nor atomic, B621), §41.4, §41.7, §45.9; F138 opened for the safeStorage move. No profile-shape change. Slash surface: n/a, no user-facing capability change.
+
 ## v0.21.0 — DragonRealms' rich ("Saga") stream, the default with Lich 5.23 · clickable names · characters that moved between accounts · dead/sleeping/prone in the Room panel · the roundtime-refusal rejoin · B310
 
 Built from Mahtra's research note, the lich-5 wiki (§55), the Lich 5.22/5.23 reviews (Knowledge.md §17), a ProfanityFE review (§55.10) and Vaddon's report (B542). Lichborne can now declare the rich stream to any Lich that supports it (Sekmeht, 2026-10-29: "get the jump on it"), so on Lich 5.23.0 it receives the stream as the game sends it; the default stays Legacy until Sekmeht decides to switch ("until they want to switch it over"), and the setting is stored only when chosen (B544). DESIGN §55.

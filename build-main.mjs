@@ -4,12 +4,12 @@ import { rmSync } from 'fs'
 const common = {
   bundle: true,
   platform: 'node',
-  // Matches the Node bundled in the current Electron (43 → Node 24). Bump in
+  // Matches the Node bundled in the current Electron (45 → Node 24.22). Bump in
   // lockstep with Electron majors (check: ELECTRON_RUN_AS_NODE=1 electron -p
   // process.versions.node).
   target: 'node24',
   external: ['electron', 'better-sqlite3'],
-  // Opt-in — see the matching note in vite.config.ts. Same flag drives both,
+  // Opt-in — see the matching note in vite.config.mts. Same flag drives both,
   // so `LB_SOURCEMAPS=1 npm run build` gives you a fully mapped profiling
   // build of main AND renderer, and a plain build ships neither.
   sourcemap: !!process.env.LB_SOURCEMAPS,

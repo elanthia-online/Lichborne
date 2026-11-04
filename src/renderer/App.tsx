@@ -1186,7 +1186,7 @@ function AppShell() {
       console.log('[auto-updater]', msg)
       setChecking(false)
       // B356/B364: main marks a message meant for the USER with this prefix
-      // (macOS has no auto-update; an extracted AppImage can't update). Before
+      // (an extracted AppImage can't update). Before
       // this they only reached the console, so "Checking…" flashed and nothing
       // else happened.
       if (msg.startsWith(UPDATER_NOTICE_PREFIX)) {

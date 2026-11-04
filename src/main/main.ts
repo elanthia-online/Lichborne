@@ -2182,7 +2182,11 @@ ipcMain.handle('save-text-file', async (e, opts: { defaultName: string; content:
   }
 })
 
-ipcMain.on('write-clipboard', (_e, text: string) => clipboard.writeText(text))
+// Electron 44 made clipboard.writeText async; catch so a failed write is a log
+// line, not an unhandled rejection in main.
+ipcMain.on('write-clipboard', (_e, text: string) => {
+  clipboard.writeText(String(text)).catch(err => console.warn('[clipboard] write failed:', err))
+})
 // Settings → Window zoom (v0.20.4). Applied on the sender's webContents, the
 // same call the View menu's zoom roles make, so Chromium saves it like a
 // Ctrl+= (a renderer-side webFrame zoom is temporary and was lost on restart).
@@ -2361,20 +2365,7 @@ ipcMain.on('install-update',     () => {
   autoUpdater.quitAndInstall()
 })
 ipcMain.on('check-for-updates',  () => {
-  // macOS: auto-update requires a code-signed app (Squirrel.Mac validates the
-  // signature chain) and 0.18.0 Mac builds ship unsigned — deliberately, no
-  // Apple Developer account (see release.yml). A real check would error
-  // confusingly, so answer the menu click with the honest instruction instead.
-  // The `[notice] ` prefix (B356) is the contract with the renderer: an
-  // updater-log line carrying it is shown on screen as a toast rather than only
-  // logged — this one used to reach the console alone, so the user saw
-  // "Checking…" flash and no answer.
   if (FAKE_UPDATE) { sendFakeUpdateAvailable(); return }
-  if (process.platform === 'darwin') {
-    primaryWindow()?.webContents.send('updater-log',
-      '[notice] Auto-update is unavailable on macOS (unsigned beta build) — download new versions from GitHub Releases.')
-    return
-  }
   // This IPC is only ever a user's click (Help → Check for Updates, or the
   // launcher's update button); the startup check calls the function directly.
   void checkForUpdatesDualFeed({ manual: true })
@@ -2477,9 +2468,6 @@ function checkForUpdatesDualFeed(opts?: { manual?: boolean }): Promise<void> {
 }
 
 function setupAutoUpdater() {
-  // macOS unsigned builds: skip the startup check entirely (same reason as
-  // above — electron-updater would just emit errors against an unsigned app).
-  if (process.platform === 'darwin') return
   autoUpdater.autoDownload = false
   // B500 (Linux): don't let electron-updater start the new AppImage itself — it
   // does so before we have quit. relaunchAppImage starts it once we've exited.

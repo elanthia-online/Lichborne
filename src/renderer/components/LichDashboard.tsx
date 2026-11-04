@@ -49,6 +49,13 @@ import '../styles/lich-panels.css'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Lich's profiles are Ruby (Psych) YAML 1.1 and share settings through
+// `<<: *anchor` merge keys. js-yaml 5's default schema is YAML 1.2 core with no
+// merge, which reads each `<<` as a literal key and reports a second one as a
+// duplicate, so validation uses the 1.1 schema plus merge (four real dr-scripts
+// profiles failed validation without it).
+const LICH_YAML_SCHEMA = jsYaml.YAML11_SCHEMA.withTags(jsYaml.mergeTag)
+
 function getLichPath(): string {
   try {
     return JSON.parse(localStorage.getItem('lichborne.advancedSettings') ?? '{}').lichPath ?? ''
@@ -1370,7 +1377,7 @@ function ProfilesTab({ lichPath, session }: { lichPath: string; session: Session
     const source = editContent ?? originalContent
     if (!source) return
     try {
-      jsYaml.loadAll(source)
+      jsYaml.loadAll(source, { schema: LICH_YAML_SCHEMA })
       setValidation({ ok: true, message: 'Valid YAML — no issues found.' })
     } catch (e) {
       const err = e as jsYaml.YAMLException

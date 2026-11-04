@@ -70,6 +70,16 @@ ok(/- os: ubuntu-latest\s+args: --linux\s+container: ubuntu:22\.04/.test(yml), '
 ok(/^\s+container: \$\{\{ matrix\.container \}\}/m.test(yml), 'build job uses the matrix container')
 ok(/npm_config_build_from_source=true/.test(yml), 'Linux build compiles native modules from source')
 ok(/CXXFLAGS=-UV8_DEPRECATION_WARNINGS/.test(yml), "g++-12 can compile Electron's V8 headers")
+
+// Mac auto-update: every release is signed with the certificate, before packaging.
+const importAt = lines.findIndex(l => l.includes('name: Import the macOS signing certificate'))
+const packageAt = lines.findIndex(l => l.includes('name: Package and upload to draft'))
+ok(importAt > 0 && importAt < packageAt, 'Mac certificate is imported before packaging')
+ok(lines.slice(importAt, importAt + 6).some(l => l.includes('secrets.MAC_SIGN_P12'))
+   && lines.slice(importAt, importAt + 6).some(l => l.includes('secrets.MAC_SIGN_PASSWORD')),
+   'certificate step carries both secrets')
+ok(readFileSync('build/afterPack.cjs', 'utf-8').includes('MAC_SIGN_IDENTITY is not set'),
+   'afterPack refuses a CI Mac build with no certificate')
 ok(readFileSync('build/afterPack.cjs', 'utf-8').includes('checkLinuxLibraries(context.appOutDir)'), 'afterPack checks the Linux native module')
 
 // 5. Never build on a plain push.
@@ -99,6 +109,14 @@ const tbPkg = tbLines.slice(tbPkgIdx, tbPkgIdx + 20).join('\n').split(/\n\s+- (?
 ok(/electron-builder \$\{\{ matrix\.args \}\} --publish never/.test(tbPkg), 'test-build: packages with --publish never')
 ok(!/GH_TOKEN|secrets\./.test(tbCode), 'test-build: no token or secret in use (cannot reach a release)')
 ok(/CSC_IDENTITY_AUTO_DISCOVERY:\s*'false'/.test(tbPkg), 'test-build: packaging step carries CSC_IDENTITY_AUTO_DISCOVERY')
+// v0.21.1: afterPack refuses a CI Mac build without the certificate, and a test
+// build must never get it, so test builds opt into ad-hoc signing. A release
+// carrying the same flag would ship a Mac build that can never auto-update.
+ok(/LICHBORNE_TEST_BUILD:\s*'1'/.test(tbPkg), 'test-build: packaging step asks afterPack for ad-hoc signing')
+ok(!/LICHBORNE_TEST_BUILD/.test(yml.split('\n').filter(l => !/^\s*#/.test(l)).join('\n')),
+   'release.yml never sets LICHBORNE_TEST_BUILD (releases sign with the certificate)')
+ok(readFileSync('build/afterPack.cjs', 'utf-8').includes("process.env.LICHBORNE_TEST_BUILD === '1'"),
+   'afterPack honours LICHBORNE_TEST_BUILD')
 ok(/^permissions:\s*\n\s+contents: read\s*$/m.test(tbCode), 'test-build: read-only token')
 // Positively: workflow_dispatch and nothing else. A schedule (or any other
 // trigger) would start a run with no `inputs`, so no platform is ticked.

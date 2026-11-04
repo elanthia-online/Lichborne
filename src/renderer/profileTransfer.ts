@@ -34,7 +34,7 @@
 // NOT transferred until listed (the safe default: a forgotten key is a papercut,
 // never a target-breaker). See CLAUDE.md "Profile Transfer allowlist" rule.
 
-import yaml from 'js-yaml'
+import * as yaml from 'js-yaml'
 import { nanoid } from 'nanoid'
 import { scopedKey, GLOBAL_RULES_SCOPE, asGlobalRules } from './characterScope'
 import { loadMyThemes, saveMyThemes, type CustomTheme } from './myThemes'

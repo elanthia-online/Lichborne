@@ -31,6 +31,9 @@
 #   - permissions are read-only, and there is no prepare/verify job (those
 #     exist only for the draft release).
 #   - its own concurrency group, so a test build never queues behind a release.
+#   - macOS is ad-hoc signed (LICHBORNE_TEST_BUILD), with no certificate import
+#     and no requirement check: release.yml signs with the Lichborne certificate
+#     from secrets, and this file holds no secrets by design.
 name: Test build
 run-name: Test build of ${{ inputs.ref || github.ref_name }}
 
@@ -139,6 +142,11 @@ jobs:
           # See release.yml: keep this INSIDE this step's env, not orphaned
           # into the next step's run: script.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # Tells build/afterPack.cjs to ad-hoc sign the Mac app. Since v0.21.1
+          # it otherwise refuses a CI Mac build without the signing certificate,
+          # and a test build must never get it (it can build fork PRs). Ad-hoc
+          # means the test .app opens after `xattr -cr` but can't auto-update.
+          LICHBORNE_TEST_BUILD: '1'
       - name: Verify macOS signature
         if: matrix.os == 'macos-latest'
         run: |

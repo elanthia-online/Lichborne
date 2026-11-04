@@ -20,14 +20,13 @@
 # entry below, its artifact names to PLATFORM_ARTIFACTS in release-verify.mjs,
 # AND its token to EXPECTED_PLATFORMS in the verify job — all three must move
 # together, or verify passes on a release that silently lacks a platform.
-# (Windows, Linux and macOS are all live as of v0.18.0.) Mac note: unsigned
-# builds (no Apple Developer account) need CSC_IDENTITY_AUTO_DISCOVERY=false so
-# electron-builder doesn't hunt for a signing identity. It does NOT then ad-hoc
-# sign for us (an earlier comment here claimed it did — B238 proved otherwise:
-# the first Mac tester got "Lichborne is damaged and can't be opened"), so
-# build/afterPack.cjs codesigns ad-hoc; arm64 refuses an unsigned binary.
-# Users still clear quarantine once (xattr -cr), and auto-update does NOT work
-# unsigned (manual downloads per release).
+# (Windows, Linux and macOS are all live as of v0.18.0.) Mac note: with no Apple
+# Developer account, CSC_IDENTITY_AUTO_DISCOVERY=false stops electron-builder
+# hunting for a signing identity. It does NOT then sign for us (B238: the first
+# Mac tester got "Lichborne is damaged and can't be opened"), so
+# build/afterPack.cjs signs with our self-signed certificate; arm64 refuses an
+# unsigned binary. New installs still clear quarantine once (xattr -cr). Updates
+# work from v0.21.1 (DESIGN §41.8).
 name: Release
 
 # Quoted because YAML 1.1 parses a bare `on` as boolean true — GitHub accepts
@@ -76,14 +75,14 @@ jobs:
           - os: ubuntu-latest
             args: --linux
             container: ubuntu:22.04
-          # Mac (v0.18.0): UNSIGNED beta — deliberately no Apple Developer
+          # Mac (v0.18.0): beta, not notarized — deliberately no Apple Developer
           # account (free-project decision, revisit if Mac demand shows).
-          # build/afterPack.cjs ad-hoc signs the .app (electron-builder does
-          # NOT — B238); users clear quarantine once with `xattr -cr`, and
-          # auto-update does NOT work unsigned (main.ts gates it off on darwin).
+          # build/afterPack.cjs signs the .app with our self-signed certificate
+          # (electron-builder does NOT — B238), which is what lets it auto-update.
+          # A new install clears quarantine once with `xattr -cr`.
           # arm64 only (Apple Silicon); add x64 if an Intel-Mac tester appears.
-          # When a Developer ID cert lands: add the cert + notarytool secrets,
-          # drop CSC_IDENTITY_AUTO_DISCOVERY below, and un-gate the updater.
+          # If a Developer ID cert lands: add the cert + notarytool secrets and
+          # drop CSC_IDENTITY_AUTO_DISCOVERY below. See DESIGN §41.8.
           - os: macos-latest
             args: --mac
     runs-on: ${{ matrix.os }}
@@ -91,12 +90,12 @@ jobs:
     container: ${{ matrix.container }}
     steps:
       # The container is bare, so it needs the tools the runner image would have
-      # had. g++-12 is the oldest compiler Node 24's headers are documented for,
-      # and on 22.04 it still links against the system's own libstdc++. Building
-      # from source stops a prebuilt binary (made on some other system) being
-      # downloaded instead. Undefining V8_DEPRECATION_WARNINGS is required: with
-      # it, Electron 43's v8-primitive.h has `class [[deprecated]] __attribute__`,
-      # which Clang accepts and g++-12 rejects. It only drops deprecation notices.
+      # had. Since v0.21.1 nothing compiles here: better-sqlite3 13 is N-API and
+      # ships its own prebuilt binary (glibc 2.34, inside the 22.04 floor that
+      # build/afterPack.cjs checks), and package.json sets npmRebuild: false.
+      # The compiler settings stay for any future native module: g++-12 is the
+      # oldest compiler Node 24's headers are documented for, and undefining
+      # V8_DEPRECATION_WARNINGS let it compile Electron 43's V8 headers.
       - name: Prepare the Linux build container
         if: matrix.container
         run: |
@@ -117,13 +116,21 @@ jobs:
       - run: npm ci
       - name: Build main + renderer
         run: npm run build
+      # build/afterPack.cjs signs with this, which is what lets Mac builds update
+      # themselves (DESIGN §41.8). No Apple account involved.
+      - name: Import the macOS signing certificate
+        if: matrix.os == 'macos-latest'
+        run: bash .github/scripts/mac-import-cert.sh
+        env:
+          MAC_SIGN_P12: ${{ secrets.MAC_SIGN_P12 }}
+          MAC_SIGN_PASSWORD: ${{ secrets.MAC_SIGN_PASSWORD }}
       - name: Package and upload to draft
         run: npx electron-builder ${{ matrix.args }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # No code signing on ANY platform today (Windows never signed; Mac
-          # ships unsigned by decision). Stops electron-builder from hunting
-          # for a signing identity in the runner's keychain on mac.
+          # electron-builder does no signing on ANY platform (Windows never signed;
+          # Mac is signed by build/afterPack.cjs). Stops it hunting for a signing
+          # identity in the runner's keychain on mac.
           # KEEP THIS INSIDE THIS STEP'S `env:` — it was once orphaned into the
           # verify step's `run:` below by an edit that anchored on the GH_TOKEN
           # line, which both failed the job (the shell tried to execute
@@ -147,6 +154,12 @@ jobs:
           echo "Verifying $APP"
           codesign --verify --deep --strict --verbose=2 "$APP"
           codesign --display --verbose=2 "$APP"
+          # Auto-update depends on this naming the certificate, not one build's hash.
+          REQ="$(codesign -d -r- "$APP" 2>/dev/null | sed -n 's/^designated => //p')"
+          echo "Requirement: $REQ"
+          case "$REQ" in
+            ''|*cdhash*) echo "::error::Not signed with the certificate, so this build can't update."; exit 1 ;;
+          esac
 
   verify:
     # `needs: build` alone would SKIP this job when any matrix build fails —

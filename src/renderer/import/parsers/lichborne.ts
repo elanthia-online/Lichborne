@@ -11,7 +11,7 @@
 // `nativeContactTemplates` on the result; the wizard's apply step writes
 // them directly via the existing save functions.
 
-import yaml from 'js-yaml'
+import * as yaml from 'js-yaml'
 import { nanoid } from 'nanoid'
 import type {
   ImportHighlight, ImportMacro, ImportAlias, ImportTrigger, ImportResult,

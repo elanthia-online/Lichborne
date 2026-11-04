@@ -1,4 +1,8 @@
-// electron-builder afterPack hook — macOS AD-HOC CODE SIGNING.
+// electron-builder afterPack hook — macOS code signing.
+//
+// CI signs with Lichborne's own self-signed certificate (v0.21.1, DESIGN §41.8),
+// which is what lets a Mac build auto-update. A local build with no certificate
+// falls back to ad-hoc. The history below explains why it must be signed at all.
 //
 // WHY THIS EXISTS (ohbeanz, our first Mac tester, v0.18.0): the downloaded app
 // refused to launch with
@@ -13,8 +17,7 @@
 // CI sets CSC_IDENTITY_AUTO_DISCOVERY=false and electron-builder skips signing
 // altogether — which is exactly the state that produces this message.
 //
-// An AD-HOC signature ("-") is the most a project without a certificate can do,
-// and it is what the kernel wants: it makes the binary loadable. It does NOT
+// An AD-HOC signature ("-") is the least that works, and it is what the kernel wants: it makes the binary loadable. It does NOT
 // notarize anything, so a DOWNLOADED copy still carries com.apple.quarantine
 // and Gatekeeper will still challenge it — the point is only that the challenge
 // should now be the recoverable "cannot be verified → Open Anyway" one rather
@@ -26,11 +29,10 @@
 // certain is that an unsigned arm64 app cannot run at all, so this is strictly
 // necessary either way. See BUGS.md B238.
 //
-// WHEN A REAL CERTIFICATE LANDS: delete this hook. A Developer ID signature +
-// notarization replaces it, and re-signing ad-hoc over a real signature would
-// destroy it.
+// IF AN APPLE CERTIFICATE EVER LANDS: delete this hook. A Developer ID signature +
+// notarization replaces it, and re-signing over a real signature would destroy it.
 
-const { execFileSync } = require('child_process')
+const { execFileSync, spawnSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
 
@@ -88,22 +90,45 @@ exports.default = async function afterPack(context) {
     `${context.packager.appInfo.productFilename}.app`,
   )
 
+  // A test build (test-build.yml sets LICHBORNE_TEST_BUILD=1) is ad-hoc signed
+  // and never gets the certificate: it can build any branch or fork PR, and that
+  // code must not have the signing key in reach. Such a build opens after
+  // `xattr -cr` like any new install, but can't auto-update.
+  const testBuild = process.env.LICHBORNE_TEST_BUILD === '1'
+  const identity = testBuild ? '' : process.env.MAC_SIGN_IDENTITY
+  // Any other CI build without the certificate must stop: it would still upload,
+  // and it could never receive an update.
+  if (!identity && process.env.CI && !testBuild) {
+    throw new Error('afterPack: MAC_SIGN_IDENTITY is not set, so this Mac build could not auto-update')
+  }
+
   // --force so this is idempotent: if electron-builder (or a future real
   // identity) already signed, we simply replace/refresh rather than fail.
   // --deep is discouraged by Apple for DISTRIBUTION signing, but it is the
-  // pragmatic choice for ad-hoc: it covers the Electron Framework and the
-  // helper apps, none of which we notarize.
+  // pragmatic choice without notarization: it covers the Electron Framework and
+  // the helper apps.
   try {
-    execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], {
+    execFileSync('codesign', ['--force', '--deep', '--sign', identity || '-', appPath], {
       stdio: 'inherit',
     })
-    console.log(`  • ad-hoc signed (no certificate)  ${appPath}`)
+    if (identity) {
+      // An update must satisfy this requirement, so it has to name the
+      // certificate. A requirement on one build's hash can never be met again.
+      const shown = spawnSync('codesign', ['-d', '-r-', appPath], { encoding: 'utf8' })
+      const requirement = `${shown.stdout}${shown.stderr}`.match(/^designated => (.*)$/m)?.[1] ?? ''
+      if (!/certificate/.test(requirement) || /cdhash/.test(requirement)) {
+        throw new Error(`afterPack: requirement doesn't name the certificate: "${requirement}"`)
+      }
+      console.log(`  • signed with the Lichborne certificate. Requirement: ${requirement}`)
+    } else {
+      console.log(`  • ad-hoc signed (no certificate)  ${appPath}`)
+    }
   } catch (err) {
     // FAIL THE BUILD. A silently-unsigned arm64 artifact is worse than no
     // artifact: it uploads cleanly, passes the release verify job's filename
     // check, and only fails in a tester's hands with a message that tells them
     // to throw it away.
-    console.error('  ✗ ad-hoc codesign FAILED — refusing to ship an unsigned arm64 app')
+    console.error('  ✗ codesign FAILED — refusing to ship an unsigned arm64 app')
     throw err
   }
 }
