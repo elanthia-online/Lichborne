@@ -11,7 +11,7 @@ import { EventEmitter } from 'events'
 // lich-5: main.rb's detachable_client_thread accepts the socket and hands it
 // straight to global_defs.rb handle_detachable_client, whose read loop treats
 // every line we send as typed client input). On accept, Lich pushes a
-// Stormfront-XML state resync — vitals progressBars, prepared spell, status
+// Wrayth-XML state resync — vitals progressBars, prepared spell, status
 // indicators, compass (detachable_client_send_init) — then the live stream.
 // Multiple front-ends may be attached at once; a detachable client dropping
 // does NOT end the session (docs/runtime-io.md).

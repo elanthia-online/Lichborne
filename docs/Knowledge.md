@@ -3,7 +3,8 @@
 > Internal reference document. Captures what we've learned about **Lich5 internals, the DragonRealms protocol, and the live installation** — the verified facts we mirror or depend on, so they aren't re-derived. Each fact cites its source `file:line`.
 > Sources: Lich5 source tree (`C:\temp\lich-dev\lich-5`, live install `C:\Ruby4Lich5`), the DR `drinfomon` scripts, and captured game XML.
 > This is the LICH/DR *fact* layer — how Lich and DR actually behave. Lichborne's own implementation (how we consume these facts) lives in CLAUDE.md and DESIGN.md; each Lichborne pitfall that came from a Lich/DR fact points back here.
-> Updated: 2026-10-14 (the injuries dialog is a full snapshot; DR's announced Combat panel, not yet seen in the feed; earlier: a view of another room — Locate — and Lich's room-name rewrites, 2026-10-13).
+> Scope: written DragonRealms-first. Facts that differ for GemStone IV are marked, and the GS4 wire facts the client relies on are in [GemStone IV — shards, room titles and creature tags](#gemstone-iv--shards-room-titles-and-creature-tags-verified-2026-11-03) (fuller captured-wire evidence: DESIGN §56).
+> Updated: 2026-11-03 (GemStone IV shards, room titles and creature tags; the per-game attach resync; earlier: the injuries dialog is a full snapshot, 2026-10-14).
 
 ---
 
@@ -42,7 +43,7 @@ Lich5 is a Ruby scripting proxy that sits between the game server and the client
 
 **Process model:** Each Lich instance is a single OS process. Multiple characters require multiple Lich processes. Each process has its own PID and manages its own connection. The `session_summary_state` table in `lich.db3` is how processes announce themselves to each other (and to Lichborne).
 
-**Frontend flag:** Lich is told which client protocol to speak via a command-line flag. Lichborne uses `--stormfront`, which makes Lich speak the StormFront XML protocol that the game server natively sends.
+**Frontend flag:** Lich is told which client protocol to speak via a command-line flag. Lichborne uses `--stormfront`, which makes Lich speak the Wrayth XML protocol that the game server natively sends. (Simutronics renamed its StormFront client to Wrayth; Lich's flag, and Lichborne's `StormFrontParser`, keep the old name.)
 
 ---
 
@@ -528,8 +529,8 @@ This is unrelated to the script list. Do not confuse with `;listall`.
 
 1. Lichborne spawns Lich as a child process with `--stormfront` (or whatever `lichClientFlag` is set to)
 2. Lich authenticates with SGE for the specified character
-3. Lich opens a local TCP listener on `lichPort` (default 11024)
-4. Lichborne connects to `127.0.0.1:lichPort` as if it were a StormFront client
+3. Lich opens a local TCP listener on `lichPort`: in this force mode Lich binds the shard's own GAME port on `127.0.0.1` (`lib/main/main.rb:621` binds `@argv_options[:game_port]`), so the port follows the shard flag — 11024 for DR Prime, 10024 for GS4 Prime (table below)
+4. Lichborne connects to `127.0.0.1:lichPort` as if it were a Wrayth client
 5. Lich proxies the full XML game stream to Lichborne, with its own output injected as `--- Lich:` prefixed lines
 
 ### Port Assignments (from `_shared.yaml` / profile)
@@ -540,6 +541,11 @@ This is unrelated to the script list. Do not confuse with `;listall`.
 | DR Test | 11624 | `--test --dragonrealms` |
 | DR Platinum | 11124 | `--platinum --dragonrealms` |
 | DR The Fallen | 11324 | `--fallen` |
+| GS4 Prime (GS3) | 10024 | `--gemstone` |
+| GS4 Test (GST) | 10624 | `--gemstone --test` |
+| GS4 Shattered (GSF) | 10324 | `--shattered` |
+
+Ports per `lib/main/argv_options.rb` `handle_dragonrealms_connection` (:397), `handle_fallen_connection` (:380), `handle_gemstone_connection` (:341) and `handle_shattered_connection` (:367). GS4 details: [GemStone IV — shards, room titles and creature tags](#gemstone-iv--shards-room-titles-and-creature-tags-verified-2026-11-03).
 
 ### How Lich Injects Output
 
@@ -551,7 +557,7 @@ Lich injects its own messages as lines beginning with `--- Lich: `. These are NO
 
 ### What Lich Sends to Lichborne
 
-- The full DragonRealms StormFront XML stream (unchanged)
+- The game's Wrayth XML stream (DragonRealms or GemStone IV), with Lich's own rewrites applied (§15 hooks; the room-number and rich-stream rewrites in §16/§17)
 - Script output echoed to named streams via `<pushStream id="...">` / `popStream`
 - The `LichScripts` stream — populated by the `script-watch.lic` script when running (clearStream + pushStream with script list)
 - `--- Lich: ` prefixed lines for control responses
@@ -712,7 +718,9 @@ With `set statusprompt` on, DR writes the character's current state as letters b
 DR's `<streamWindow id='main' subtitle='…'>` carries the room title, and the room id can appear in TWO forms; Lich may REWRITE them based on feature flags:
 
 - `[Whistling Wood, Barrows - 9479]` — id inside the brackets after ` - ` (Lich `display_lichid` injects the LICH id this way as bare digits).
-- `[Arthelun Ruins, Courtyard] (56107)` — the StormFront-standard `[Title] (uid)`, DR's own room-id-flag display. With Lich's `display_uid` on, Lich rewrites this to a **`u`-prefixed** `(u12345)` (same game uid). `(**)` / `(unknown)` = no id.
+- `[Arthelun Ruins, Courtyard] (56107)` — the Wrayth-standard `[Title] (uid)`, DR's own room-id-flag display. With Lich's `display_uid` on, Lich rewrites this to a **`u`-prefixed** `(u12345)` (same game uid). `(**)` / `(unknown)` = no id.
+
+> **Current lich-5 (main `804cadda`, checked 2026-11-03): the trailing `(u12345)` rewrite is now GemStone's.** GS4's `modify_room_display` (`lib/games.rb:1535-1550`, in `Lich::Gemstone::GameInstance`) does exactly the rewrite above. DR's (`lib/games.rb:1649-1659`) instead strips the game's `] (NNN)` when `display_uid` is on and puts Lich's id/uid INSIDE the brackets (`[Name - 2072 - (u230007)]`, title placement) or on a `Room Number:` line below the room (see the Locate section below and §17, 5.20.0). Keep parsing every form. GS4's subtitle carries no brackets at all: [GemStone IV — shards, room titles and creature tags](#gemstone-iv--shards-room-titles-and-creature-tags-verified-2026-11-03).
 
 Parse BOTH (regex `\]\s*\(u?(\d+)\)` for the parens form, `u?` optional). **Absence of an id must stay a no-op** — the flag is optional; never make a parsed room id load-bearing (Lichborne #65). The companion source is `<nav rm='X'/>` (some transitions send ONLY `<nav>`, no `<streamWindow>` — Lichborne #46).
 
@@ -1046,7 +1054,7 @@ Windows is unaffected: Ruby there derives its default external encoding from the
 active code page and has no `LANG` convention.
 
 Lichborne's handling: `spawnEnv()` in
-[LichConnection.ts](src/main/connection/LichConnection.ts) defaults
+[LichConnection.ts](../src/main/connection/LichConnection.ts) defaults
 `LANG=en_US.UTF-8` for the Lich child on non-Windows platforms, and only when
 neither `LANG` nor `LC_ALL` is already set (B250, v0.18.3).
 
@@ -1384,7 +1392,7 @@ Trabe Chalice (intact, fading)
    `(29 roisaen)`. A plural-only regex silently drops every effect in its final
    minute, which is exactly the minute that matters.
 3. **1 roisan = 60 seconds = 1 real minute** (Elanthipedia; the constants live
-   in [elanthianTime.ts](src/shared/elanthianTime.ts) as `ROISAN_SECONDS`).
+   in [elanthianTime.ts](../src/shared/elanthianTime.ts) as `ROISAN_SECONDS`).
    The reading is a **duration**, NOT a server absolute time — so anchoring it
    on the local clock at receipt is correct and immune to clock skew, unlike
    `roundTime`/`castTime`, which ARE absolute and must be anchored on the
@@ -1450,7 +1458,7 @@ Trabe Chalice (intact, fading)
    demand; do not assume one exists without checking.
 
 Lichborne aliases `percWindow` → `spells` (`streamAliases.ts`) and parses it in
-`parseSpellLine` / `deriveSpellState` ([experiences.ts](src/renderer/experiences.ts)).
+`parseSpellLine` / `deriveSpellState` ([experiences.ts](../src/renderer/experiences.ts)).
 
 ### `base-spells.yaml` — the spell/ability reference (verified 2026-09-05)
 
@@ -1541,9 +1549,42 @@ GM Auchand announced work on DR's Combat panel, which "has been largely non-func
 A player watching his own feed (Mahtra) reported the same. Two untested explanations:
 
 1. **Dialog layouts arrive in the login burst** (`<openDialog>`), so a session already logged in when the change rolled out would never receive a new panel's setup. A capture from a fresh login settles it.
-2. **A version gate.** DR receives the client's own id line: for a Stormfront-style front end, Lich relays the client's login key and version line unchanged and substitutes its own string (`Frontend::CLIENT_STRING`, `/FE:WRAYTH /VERSION:1.0.1.28 /P:WIN_UNKNOWN /XML`, lich-5 `lib/common/frontend.rb:515`) only for its GSL and Frostbite paths and its `--without-frontend` mode (`lib/main/main.rb:702-790`). Lichborne sends `/FE:WRAYTH /VERSION:1.0.1.22` (`LichConnection.ts`, `ConnectionManager.ts` `CLIENT_ID`). If DR sends the panel only to newer clients, Lichborne wouldn't get it.
+2. **A version gate.** DR receives the client's own id line: for a Wrayth-style front end, Lich relays the client's login key and version line unchanged and substitutes its own string (`Frontend::CLIENT_STRING`, `/FE:WRAYTH /VERSION:1.0.1.28 /P:WIN_UNKNOWN /XML`, lich-5 `lib/common/frontend.rb:515`) only for its GSL and Frostbite paths and its `--without-frontend` mode (`lib/main/main.rb:702-790`). Lichborne sends `/FE:WRAYTH /VERSION:1.0.1.22` (`LichConnection.ts`, `ConnectionManager.ts` `CLIENT_ID`). If DR sends the panel only to newer clients, Lichborne wouldn't get it.
 
 Tracked in BUGS.md, Pending Tester Follow-ups.
+
+## GemStone IV — shards, room titles and creature tags (verified 2026-11-03)
+
+Checked against lich-5 main `804cadda` and its GS fixtures (`spec/fixtures/streams/gs_saga_hunt.xml`, `gs_saga_login.xml`). The captured-wire evidence (184 GS4 sessions) is in DESIGN §56.
+
+**Shards, flags and ports.** Lich reads `--gemstone` or `--gs` as the GemStone flag (`lib/common/authentication/login_helpers.rb:42`) and resolves the instance code from the modifiers (`:427-447`): `--test` gives GST, `--platinum` GSX, `--shattered` GSF (standalone too), otherwise GS3. The force-mode ports (`lib/main/argv_options.rb` `handle_gemstone_connection` :341, `handle_shattered_connection` :367; all on `storm.gs4.game.play.net`):
+
+| Code | Flags | Port |
+|---|---|---|
+| GS3 (Prime) | `--gemstone` | 10024 |
+| GST (Test) | `--gemstone --test` | 10624 |
+| GSX (Platinum) | `--gemstone --platinum` | 10124 (Lichborne's shard list omits it, DESIGN §56.7.3) |
+| GSF (Shattered) | `--shattered` | 10324 |
+
+Every GemStone shard needs an explicit flag: with no game flag at all (either game) Lich takes no force-mode connection (`argv_options.rb:323-327`).
+
+**The room title comes from the inline roomName line, not the subtitle.** GS4's main `<streamWindow>` subtitle has no brackets: `subtitle=" - Shattered Nexus - 7199"`, or `" - Town Square, Central"` when the game shows no room numbers. Lich brackets the title itself and strips the number (`lib/gemstone/xml_delta.rb:12-21`). The bracketed title arrives on the room-name line, in DR's `[Title] (uid)` shape:
+
+```
+<style id="roomName" />[Sanctum of Scales, Columns] (4216015)
+```
+
+(`gs_saga_hunt.xml`, where the same room's subtitle reads `" - Sanctum of Scales, Columns - 4216015"`.) A number in the subtitle makes Lich turn `display_uid` on by itself (`xml_delta.rb:18-19` → `Lich.enable_display_uid_automatically`, `lib/lich.rb:908`). With it on, GS4's `modify_room_display` rewrites the room-name line to `] (uNNN)`, or `(unknown)` for no id (`lib/games.rb:1535-1550`). DR also sends this shape for room displays and Locates (the Locate section above), so on DR it can't be read as the player's own room.
+
+**`<crtrStatus>` sits INSIDE `room objs`, before each creature's link,** and carries health:
+
+```
+<component id='room objs'>  You also see<crtrStatus exist="784142402" health="177" maxhealth="300" hostile="1" dead="1" prone="1"/><b> <pushBold/>a <a exist="784142402" noun="sentinel">lithe veiled sentinel</a><popBold/></b> …
+```
+
+(`gs_saga_hunt.xml`.) DR sends its tags after the component (see the DR `<crtrStatus>` section above). GS4 also sends a creature's tag on its own as a fight changes it, in the main-text "You also see" listing, and before a `room players` component (`xml_delta.rb:24-34`). Lich reads `health` / `maxhealth` as strict integers (`lib/common/creature/creature_base.rb:713-714`). Capture statistics (lone mid-fight tags, pets at `0/0`, health below 0 past death): DESIGN §56.5.
+
+**Timed effects, experience and encumbrance** arrive as `<dialogData>` blocks. Lich tracks the game's effect dialogs as `PSM_3_DIALOG_IDS` (`Buffs`, `Active Spells`, `Debuffs`, `Cooldowns`; `lib/common/xmlparser.rb:397`) and folds them into `active_spells` (`:286`). The wire shapes (whole-list resend, `time` = time left, `expr` / `encum` attributes): DESIGN §56.1 and §56.4.
 
 ## 19. Detachable Client — the Attach Protocol
 
@@ -1592,6 +1633,8 @@ natural source for auto-discovering attach targets instead of typing host/port;
 Lichborne does not read it yet (recorded as future work in DESIGN §48.7).
 
 ### On accept, Lich pushes a state resync — and its vitals shape is DR-specific
+
+> **Superseded in current Lich (#1617, in 5.23.0; re-checked against main `804cadda`, 2026-11-03).** `detachable_client_send_init` (`lib/global_defs.rb:2162`) now waits for the game module's `DetachableClientInit.ready?` and sends its `init_string`, one per game. DragonRealms: `value` is the real percent and `text='health 87%'` (`lib/dragonrealms/detachable_client_init.rb:62-67`). GemStone IV: `value` is the percent (0 when max is 0) and `text='health <current>/<max>'` (`lib/gemstone/detachable_client_init.rb:62-67`). The `value='0'` shape described below only comes from older Lich (§17). The init is skipped for `--saga` as well as `--genie` (`lib/global_defs.rb:2208`).
 
 `detachable_client_send_init`
 ([lib/global_defs.rb:2306](file:///c:/temp/lich-dev/lich-5/lib/global_defs.rb#L2306))

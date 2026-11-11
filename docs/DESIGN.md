@@ -33,17 +33,6 @@
 17. [Automations, Groups & Modes](#17-automations-groups--modes)
 18. [Packaging & Distribution](#18-packaging--distribution)
 19. [Map System](#19-map-system)
-20. [Profile System](#20-profile-system)
-   - 20.1 Overview
-   - 20.2 Storage Structure
-   - 20.3 File Responsibilities
-   - 20.4 Authority Rules
-   - 20.5 Write Flow
-   - 20.6 Startup / Login Flow
-   - 20.7 Game Code and Authentication
-   - 20.8 Implementation Files
-   - 20.9 Portability
-   - 20.10 Implementation Phases
    - 19.1 Overview
    - 19.2 Map File Format
    - 19.3 Coordinate System
@@ -57,6 +46,19 @@
    - 19.11 Label Modes
    - 19.12 Future Work
    - 19.14 Map Panel UI Layout
+20. [Profile System](#20-profile-system)
+   - 20.1 Overview
+   - 20.2 Storage Structure
+   - 20.3 File Responsibilities
+   - 20.4 Authority Rules
+   - 20.5 Write Flow
+   - 20.6 Startup / Login Flow
+   - 20.7 Game Code and Authentication
+   - 20.8 Implementation Files
+   - 20.9 Portability
+   - 20.10 Implementation Phases
+21. [Stream Name Normalization](#21-stream-name-normalization)
+22. [Debug — Fires Tab](#22-debug--fires-tab)
 23. [Virtual Scrolling — Main Window](#23-virtual-scrolling--main-window)
 24. [Lich Integration Architecture](#24-lich-integration-architecture)
     - 24.1 Product Philosophy
@@ -133,17 +135,33 @@
     - 38.7 Type-anywhere focuses the bar (F60)
 39. [Global Cross-Character Rules](#39-global-cross-character-rules-f37-shipped-v0152)
 40. [v0.15.2 batch records — search, session restore, settings nav, virtualization decision](#40-v0152-batch-records--search-session-restore-settings-nav-virtualization-decision)
+41. [Cross-Platform Support — Windows · Linux · macOS (v0.18.0)](#41-cross-platform-support--windows--linux--macos-v0180)
+42. [SimuCoin Claim (F71, v0.18.0)](#42-simucoin-claim-f71-v0180)
+43. [Modal Chrome Unification (v0.18.0)](#43-modal-chrome-unification-v0180)
+44. [Connect Feedback & QuickSend Targeting (v0.18.0)](#44-connect-feedback--quicksend-targeting-v0180)
+45. [Performance Audit — findings & structure (v0.18.0)](#45-performance-audit--findings--structure-v0180)
+46. [Prioritised Backlog — features & UX polish (snapshot 2026-07-30)](#46-prioritised-backlog--features--ux-polish-snapshot-2026-07-30)
+47. [Views — Session & Overview (v0.19.0)](#47-views--session--overview-v0190)
+48. [Attach Mode — connect to an already-running Lich (PR #2, Kahlen, v0.19.4)](#48-attach-mode--connect-to-an-already-running-lich-pr-2-kahlen-v0194)
+49. [Named Colors — the linked palette (F115, v0.19.8)](#49-named-colors--the-linked-palette-f115-v0198)
+50. [Text styles, compass options, and the Tableau person menu (v0.20.1)](#50-text-styles-compass-options-and-the-tableau-person-menu-v0201)
+51. [The Living Tableau in combat, and a screen that holds still (v0.20.2)](#51-the-living-tableau-in-combat-and-a-screen-that-holds-still-v0202)
+52. [The Tableau's sense of place, room by room (v0.20.3)](#52-the-tableaus-sense-of-place-room-by-room-v0203)
+53. [Window zoom, game text size, and number fields (v0.20.4)](#53-window-zoom-game-text-size-and-number-fields-v0204)
+54. [Small fixes from a read-through, and lessons from ProfanityFE (v0.20.5)](#54-small-fixes-from-a-read-through-and-lessons-from-profanityfe-v0205)
+55. [The rich DragonRealms stream (v0.21.0)](#55-the-rich-dragonrealms-stream-v0210)
+56. [GemStone IV support — panels, login by game, Lich installs, profile keys (PRs 4–10, the gs4 stack)](#56-gemstone-iv-support--panels-login-by-game-lich-installs-profile-keys-prs-410-the-gs4-stack)
 
 ---
 
 ## 1. Vision
 
-Lichborne is a DragonRealms game client built for **real players** — from first-timers to veterans who have played for 30 years. It connects via Lich (primary) or direct SGE (fallback), and layers AI assistance on top of the raw game experience.
+Lichborne is a DragonRealms and GemStone IV game client built for **real players** — from first-timers to veterans who have played for 30 years. It connects via Lich (primary) or direct SGE (fallback), and layers AI assistance on top of the raw game experience. (It was DragonRealms-only until the GS4 stack, PRs #4–#10; game-specific surfaces are gated by game family, §56.)
 
 **Design principles:**
 - **Composable** — every panel is independently movable, resizable, floatable, and closeable
 - **Accessible** — usable by players with low vision, color blindness, epilepsy, or motor impairments
-- **Familiar** — veterans coming from Genie or StormFront should feel at home immediately
+- **Familiar** — veterans coming from Genie or Wrayth should feel at home immediately
 - **Discoverable** — new players should be able to configure the client without reading a manual
 - **Performant** — never drop game text, never lag a command
 
@@ -151,7 +169,7 @@ Lichborne is a DragonRealms game client built for **real players** — from firs
 
 Lichborne is not a general-purpose DR client that happens to support Lich. It is a purpose-built **display and configuration layer** that treats Lich as a first-class citizen. Lich owns all automation — scripts, variables, text substitution, conditional triggers, and training/combat routines. Lichborne owns what you see, hear, and configure visually.
 
-This distinction is the product's moat. Every other DR client (StormFront, Genie, Frostbite, Wrayth) treats Lich as an optional add-on. Lichborne is built around Lich as the assumed runtime — which means it can go deeper on rendering quality and Lich dashboard features than any client that has to work without Lich too.
+This distinction is the product's moat. Every other DR client (Wrayth, Genie, Frostbite) treats Lich as an optional add-on. Lichborne is built around Lich as the assumed runtime — which means it can go deeper on rendering quality and Lich dashboard features than any client that has to work without Lich too.
 
 The two unique advantages no other client offers today:
 1. **Rendering depth** — modern themes with 100+ CSS variables, 16+ built-in themes including all 12 guild palettes, full accessibility suite, virtual scrolling, hybrid map (Lich image tiles + Genie SVG graph), and a display profile system that follows the player across reinstalls and machines.
@@ -296,7 +314,7 @@ Saved heights persist across mode changes — toggling 3→2→3 restores the us
 
 **Migration defaults when the `*Added` flag is missing:** Main-Top → `false` (Main-Top is new in v0.8.1; users opt in explicitly), other three → `true` (preserves the v0.8.0 always-visible behavior for existing users who never opened the new manager). New users start with the same defaults — three right-column slots populated with their stream defaults, Main-Top removed.
 
-**Streams.** Each added slot's section in the Panel Manager lists the streams currently in that slot, with per-row controls to **reorder** the stream within its slot (◀ / ▶ — moves the tab one position left or right in the slot's PanelFrame tab bar; v0.8.2), **move** the stream to a different added slot (`→ Zone-Name`), or **remove** it (returns it to Available Streams). The Available Streams section shows every builtin PanelType not yet placed, plus any discovered custom streams; rows there show `+ Zone` buttons that target each currently-added slot.
+**Streams.** Each added slot's section in the Panel Manager lists the streams currently in that slot, with per-row controls to **reorder** the stream within its slot (◀ / ▶ — moves the tab one position left or right in the slot's PanelFrame tab bar; v0.8.2), **move** the stream to a different added slot (`→ Zone-Name`), or **remove** it (returns it to Available Streams). The Available Streams section shows every builtin PanelType not yet placed (since the GS4 stack, only those available to the character's game, `PANEL_GAMES` via `panelTypeAvailable`; §56.2), plus any discovered custom streams; rows there show `+ Zone` buttons that target each currently-added slot.
 
 A **Reset panels** row restores defaults. Since v0.19.7 it is the last item under Panel locations, and it asks first (B370). It restores all four slots added (yes, including Main-Top — Reset is "everything visible", not "back to new-user state"), with their default streams.
 
@@ -518,7 +536,7 @@ Any stream panel can display a `[HH:MM]` wall-clock prefix on each line. The tog
 
 ### 4.4 Text Styles (Presets)
 
-StormFront `<preset>` tags map to visual styles:
+Wrayth `<preset>` tags map to visual styles:
 
 | Preset | Meaning | Default Style |
 |---|---|---|
@@ -627,7 +645,7 @@ Two display styles are available (Settings → Roundtime / Cast Time Timer Style
 
 ### 5.5 Vitals Bar Position
 
-By default the vitals bar sits at the top of the window, spanning the full width. Players can move it to **just above the command bar** — the layout StormFront uses, which many veterans are accustomed to.
+By default the vitals bar sits at the top of the window, spanning the full width. Players can move it to **just above the command bar** — the layout Wrayth uses, which many veterans are accustomed to.
 
 In bottom position, the vitals bar is scoped to the **main text area width only** — it does not extend under the right panel column. This gives the bottom-right panel (Experience) maximum vertical space while keeping the vitals visible at the point of focus.
 
@@ -775,9 +793,9 @@ DragonRealms has two exp display modes:
 | Mode | Format | Used by |
 |---|---|---|
 | Standard | Verbose text output, parsed from prose | Genie (forces this mode on login) |
-| expbrief | Structured XML `<component>` tags | StormFront, Frostbite, Lichborne |
+| expbrief | Structured XML `<component>` tags | Wrayth, Frostbite, Lichborne |
 
-Lichborne is an XML client — expbrief is the natural mode and gives us the structured data the exp panel needs for free. On login, the client sends `expbrief` to ensure the game is in the right state, matching StormFront's behavior.
+Lichborne is an XML client — expbrief is the natural mode and gives us the structured data the exp panel needs for free. On login, the client sends `expbrief` to ensure the game is in the right state, matching Wrayth's behavior.
 
 **Lich mode:** Lich may handle the expbrief toggle itself on login. In Lich mode, the client does not send the `expbrief` command — Lich owns the session setup. The exp panel still works identically either way since the data arrives as the same XML regardless of who toggled the mode.
 
@@ -850,7 +868,7 @@ Font settings work at two levels: **global defaults** and **per-panel overrides*
 - Font family: any font installed on the user's system, selected via a scrollable inline picker with live filter. The current selection is shown above the list; typing in the filter box narrows it instantly. The selected font is highlighted and auto-scrolled into view when the panel opens. **Each entry in the picker list renders in its own face** (v0.7.1, F15) — the inline `style={{ fontFamily: "'<name>'" }}` overrides the picker's monospace inheritance for the label only, so the picker doubles as a visual preview. A **Monospace** filter chip narrows the list to monospace fonts only, detected at enumeration time via a canvas width test (`i` vs `W`).
 - Font enumeration uses the **Local Font Access API** (`window.queryLocalFonts()`), available in Electron 21+ / Chromium 103+. The main process grants the `local-fonts` permission via `setPermissionRequestHandler` + `setPermissionCheckHandler` before the window loads. Results are deduplicated by family name and sorted alphabetically. **Two performance rules (B515, v0.20.4, §53.4):** the rows carry `content-visibility: auto` so only the visible ones are laid out in their own face, and the scan (with its canvas monospace test) runs once per window session. Chromium enumerates installed fonts once per process, so a font installed after launch appears only after a restart, and no in-app rescan can change that.
 - Stored value is usually the raw font family name (e.g. `"Cascadia Code"`). Three truly-retired preset keys (`terminal`, `sansserif`, `serif`) still transparently migrate to their font names the first time Settings is opened. The active default key `'cascadia'` is **not** migrated (v0.7.1, B94) — it intentionally stays as a key so `applySettingsToDOM` keeps resolving it to the full fallback chain `'Cascadia Code' → 'Fira Code' → 'Consolas' → monospace`. Migrating it would collapse the fallback to `'Cascadia Code', monospace` and cause a Cascadia-less Win10 user's font to visibly flip from Consolas to generic monospace the moment Settings opened.
-- `applySettingsToDOM` ([settings.ts](src/renderer/settings.ts)) resolves the stored value via `FONT_FAMILIES[fontFamily]` first (key match → full chain) and falls through to `'FontName', monospace` for an explicit font name.
+- `applySettingsToDOM` ([settings.ts](../src/renderer/settings.ts)) resolves the stored value via `FONT_FAMILIES[fontFamily]` first (key match → full chain) and falls through to `'FontName', monospace` for an explicit font name.
 - Default font: **Cascadia Code (key: `cascadia`), 12px, Compact (1.2) line height** (v0.7.1, B93). Cascadia Code ships with weights 200/300/350/400/500/600/700 — critically, real `500` and `600` faces — so the codebase's intermediate-weight emphasis (hands HUD, status bars, panel tabs, character tabs, vitals, game `<bold>`) actually renders at its intended weight instead of falling back to full bold 700 on a two-weight font like Consolas. The previous default (`'Consolas'` literal name) collapsed every `font-weight: 600` declaration to 700 and read as "everything is too bold." Players who explicitly chose Consolas (or any other font) keep their choice through profile load — only fresh installs / unset characters get the new default.
 - **Player-facing weight emphasis** (v0.7.1, B93): game `<bold>` and `<roomname>` use `font-weight: 600` (real semibold on Cascadia, falls back to 700 on Consolas — no regression for opt-in Consolas users). Hand-held / spell-active items use color-only emphasis — no weight bump — so picking something up doesn't snap the HUD from 400 straight to 700. Other 600/700 chrome (status bars, vitals labels, toolbar title, panel tabs, character tabs) was inventoried but left as-is; can be dialled back further if testers find it heavy now that the font default changed.
 - Font family propagates globally via `body { font-family: var(--game-font-family) }` — all panels inherit it automatically.
@@ -1115,7 +1133,7 @@ The "Lichborne" wordmark in the top-left can wear a text effect, chosen per char
 
 **Why per character and not per theme.** A theme would be the intuitive home — it already owns the brand's colours — but `lichborne.theme` is a single UNSCOPED global key (themes.ts), and §9 / pitfall #56 record that an active character's theme is rewritten from that global on every save. A theme-owned effect would therefore be the same for everyone, which defeats the entire point: telling your characters apart at a glance while multi-boxing. The split that survives is **the theme decides what colour the brand is; the setting decides what it does with that colour.** The effect's own colour vars are fed `var(--accent)` / `var(--accent-dim)`, so Glow, Gradient, Shimmer and Neon stay theme-derived and pick up the high-contrast overlay (which sets `--accent: #ffff00`) for free. Rainbow, Gold, Fire and Frost carry fixed palettes by nature.
 
-**One effect system, not two.** The vocabulary is `HighlightEffect` — the same twelve values highlights and contact templates use — so the `hl-fx-*` CSS in highlights.css is written once and the wordmark inherits its epilepsy-safe freeze automatically (motion stops, colour stays: UX #9b). [brandMark.tsx](src/renderer/utils/brandMark.tsx) is the single painter, called by BOTH the app bar and the Settings preview so the two cannot drift (the B281 lesson). Two effects render the word as one run rather than the two coloured halves: colour-replacing ones, which paint the glyphs themselves, and per-letter ones — which keep their colours but carry the `--i` stagger across the split via `effectContent`'s `startIndex`, because restarting at zero on the second span breaks the wave mid-word (B427, pitfall #147).
+**One effect system, not two.** The vocabulary is `HighlightEffect` — the same twelve values highlights and contact templates use — so the `hl-fx-*` CSS in highlights.css is written once and the wordmark inherits its epilepsy-safe freeze automatically (motion stops, colour stays: UX #9b). [brandMark.tsx](../src/renderer/utils/brandMark.tsx) is the single painter, called by BOTH the app bar and the Settings preview so the two cannot drift (the B281 lesson). Two effects render the word as one run rather than the two coloured halves: colour-replacing ones, which paint the glyphs themselves, and per-letter ones — which keep their colours but carry the `--i` stagger across the split via `effectContent`'s `startIndex`, because restarting at zero on the second span breaks the wave mid-word (B427, pitfall #147).
 
 **Reaching app-level chrome.** The app bar cannot read per-session state (pitfall #57), so the value rides `SessionStatus.brandEffect`, pushed by a dedicated GameWindow effect and read for the ACTIVE session — the same "reflect via `useSessions`" route the connection dot and the panel flags use. It is a scalar, so it works with the equality gate, and it was added to that gate (pitfall #130). Persistence needs no new plumbing: it is a field on `settings`, so it rides `scopedKey(character,'settings')` → `state:` → YAML, and transfers inside the existing Display & Accessibility category.
 
@@ -1212,7 +1230,7 @@ enough that testers actually enable it).
   DPAPI) as a sibling to `passwords.json` — **never in YAML**, and the renderer never sees it. Main-process
   execution also sidesteps CSP/CORS (a renderer `fetch` to a provider host would be blocked) and keeps the
   key off every game-text code path.
-- **The Claude text path is a thin raw-`fetch` SSE client** ([claudeProvider.ts](src/main/ai/claudeProvider.ts)),
+- **The Claude text path is a thin raw-`fetch` SSE client** ([claudeProvider.ts](../src/main/ai/claudeProvider.ts)),
   NOT the bundled `@anthropic-ai/sdk` (decision 2026-07-10, revised from the initial spec). Rationale: the
   v0.15.0 packaging-hygiene rule minimizes runtime deps, and this codebase hand-rolls its own parsers
   (StormFrontParser, the Marshal reader) — a ~100-line SSE reader over Electron's global `fetch` fits that
@@ -1235,7 +1253,7 @@ enough that testers actually enable it).
   after the consent gate, with the disclosure stating so plainly. **Name redaction** and **scrollback-cap
   tuning** are tracked follow-ups (§10.4), deliberately deferred so the pipe ships first.
 - **Slash surface (Principle #11):** an `/ai` command family from day one — `/ai key …`, `/ai on|off`,
-  `/ai status`, `/ai catchup` — registered in [slashCommands.ts](src/renderer/slashCommands.ts) with `/help`
+  `/ai status`, `/ai catchup` — registered in [slashCommands.ts](../src/renderer/slashCommands.ts) with `/help`
   blurbs, so AI is a first-class control surface, not a mouse-only bolt-on.
 - **AI Settings section** (the "AI" row already reserved in the §8 settings table): master enable, key entry +
   Test button, model-tier picker (Haiku default / Sonnet 5), per-feature consent list, cost tally. Theme-audit
@@ -1249,7 +1267,7 @@ slice — still the FALLBACK path (used when session logging is off, or a log re
 default source is now the log. The new architecture (why it works when the v0.16.x log attempt was reverted
 for scale, §10.4):
 
-- **Whole pipeline in MAIN** — `buildCatchupDigest` ([sessionLog.ts](src/main/sessionLog.ts)) reads →
+- **Whole pipeline in MAIN** — `buildCatchupDigest` ([sessionLog.ts](../src/main/sessionLog.ts)) reads →
   dedups → extracts and returns only a COMPACT digest (build-export precedent — a year is ~29M lines, so raw
   rows must never cross IPC). Walks **day by day, yielding between days** so a long window can't block main;
   pushes progress on `session-log:catchup-progress` for every phase ("Working on it — reading day 42/365 →
@@ -1276,7 +1294,7 @@ for scale, §10.4):
   body OR the per-speaker "who spoke" count; `/ai stop` cancels mid-build (a `buildCancelled` flag), not just
   mid-stream.
 - **PII / credential redaction — nothing sensitive reaches the model (Sekmeht, v0.17.1).** A shared
-  `redactForAI` ([src/shared/redact.ts](src/shared/redact.ts)) is applied to the AI-bound copy at BOTH paths
+  `redactForAI` ([src/shared/redact.ts](../src/shared/redact.ts)) is applied to the AI-bound copy at BOTH paths
   (the log digest in main, the screen fallback in the renderer): it removes the Simutronics **PIN block**
   (Character Index / Player Identification Number / `PIN#`), labelled **passwords / account numbers**, card-
   length digit runs, and the **logged-in account username** (passed in as a literal). It is **conservative by
@@ -1284,7 +1302,7 @@ for scale, §10.4):
   can't damage a summary — and an UNLABELLED secret typed as raw prose is undetectable (a safety net, not a
   guarantee). Crucially, redaction runs **only on the copy handed to the AI** — the **session log on disk stays
   pristine** (Sekmeht: *"the log needs to be pristine … it's just during the AI processing part"*). The user-
-  facing [AINOTICE.md](AINOTICE.md) documents exactly what is/isn't sent; the About dialog links it
+  facing [AINOTICE.md](../AINOTICE.md) documents exactly what is/isn't sent; the About dialog links it
   (`AI_NOTICE_URL`). **Any future AI feature that sends game text must route it through `redactForAI` first.**
 - **Response voice / persona (v0.17.2).** `AIConfig.persona` (free text, blank = default; Settings → AI →
   "Response voice") flavours the VOICE of AI output — "a 90s TV news anchor", etc. `catchupSystem` takes a
@@ -1314,13 +1332,13 @@ for scale, §10.4):
 The v0.16.0 slice (below) exercised the whole stack (key → consent → main-process call → stream → render →
 log) on the cheapest input. **What shipped in v0.16.0:**
 
-- **Invocation:** the `/ai` slash family ([slashCommands.ts](src/renderer/slashCommands.ts)) — `/ai` /
+- **Invocation:** the `/ai` slash family ([slashCommands.ts](../src/renderer/slashCommands.ts)) — `/ai` /
   `/ai status` (on-off / key / model), `/ai on|off` (master toggle), `/ai key` (points at Settings — a key is
   never typed into the command bar; it would land in history + the palette), and **`/ai catchup`** (the
   feature). The executors are sync matchers; the async work lives in GameWindow's `ctx.aiCatchup` (§37.5
   client-control pattern — SlashContext gained `getAIState` / `setAIEnabled` / `aiCatchup`).
 - **AI tier:** `/ai catchup` checks the master enable, runs a **first-use consent gate**
-  ([AIConsentModal.tsx](src/renderer/components/AIConsentModal.tsx) — themed, per-feature, stored in
+  ([AIConsentModal.tsx](../src/renderer/components/AIConsentModal.tsx) — themed, per-feature, stored in
   `aiConfig.consent`), gathers its input (below), then streams a Haiku summary into **one live
   `internal-system` line** (updated per delta; `\n` survives via the `.text-line` pre-wrap) under a header
   (`— Catch Me Up · while you were away (14 min · 87 lines)`). It ends the line with a **trailing `\n`** for one
@@ -1377,7 +1395,7 @@ log) on the cheapest input. **What shipped in v0.16.0:**
     buffer is immune to game-text trimming and cheap to map).
   - **`lbAI`'s display LABEL is `lbAI`, not the mangled `LbAI`** — it's client-seeded (no game-supplied title),
     so the generic `capitalize(id)` at the tab/add-menu label sites would turn `lbAI` → `LbAI`. A shared
-    `streamLabel(id, title?)` ([aiConfig.ts](src/renderer/aiConfig.ts)) special-cases `AI_STREAM` and is used at
+    `streamLabel(id, title?)` ([aiConfig.ts](../src/renderer/aiConfig.ts)) special-cases `AI_STREAM` and is used at
     every label site (makeCustomTab, the two add-menus, slashPanelTab, addToZone); a game-supplied title still
     wins, else the id is capitalized as before — behavior-preserving for every non-AI stream.
 - **Error handling — mid-stream failures surface.** `claudeProvider.handleFrame` handles the Anthropic SSE
@@ -1410,7 +1428,7 @@ log) on the cheapest input. **What shipped in v0.16.0:**
     left the model to *guess* which name in raw game text was them — one line, highest value-per-token in the
     whole prompt).
   - **Left behind as groundwork:** the `session-log:read-window(character, fromTs, toTs, maxRows)` IPC
-    ([sessionLog.ts](src/main/sessionLog.ts)) — it filters a time window **in main** and is exactly what the
+    ([sessionLog.ts](../src/main/sessionLog.ts)) — it filters a time window **in main** and is exactly what the
     future log-analysis feature needs. **Its own lesson stands regardless: NEVER bound a TIME window with a
     LINE count** (pitfall #92 — an 8000-line tail reached back only 6.2 minutes on a busy character, so an
     `/ai catchup 11m` silently summarized ~6).
@@ -1462,7 +1480,7 @@ Items are roughly priority-ordered within each phase. This list evolves.
 
 Priority order reflects data availability from the protocol and player-facing value:
 
-- [x] StormFront XML parser (main process, typed GameEvent IPC — replaces raw string IPC)
+- [x] Wrayth XML parser (main process, typed GameEvent IPC — replaces raw string IPC)
 - [x] Vital bars — Health, Mana, Concentration, Fatigue, Spirit (exact values from `<progressBar>`)
 - [x] Vital bar health threshold colors — green/yellow/red at 50%/25% (Section 4.3)
 - [x] Roundtime countdown — precise timer from `<roundTime>` Unix timestamp
@@ -1750,7 +1768,7 @@ Character tabs live in the **main toolbar row** — inline with the existing Deb
 
 Tabs anchor to the left. Toolbar buttons anchor to the right. The `+` button sits between the last tab and the toolbar buttons. When tabs exceed available width they scroll horizontally.
 
-> **Realized in v0.10.0 (top-chrome redesign, Phase 2c).** This single-row design — which the implementation had drifted away from (a separate character-tab row *plus* a per-session toolbar row) — is now the app-level [AppBar.tsx](src/renderer/components/AppBar.tsx): **brand + connection dot · character tabs · action buttons · Disconnect/Reconnect**, the layout sketched above. The per-session `game-toolbar` was removed (reclaiming a full row of game text). Because the bar is app-level, its buttons act on the **active** session through the `menu-action` / `lichborne:session-action` dispatch bridge, and the **Mode switcher moved to the Icon Bar** (it needs the per-session GroupsContext). The less-used buttons (Debug/Logs/Contacts/Theme) are tucked under a static **"More ⋯"** dropdown so the bar survives narrow windows without width-measurement; every button whose panel is open glows `--active`, driven by the active session's open-panel snapshot surfaced through `SessionStatus` (a `panel*` flag per toggle button). See CLAUDE.md "Top chrome: app-bar, native menu & the menu-action bridge" + pitfall #57.
+> **Realized in v0.10.0 (top-chrome redesign, Phase 2c).** This single-row design — which the implementation had drifted away from (a separate character-tab row *plus* a per-session toolbar row) — is now the app-level [AppBar.tsx](../src/renderer/components/AppBar.tsx): **brand + connection dot · character tabs · action buttons · Disconnect/Reconnect**, the layout sketched above. The per-session `game-toolbar` was removed (reclaiming a full row of game text). Because the bar is app-level, its buttons act on the **active** session through the `menu-action` / `lichborne:session-action` dispatch bridge, and the **Mode switcher moved to the Icon Bar** (it needs the per-session GroupsContext). The less-used buttons (Debug/Logs/Contacts/Theme) are tucked under a static **"More ⋯"** dropdown so the bar survives narrow windows without width-measurement; every button whose panel is open glows `--active`, driven by the active session's open-panel snapshot surfaced through `SessionStatus` (a `panel*` flag per toggle button). See CLAUDE.md "Top chrome: app-bar, native menu & the menu-action bridge" + pitfall #57.
 >
 > **Narrow-window degradation ladder (B178, v0.13.4).** The window `minWidth` dropped 900 → **480** (users tile multiple windows — 4 columns on a 1920 monitor, Morress), so the bar degrades via em-based **container-query** tiers on `.app-bar` (em in a container query resolves against the bar's `--game-font-size` anchor, so the collapse points track the user's font setting — px media queries fired too late at large fonts): at ≤ 71em the wordmark hides (the status dot + window title still identify the app) and buttons compact; at ≤ 58em the five inline action buttons (Panels/Maps/Automations/Lich/Settings) fold into the ⋯ More menu — the inline buttons AND their menu twins are always rendered, with CSS deciding visibility (`app-bar-collapsible` / `app-bar-more-item--overflow`), preserving the no-width-measurement stance. **Disconnect/Reconnect never collapses** (destructive/critical actions don't hide in menus). The tab strip's overflow scrollbar is themed via a slim `::-webkit-scrollbar` rule — its old `scrollbar-width: thin` is now implemented by Chromium and per spec DISABLES webkit scrollbar styling (the standard-property alternative is `scrollbar-width` + `scrollbar-color` together, the pattern the map/panel-frame scrollbars already use). **B179 (v0.13.5) follow-up:** `container-type` applies layout containment, which made the bar its own STACKING CONTEXT and buried the More ⋯ dropdown under the game area — the bar now carries `position: relative; z-index: 70` (game content + WindowLayer sit at z ≤ 60, overlays/modals start at 100) to lift its whole context. Don't portal the menu instead: the `--overflow` items are gated by the bar's own `@container` query, and a portaled menu is no longer a descendant. Audit popovers any time an element becomes a query container.
 
@@ -1808,7 +1826,7 @@ Lower-priority conditions are still active in-game, just not surfaced on the tab
 
 ### 13.6 Launcher & Character Selection (v0.8.0)
 
-The launcher ([Launcher.tsx](src/renderer/components/Launcher.tsx)) is the primary login surface. It renders in two contexts: **full-page** (`session.length === 0`, returns when the user logs everyone out) and **modal-compact** (clicked + while logged in, opens the same launcher inside `.add-character-modal`). The two are the same component with a `compact` prop. In the modal, the launcher sits inside `.add-character-panel`, which wears the house modal chrome (UX standard #10, the About Lichborne look; F113, v0.19.7): a `--modal-scrim` backdrop, the `--modal-bg`/`--modal-border`/`--modal-radius`/`--modal-shadow` surface, an accent header band titled "Connect a character" with the ✕, then the launcher as the scrolling body — it no longer draws its own panel, height cap or "Pick a character to connect" heading. The ✕ lives in the header rather than inside the Launcher because the launcher is the scroll container (B321: it once sat against the full-window backdrop, in the window's corner, where nobody saw it). **As of v0.19.7 the compact launcher offers the same ways in as the full one (F110):** the Teams section, pinned teams in Favorites, and `LauncherTopBar` in its `compact` mode — ⟲ Reconnect Last · ⚡ Team Login · ⇋ Attach. Account Remove, Transfer and Lich Setup stay full-screen only: the first is destructive over a live session, the others are setup tools rather than ways in. A team launch from here closes the + window (`runBulkConnect`). Every cne-* dialog those controls open is portaled to `document.body`, so `.cne-backdrop` sits at z-index 1600, above the + modal (B322). "+ Add account" is a full-width, account-row-height dashed row in both launchers (F111). The launcher seeds its character list from the last one this window loaded (`lastLoadedCards`, module scope), so the + modal — which mounts a fresh Launcher on every open — shows the list at once and refreshes it in the background; its loading and empty states also wear the compact chrome (B323).
+The launcher ([Launcher.tsx](../src/renderer/components/Launcher.tsx)) is the primary login surface. It renders in two contexts: **full-page** (`session.length === 0`, returns when the user logs everyone out) and **modal-compact** (clicked + while logged in, opens the same launcher inside `.add-character-modal`). The two are the same component with a `compact` prop. In the modal, the launcher sits inside `.add-character-panel`, which wears the house modal chrome (UX standard #10, the About Lichborne look; F113, v0.19.7): a `--modal-scrim` backdrop, the `--modal-bg`/`--modal-border`/`--modal-radius`/`--modal-shadow` surface, an accent header band titled "Connect a character" with the ✕, then the launcher as the scrolling body — it no longer draws its own panel, height cap or "Pick a character to connect" heading. The ✕ lives in the header rather than inside the Launcher because the launcher is the scroll container (B321: it once sat against the full-window backdrop, in the window's corner, where nobody saw it). **As of v0.19.7 the compact launcher offers the same ways in as the full one (F110):** the Teams section, pinned teams in Favorites, and `LauncherTopBar` in its `compact` mode — ⟲ Reconnect Last · ⚡ Team Login · ⇋ Attach. Account Remove, Transfer and Lich Setup stay full-screen only: the first is destructive over a live session, the others are setup tools rather than ways in. A team launch from here closes the + window (`runBulkConnect`). Every cne-* dialog those controls open is portaled to `document.body`, so `.cne-backdrop` sits at z-index 1600, above the + modal (B322). "+ Add account" is a full-width, account-row-height dashed row in both launchers (F111). The launcher seeds its character list from the last one this window loaded (`lastLoadedCards`, module scope), so the + modal — which mounts a fresh Launcher on every open — shows the list at once and refreshes it in the background; its loading and empty states also wear the compact chrome (B323).
 
 **Section structure (top-down):**
 
@@ -1816,7 +1834,7 @@ The launcher ([Launcher.tsx](src/renderer/components/Launcher.tsx)) is the prima
 2. **Welcome card** — when there are zero character profiles on disk. Single `+ Add account` CTA.
 3. **Favorites discoverability hint** — a single dismissable line above the account sections, shown only when the user has tiles but no Favorites and hasn't already dismissed (`lichborne.launcher.favTipDismissed` localStorage flag).
 4. **Favorites section** — always at the top, always expanded. Mirrors any tile with `profile.favorite === true`. Account-mixed, so tiles here keep the account name in their meta line (the `showAccount` prop is true here, false in the account-section context). Hidden overrides favorite — a hidden + favorited character only appears here when Show Hidden is on.
-5. **Per-account sections** — grouped by account, sorted alphabetically. Within each account, sub-sectioned by game (DR/DRX/DRF — DRT tiles render under DR since DRT is a per-character override). Empty sections don't render.
+5. **Per-account sections** — grouped by account, sorted alphabetically. Within each account, sub-sectioned by game (DR/DRX/DRF — DRT tiles render under DR since DRT is a per-character override). Empty sections don't render. (Since the GS4 stack, `GAME_SECTIONS` also has GS3 and GSF, with GST tiles under GS3, and an All / DR / GS filter sits above the sections when the characters span both games; see §56.7.2.)
 6. **`+ Add account` bottom tile** + **Show N hidden profiles** toggle at the bottom of the grid.
 
 **Tile structure (3 rows):**
@@ -1829,6 +1847,8 @@ The launcher ([Launcher.tsx](src/renderer/components/Launcher.tsx)) is the prima
 └──────────────────────────────────────┘
 ```
 
+(Since the GS4 stack, the meta line names the shard, e.g. "DragonRealms Prime", with the code in its tooltip, and GS4 tiles show profession and level; the TEST pill is on DR and GS Prime tiles. See §56.7.2 and §56.7.3.)
+
 The footer is `display: flex; flex-wrap: wrap` so Connect drops to its own line if the tile gets too narrow. Inside an account section the meta drops the account name (already in the section header).
 
 **Account sections are collapsible** (default collapsed) with state persisted in `lichborne.launcher.expandedAccounts` (JSON array of expanded account names). Two override rules: **(1)** if there's exactly one account, that account is always expanded and the collapse toggle is hidden; **(2)** the wizard auto-expands the just-added account on completion (writes to localStorage before `onCompleted` bumps `refreshKey`, and Launcher re-reads the key on `refreshKey` change). The 1→2 transition also re-expands the prior account so the user doesn't see it suddenly collapse.
@@ -1838,35 +1858,37 @@ The footer is `display: flex; flex-wrap: wrap` so Connect drops to its own line 
 - **♡/♥ heart** — toggles `profile.favorite`. ♥ uses `--color-danger` red.
 - **⋯ kebab menu** — opens a `ContextMenu` (right-click on the tile also opens the same menu). Items: `Edit Profile…` (opens `CharacterNotesEditor`), `Hide Profile`/`Unhide Profile`, `Delete Profile…`.
 - **Paired LICH/DIRECT pills** — active pill colored, inactive grey + clickable to switch. Active pill is `disabled` (no-op click).
-- **TEST pill** (DR only) — grey when off (character is `game: 'DR'`), accent-colored when on (`game: 'DRT'`). Hidden on DRX/DRF tiles.
+- **TEST pill** (DR only) — grey when off (character is `game: 'DR'`), accent-colored when on (`game: 'DRT'`). Hidden on DRX/DRF tiles. (Since the GS4 stack, GS Prime tiles get it too, flipping GS3 ↔ GST via `testPair`; hidden on DRX/DRF/GSF.)
 - **Connect →** — fires `handleCardConnect` in App.tsx with a 1.5s grace window before the actual login IPC.
 
-**Character profiles** ([profile-types.ts](src/renderer/profile-types.ts) `CharacterProfile`) store all the per-character launcher-owned fields alongside the GameWindow-owned ones:
+**Character profiles** ([profile-types.ts](../src/renderer/profile-types.ts) `CharacterProfile`) store all the per-character launcher-owned fields alongside the GameWindow-owned ones:
 - GameWindow-owned: `theme`, `state` (a map of all `lichborne.{character}.*` localStorage keys)
 - Launcher-owned: `game`, `useLich`, `hidden?`, `favorite?`, `guild?`, `circle?`, `notes?`
 
-The split matters because both ends save the profile (the GameWindow on its debounced timer, the launcher on every helper write). `exportCharacterProfile` ([profile.ts](src/renderer/profile.ts)) does a read-merge-write so launcher-owned fields aren't stripped when the GameWindow saves (B97 fix — see CLAUDE.md pitfall).
+(The launcher-owned fields also include `attach?` (v0.19.4, §48). Since the GS4 stack, the scope is the profile key, `lichborne.{name@shard}.*` (§56.7.3), and `lich?`, the character's own Lich install, is launcher-owned too (§56.7.1).)
+
+The split matters because both ends save the profile (the GameWindow on its debounced timer, the launcher on every helper write). `exportCharacterProfile` ([profile.ts](../src/renderer/profile.ts)) does a read-merge-write so launcher-owned fields aren't stripped when the GameWindow saves (B97 fix — see CLAUDE.md pitfall).
 
 ### 13.6.1 Add Account Flow
 
 The single entry point for adding characters. Renamed from "Add Character" in v0.8.0 — the flow is now account-driven, creating tiles for every character on an account in one shot rather than one wizard run per character.
 
-[AddCharacterWizard.tsx](src/renderer/components/AddCharacterWizard.tsx) — 2 steps:
+[AddCharacterWizard.tsx](../src/renderer/components/AddCharacterWizard.tsx) — 2 steps:
 
-1. **Account / Password / Game.** Same-account conflict check: if any of the active sessions are on this account, a confirmation modal offers to disconnect + continue (the launcher's tile-click path has the same modal — see §13.6.2). DRT is *not* a game option here — it's a per-tile toggle after creation (mirrors the launcher's TEST pill). A "Connect to Prime Test (DRT) instead" sub-checkbox appears when DR is picked, which writes `game: 'DRT'` to the stub.
+1. **Account / Password / Game.** Same-account conflict check: if any of the active sessions are on this account, a confirmation modal offers to disconnect + continue (the launcher's tile-click path has the same modal — see §13.6.2). DRT is *not* a game option here — it's a per-tile toggle after creation (mirrors the launcher's TEST pill). A "Connect to Prime Test (DRT) instead" sub-checkbox appears when DR is picked, which writes `game: 'DRT'` to the stub. (Current code: there is no such checkbox; a hint says to pick Prime and flip the tile's TEST pill. Since the GS4 stack the game step is grouped into DragonRealms and GemStone IV columns and leaves out both test shards, DRT and GST; see §56.7.2.)
 2. **Discovery.** Lichborne runs the existing `eaccessFetchCharacters` IPC (no Lich needed — SimuCo's auth service is mode-agnostic). The character roster comes back as a checkbox list with "Select all new" plus per-character checkboxes. Already-existing profiles are listed with a disabled checkbox and `[already added]` badge so the user knows what's there. Confirm → bulk-write one stub `CharacterProfile` per checked character, then call `onCompleted(addedCount)`. App.tsx bumps `launcherRefreshKey`; Launcher re-fetches the profile list and the new tiles appear.
 
 A `prefillAccount` prop lets a launcher "↺ Refresh from account" button open the wizard with that account pre-filled — discovery is the same operation, just adds anything new for that account.
 
-**Characters that moved between accounts (B542, v0.21.0).** A profile is filed by the character's name; its `account` is a field inside it. So discovery compares each listed character's profile account with the account being added (`classifyRoster`, pure and harnessed): same account → already added; another account (or the `attach` placeholder) → transferred here, shown as "moved from X", ticked by default, and Finish re-files the existing profile (`refileProfile`: read-modify-write of `account` only, refusing an unreadable or newer-version file). A profile restored from the archive is re-filed too. The colour (`SharedProfile.characterColors`, keyed `account::character`) and the Reconnect Last entry move with it. Step 2 also lists "No longer on this account": profiles on this account, in the same game family (DRT counts as DR), that the roster no longer shows. They are unticked by default, and ticking one archives it, so adding the account it moved to restores it with its settings. `exportCharacterProfile` keeps the YAML's `account` over the session's, so a tab left open from before a move can't revert it. No slash command: this is part of the one-time account setup dialog.
+**Characters that moved between accounts (B542, v0.21.0).** A profile is filed by the character's name; its `account` is a field inside it. (Since the GS4 stack it is filed by `Name@SHARD`, and discovery matches name AND shard, retiring B614's cross-game rule; see §56.7.3.) So discovery compares each listed character's profile account with the account being added (`classifyRoster`, pure and harnessed): same account → already added; another account (or the `attach` placeholder) → transferred here, shown as "moved from X", ticked by default, and Finish re-files the existing profile (`refileProfile`: read-modify-write of `account` only, refusing an unreadable or newer-version file). A profile restored from the archive is re-filed too. The colour (`SharedProfile.characterColors`, keyed `account::character`) and the Reconnect Last entry move with it. Step 2 also lists "No longer on this account": profiles on this account, in the same game family (DRT counts as DR), that the roster no longer shows. They are unticked by default, and ticking one archives it, so adding the account it moved to restores it with its settings. `exportCharacterProfile` keeps the YAML's `account` over the session's, so a tab left open from before a move can't revert it. No slash command: this is part of the one-time account setup dialog.
 
 ### 13.6.2 Same-Account Conflict & Auto-Disconnect
 
 DR allows only one character per account active at a time. Three places enforce this:
 
-- **Launcher tile click** ([App.tsx](src/renderer/App.tsx) `handleCardConnect`) — when clicking a tile for an account that already has an active session, raise a confirmation modal: Cancel or "Disconnect {conflict} and continue". On Continue: `disconnectAwait` IPC (waits for the gracefulDisconnect to complete — see §13.6.3), then `runConnect(incoming)` with a single 2-second retry to ride out DR's server-side account-slot release lag.
-- **Wizard step 1** ([AddCharacterWizard.tsx](src/renderer/components/AddCharacterWizard.tsx) `nextFromStep1`) — same conflict check before EAccess auth.
-- **Bulk Connect picker** ([BulkConnectPicker.tsx](src/renderer/components/BulkConnectPicker.tsx)) — accounts already in active sessions are listed but disabled with a "({char} already connected — skip)" hint; can't be selected for the bulk sequence.
+- **Launcher tile click** ([App.tsx](../src/renderer/App.tsx) `handleCardConnect`) — when clicking a tile for an account that already has an active session, raise a confirmation modal: Cancel or "Disconnect {conflict} and continue". On Continue: `disconnectAwait` IPC (waits for the gracefulDisconnect to complete — see §13.6.3), then `runConnect(incoming)` with a single 2-second retry to ride out DR's server-side account-slot release lag.
+- **Wizard step 1** ([AddCharacterWizard.tsx](../src/renderer/components/AddCharacterWizard.tsx) `nextFromStep1`) — same conflict check before EAccess auth.
+- **Bulk Connect picker** ([BulkConnectPicker.tsx](../src/renderer/components/BulkConnectPicker.tsx)) — accounts already in active sessions are listed but disabled with a "({char} already connected — skip)" hint; can't be selected for the bulk sequence.
 
 The conflicting session's tab is **not** removed when auto-disconnected — it stays in the bar in disconnected state (same as if the user had clicked the in-tab Disconnect button), so the user can close it via × or re-login later.
 
@@ -1888,7 +1910,7 @@ character everywhere — *"anything with a focus border"*. Purely additive: with
 no colour chosen every surface renders exactly as before.
 
 - **Storage.** `SharedProfile.characterColors`, `account::character` → colour
-  ([characterColors.ts](src/renderer/characterColors.ts)). Shared, not a profile
+  ([characterColors.ts](../src/renderer/characterColors.ts)). Shared, not a profile
   field, because every window must read it synchronously (a toast about a
   character in ANOTHER window) and a change must repaint every window at once;
   localStorage is the working copy, invalidated by a same-window event and a
@@ -1911,7 +1933,7 @@ no colour chosen every surface renders exactly as before.
   colour, so recolouring the named colour recolours the character. The picker is
   the shared ColorField with `none = Automatic`, `defaultSwatch` showing the
   automatic colour, and `aboveDialogs` (below).
-- **One recipe for the badge.** [nameColor.ts](src/renderer/utils/nameColor.ts)
+- **One recipe for the badge.** [nameColor.ts](../src/renderer/utils/nameColor.ts)
   holds the Tableau's hash colour and initials (lifted out of the Tableau),
   `nameColorHex` (the same colour as a hex, for a native colour input's
   swatch), and `monogramStyle(name, fill)`, which picks black or white initials
@@ -1946,7 +1968,7 @@ no colour chosen every surface renders exactly as before.
 naming only the character currently connecting, then a text summary with an OK
 that left you on the LAST character to finish (Sekmeht: *"a bit of a choppy
 experience"*). One panel now covers the whole run
-([TeamLoginPanel.tsx](src/renderer/components/TeamLoginPanel.tsx), prefix
+([TeamLoginPanel.tsx](../src/renderer/components/TeamLoginPanel.tsx), prefix
 `.tlr-`; the run itself stays in App's `runBulkConnect`).
 
 - **A tile per member from the start:** waiting → connecting (the live connect
@@ -2062,7 +2084,8 @@ filename, the `bulk-connect` menu action, `bulkConnectSeparateWindows` and
   rather than resetting it to the default.
 - **Named sets** — a saved team, `SharedProfile.bulkSets` (app-wide: a set spans
   accounts by definition, so it cannot live in a character profile). A set
-  stores CHARACTER NAMES, at most one per account — both DR's rule and the only
+  stores CHARACTER NAMES (since the GS4 stack, profile keys `Name@SHARD`, with a legacy bare name
+  resolved to its key on load; §56.7.3), at most one per account — both DR's rule and the only
   shape this picker can express. Loading one REPLACES the whole selection: an
   account the set does not mention is ticked off, because a team should give you
   exactly that team.
@@ -2108,7 +2131,7 @@ polish standard #11 for the generalised rules.
 
 
 
-[BulkConnectPicker.tsx](src/renderer/components/BulkConnectPicker.tsx) + `runBulkConnect` in App.tsx. Surfaces only when ≥2 accounts have at least one connectable (non-hidden) character. Picker lists each account with a dropdown of its non-hidden characters; defaults to a favorited character if any, else first alphabetical. Already-connected accounts are disabled. Confirm → sequential connect (one character at a time — DR's account-slot rule forbids parallel within the same account; sequential is also simpler for error isolation across different accounts). Progress overlay during the run; per-character errors don't abort; final summary modal lists what succeeded and what failed.
+[BulkConnectPicker.tsx](../src/renderer/components/BulkConnectPicker.tsx) + `runBulkConnect` in App.tsx. Surfaces only when ≥2 accounts have at least one connectable (non-hidden) character. Picker lists each account with a dropdown of its non-hidden characters; defaults to a favorited character if any, else first alphabetical. Already-connected accounts are disabled. Confirm → sequential connect (one character at a time — DR's account-slot rule forbids parallel within the same account; sequential is also simpler for error isolation across different accounts). Progress overlay during the run; per-character errors don't abort; final summary modal lists what succeeded and what failed.
 
 ### 13.6.6 Connecting a character while you play (F134, v0.20.2)
 
@@ -2126,7 +2149,7 @@ Sekmeht: *"that should run in the background similar to like when you connect a 
 
 ### 13.6.5 Per-Shard Tabs (CharacterId)
 
-`makeCharacterId(account, character, game)` in [SessionsContext.tsx](src/renderer/SessionsContext.tsx). `Sekmeht-DR` and `Sekmeht-DRT` get separate tabs because their characterIds differ. You still can't have both connected simultaneously (the account-slot rule), but you can have one connected and one in disconnected state for easy switching. The character profile YAML is keyed by character name only (one `Sekmeht.yaml` shared across shards — same automations / theme / layout regardless of shard).
+`makeCharacterId(account, character, game)` in [SessionsContext.tsx](../src/renderer/SessionsContext.tsx). `Sekmeht-DR` and `Sekmeht-DRT` get separate tabs because their characterIds differ. You still can't have both connected simultaneously (the account-slot rule), but you can have one connected and one in disconnected state for easy switching. The character profile YAML is keyed by character name only (one `Sekmeht.yaml` shared across shards — same automations / theme / layout regardless of shard). (Since the GS4 stack the YAML is `Name@SHARD.yaml`, with a test shard folded into its Prime: `Sekmeht-DR` and `Sekmeht-DRT` still share `Sekmeht@DR.yaml`, while DRX, DRF, GS3 and GSF each have their own. The characterId stays `account::name::game`. See §56.7.3.)
 
 ### 13.7 Keyboard Navigation
 
@@ -2138,9 +2161,9 @@ Sekmeht: *"that should run in the background similar to like when you connect a 
 
 Tab-switch chords (`Ctrl+1..9`, `Ctrl+Tab`) **also refocus the new tab's command bar** after the switch (v0.7.1). The app-level handler waits one animation frame after `setActive(...)` (React commit needs to land first so the new tab's `.session-shell` isn't `display:none` anymore) and focuses `.session-shell:not(.session-shell--hidden) .command-input`. Without this you'd have to click the new bar before typing. `Ctrl+Shift+Enter` is excluded — focus should land in QuickSend, which auto-focuses its own input.
 
-**Esc closes the topmost dialog — exactly one (v0.19.7, B341).** Every dialog registers through `useEscapeClose` ([hooks/useEscapeClose.ts](src/renderer/hooks/useEscapeClose.ts)): a stack in mount order, served by ONE `window` keydown listener in the bubble phase that closes the most recently opened live dialog and stops the key. Bubble-at-window is deliberate: it is the last stop a keydown makes, so anything nearer the target — a search box clearing its text, the slash palette, a context menu or dropdown inside the dialog, the Quit confirmation's capture-phase handler — handles Esc first, and the stack skips the key when one of them marked it `defaultPrevented`. Esc does what the dialog's ✕ does. A dialog rendered inline (not portaled) passes a ref so a copy sitting in a hidden character tab is skipped. Before this, each dialog bound its own document listener: several had no Esc at all, and two didn't stop propagation, so one press could close two dialogs. Rules for new code: CLAUDE.md pitfall #141.
+**Esc closes the topmost dialog — exactly one (v0.19.7, B341).** Every dialog registers through `useEscapeClose` ([hooks/useEscapeClose.ts](../src/renderer/hooks/useEscapeClose.ts)): a stack in mount order, served by ONE `window` keydown listener in the bubble phase that closes the most recently opened live dialog and stops the key. Bubble-at-window is deliberate: it is the last stop a keydown makes, so anything nearer the target — a search box clearing its text, the slash palette, a context menu or dropdown inside the dialog, the Quit confirmation's capture-phase handler — handles Esc first, and the stack skips the key when one of them marked it `defaultPrevented`. Esc does what the dialog's ✕ does. A dialog rendered inline (not portaled) passes a ref so a copy sitting in a hidden character tab is skipped. Before this, each dialog bound its own document listener: several had no Esc at all, and two didn't stop propagation, so one press could close two dialogs. Rules for new code: CLAUDE.md pitfall #141.
 
-**Every control is reachable by keyboard (v0.19.7, B335).** Clickable rows, tabs and cards that aren't real `<button>`s spread `pressable()` ([utils/pressable.ts](src/renderer/utils/pressable.ts)) for a role, a tab stop and Enter/Space activation; the global `:focus-visible` ring in global.css draws the focus indicator. Settings' on/off switches are real `role="switch"` buttons, so clicking their label text works too. Rules for new code: CLAUDE.md pitfall #142.
+**Every control is reachable by keyboard (v0.19.7, B335).** Clickable rows, tabs and cards that aren't real `<button>`s spread `pressable()` ([utils/pressable.ts](../src/renderer/utils/pressable.ts)) for a role, a tab stop and Enter/Space activation; the global `:focus-visible` ring in global.css draws the focus indicator. Settings' on/off switches are real `role="switch"` buttons, so clicking their label text works too. Rules for new code: CLAUDE.md pitfall #142.
 
 ### 13.8 Quick-Send Overlay
 
@@ -2193,7 +2216,7 @@ Triggered by `Ctrl+Shift+Enter`. Dropdown lists all connected characters. Sends 
 - **Fullscreen (B362):** capture is skipped while `isFullScreen()` and runs again on `leave-full-screen`, so the saved rect is always the last WINDOWED one — macOS reports a screen-sized rect mid-transition.
 - **Linux position creep (B360):** some X11 window managers report a window's position offset by its decorations, so a window restored at (x, y) reports (x+dx, y+dy) and the next save drifts it. Linux only: after a restored window is shown (`CREEP_SETTLE_MS` 300ms after the show event, `CREEP_FALLBACK_MS` 2000ms if none is seen), `trackWindowState` compares requested with reported position; a non-zero difference within `CREEP_MAX_PX` (64) on both axes is stored as an offset and subtracted from every later save. A larger difference is a clamp or Wayland's 0,0 and is ignored. A no-op when there is no creep; unverified on real X11.
 - **Keys:** `main` for the primary window; `char:<characterId>` for a decoupled window, named after the character whose move opened it, so decoupling that character again reopens its window where it was. A window with no key (no session meta) is simply not tracked.
-- **Validation** ([windowBounds.ts](src/shared/windowBounds.ts), pure, rules harness §M): a saved position is honoured only when ≥100px of the window's top 32px strip lands on an attached display's work area (8px tolerance above it); otherwise the window opens centred with its size kept. A size bigger than its display is clamped, with the minimum upward nudge that clamp needs. A window straddling two monitors is **left alone** — pulling it onto one screen would move windows people placed on purpose.
+- **Validation** ([windowBounds.ts](../src/shared/windowBounds.ts), pure, rules harness §M): a saved position is honoured only when ≥100px of the window's top 32px strip lands on an attached display's work area (8px tolerance above it); otherwise the window opens centred with its size kept. A size bigger than its display is clamped, with the minimum upward nudge that clamp needs. A window straddling two monitors is **left alone** — pulling it onto one screen would move windows people placed on purpose.
 - **Capture, then flush.** `windowState.ts` captures `getNormalBounds()` + `isMaximized()` into memory on every move / resize / (un)maximize and on `close`, debounces the file write (500ms, write-then-rename), and flushes on `will-quit`. Capturing at event time is load-bearing: shutdown and the re-home auto-close `destroy()` windows, which emits no `close` event. `getNormalBounds()` rather than `getBounds()` so a maximized, minimized or fullscreen window saves its restore rect (a minimized window's `getBounds()` is -32000 on Windows).
 - A missing, unreadable or unknown-version file reads as empty and is overwritten by the next save — a disposable geometry cache, not user content.
 
@@ -2233,7 +2256,7 @@ Each Electron window title identifies the character, game, and connection state 
 
 > Status: Phase 7A (highlights) and 7B (triggers) complete. Groups, Wizard, eval triggers, and import/export remain. Macros & Aliases are complete — see Section 18. This section is the full design spec for what's remaining.
 
-> **Rule-evaluation performance at imported-ruleset scale (B172, v0.13.4).** Real rulesets are large and regex-heavy (Sekmeht: 1,544 highlights, 905 regex-mode — imports skew regex: Genie triggers import as regex, Frostbite alternations become regex). Four structures keep per-line cost sane, documented fully in CLAUDE.md pitfall #82: **(1)** every evaluation site gates on `fastLower` (a cheap `includes()`) before running the regex — regex-mode rules get a CONSERVATIVE extracted literal from [regexLiteral.ts](src/renderer/regexLiteral.ts) (`literalGate` is the single mode→gate decider; a literal is returned only when GUARANTEED present in any match — 629/906 of the real ruleset gated, validated with zero gate-vs-regex disagreements); **(2)** the line-wide match scan runs ONCE per line (`computeLineMatchRanges`) and segments intersect the shared ranges (DR fragments lines into 3-5 segments — the per-segment re-scan was a 3-5× multiplier); **(3)** the panel tree is memoized with stable props + memoized context values, so a batch re-renders only what it touched; **(4)** main coalesces event floods (16ms leading-edge throttle in `scheduleFlush`) so the renderer runs one pipeline pass per frame instead of one per socket chunk.
+> **Rule-evaluation performance at imported-ruleset scale (B172, v0.13.4).** Real rulesets are large and regex-heavy (Sekmeht: 1,544 highlights, 905 regex-mode — imports skew regex: Genie triggers import as regex, Frostbite alternations become regex). Four structures keep per-line cost sane, documented fully in CLAUDE.md pitfall #82: **(1)** every evaluation site gates on `fastLower` (a cheap `includes()`) before running the regex — regex-mode rules get a CONSERVATIVE extracted literal from [regexLiteral.ts](../src/renderer/regexLiteral.ts) (`literalGate` is the single mode→gate decider; a literal is returned only when GUARANTEED present in any match — 629/906 of the real ruleset gated, validated with zero gate-vs-regex disagreements); **(2)** the line-wide match scan runs ONCE per line (`computeLineMatchRanges`) and segments intersect the shared ranges (DR fragments lines into 3-5 segments — the per-segment re-scan was a 3-5× multiplier); **(3)** the panel tree is memoized with stable props + memoized context values, so a batch re-renders only what it touched; **(4)** main coalesces event floods (16ms leading-edge throttle in `scheduleFlush`) so the renderer runs one pipeline pass per frame instead of one per socket chunk.
 
 ### 14.0 Highlight Wizard
 
@@ -2552,7 +2575,7 @@ an inner span (pitfall #148), and word-scope highlights and contacts
 compositing on top exactly as they do over a line rule.
 
 It travels on `TextLine.fx`, a new optional `LineStyleHint` in
-[types.ts](src/shared/types.ts). Its `effect` is typed as a plain `string`
+[types.ts](../src/shared/types.ts). Its `effect` is typed as a plain `string`
 there because that module is shared with MAIN, which must not import the
 renderer's `HighlightEffect` union; the renderer narrows it in one place, and an
 unrecognised value resolves to no effect rather than throwing, so a hand-edited
@@ -2578,7 +2601,7 @@ by the real one — every run of a split line now shares one line-wide gradient 
 offsets into it by its own position (§14, B444) — so the suppression was dropped
 and echoes get word highlights and contacts back.
 
-`echoLineStyle` ([triggers.ts](src/renderer/triggers.ts)) is the ONE builder:
+`echoLineStyle` ([triggers.ts](../src/renderer/triggers.ts)) is the ONE builder:
 the engine calls it at fire time with a `$var` resolver, and the editor's
 preview calls it with identity. The preview itself renders through
 `renderHighlightedLine`, the same top-level function the game window's rows
@@ -2706,13 +2729,13 @@ Supported operators: `<`, `>`, `<=`, `>=`, `==`, `!=`. Expressions are intention
 The THEN section of a trigger uses a card-per-action layout. Two notable UI decisions:
 
 - **Action type selector**: a single `<select>` replaces the original 9-pill row. Pills worked fine at 3–4 options but clipped badly as the action type count grew. The select scales to any number of types and matches the visual weight of the other dropdowns in the panel.
-- **Variable insert menu (v0.20.0, F121)**: a `$` button next to each interpolating field opens [VarMenu](src/renderer/components/VarMenu.tsx), a grouped insert menu (`VAR_GROUPS` in triggers.ts: the text that matched, vitals, timers, hands, room, status, time…). It replaced a `<select defaultValue="">` that read like a setting rather than a list you insert from (Sekmeht: *"the dropdown with $var listed is a selector"*). VarMenu is shared with Macros/Aliases (it replaced their private `MaVarPicker`), portaled at the dialog-popover tier (`.ui-menu`), keyboard-navigable (↑/↓, Esc closes the menu only via `preventDefault`, pitfall #141), flips above the button and clamps horizontally, and closes when a scroll container holding its button scrolls — never on any scroll, because the game text behind the dialog scrolls on every line.
+- **Variable insert menu (v0.20.0, F121)**: a `$` button next to each interpolating field opens [VarMenu](../src/renderer/components/VarMenu.tsx), a grouped insert menu (`VAR_GROUPS` in triggers.ts: the text that matched, vitals, timers, hands, room, status, time…). It replaced a `<select defaultValue="">` that read like a setting rather than a list you insert from (Sekmeht: *"the dropdown with $var listed is a selector"*). VarMenu is shared with Macros/Aliases (it replaced their private `MaVarPicker`), portaled at the dialog-popover tier (`.ui-menu`), keyboard-navigable (↑/↓, Esc closes the menu only via `preventDefault`, pitfall #141), flips above the button and clamps horizontally, and closes when a scroll container holding its button scrolls — never on any scroll, because the game text behind the dialog scrolls on every line.
 - **Live values (v0.20.0)**: when the host provides `LiveVarsContext` (GameWindow wraps the Automations dialog), each `$variable` row shows its current value for this character, re-read once a second while the menu is open so `$rt` counts down. The value is in the row, never a `title` (pitfall #145), in the code font because it is literally what would be inserted; match-only variables (`$match`, `$1`, `$line`) have no value to show. The getter is `buildMacroVars()` plus the clock values, stable for the component's life because it reads `triggerCtxRef`.
 - **Explanations (v0.20.0)**: every field carries a tooltip that adds a fact the label doesn't (UX #8), each section a one-line hint, each action type a description (`ACTION_DESCS`), each condition an example value (`GATE_PLACEHOLDERS`) and each operator an explanation. The Variable trigger's watch field suggests watchable names from a datalist.
 
 ### 14.z Command Echo
 
-Every command sent through `sendCommandSequence` (macros and alias resolution) is echoed to the main stream as `>command` using the `command-echo` preset, so players can see what fired. For aliases, only the resolved commands are echoed — the original typed alias name is suppressed. This matches how veteran clients (Genie, StormFront) behave and prevents confusion when an alias maps to a different command name.
+Every command sent through `sendCommandSequence` (macros and alias resolution) is echoed to the main stream as `>command` using the `command-echo` preset, so players can see what fired. For aliases, only the resolved commands are echoed — the original typed alias name is suppressed. This matches how veteran clients (Genie, Wrayth) behave and prevents confusion when an alias maps to a different command name.
 
 **Inline echo (v0.17.3).** The echo is merged INLINE into the prompt the command was typed at — `s>stand`, not a standalone `s>` line followed by a `>stand` line (matches Wrayth/Genie/Frostbite). `appendEcho(prev, cmd)` (GameWindow) merges the command into a trailing bare prompt line (reusing the prompt's own `>`, clearing its `prompt` flag so the dedup collapse can't treat it as a duplicate, reusing the line id so it updates in place); it falls back to a standalone `>cmd` line when there's no trailing prompt (mid-stream, or rapid commands). All three echo sites (`sendCommandSequence`, `dispatchUserText` split, canonical `sendCommand`) route through it and then null `lastMainLineRef` (a typed command is a "break" — the prompt returning after a no-output command must still show). The echo is display-only — the Session Log still records the canonical `>cmd`.
 
@@ -3265,7 +3288,7 @@ A macro command containing an unescaped **`@`** fires in **type-and-wait** mode 
 the text (with all unescaped `@` stripped) is typed into the command bar and the caret lands at the
 first `@`'s position — the Genie/Wrayth convention (`get @ from my pack` → `get ⎵ from my pack`,
 caret in the gap). `\@` escapes a literal `@`. The macro stops at the first wait-command; later
-commands in the sequence are skipped. Canonical helper: `parseCursorMarker` ([macros.ts](src/renderer/macros.ts));
+commands in the sequence are skipped. Canonical helper: `parseCursorMarker` ([macros.ts](../src/renderer/macros.ts));
 fire path in GameWindow's keydown handler. Full conventions + import translation (Wrayth `\r`,
 Genie `\x`): CLAUDE.md pitfall #51.
 
@@ -3282,10 +3305,10 @@ capability, not a regression fix.
 ### 17.15 Default macro seeds (v0.8.3 repeat tokens; F56 numpad movement, v0.15.2)
 
 Two one-time per-character seeds run from GameWindow mount effects, giving a fresh character (or a
-convert's existing character, once) the Stormfront-family keyboard conventions out of the box:
+convert's existing character, once) the Wrayth-family keyboard conventions out of the box:
 
 - **`seededRepeatMacros` (v0.8.3):** `Ctrl+Enter` → `{RepeatLast}`, `Alt+Enter` →
-  `{RepeatSecondToLast}`, `NumEnter` → `{ReturnOrRepeatLast}` — the Stormfront/Wrayth repeat keys.
+  `{RepeatSecondToLast}`, `NumEnter` → `{ReturnOrRepeatLast}` — the Wrayth repeat keys.
 - **`seededNumpadMovement` (F56, v0.15.2):** the classic movement pad — `Num8/2/4/6` = `n/s/w/e`,
   corners = the diagonals (`Num7/9/1/3` = `nw/ne/sw/se`), `Num5` = `out`, `Num0` = `down`,
   `Num.` = `up`. Layout and short-form commands verified against **Frostbite's bundled default
@@ -3353,7 +3376,7 @@ Defined in `package.json` under the `"build"` key:
 3. Commit both files
 4. Set `GH_TOKEN` env var (fine-grained PAT with Contents: read+write on the Lichborne repo)
 5. Run `node publish.mjs` — builds, packages, uploads, and patches release notes automatically
-6. Go to **github.com/SekmehtDR/Lichborne → Releases** → find the draft → click **Publish release**
+6. Go to **github.com/elanthia-online/Lichborne → Releases** → find the draft → click **Publish release**
 
 `publish.mjs` uploads two files per release:
 - `Lichborne X.Y.Z.exe` — the portable executable
@@ -3367,7 +3390,7 @@ Powered by `electron-updater`. Only runs when the app is packaged (`app.isPackag
 
 **On launch (3s delay):** `autoUpdater.checkForUpdates()` fetches `latest.yml` from the GitHub release and compares versions silently.
 
-**Update states (managed in `App.tsx`, drawn by [UpdatePill.tsx](src/renderer/components/UpdatePill.tsx), v0.20.1):**
+**Update states (managed in `App.tsx`, drawn by [UpdatePill.tsx](../src/renderer/components/UpdatePill.tsx), v0.20.1):**
 
 | State | Pill / card title | Primary button |
 |---|---|---|
@@ -3403,7 +3426,7 @@ Powered by `electron-updater`. Only runs when the app is packaged (`app.isPackag
 
 ### 18.4.1 Dual-Feed Update Check — the Elanthia-Online Handover
 
-The repository is being **transferred** (GitHub "Transfer ownership", not a fork) from `SekmehtDR/Lichborne` to the **Elanthia-Online** organization (`elanthia-online/Lichborne`) — the community team that maintains Lich. Every shipped install has the old repo baked into its `app-update.yml`, so the updater was taught to look in both places (v0.19.x, `checkForUpdatesDualFeed()` in [main.ts](src/main/main.ts)) so the transfer never strands an install.
+The repository was **transferred** (GitHub "Transfer ownership", not a fork; done, and `SekmehtDR/Lichborne` now redirects) from `SekmehtDR/Lichborne` to the **Elanthia-Online** organization (`elanthia-online/Lichborne`) — the community team that maintains Lich. Every shipped install has the old repo baked into its `app-update.yml`, so the updater was taught to look in both places (v0.19.x, `checkForUpdatesDualFeed()` in [main.ts](../src/main/main.ts)) so the transfer never strands an install.
 
 **Mechanism.** `UPDATE_FEEDS` lists the new home first, the legacy repo second. Each check walks the list: `autoUpdater.setFeedURL({provider:'github', owner, repo})` (which overrides the baked `app-update.yml` — electron-updater prefers a runtime-set provider over the disk config) then `await checkForUpdates()`. A missing repo (404 on `releases.atom`) and an existing repo with no releases (`ERR_UPDATER_NO_PUBLISHED_VERSIONS`) both REJECT, falling through to the next feed; a feed that ANSWERS is authoritative ("no update" does not fall through). The winning feed's provider also serves the download, so Download/Install ride the same repo. The `updaterProbing` flag suppresses the renderer-facing `ERROR:` line for non-final attempts (`checkForUpdates()` both rejects and emits `error`), so the pre-transfer 404 on the new home is silent; a successful check logs `Update feed: owner/repo` to the updater log so tester reports name the serving repo. Both call sites (the 3s startup check and the menu's Check for Updates) route through the helper; the macOS gates are unchanged. `app-update.yml` must still ship — electron-updater reads `updaterCacheDirName` from it.
 
@@ -3414,7 +3437,7 @@ The repository is being **transferred** (GitHub "Transfer ownership", not a fork
 2. **Phase 2 (transfer day):** transfer the repo on GitHub. Releases/issues/stars move; redirects arm. No release needed that day. Do NOT pre-create the org repo (a partial repo with some releases would answer the check with stale data — the transfer moves everything atomically).
 3. **Phase 3 (first org release):** flip the hardcoded owner strings (checklist below), cut the release from the org via Actions. Dual-feed installs get it from the new feed; older installs via the redirect.
 
-**Phase-3 cut-over checklist (every hardcoded `SekmehtDR`):** `package.json` `build.publish.owner` · `build/app-update.yml` `owner` · `publish.mjs` `owner` · the local-run fallback literals in `.github/scripts/release-prepare.mjs` + `release-verify.mjs` (the Actions path self-corrects via `GITHUB_REPOSITORY`) · main.ts Help-menu links (GitHub Repository / Report a Bug) · ~~`credits.ts` `REPO_URL` + `AI_NOTICE_URL` · `AboutModal.tsx` displayed link text~~ (done early in v0.20.4 at Sekmeht's ask; Help → About now points at `elanthia-online/Lichborne`) · README (3 links) · Lichborne-User-Guide (2 links) · this file's §18.2 table · release-notes.md. Keep `UPDATE_FEEDS` itself unchanged — it already names both homes, and the legacy entry stays as belt-and-braces.
+**Phase-3 cut-over checklist (every hardcoded `SekmehtDR`):** `package.json` `build.publish.owner` · `build/app-update.yml` `owner` · `publish.mjs` `owner` · the local-run fallback literals in `.github/scripts/release-prepare.mjs` + `release-verify.mjs` (the Actions path self-corrects via `GITHUB_REPOSITORY`) · main.ts Help-menu links (GitHub Repository / Report a Bug) · ~~`credits.ts` `REPO_URL` + `AI_NOTICE_URL` · `AboutModal.tsx` displayed link text~~ (done early in v0.20.4 at Sekmeht's ask; Help → About now points at `elanthia-online/Lichborne`) · ~~README (3 links) · Lichborne-User-Guide (2 links)~~ (done with the GS4 stack's docs PR, #12) · this file's §18.2 table · release-notes.md. Keep `UPDATE_FEEDS` itself unchanged — it already names both homes, and the legacy entry stays as belt-and-braces.
 
 **Org-side pre-flight for Phase 3:** the release workflow's `GITHUB_TOKEN` must be able to create releases — check org **Settings → Actions → Workflow permissions** is "Read and write" (many orgs default to read-only, which 403s the draft pre-create in `release-prepare.mjs`).
 
@@ -3481,12 +3504,12 @@ Sekmeht asked for Electron and every module on its current stable version (2026-
 The Map System is a spatially-aware map visualization built around two views.
 
 **Data sources:**
-- **Lich JSON** (`map-*.json` in Lich's `data/DR/` folder) — the primary room database. Flat array of rooms with numeric IDs, titles, descriptions, image file references, and `wayto` exit-command maps. Drives the Lich Map view and the player-position tracking (game emits Lich room IDs in subtitles).
+- **Lich JSON** (`map-*.json` in Lich's `data/DR/` folder; since the GS4 stack a GS4 character reads `data/GS*/`, from the install its session launched from, §56 and §56.7.1) — the primary room database. Flat array of rooms with numeric IDs, titles, descriptions, image file references, and `wayto` exit-command maps. Drives the Lich Map view and the player-position tracking (game emits Lich room IDs in subtitles).
 - **Genie XML** (player's Genie maps folder, e.g. `C:\Genie-Remix\Maps\`) — the spatial source of truth for the Genie Maps view. Provides node positions, arc graph, color tags, free-floating landmark labels, and cross-zone stub markers. Each Genie XML file is one zone.
 
 **Display modes (toolbar buttons in the map panel):**
 - **Lich Map** — renders the Lich image tiles (`.png` files bundled alongside the JSON). Shows the current room highlighted on the tile with arcs drawn from the JSON exit graph. Lich path required. Movement (right-click a room, or the "Walk here" button) delegates to Lich's stock `;go2` script via `onSendCommand(\`;go2 <id>\`)` — `;go2` handles locked doors, hidden exits, blocked paths, retries, and roundtime, none of which a local cardinal-direction walker could handle reliably (v0.8.2). `;k go2` in the command bar cancels in flight.
-- **Genie Maps** — renders Genie XML directly, one zone at a time. Coordinates come from the XML (no auto-layout). Auto-switches zones when the player's `roomTitle` matches a room in another loaded zone. See §19.16 for the full architecture. Genie maps folder required.
+- **Genie Maps** (DragonRealms only: on a GS4 character the button is hidden and the view forced to Lich Map, since there is no GS4 Genie map data; §56) — renders Genie XML directly, one zone at a time. Coordinates come from the XML (no auto-layout). Auto-switches zones when the player's `roomTitle` matches a room in another loaded zone. See §19.16 for the full architecture. Genie maps folder required.
 
 **Component breakdown:**
 - `MapPanel` — coordinator; loads Lich JSON and (optionally) parses every Genie XML in the user-pointed folder into a `Map<zoneId, GenieZone>`; owns current-room tracking and the view-mode switch
@@ -3857,7 +3880,7 @@ The player can now read three signals simultaneously: "I'm in a shop" (red fill,
 
 ### 19.16 Genie Maps View (GenieMapView)
 
-> Shipped v0.6.6 as the architectural successor to LichGraphView (§19.15). File: [GenieMapView.tsx](src/renderer/components/panels/GenieMapView.tsx). Renders Genie XML directly — coordinates come from the XML, no auto-layout, one zone at a time. Mirrors Genie's own `MapForm.cs` rendering pipeline; the maps team has hand-curated zone layouts for 20 years and we use their work as authoritative.
+> Shipped v0.6.6 as the architectural successor to LichGraphView (§19.15). File: [GenieMapView.tsx](../src/renderer/components/panels/GenieMapView.tsx). Renders Genie XML directly — coordinates come from the XML, no auto-layout, one zone at a time. Mirrors Genie's own `MapForm.cs` rendering pipeline; the maps team has hand-curated zone layouts for 20 years and we use their work as authoritative.
 
 #### 19.16.1 Data Loading
 
@@ -3923,7 +3946,7 @@ Lookup tries exact-case first, falls back to normalized. Without the normalized 
 
 **Stub preference:** when a title has both stub and non-stub candidates, non-stubs win. A stub is a 1-room cross-zone marker — same title as the real room in the other zone, but with `note` pointing to the other zone's `.xml` filename. Without preference, the marker in zone A could outvote the real room in zone B.
 
-**Description tiebreaker:** Shard has 7 rooms titled "Shard, Moonstone Street" (#78–#85). Title-only matching made the "here" marker stick on whichever was indexed first while the player walked east through #79–#85. `currentLocation` disambiguates by description against `node.descriptions[]` when title has multiple non-stub candidates — **exact `normalizeDesc` equality first, then substring containment** (v0.11.2, B148): stored descriptions are routinely a truncation (first sentence) of the live look, so exact equality alone missed real rooms; the substring step accepts containment in either direction but only when it resolves to exactly ONE candidate and both strings are ≥24 chars (so a generic shared description can't mis-disambiguate). The Lich Map's `findRoom` ([mapTypes.ts](src/renderer/components/panels/mapTypes.ts)) carries the same exact-then-substring logic (B150) so both map views behave identically on its title+desc fallback path.
+**Description tiebreaker:** Shard has 7 rooms titled "Shard, Moonstone Street" (#78–#85). Title-only matching made the "here" marker stick on whichever was indexed first while the player walked east through #79–#85. `currentLocation` disambiguates by description against `node.descriptions[]` when title has multiple non-stub candidates — **exact `normalizeDesc` equality first, then substring containment** (v0.11.2, B148): stored descriptions are routinely a truncation (first sentence) of the live look, so exact equality alone missed real rooms; the substring step accepts containment in either direction but only when it resolves to exactly ONE candidate and both strings are ≥24 chars (so a generic shared description can't mis-disambiguate). The Lich Map's `findRoom` ([mapTypes.ts](../src/renderer/components/panels/mapTypes.ts)) carries the same exact-then-substring logic (B150) so both map views behave identically on its title+desc fallback path.
 
 `roomDesc` and `roomExits` are plumbed through `MapPanel` → `GenieMapView`. Without them, a same-title cluster collapses to the first candidate.
 
@@ -4210,6 +4233,7 @@ The profile system provides portable, file-based persistence for all character a
 **Design principles:**
 - YAML files are the source of truth — `localStorage` is the live runtime working copy.
 - Per-character `localStorage` keys live under the scope `lichborne.{character}.{suffix}` (see `characterScope.ts`) so multiple characters running concurrently in one app instance never collide. Shared keys (account, advancedSettings, mapDir, myThemes) stay unnamespaced.
+- (Since the GS4 stack, `{character}` in these keys and file names is the profile key `Name@SHARD`, never the bare name: `profileKey(name, game)` in [profileKey.ts](../src/shared/profileKey.ts). `scopedKey` logs a bare scope, and main refuses a bare-name profile write. See §56.7.3.)
 - The character YAML's `state:` map mirrors `lichborne.{character}.*` 1:1. Adding a new per-character setting requires only writing to its scoped key via `useProfileSaver()` — the profile system picks it up dynamically with no further plumbing.
 - Atomic writes (`.tmp` + rename) and rolling backup on graceful shutdown (`{name}.yaml.bak`) protect against corruption from mid-write crashes.
 - Per-character debounced saves use a `Map<character, timer>` so two concurrent characters never race their YAML writes.
@@ -4246,18 +4270,20 @@ This guarantees the change reaches the YAML within the 2.5s debounce window — 
     ...
 ```
 
+(Since the GS4 stack the per-character files are `Sekmeht@DR.yaml`, `Binu@GS3.yaml`, …, and the one-time migration keeps a copy of each legacy file in `profiles/PreKeyBackup/`; §56.7.3.)
+
 **Dev mode:** `profiles\` is relative to the project root (`app.getAppPath()`).
 **Production (v0.6.4+):** `profiles\` is inside Electron's `userData` directory (`app.getPath('userData')` = `%APPDATA%\lichborne\profiles\` on Windows — lowercase because Electron's `app.getName()` reads the top-level `name` field in package.json, not the `build.productName` field which only affects installer-side display). userData lives outside the install footprint, so the NSIS uninstaller never touches it — profiles survive upgrades, reinstalls, and version downgrades. Uninstalling Lichborne with `deleteAppDataOnUninstall: false` (the default) preserves them.
 **Pre-v0.6.4 location:** `<install-dir>\profiles\` (next to the exe). The NSIS upgrade flow ran the previous version's uninstaller before extracting the new build, which removed everything from `$INSTDIR` including `profiles\` — every upgrade silently wiped user state. The original "travels with the installation" intent never actually held because installers don't preserve install-dir content across upgrades.
 **Two-stage migration (v0.6.4):**
 
-1. **Installer-time (NSIS `preInit` hook in [build/installer.nsh](build/installer.nsh))** — runs in `.onInit` BEFORE the previous version's uninstaller is invoked. **Three subtle correctness requirements**, all of which the first v0.6.4 attempt got wrong:
+1. **Installer-time (NSIS `preInit` hook in [build/installer.nsh](../build/installer.nsh))** — runs in `.onInit` BEFORE the previous version's uninstaller is invoked. **Three subtle correctness requirements**, all of which the first v0.6.4 attempt got wrong:
    - **Use `preInit`, not `customInit`.** electron-builder's `customInit` macro is inserted AFTER the previous uninstaller runs, which means `$INSTDIR\profiles\` has already been wiped by the time it fires. `preInit` is the only hook that runs early enough to rescue files.
    - **`$INSTDIR` is not set at `preInit` time** — the install-location lookup (`findExistingInstallLocation`) runs later. The hook reads the previous install dir from `HKCU\Software\${UNINSTALL_APP_KEY}` directly (then `HKLM` as fallback) and uses that as the source path.
    - **Destination case must match `app.getName()`** — `$APPDATA\lichborne\profiles\` (lowercase). Capitalizing would create a folder Electron never looks in. (Windows file systems are case-insensitive in practice, but `shell.openPath` and explorer dialogs display the established case.)
 
    When all conditions hold (legacy dir has `*.yaml`, destination is empty), `CreateDirectory` creates the destination recursively (also creates `$APPDATA\lichborne\` parent if missing), then `CopyFiles /SILENT` copies `*.yaml` and (separately, gated by `FileExists` because `CopyFiles` errors on a no-match source pattern) `*.bak`.
-2. **Runtime ([profiles.ts:migrateLegacyProfilesDir](src/main/profiles.ts))** — runs once on first `getProfilesDir()` call. Same conditions, same source/destination paths. Belt-and-suspenders: catches users who installed via a non-installer path (portable copies, manual file placement, backup restores) where the NSIS hook never ran. Idempotent — once the userData location has any YAML, this is a no-op.
+2. **Runtime ([profiles.ts:migrateLegacyProfilesDir](../src/main/profiles.ts))** — runs once on first `getProfilesDir()` call. Same conditions, same source/destination paths. Belt-and-suspenders: catches users who installed via a non-installer path (portable copies, manual file placement, backup restores) where the NSIS hook never ran. Idempotent — once the userData location has any YAML, this is a no-op.
 
 The legacy directory is left in place by both stages — manual cleanup after the user verifies. Users who already upgraded v0.6.2 → v0.6.3 BEFORE v0.6.4 shipped had their legacy directory wiped by NSIS without the rescue hook in place; their data is unrecoverable from Lichborne itself, though their last `.yaml.{timestamp}.bak` files (if any survived elsewhere) can be hand-restored.
 **Git:** `profiles/` is listed in `.gitignore` — account names, Lich paths, and personal config never end up in the repository.
@@ -4312,9 +4338,13 @@ myThemes:
     vars: { ... }
 ```
 
+(Since the GS4 stack, `games:` is seeded from the `GAMES` table in lichSettings.ts (`DEFAULT_GAMES` in profile.ts), so it also lists GS3, GST and GSF, and `advancedSettings` may carry `installs: { DR?, GS4? }`, the per-game Lich installs (§56.7.1). Adding GS4 did take code: a connect reads the `GAMES` table (`gameOptionByCode` in App.tsx), and the launcher needs a `GAME_SECTIONS` entry per code.)
+
 **`lichClientFlag`** is combined with the game's `lichArguments` to form the full Lich launch command: `ruby lich.rbw --stormfront --dragonrealms`. Swapping the flag in one place updates it for all games. Adding a new game server requires only a new entry in the `games` table — no code changes needed; the login screen game dropdown is populated from this table at runtime.
 
 #### `{Character}.yaml` (v2 — dynamic shape)
+
+(Since the GS4 stack the file is `{Name@SHARD}.yaml` and the scope `lichborne.{name@shard}.*` (§56.7.3); the shape is unchanged, plus the optional launcher-owned `lich` install (§56.7.1).)
 
 A small set of top-level fields plus a dynamic `state:` map that mirrors localStorage. Every entry under `state` corresponds to one `lichborne.{character}.{suffix}` localStorage key:
 
@@ -4380,7 +4410,7 @@ state:
 
 #### Migration registry (v0.6.3+)
 
-Each profile file declares its own `profileVersion` (shared = 1, character = 2 today). Read paths consult a per-file migration registry in [profile-migrations.ts](src/renderer/profile-migrations.ts) before applying:
+Each profile file declares its own `profileVersion` (shared = 1, character = 2 today). Read paths consult a per-file migration registry in [profile-migrations.ts](../src/renderer/profile-migrations.ts) before applying:
 
 ```ts
 // Each map keyed by SOURCE version. `migrations[N]` upgrades a v=N file into
@@ -4420,7 +4450,7 @@ export const characterMigrations: Record<number, (data: any) => any> = { /* empt
 3. On disconnect (clean or dropped) → immediate final character write regardless of debounce state.
 4. On window close (graceful shutdown) → main fires `window.__flushProfileSaves` in the renderer via `executeJavaScript`; the renderer runs every pending timer immediately and `await`s all writes. Main then runs `backupAllProfiles()` which copies each `{Character}.yaml` and `_shared.yaml` to `.yaml.bak` in the same directory. Single rolling backup per file from the last clean shutdown.
 
-**Atomic write:** `writeCharacterProfile` / `writeSharedProfile` go through `writeFileAtomic` ([atomicWrite.ts](src/main/atomicWrite.ts)): write `{path}.tmp`, `fsync`, rename over the target (retried while antivirus holds it, then a copy as a last resort). The target is never deleted first, so a crash leaves the old file or the new one. Before v0.20.4 the target WAS deleted first, which opened a window with no file at all (B517, §53.7).
+**Atomic write:** `writeCharacterProfile` / `writeSharedProfile` go through `writeFileAtomic` ([atomicWrite.ts](../src/main/atomicWrite.ts)): write `{path}.tmp`, `fsync`, rename over the target (retried while antivirus holds it, then a copy as a last resort). The target is never deleted first, so a crash leaves the old file or the new one. Before v0.20.4 the target WAS deleted first, which opened a window with no file at all (B517, §53.7).
 
 **Character profile debounce triggers** (`scheduleProfileSave` in `GameWindow` and panels):
 - Settings panel `onChange`
@@ -4456,7 +4486,7 @@ The `game:` field in a character YAML references a key in `_shared.yaml`'s `game
 - `lichPort` — the local Lich port for that game instance
 - `lichArguments` — game-specific Lich flags (combined with `lichClientFlag`)
 
-This means adding a new game server (e.g. Briarmoon Cove) requires only a new entry in `_shared.yaml` — no code changes.
+This means adding a new game server (e.g. Briarmoon Cove) requires only a new entry in `_shared.yaml` — no code changes. (Not true of the current code: see the note under §20.3's `_shared.yaml` example.)
 
 ---
 
@@ -4464,7 +4494,7 @@ This means adding a new game server (e.g. Briarmoon Cove) requires only a new en
 
 | File | Role |
 |---|---|
-| `src/renderer/characterScope.ts` | `scopedKey(character, suffix)` and `normalizeCharacter(name)` — single source of truth for the `lichborne.{character}.{suffix}` namespace |
+| `src/renderer/characterScope.ts` | `scopedKey(character, suffix)` and `normalizeCharacter(name)` — single source of truth for the `lichborne.{character}.{suffix}` namespace (`character` is the `Name@SHARD` profile key since the GS4 stack, §56.7.3) |
 | `src/renderer/profile-types.ts` | `SharedProfile`, `CharacterProfile` (v2) |
 | `src/renderer/hooks/useProfileSaver.ts` | `useProfileSaver()` — returns a stable `saveProfile()` callback bound to the current character's session info; called at every per-character `setItem` site |
 | `src/main/profiles.ts` | Main YAML file I/O — `readSharedProfile`, `writeSharedProfile`, `readCharacterProfile`, `writeCharacterProfile`, `listCharacterProfiles`, `backupAllProfiles`. `atomicWriteFile` refuses to write over a damaged or locked file, then calls `writeFileAtomic` (atomicWrite.ts) |
@@ -5932,7 +5962,7 @@ Per-stream capture toggles live in Settings, per-character, so a player who only
     Agan_2026-05-15.log
 ```
 
-One file per character per day. Character-prefixed filename so logs are identifiable when moved or shared. Sessions inferred from `[sys] Connected` / `Disconnected` markers within the file — multiple sessions per day collapse into one daily file.
+One file per character per day. Character-prefixed filename so logs are identifiable when moved or shared. (Since the GS4 stack the folder and prefix are the profile key, e.g. `Logs/Sekmeht@DR/Sekmeht@DR_2026-05-15.log`; the one-time migration moved existing folders, and main drops records sent under a bare name. See §56.7.3.) Sessions inferred from `[sys] Connected` / `Disconnected` markers within the file — multiple sessions per day collapse into one daily file.
 
 **Format — plain text, `[HH:MM:SS][stream] text` per line (as built v0.7.0):**
 ```
@@ -6014,7 +6044,7 @@ A single **"Logs" toolbar button** (next to Debug) opens a modal with three affo
 
 #### 28.4.3 Open Logs Folder
 
-Single button. Opens `Logs/{character}/` in the OS file manager. Player uses VSCode / Notepad++ / `less` / `rg` / whatever they prefer. **This is the primary surface for serious log review** — the modal exists for quick lookups.
+Single button. Opens `Logs/{character}/` (the `Name@SHARD` folder since the GS4 stack, §56.7.3) in the OS file manager. Player uses VSCode / Notepad++ / `less` / `rg` / whatever they prefer. **This is the primary surface for serious log review** — the modal exists for quick lookups.
 
 #### 28.4.4 Right-click "Show in Log"
 
@@ -6049,7 +6079,7 @@ As built v0.7.0:
 └───────────────────────────────────────────────────┘
 ```
 
-**App-wide, not per-character** (changed v0.7.0) — a single `SessionLogSettings` object ([sessionLogSettings.ts](src/renderer/sessionLogSettings.ts)) stored in `_shared.yaml` via `SharedProfile.sessionLog`. The SettingsPanel section and the Logs modal both read-modify-write that shared object (the modal owns the filter + export-format prefs, the panel owns capture/retention/storage), so configuring logging once applies it to every character. The "Trigger / highlight fires" capture category from the original mockup was dropped (§28.10); compression, the raw-size cap, and the disk-usage readout were added.
+**App-wide, not per-character** (changed v0.7.0) — a single `SessionLogSettings` object ([sessionLogSettings.ts](../src/renderer/sessionLogSettings.ts)) stored in `_shared.yaml` via `SharedProfile.sessionLog`. The SettingsPanel section and the Logs modal both read-modify-write that shared object (the modal owns the filter + export-format prefs, the panel owns capture/retention/storage), so configuring logging once applies it to every character. The "Trigger / highlight fires" capture category from the original mockup was dropped (§28.10); compression, the raw-size cap, and the disk-usage readout were added.
 
 ### 28.7 Multi-character semantics
 
@@ -6104,7 +6134,7 @@ A tester logs in, plays for an hour, opens the modal, sees their session, scroll
 
 ### 28.13 Capture XML — the received stream to disk, on demand (v0.21.0)
 
-Sekmeht (2026-10-29): "collect a dump of enabled settings, then the xml log… then I can ask you here to look at the xml… a button (capture XML)… a slash command would be great too." Deliberately one button, one command, one file — not a diagnostics bundle. [rawRecorder.ts](src/main/rawRecorder.ts) in main: while capture is on for a session, every line received from Lich (or the game) is appended, stamped `[HH:MM:SS.mmm]`, to `{userData}/Logs/raw/{Character}_{YYYY-MM-DD}.xml` (since the GS4 stack, `{Name@SHARD}_…`, §56.7.3) with "capture started/stopped" marker comments, buffered one `appendFile` per second and flushed at stop and at shutdown. Switched by the Debug panel's **Capture XML** button (lit with the toggle open-state look while on; a toast names the file) and `/log xml on|off` (bare = status; the result line lands when the IPC resolves, the /simucoin shape). The flag lives per SESSION in main (`IPC.RAW_CAPTURE_SET/GET`), is stopped by `destroySession`, and the panel re-reads it on a reconnect-in-place — so it cannot be left on across a restart. Nothing the player SENDS is recorded except one stamp per command — `<!-- sent: health -->`, the FIRST WORD only, written in the `SEND_COMMAND` handler (main.ts) — so a capture can tell a slow reply from a late send (2026-11-01, Sekmeht: `health` and `backpack` replies arrived late while the game kept streaming, and the file could not say whether the command left late). The login key never reaches the recorder; what is recorded is what the session log already keeps. No retention: the player deletes the folder. **The loop it serves:** a tester names the character and the clock time; `tmp-v0210-rich/replayraw.ts <file> [from to]` (machine-local) strips the stamps and replays the window through the real `StormFrontParser` + `SceneParser`, printing room/exits/roster/cast events, the Room panel's fills and any tag leak; the settings in force are the profile YAML itself. Released builds included — a tester's capture is the point. **Late delivery can be read from a capture too:** `<prompt time>` is the server's clock and the stamp is the receipt time, so `tmp-v0210-rich/lag3.cjs <Character>` reports stalls with no extra instrumentation (it found the VPN stalls of 2026-11-01, Knowledge.md).
+Sekmeht (2026-10-29): "collect a dump of enabled settings, then the xml log… then I can ask you here to look at the xml… a button (capture XML)… a slash command would be great too." Deliberately one button, one command, one file — not a diagnostics bundle. [rawRecorder.ts](../src/main/rawRecorder.ts) in main: while capture is on for a session, every line received from Lich (or the game) is appended, stamped `[HH:MM:SS.mmm]`, to `{userData}/Logs/raw/{Character}_{YYYY-MM-DD}.xml` (since the GS4 stack, `{Name@SHARD}_…`, §56.7.3) with "capture started/stopped" marker comments, buffered one `appendFile` per second and flushed at stop and at shutdown. Switched by the Debug panel's **Capture XML** button (lit with the toggle open-state look while on; a toast names the file) and `/log xml on|off` (bare = status; the result line lands when the IPC resolves, the /simucoin shape). The flag lives per SESSION in main (`IPC.RAW_CAPTURE_SET/GET`), is stopped by `destroySession`, and the panel re-reads it on a reconnect-in-place — so it cannot be left on across a restart. Nothing the player SENDS is recorded except one stamp per command — `<!-- sent: health -->`, the FIRST WORD only, written in the `SEND_COMMAND` handler (main.ts) — so a capture can tell a slow reply from a late send (2026-11-01, Sekmeht: `health` and `backpack` replies arrived late while the game kept streaming, and the file could not say whether the command left late). The login key never reaches the recorder; what is recorded is what the session log already keeps. No retention: the player deletes the folder. **The loop it serves:** a tester names the character and the clock time; `tmp-v0210-rich/replayraw.ts <file> [from to]` (machine-local) strips the stamps and replays the window through the real `StormFrontParser` + `SceneParser`, printing room/exits/roster/cast events, the Room panel's fills and any tag leak; the settings in force are the profile YAML itself. Released builds included — a tester's capture is the point. **Late delivery can be read from a capture too:** `<prompt time>` is the server's clock and the stamp is the receipt time, so `tmp-v0210-rich/lag3.cjs <Character>` reports stalls with no extra instrumentation (it found the VPN stalls of 2026-11-01, Knowledge.md).
 
 ## 29. Profile Transfer — Platform-wide Export/Import (F38, v0.10.0)
 
@@ -6117,12 +6147,12 @@ The Automations Export/Import (F29, in the Automations panel) only carried rules
 ### 29.2 Surface
 
 - Entry: Launcher top-bar **"Transfer"** button → dispatches `lichborne:open-profile-transfer`; AppShell hosts the modal (it owns `sessions` + the per-session reload nonces).
-- One modal, **Export / Import tabs** ([ProfileTransferModal.tsx](src/renderer/components/ProfileTransferModal.tsx)). Canonical chrome (pitfall #55): `--bg-base` body, `--bg-hover` header, `--accent` title.
-- Files: `.lb.yaml` (LB = branding abbreviation) in a new **`Exports/`** folder, sibling of `profiles/` in userData. Main accessors `getExportsDir`/`ensureExportsDir` ([profiles.ts](src/main/profiles.ts)); IPC `profile-transfer:export|list-exports|read-export|open-import-dialog|open-exports-folder` ([main.ts](src/main/main.ts)). The import dialog's `defaultPath` is the Exports folder.
+- One modal, **Export / Import tabs** ([ProfileTransferModal.tsx](../src/renderer/components/ProfileTransferModal.tsx)). Canonical chrome (pitfall #55): `--bg-base` body, `--bg-hover` header, `--accent` title.
+- Files: `.lb.yaml` (LB = branding abbreviation) in a new **`Exports/`** folder, sibling of `profiles/` in userData. Main accessors `getExportsDir`/`ensureExportsDir` ([profiles.ts](../src/main/profiles.ts)); IPC `profile-transfer:export|list-exports|read-export|open-import-dialog|open-exports-folder` ([main.ts](../src/main/main.ts)). The import dialog's `defaultPath` is the Exports folder.
 
 ### 29.3 The model — categories are an allowlist of `state` suffixes
 
-Core logic in [profileTransfer.ts](src/renderer/profileTransfer.ts). Each per-character setting is a `lichborne.{char}.{suffix}` key mirrored 1:1 into the YAML `state` map. `TRANSFER_CATEGORIES` is the single registry mapping a category to its exact suffixes:
+Core logic in [profileTransfer.ts](../src/renderer/profileTransfer.ts). Each per-character setting is a `lichborne.{char}.{suffix}` key mirrored 1:1 into the YAML `state` map. `TRANSFER_CATEGORIES` is the single registry mapping a category to its exact suffixes:
 
 | Category | Suffixes |
 |---|---|
@@ -6144,7 +6174,7 @@ Core logic in [profileTransfer.ts](src/renderer/profileTransfer.ts). Each per-ch
 
 `applyProfileImport(target, isActive, file, { merge, selected })`, unified over a `TargetStore` abstraction (read/write a suffix):
 
-- **Inactive target** → staged YAML store: read `{Character}.yaml`, merge selected categories into a copy of `state` (+ `theme`), one atomic `writeCharacterProfile`. Never `buildCharacterProfile` (would rebuild `state` from empty localStorage and wipe the char).
+- **Inactive target** → staged YAML store: read `{Character}.yaml` (`{Name@SHARD}.yaml` since the GS4 stack, §56.7.3), merge selected categories into a copy of `state` (+ `theme`), one atomic `writeCharacterProfile`. Never `buildCharacterProfile` (would rebuild `state` from empty localStorage and wipe the char).
 - **Active target** → live localStorage store (`scopedKey`, same string/JSON representation as `importCharacterProfile`), then the modal calls `reloadSession(characterId)` → main's `session:reload` **arms a §13.9 state replay** (`replayTarget`/`holdingForReplay` — v0.13.3, the B165 root fix) and routes to the owner window → App bumps the session's reload nonce in the GameWindow `key` → full remount re-reads the imported state, then its replay request restores scrollback + every sticky state (hands/vitals/room/spell/RT/…). Pre-v0.13.3 the remount started from defaults — vitals self-healed on the next change but a long-parked HELD ITEM never re-sent a hand tag, so the hand bar stuck on "Empty" for the rest of the session (found while chasing JadedSoul's B165 cookbook report; her case likely turned out to be the pitfall-#78 protocol gap instead, but this hole was code-verified real). Applies to **focused AND backgrounded** sessions. Writing only the YAML would be overwritten on logout by stale live state — writing the working copy + remount commits it.
 
 **Merge:** rules (highlights/triggers/macros/aliases/groups/modes/contacts) honor **Append** (dedup by the same content/id/name keys as ImportWizard; highlights/triggers/macros/aliases get regenerated ids) vs **Replace**. Config categories (Display/Layout/View/Theme) always overwrite when selected. `settings`/`panelFontSizes` split: Display preserves the target's `panelFontSizes`; Layout merges its own; Display runs before Layout.
@@ -6269,24 +6299,24 @@ it commits to `lines`: **mute → substitute-rewrite → (existing highlight/con
 render)**. Substitutes run *before* highlights so highlights style the substituted text (matches
 Genie/Frostbite). Active rules are kept in a ref (`activeMutesRef` — compiled regex, filtered by
 `isRuleActive(activeGroupStates)`), refreshed like `allHighlightRulesRef`.
-- **Mute** = `applyMutesToSegments(line.segments, activeMutes)` ([mutes.ts](src/renderer/mutes.ts)):
+- **Mute** = `applyMutesToSegments(line.segments, activeMutes)` ([mutes.ts](../src/renderer/mutes.ts)):
   a `line`-scope match returns `null` (drop the `TextLine`); a `match`-scope match strips the text
   out of each segment (`replace(re,'')`, dropping now-empty segments — and the whole line if it
   empties). `match` is **per-segment**, so server styling survives and a match spanning segment
   boundaries isn't caught (same limit as per-segment highlighting). After a `match` removal the
   **whitespace gap is tidied** (collapse double-space, drop a space dangling before punctuation,
   trim the seam/edges) so `…the healer Quentin.` → `…the healer.`, not `…the healer .`.
-- **Substitute** = `applySubstitutesToSegments` ([substitutes.ts](src/renderer/substitutes.ts)):
+- **Substitute** = `applySubstitutesToSegments` ([substitutes.ts](../src/renderer/substitutes.ts)):
   `segment.text.replace(globalRegex, rule.replacement)` per-segment (native JS `$N`/`$&` capture
   refs — matches Genie's `$N`; the Frostbite importer converts its `\N`/`\0`). Preserves server
   styling; a match spanning segment boundaries isn't caught. Game-state vars are NOT interpolated
   (capture groups only — what the source clients use).
 - **Scope = GLOBAL by default, with an optional per-rule stream restrict** (Sekmeht; = Genie's
   global model + Frostbite's per-rule `target`). The passes run over `newMain` (stream id `'main'`)
-  **AND every `newStream[key]` buffer** ([GameWindow.tsx](src/renderer/components/GameWindow.tsx)
+  **AND every `newStream[key]` buffer** ([GameWindow.tsx](../src/renderer/components/GameWindow.tsx)
   `applyTextMods`), so a rule applies everywhere. If a rule's **`stream`** is set it's filtered to
   that one stream only (`!rule.stream || rule.stream === streamId`). The editor's **"Apply to"**
-  dropdown (`STREAM_OPTIONS` in [mutes.ts](src/renderer/mutes.ts): All / Main / Thoughts /
+  dropdown (`STREAM_OPTIONS` in [mutes.ts](../src/renderer/mutes.ts): All / Main / Thoughts /
   Conversation / Combat / Deaths / Arrivals) sets it; default `''` = all. Genie applies gags
   everywhere-but-Thoughts; we DON'T auto-skip Thoughts (a global rule means everywhere — Sekmeht).
   Room sub-streams aren't in `newStream` (they're room state), so they're untouched.
@@ -6300,12 +6330,12 @@ Genie/Frostbite). Active rules are kept in a ref (`activeMutesRef` — compiled 
 ### 31.5 UI
 **Mute and Substitute are TWO separate top-level Automations tabs** (Sekmeht — cleaner than one
 nested "Text Modification" tab; matches the flat Highlights/Triggers/Macros/Aliases structure):
-[MutePanel.tsx](src/renderer/components/MutePanel.tsx) and
-[SubstitutesPanel.tsx](src/renderer/components/SubstitutesPanel.tsx). Both **mirror HighlightsPanel
+[MutePanel.tsx](../src/renderer/components/MutePanel.tsx) and
+[SubstitutesPanel.tsx](../src/renderer/components/SubstitutesPanel.tsx). Both **mirror HighlightsPanel
 exactly** (same `hp-*` classes: sidebar list + detail form, the Text/Phrase/Regex `hp-mode-toggle`,
 the `Aa` case button, the `hp-actions` Save/Delete/Revert footer). Mute adds a `hp-scope-row`
 Line/Match radio; Substitute adds a `Replace with` field (`$1` hint) instead. **Right-click menu**
-([ContextMenu.tsx](src/renderer/components/ContextMenu.tsx) supports **nested submenus** — hover-
+([ContextMenu.tsx](../src/renderer/components/ContextMenu.tsx) supports **nested submenus** — hover-
 expand, flips left/up at the viewport edge, on top of the root-menu viewport clamp): the game-window
 menu groups display-changing actions under **`Modify Text ▸`** (Highlight / Mute / Substitute, each
 × "word" / "this line") and automation under **`Trigger ▸`**, then Show in Log / Clear — four short
@@ -6424,7 +6454,7 @@ exp components, contacts — are a goldmine that most of these consume with litt
   `DRStats.balance`/`.position` are in-memory Ruby `@@` class vars in [drstats.rb](file:///C:/Ruby4Lich5/Lich5/lib/dragonrealms/drinfomon/drstats.rb) —
   a `grep` of all of Lich `lib/` shows **NOTHING pushes them to a client** (no stream, `<component>`, or
   persisted var), so a front-end genuinely cannot read them live (only a `;e echo DRStats.balance` POLL
-  could — laggy, Lich-only, rejected). So [combatExtract.ts](src/shared/combatExtract.ts)
+  could — laggy, Lich-only, rejected). So [combatExtract.ts](../src/shared/combatExtract.ts)
   (`parseCombatPosition` / `parseCombatBalance`) mirrors Lich's `PositionValue` / `BalanceValue` regexes +
   `DR_POSITION_VALUES` / `DR_BALANCE_VALUES` tables **VERBATIM from drparser.rb / drvariables.rb** (#1398/#1400,
   the 5.18 form with the `(?:.*,)?` wound-prefix that the older live-install regex misses; Lich validated it
@@ -6436,7 +6466,7 @@ exp components, contacts — are a goldmine that most of these consume with litt
   main-branch-only parse misses them whenever a combat panel is open (caught this build). GameWindow holds
   `combatPosition` / `combatBalance` (0…11) and threads them into `ExperienceCombatState`.
   *Closest-incoming RANGE is also built* (`parseCombatRange`, corpus-mined from
-  [corpus/2026-06-12-combat-lavadrakes.xml](corpus/) — "the lava drake closes to melee/pole weapon/missile
+  [corpus/2026-06-12-combat-lavadrakes.xml](../corpus/) — "the lava drake closes to melee/pole weapon/missile
   range on you") → a melee/pole/missile band indicator in the same readout. **Both parse per-line
   regardless of stream** — DR sends the balance/engagement lines on the `combat` stream (main only via
   fallback), so a main-branch-only parse would miss them whenever a combat panel is open (caught during
@@ -6448,7 +6478,7 @@ exp components, contacts — are a goldmine that most of these consume with litt
   **`assess` stream** — each with a **relation to its target** (facing you / flanking you / behind you /
   moving-to-flank / advancing on / in front of / beside / next to / to-the-left/right-of), a **range**
   (melee/pole/missile), a **status** (balance + flags like *stunned*, *cursed*, *hidden*), and an **id** from
-  its `<d cmd='look #id'>` tag. `parseAssessLine` ([combatExtract.ts](src/shared/combatExtract.ts)) **mirrors
+  its `<d cmd='look #id'>` tag. `parseAssessLine` ([combatExtract.ts](../src/shared/combatExtract.ts)) **mirrors
   Lich's `parse_assess_line` VERBATIM** (xmlparser.rb #1413; corpus-verified against real captures +
   Lich's spec). GameWindow accumulates each block (`clearStream 'assess'` = fresh snapshot → reset
   `assessAccumRef`; each line's look-ids scraped from the `<d>` segment `cmd`; routing untouched), snapshots
@@ -6470,7 +6500,7 @@ exp components, contacts — are a goldmine that most of these consume with litt
   relation→angle, range→distance — if we ever want the spatial view instead of the sorted annotated row); and
   the organic "advancing/closing" live cues as a between-assess update layer.
 
-- **G2 — Wound Paper-Doll.** Replace the text list in [InjuriesPanel.tsx](src/renderer/components/panels/InjuriesPanel.tsx)
+- **G2 — Wound Paper-Doll.** Replace the text list in [InjuriesPanel.tsx](../src/renderer/components/panels/InjuriesPanel.tsx)
   with an **anatomical silhouette**: each wounded part glows by severity (yellow→orange→deep red),
   bleeders pulse, severe wounds get a jagged overlay, nerve damage (`nsys`) washes the figure in an
   electric tint; hover for detail. *Data:* 100% already flowing (`InjuryState`, levels 0–3 + nerves) —
@@ -6728,13 +6758,13 @@ designs that get simpler when the zone skeleton goes away.
 
 ### 33.1 Why this is tractable (current-architecture findings)
 
-Three facts about today's layout ([GameWindow.tsx](src/renderer/components/GameWindow.tsx) render at
+Three facts about today's layout ([GameWindow.tsx](../src/renderer/components/GameWindow.tsx) render at
 ~L2346) make Free Layout an *overlay* on the existing system, not a rewrite:
-1. **[PanelFrame.tsx](src/renderer/components/PanelFrame.tsx) is already a fully-decoupled tabbed
+1. **[PanelFrame.tsx](../src/renderer/components/PanelFrame.tsx) is already a fully-decoupled tabbed
    container** (`tabs`/`activeId`/`onTabsChange`/`onActiveChange` + its own `+` add-stream menu). **A
    window IS a `PanelFrame` in a floating frame** — the content engine exists, and all four zones
    already share one `sharedFrameProps` bundle, so wiring N windows is nearly free.
-2. **[FloatingCompass.tsx](src/renderer/components/FloatingCompass.tsx) already proves the
+2. **[FloatingCompass.tsx](../src/renderer/components/FloatingCompass.tsx) already proves the
    free-floating, theme-aware overlay pattern** — the template for decoupled chrome.
 3. **Persistence is free** — every layout bit is a per-character `scopedKey(...)` → localStorage →
    YAML via the dynamic `state.*` pipeline (Principle #1). New Free-Layout keys need no schema change.
@@ -6858,9 +6888,9 @@ Compact Vitals and font/line-height still apply (they affect the window *content
 USER-resizable in both axes (like panels).** Command/Vitals/Status are fixed-layout bars; the CASCADE
 conversion (§33.6) gives them a default height (`measured bar + TITLE_PX`), and the bar is **centered**
 in the body (`.fl-window--chrome .fl-body { justify-content: center }`) so growing/shrinking pads/clips
-symmetrically. Both-axis resize was added (`DIRS` in [FloatingWindow.tsx](src/renderer/components/FloatingWindow.tsx))
+symmetrically. Both-axis resize was added (`DIRS` in [FloatingWindow.tsx](../src/renderer/components/FloatingWindow.tsx))
 because the tester wanted to shrink the command bar's padding — to make a chrome bar minimal, resize it
-down (per-kind floors in `minSizeFor`, [freeLayout.ts](src/renderer/freeLayout.ts)) and/or hit **T** to
+down (per-kind floors in `minSizeFor`, [freeLayout.ts](../src/renderer/freeLayout.ts)) and/or hit **T** to
 drop the title bar to the thin grip. **CRITICAL — do NOT reintroduce auto-height (`height: undefined`):**
 chrome was first auto-height so the window hugged the bar. It looked right but was a TRAP — an
 auto-height window measures 0-tall on first paint and only gets its real height on a later re-measure, so
@@ -6933,9 +6963,9 @@ distinct naming ("Free Layout" vs "Move to New Window") is the disambiguation; k
    (drag/resize/z/title-toggle/rename/theme), `WindowLayer`, fractional state + persistence, container
    `ResizeObserver`, the Panel-Manager "Free Layout (beta)" toggle. Validated with seeded `kind:'panel'`
    windows on `sharedFrameProps`, rendered as a **pointer-through overlay** above the live skeleton (so
-   main-text/chrome rendering is untouched until Phase 2). Files: [freeLayout.ts](src/renderer/freeLayout.ts),
-   [FloatingWindow.tsx](src/renderer/components/FloatingWindow.tsx), [WindowLayer.tsx](src/renderer/components/WindowLayer.tsx),
-   [free-layout.css](src/renderer/styles/free-layout.css). All 15 P1 checks pass (drag/resize/z, title
+   main-text/chrome rendering is untouched until Phase 2). Files: [freeLayout.ts](../src/renderer/freeLayout.ts),
+   [FloatingWindow.tsx](../src/renderer/components/FloatingWindow.tsx), [WindowLayer.tsx](../src/renderer/components/WindowLayer.tsx),
+   [free-layout.css](../src/renderer/styles/free-layout.css). All 15 P1 checks pass (drag/resize/z, title
    hide/rename/close, in-window tabs, persistence across relaunch, fractional rescale, pass-through,
    light-theme, multi-character isolation).
 2. **Mode toggle + measure-and-mint conversion** (§33.6) — split into 2a/2b to isolate the main-text
@@ -6966,11 +6996,11 @@ distinct naming ("Free Layout" vs "Move to New Window") is the disambiguation; k
    alignment), with live **guide lines** (`.fl-guide-v/h`, positioned imperatively — no re-render),
    **Alt held = disabled**, and **arrow-key nudge** of the focused window (1px / Shift 10px, skipped
    while an input is focused). Snap targets are measured LIVE from the DOM at gesture start
-   (`getSnapTargets` in [WindowLayer.tsx](src/renderer/components/WindowLayer.tsx)) so auto-height
-   chrome reports its true edges. `snapAxis` in [FloatingWindow.tsx](src/renderer/components/FloatingWindow.tsx).
+   (`getSnapTargets` in [WindowLayer.tsx](../src/renderer/components/WindowLayer.tsx)) so auto-height
+   chrome reports its true edges. `snapAxis` in [FloatingWindow.tsx](../src/renderer/components/FloatingWindow.tsx).
 5. **Unlimited windows + lock + a11y polish.** ✅ **Built 2026-06-09.** Add/lock controls live in the
    **Panel Manager's Free Layout banner** (NOT floating on the overlay — Sekmeht: a floating button had
-   no good home). `newFloatWindow` ([freeLayout.ts](src/renderer/freeLayout.ts)) builds each window;
+   no good home). `newFloatWindow` ([freeLayout.ts](../src/renderer/freeLayout.ts)) builds each window;
    GameWindow's `addFreeWindow(kind)` + `freeAddItems` drive the banner's **"Add window: New panel /
    Add Game / Add Command / …"** buttons — **New panel** is unlimited (empty `kind:'panel'`, filled via
    the PanelFrame `+`), and the singletons (main/command/vitals/icon) only offer to re-add when MISSING
@@ -7237,6 +7267,7 @@ gates** (procedural fallbacks always).
    (sessionId on every payload, Principle #6).
 3. Theme vars + light-theme pass; accessibility toggles verified (the Principle #9 check).
 4. Decide its `TRANSFER_CATEGORIES` exposure.
+   - (Since the GS4 stack) decide whether it is game-specific: `ExperienceDef.games` (e.g. `['DR']`) leaves it out of the other game's shelf and + menu, and a carried-over instance shows a placeholder (§56.3).
 5. No panel-system files touched — if a change seems to need one, the design is drifting back to
    §34.2's rejected models; stop and re-read this section.
 
@@ -7291,7 +7322,7 @@ gates** (procedural fallbacks always).
      so stale data must never masquerade as live.
    - **Sun is native — observed, anchored, then self-running:** sunrise/sunset are detected from
      DR's ambient prose (the 11 rise/set patterns mirrored VERBATIM from moonwatch.lic's own
-     detection — `SUN_RISE_RE`/`SUN_SET_RE` in [experiences.ts](src/renderer/experiences.ts)),
+     detection — `SUN_RISE_RE`/`SUN_SET_RE` in [experiences.ts](../src/renderer/experiences.ts)),
      captured in GameWindow's main-stream branch behind a substring pre-gate (pitfall #82a). The
      sun's cycle is **360 real minutes rise-to-rise** (moonwatch's own constant,
      `minutes_to_next_sun_event`) and real-time periodic, so ONE observed transition anchors the
@@ -7369,7 +7400,7 @@ gates** (procedural fallbacks always).
      - **Calendar** parses ONLY a ⟳ sync's TIME reply (line 3's `It is currently X and it is Y`
        isn't unique enough to trust from room prose): `parseTimeLine` → day/month/year/season/
        daypart, with day-of-YEAR (0-indexed "N days since the Victory") → day-of-MONTH via the new
-       platform reference [elanthianTime.ts](src/shared/elanthianTime.ts) (uniform 40-day months),
+       platform reference [elanthianTime.ts](../src/shared/elanthianTime.ts) (uniform 40-day months),
        so it reads `4 Ka'len the Sea Drake · 457 A.V. · ❄️ winter` (the daypart moved to the sky
        label — Tier 1). Season/daypart are taken VERBATIM from TIME line 3 (winter wraps the year
        boundary, so a naïve day→season quartering would be wrong).
@@ -7583,7 +7614,7 @@ gates** (procedural fallbacks always).
      - **F64a — LUNAR PHASE. BUILT in v0.18.2** (the deferral below was lifted the same day it was
        recorded — kept verbatim because the design reasoning still governs the code). **What actually
        shipped, and the decisions worth not re-litigating:** the phase math is a pure function of the
-       DR client's constants in [experiences.ts](src/renderer/experiences.ts), locked by
+       DR client's constants in [experiences.ts](../src/renderer/experiences.ts), locked by
        `tmp-moon-harness` against an independent transcription of the Ruby (116 assertions; it caught
        a real typo in the reference on its first run). Server time arrives via a new `ServerClockEvent`
        — the parser's `lastPromptTime` was private — emitted only on first sight and >2s drift, since
@@ -7619,7 +7650,7 @@ gates** (procedural fallbacks always).
        - **It is a PURE FUNCTION of time — no Lich, no moonwatch, no stream, no IPC.** `Moons.phase`
          (moonwatch.lic ~933) depends only on a Unix timestamp plus constants taken from the DR
          CLIENT's own `DR_MOONS` — explicitly *not* moonwatch's calibrated calendar, and identical on
-         every instance (Prime/Plat/Fallen/Test). Port to [experiences.ts](src/renderer/experiences.ts),
+         every instance (Prime/Plat/Fallen/Test). Port to [experiences.ts](../src/renderer/experiences.ts),
          ~15 lines:
          `SIDEREAL_ROIS = { katamba: 14847, xibar: 9983, yavash: 16171 }` (roisaen, 60s each);
          `PHASE_EPOCH_SKEW_ROIS = 80895` (the client's `DR_EPOCH_SKEW_SECONDS / 60`);
@@ -7681,10 +7712,10 @@ from whichever sunrise/sunset prose had been witnessed, assuming an even
 fixed — 120 rois at the winter solstice, 180 at the equinoxes, 240 at the
 summer solstice — so the assumption ran minutes fast, and deriving the length
 from a single observed gap is no better because the real values are
-per-day-of-year. [elanthianSun.ts](src/shared/elanthianSun.ts) is a VERBATIM
+per-day-of-year. [elanthianSun.ts](../src/shared/elanthianSun.ts) is a VERBATIM
 port of moonwatch's `DRTime` model: both 400-entry empirical tables (rise and
 set stored independently, since they sum to 360 on only 332 of 400 days) plus
-the calendar epoch in [elanthianTime.ts](src/shared/elanthianTime.ts).
+the calendar epoch in [elanthianTime.ts](../src/shared/elanthianTime.ts).
 **Verified by evaluating moonwatch's own Ruby and diffing 52 timestamps across
 10 fields — 2104 assertions.** Consequence worth protecting: the sun is now a
 pure function of server time like lunar phase, so it needs neither Lich nor the
@@ -7727,14 +7758,14 @@ across a full day.
      effect in its final minute. A non-numeric parenthetical (`Trabe Chalice (intact, fading)`,
      `(indefinite)`) becomes an **untimed effect carrying that note**, and a bare name is kept as
      one: never a dropped line, because the display must not hide something the game says is on
-     you. 1 roisan = 1 real minute via `ROISAN_SECONDS` ([elanthianTime.ts](src/shared/elanthianTime.ts))
+     you. 1 roisan = 1 real minute via `ROISAN_SECONDS` ([elanthianTime.ts](../src/shared/elanthianTime.ts))
      — never a hardcoded 60_000.
 
    - **Expiries anchor on each LINE's own `timestamp` — its receipt time — not one `Date.now()`
      for the block.** This is *not* the pitfall-#87 / B192 clock-skew case: DR gives a **duration**,
      not a server absolute time, so a local anchor is correct and skew-free.
      **KNOWN LIMITATION, verified 2026-09-05:** this is NOT replay-correct, and an earlier draft of
-     this section wrongly claimed it was. `mkLine` ([GameWindow.tsx](src/renderer/components/GameWindow.tsx))
+     this section wrongly claimed it was. `mkLine` ([GameWindow.tsx](../src/renderer/components/GameWindow.tsx))
      stamps `timestamp: Date.now()` and **ignores the `timestamp` the `StreamTextEvent` carries**, so
      a pitfall-#60 replay (decouple, re-home, import remount) re-dates the block to the replay moment
      and inflates every remaining time by however stale that block was. The error is bounded and
@@ -7833,8 +7864,8 @@ across a full day.
      band rather than the calmest one — a reading we don't have must never render as "this is fine".
    - **SKILL BADGES + ABBREVIATIONS (Sekmeht, 2026-09-05)** come from Lich's
      `scripts/data/base-spells.yaml`, snapshotted at build time by
-     [tools/gen-spell-data.mjs](tools/gen-spell-data.mjs) into a COMMITTED
-     [spellData.ts](src/renderer/spellData.ts) (430 entries, ~29KB). Committed rather than read from
+     [tools/gen-spell-data.mjs](../tools/gen-spell-data.mjs) into a COMMITTED
+     [spellData.ts](../src/renderer/spellData.ts) (430 entries, ~29KB). Committed rather than read from
      a Lich install because the Spell Monitor works without Lich (Principle #2) — reading it live
      would mean no badges at all on a direct connection. Re-run the generator and commit the diff
      when Lich publishes new spells; a name with no entry simply gets no badge, so staleness
@@ -8004,7 +8035,7 @@ across a full day.
      you can switch off; it is bounded by MOUNT (a background tab unmounts the component), and in
      practice changes little, since the clock already ran whenever any timed effect was up.
 
-     **`formatAgo` is SHARED with the Lich Scripts footer** ([utils/formatAgo.ts](src/renderer/utils/formatAgo.ts))
+     **`formatAgo` is SHARED with the Lich Scripts footer** ([utils/formatAgo.ts](../src/renderer/utils/formatAgo.ts))
      rather than reimplemented — the phrasing is user-visible and two copies drift (pitfall #127).
      It takes `now` as a parameter so a caller with its own clock formats against the instant it
      rendered rather than a second `Date.now()` that can straddle a boundary.
@@ -8396,16 +8427,16 @@ A **self-tuning** layer over the player's OWN native automations (highlights, tr
 **Master toggle — app-wide, OFF by default.** One preference (`SharedProfile.automationAnalytics`, the `bulkConnectSeparateWindows` pattern). Off → no runtime tracking (zero added per-line cost, §-perf / pitfall #82) and the analytics UI is hidden. The toggle lives in the **Automations panel header's ⋯ menu** — a visible "📊 Analytics: On/Off" button until v0.19.8, when it moved behind the ⋯ with the other non-navigation control (see §43.8); the ⋯ wears an accent dot while it is on, so the mode is still visible without spending a permanent chip on the word "Off". Toggling dispatches a `lichborne:analytics-changed` DOM event so every GameWindow's `analyticsEnabledRef` re-reads (a cross-window `storage` event never fires in the writing window).
 
 **Two layers.**
-- **Static health (free, on-demand, no persistence)** — [automationHealth.ts](src/renderer/automationHealth.ts) pure analyzers per type, reusing the existing `buildXRegex` compilers so *broken* = "won't compile / can never fire":
+- **Static health (free, on-demand, no persistence)** — [automationHealth.ts](../src/renderer/automationHealth.ts) pure analyzers per type, reusing the existing `buildXRegex` compilers so *broken* = "won't compile / can never fire":
   - *broken* — invalid/empty regex (highlights/triggers/mutes/subs); macro with no key; alias with no input.
   - *duplicate* — by visual/functional identity (highlight: pattern+mode+scope+style; trigger: pattern+actions; sub: pattern+replacement; mute: pattern+scope).
   - *no-op* — highlight with no visual effect; trigger with no actions; etc.
   - *conflict* — **macros sharing a key combo** (`matchKeyCombo` → first wins, rest dead) and **aliases sharing an input** — the high-value dead-binding catch.
   - *obsolete* — a literal (text/phrase) highlight/trigger/mute/sub whose pattern is FULLY matched by a **regex** rule of the same effect (scope/style-agnostic for highlights, per Sekmeht; `m[0]===lit` full-match guard so a partial overlap isn't flagged). "A broad regex already covers my plain `bronze` highlight." Surfaced for **review** ("removing may change styling if they differ"), NOT auto-safe — because ignoring style/scope means the removed rule could have been visibly winning under the v0.11.3 specificity model.
-- **Runtime usage (opt-in, persisted per-character)** — [automationStats.ts](src/renderer/automationStats.ts): `recordFire(character, ruleId)` tallies fires + `lastFiredAt` into an in-memory cache, debounced (800ms) to `scopedKey('automationStats')` (rides `state.*` → YAML). Data is per-character history, **excluded from Profile Transfer**. The runtime hooks ride EXISTING per-line work (no new scans): triggers piggyback `onFire`; highlights ride the Debug fire-scan; mutes/subs report via an optional `onFired(ruleId)` on their apply functions; macros/aliases count at resolve time (`resolveMacro`/`resolveAlias` return `ruleId`).
+- **Runtime usage (opt-in, persisted per-character)** — [automationStats.ts](../src/renderer/automationStats.ts): `recordFire(character, ruleId)` tallies fires + `lastFiredAt` into an in-memory cache, debounced (800ms) to `scopedKey('automationStats')` (rides `state.*` → YAML). Data is per-character history, **excluded from Profile Transfer**. The runtime hooks ride EXISTING per-line work (no new scans): triggers piggyback `onFire`; highlights ride the Debug fire-scan; mutes/subs report via an optional `onFired(ruleId)` on their apply functions; macros/aliases count at resolve time (`resolveMacro`/`resolveAlias` return `ruleId`).
   - **Storage is BOUNDED — two rules (so the stats can't bloat localStorage or the profile YAML).** (1) The flush is **try/catch'd, NOT `safeSetItem`** — background telemetry must never throw or alert the user (a quota-failed stats write just skips; the live cache keeps the count). (2) The only unbounded vector — `recordFire` keys by `ruleId` and never deletes an entry, so a DELETED/re-imported rule's stats would linger forever — is closed by **`pruneStats(character, liveIds)`**, run from AutomationsPanel on open: it drops every stats entry whose id isn't in the union of all six current rule lists. **Reset + prune persist to YAML** (via the panels' `onSaved` → scheduled profile save), because YAML re-seeds localStorage on next connect — a clear that never reached YAML would re-appear. So the map is bounded by the live rule count, clearable via Reset, and the clear sticks across restarts.
 
-**UI** — shared [AutomationAnalytics.tsx](src/renderer/components/AutomationAnalytics.tsx): `useRuleAnalytics` (the hook each panel calls — also live-refreshes counts every 2s while open, since `recordFire` mutates the cached stats in place), `RuleBadges` (per-row fire count + ⚠/⧉/∅/⌨ icons), and `AnalyticsReview` (a **full-width** collapsible banner above each panel's list — NOT crammed in the ~210px sidebar). The Review is **collapsible per category** (each a `<details>`, capped at 200 rendered entries — a bloated ruleset has 1000s of duplicate sets, so dumping them inline buries Top/Quiet), with a count-chip summary bar, a **"Quiet — not fired since {date}"** list (framed informational — rare-but-valid rules like death messages live there, never "delete me"), a **"Remove duplicate copies"** bulk action in the Duplicate section (keep one of each set), and an **Obsolete (covered)** section with its own review-gated bulk remove. **Every category is self-explaining** (UX/UI polish standard #8): a `title` hover tip + a visible one-line description WITH an example, shown even when the category is empty (so a clean panel still teaches what each means — "It's not apparent at all through the UI", Sekmeht). Jump links open the rule in the detail pane (they call the panel's real `selectRule`/`selectAlias`/`selectMacro`).
+**UI** — shared [AutomationAnalytics.tsx](../src/renderer/components/AutomationAnalytics.tsx): `useRuleAnalytics` (the hook each panel calls — also live-refreshes counts every 2s while open, since `recordFire` mutates the cached stats in place), `RuleBadges` (per-row fire count + ⚠/⧉/∅/⌨ icons), and `AnalyticsReview` (a **full-width** collapsible banner above each panel's list — NOT crammed in the ~210px sidebar). The Review is **collapsible per category** (each a `<details>`, capped at 200 rendered entries — a bloated ruleset has 1000s of duplicate sets, so dumping them inline buries Top/Quiet), with a count-chip summary bar, a **"Quiet — not fired since {date}"** list (framed informational — rare-but-valid rules like death messages live there, never "delete me"), a **"Remove duplicate copies"** bulk action in the Duplicate section (keep one of each set), and an **Obsolete (covered)** section with its own review-gated bulk remove. **Every category is self-explaining** (UX/UI polish standard #8): a `title` hover tip + a visible one-line description WITH an example, shown even when the category is empty (so a clean panel still teaches what each means — "It's not apparent at all through the UI", Sekmeht). Jump links open the rule in the detail pane (they call the panel's real `selectRule`/`selectAlias`/`selectMacro`).
 
 **Rejected / deferred:** shadowed-highlight detection (a rule perpetually overridden under the v0.11.3 specificity model) and group-gated-never-active detection (both harder). The same shape generalizes to Contacts later.
 
@@ -8429,7 +8460,7 @@ Every sibling client owns a client-command prefix — Lich `;`, Genie `#`, Profa
 
 - **Noun-first** — everything about highlights starts `/highlight` (alias `/hl`). Nouns have aliases (`/gag` → mute, `/substitute` → sub, `/ts` → timestamps).
 - **One positional sugar per command** — the argument you always want rides positionally (highlight's COLOR: `/highlight add "goblin" red`). Everything else is `key=value` so the syntax never becomes order-dependent soup.
-- **Colors — a MANAGED, CURATED palette accepted EVERYWHERE (v0.14.6; supersedes the same-day "slash-only" scoping, reversed by Sekmeht: "named colors should be managed and curated… added everywhere including in automations, themes").** The palette lives in [colors.ts](src/renderer/colors.ts) as THREE tiers, resolved curated → custom → web → `#hex` (all lookups own-property-guarded):
+- **Colors — a MANAGED, CURATED palette accepted EVERYWHERE (v0.14.6; supersedes the same-day "slash-only" scoping, reversed by Sekmeht: "named colors should be managed and curated… added everywhere including in automations, themes").** The palette lives in [colors.ts](../src/renderer/colors.ts) as THREE tiers, resolved curated → custom → web → `#hex` (all lookups own-property-guarded):
   1. **CURATED** — Lichborne's promoted 16 (red, green, blue, yellow, orange, purple, pink, cyan, teal, gold, white, black, gray/grey, brown, magenta, lime), hand-tuned for READABILITY on game backgrounds (our `red` is `#ff5050`, not CSS's harsh `#ff0000`). These are what `/colors` lists and the palette's color chips offer.
   2. **CUSTOM** — user-defined via **`/colors add "ember" #ff6a30`** / `/colors remove` (value must be `#hex`; names one word, 3–20 chars, can't shadow a curated name; re-adding updates in place). App-wide (a color vocabulary is shared, like themes): `lichborne.customColors` localStorage + `SharedProfile.customColors` → `_shared.yaml` (optional field — non-breaking). Customs MAY shadow web names.
   3. **WEB** — the full standard CSS/web set (~148 names, `WEB_COLORS`) accepted as input everywhere but not listed (a wall). **This is GENIE'S vocabulary** (its `ColorCode.cs` accepts every .NET KnownColor web name — verified 2026-07-04; Frostbite is picker-only, Profanity terminal-ids-only), so DR muscle memory like `Lime`/`DodgerBlue` just works.
@@ -8456,7 +8487,7 @@ Feedback for executed commands is a client-styled line in the main window (`pres
 ### 37.4 Architecture
 
 - **Interception** at the top of `dispatchUserText` (the canonical typed-input path, CLAUDE.md pitfall #31), BEFORE alias resolution — a slash line executes and returns (no `>cmd` echo, no send, no game round-trip). History push still happens (↑ recalls a slash command).
-- **Registry, not if-chain** — [slashCommands.ts](src/renderer/slashCommands.ts) holds a declarative `SLASH_COMMANDS` registry (noun, aliases, verb, positional arg schema, options, flags, description, examples, executor). ONE registry drives the parser, the palette's list + signatures + validation, and `/help` — the §35 capturer-registry philosophy. Adding a command = one entry.
+- **Registry, not if-chain** — [slashCommands.ts](../src/renderer/slashCommands.ts) holds a declarative `SLASH_COMMANDS` registry (noun, aliases, verb, positional arg schema, options, flags, description, examples, executor). ONE registry drives the parser, the palette's list + signatures + validation, and `/help` — the §35 capturer-registry philosophy. Adding a command = one entry.
 - **Executors mutate through the existing rails** — GameWindow builds a `SlashContext` whose setters do exactly what a panel save does: `saveHighlights(character, next)` (quota-safe via `safeSetItem`) + `setHighlights(next)` (recompiles via the existing memos) + `saveProfile()` (debounced YAML). No new persistence, no profile-shape change, `allGroups: true` defaults preserved.
 - **Per-session by construction** — the palette + context live in GameWindow (the command bar's home), so per-character state and contexts are all in reach (pitfall #57).
 - **Scope (v0.19.0): the main command bar, Quick Send, and the Overview's input bar** — anything routed through `dispatchUserText`. **This REVERSES the original exclusion**, which read: *QuickSend deliberately does NOT interpret `/` (it targets OTHER characters' sessions; a client command there is ambiguous about which character it configures)*. The ambiguity argument was real but the alternative was worse — the raw path sent `/highlight add …` to DragonRealms **as literal text**, and a client command must never leave the client (B268). Every send path that can carry user-typed text therefore has to reach the intercept. A command runs in the TARGET character's context, so a broadcast runs it once per character — which is useful for `/highlight add` and carries one known wart: a toggle like `/view` flips once per target. The PALETTE remains the main command bar only; the other surfaces get no completion.
@@ -8478,12 +8509,12 @@ Feedback for executed commands is a client-styled line in the main window (`pres
 
 ### 37.6 Toast notifications (companion feature, built same pass)
 
-A small themed toast stack ([toasts.ts](src/renderer/toasts.ts) + [ToastHost.tsx](src/renderer/components/ToastHost.tsx), mounted once per window at the App root): `showToast({kind, title, message})` dispatches a `lichborne:toast` CustomEvent; the host renders bottom-right, auto-dismissing (info/success ~4s, error ~10s), click to dismiss, capped stack. Theme-safe by construction (surface vars + `color-mix` semantic hue stripes, pitfall #55 pattern). First consumer: `safeSetItem`'s quota warning — previously a blocking `window.alert`, now a non-blocking error toast (same one-shot semantics). Future consumers: Transfer/import completions, slash-command errors that deserve more than an in-flow line.
+A small themed toast stack ([toasts.ts](../src/renderer/toasts.ts) + [ToastHost.tsx](../src/renderer/components/ToastHost.tsx), mounted once per window at the App root): `showToast({kind, title, message})` dispatches a `lichborne:toast` CustomEvent; the host renders bottom-right, auto-dismissing (info/success ~4s, error ~10s), click to dismiss, capped stack. Theme-safe by construction (surface vars + `color-mix` semantic hue stripes, pitfall #55 pattern). First consumer: `safeSetItem`'s quota warning — previously a blocking `window.alert`, now a non-blocking error toast (same one-shot semantics). Future consumers: Transfer/import completions, slash-command errors that deserve more than an in-flow line.
 
 **Character status notices (F123, v0.20.0).** Toasts about your OTHER characters, delivered to the window you're looking at (Sekmeht: *"the active window just kind of knows whats going on with other tabs too"*).
 
 - **Main decides and routes.** `sendCharacterNotice` sends `CHARACTER_NOTICE` to `focusedAppWindow()` — the focused Lichborne window, else the primary. `ready` follows a successful Connected / Attached / Re-attached; `dropped` only when the session had connected and did not close cleanly; a connect within `RECONNECT_WINDOW_MS` of a drop reads `reconnected` (`recentDrops`).
-- **The renderer decides whether to show it.** `characterNoticeToast` ([characterNotices.ts](src/renderer/characterNotices.ts)) builds the toast; App skips it when notices are off, and skips a ready notice for a connect YOU started in that window (`foregroundConnectsRef`) — you're already watching it happen.
+- **The renderer decides whether to show it.** `characterNoticeToast` ([characterNotices.ts](../src/renderer/characterNotices.ts)) builds the toast; App skips it when notices are off, and skips a ready notice for a connect YOU started in that window (`foregroundConnectsRef`) — you're already watching it happen.
 - **Click goes there, across windows:** `FOCUS_CHARACTER` → main focuses the owner window → `SELECT_CHARACTER` → that App activates the tab and leaves the Overview.
 - **Setting:** app-wide `SharedProfile.characterNotices` (default on, optional field, no profile-version change), Settings → "Character status notifications", `/notices [on|off]` (the `/timestamps` shape).
 - **Toast primitive changes:** a `warning` kind; `onClick` + `clickHint` (the tooltip); a clickable toast is `role="button"`, tabbable, and answers Enter/Space (pitfall #142).
@@ -8492,7 +8523,7 @@ A small themed toast stack ([toasts.ts](src/renderer/toasts.ts) + [ToastHost.tsx
 **Merging and people (v0.20.0, from the UX review).**
 
 - **`key` + `merge`.** A toast with a `key` arriving while a toast with that key is on screen updates it IN PLACE — same id, so no re-entry animation and no reordering — with `merge(prev)` deciding the combined content (default: replace), and the timer restarted. `data` is carried untouched for the merge to read. Character notices key per kind (`character-notice:ready|dropped|reconnected`), so a network blip that drops four characters is one toast rather than four; kinds never mix. The pure builder is `noticeToastFor(kind, entries, goTo)`: one character reads exactly as before, two are named in the title, three or more are counted.
-- **`people`.** Each person renders as a monogram coloured by [nameColor.ts](src/renderer/utils/nameColor.ts) — the Living Tableau's avatar recipe, lifted out so a character's badge and avatar are always the same colour. One person is a badge before the title (the toast itself is the click target); several are a row of chips, each its own button, and the toast body only dismisses. The fill is a data colour (Principle #4 exception) with a theme-derived ring for light themes.
+- **`people`.** Each person renders as a monogram coloured by [nameColor.ts](../src/renderer/utils/nameColor.ts) — the Living Tableau's avatar recipe, lifted out so a character's badge and avatar are always the same colour. One person is a badge before the title (the toast itself is the click target); several are a row of chips, each its own button, and the toast body only dismisses. The fill is a data colour (Principle #4 exception) with a theme-derived ring for light themes.
 - **Hover and focus hold a toast** — tracked SEPARATELY, and released only when both have let go (one shared flag let the mouse leaving re-arm a toast whose chip still had keyboard focus). `release` re-arms with the remainder, never less than `LEAVE_GRACE_MS` (2.5s), so holding can never SHORTEN a toast; a full stack drops the oldest toast NOT being held.
 - **Newer news supersedes older (`withdrawNotice`).** When a character reconnects, it comes off a visible "disconnected" toast (and a drop takes it off "is in the game"): an `onlyIfShown` update whose `merge` returns null to dismiss an emptied toast, and returns `prev` unchanged — no timer restart — when the character wasn't on it.
 - **Clicking one badge takes that character off** (`withoutPerson`) and leaves the rest, down to a normal single toast; it no longer throws the others away. A character already on a merged toast keeps its place when its news repeats (moving it re-ordered the chips and dropped focus). The same name on two shards is labelled apart ("Sekmeht (DRT)") via `ToastPerson.label`, with the initials and colour still from the name; chips are keyed by characterId.
@@ -8507,7 +8538,7 @@ The registry is a FIRST-CLASS control surface with a standing obligation, codifi
 
 The command bar's input-layer behaviors, consolidated from the v0.15.2 quick-wins pass (the "your
 fingers already know Lichborne" track). All logic lives in GameWindow (`handleCommandKey` /
-`dispatchUserText`); the persistence helper is [commandHistory.ts](src/renderer/commandHistory.ts).
+`dispatchUserText`); the persistence helper is [commandHistory.ts](../src/renderer/commandHistory.ts).
 
 ### 38.1 History — persisted per character
 
@@ -8531,7 +8562,7 @@ shells behave. Companion fix: ↑ with an EMPTY history is now a no-op (it used 
 
 ### 38.3 Esc clears the line
 
-The classic Stormfront/Genie reflex. Layered UNDER the slash palette's Esc (the palette's
+The classic Wrayth/Genie reflex. Layered UNDER the slash palette's Esc (the palette's
 `handleKey` runs first in `handleCommandKey`): first Esc dismisses an open palette, second clears
 the line. Gated on non-empty so Esc on an empty bar stays inert. Clearing also resets the history
 index and the stashed draft.
@@ -8557,7 +8588,7 @@ not invocable capabilities).
 ### 38.6 `;` command separator (F59, v0.15.2)
 
 `n;n;e` typed in the bar is three commands — the Genie reflex. `splitTypedCommands`
-([macros.ts](src/renderer/macros.ts), harness-covered) runs in `dispatchUserText` AFTER slash
+([macros.ts](../src/renderer/macros.ts), harness-covered) runs in `dispatchUserText` AFTER slash
 handling: **a line whose first non-space char is `;` is a LICH command, returned verbatim and never
 split** (Lich commands can legally contain `;` — `;e Vars['x'] = 'a;b'` must not be corrupted);
 `\;` escapes a literal `;`; parts are trimmed, empties dropped, and each part runs the full
@@ -8596,12 +8627,12 @@ promote-to-global toggle (the footgun the design rejected).
 ### 39.1 Storage — the virtual `_global` scope
 
 Global highlights / triggers / macros / aliases live under a VIRTUAL character scope:
-`lichborne._global.*` (`GLOBAL_RULES_SCOPE` in [characterScope.ts](src/renderer/characterScope.ts);
+`lichborne._global.*` (`GLOBAL_RULES_SCOPE` in [characterScope.ts](../src/renderer/characterScope.ts);
 the underscore can't collide with a real DR name). This is the load-bearing trick: the four rule
 STORES and the four rule PANELS only ever see `scopedKey(character, …)`, so they work on the global
 store **completely unchanged** — same editors, same analytics UI, same save calls. The disk bridge
 is **`_shared.yaml`** (new optional `SharedProfile.sharedHighlights/Triggers/Macros/Aliases`
-fields; raw-key read/write in [profile.ts](src/renderer/profile.ts) so profile.ts stays free of
+fields; raw-key read/write in [profile.ts](../src/renderer/profile.ts) so profile.ts stays free of
 rule-module imports), NOT any {Character}.yaml — there is no `_global` character profile and no
 session for it. Structurally excluded from Profile Transfer and character exports (they scan the
 character's own key prefix).
@@ -8690,7 +8721,7 @@ trigger. Three changes:
 - **A matching KEY is a collision, not a duplicate.** The move used to remove the source whenever
   the target had a rule with the same `keyOf`. Two triggers sharing a pattern can do entirely
   different things. It now asks `sameRuleContent(a, b, { normalize, includeGating })`
-  ([ruleIdentity.ts](src/renderer/ruleIdentity.ts)): a canonical whole-record comparison ignoring
+  ([ruleIdentity.ts](../src/renderer/ruleIdentity.ts)): a canonical whole-record comparison ignoring
   every `id` and the top-level name/group fields (pitfall #130's derive-don't-list rule).
   Triggers are compared in `triggerCompareForm` (defaults filled via `newTrigger` /
   `newTriggerAction`) so a rule saved before a field existed equals one saved after. Gating counts
@@ -8732,7 +8763,7 @@ Two additions to Profile Transfer (§29), so globals and Transfer can't fight ea
 
 Short records for the rest of the v0.15.2 review batch (full behavior in Tracker.md):
 
-- **F49 — Ctrl+F in-scrollback search** ([ScrollbackSearch.tsx](src/renderer/components/ScrollbackSearch.tsx)):
+- **F49 — Ctrl+F in-scrollback search** ([ScrollbackSearch.tsx](../src/renderer/components/ScrollbackSearch.tsx)):
   a pure view over the `lines` data model (joined segment text — WYSIWYG, pitfall #89); new query
   lands on the MOST RECENT match, Enter = older / Shift+Enter = newer, wrapping; jumps un-pin first
   then `scrollToIndex({align:'center'})` — **no new scroll mechanism** (pitfall #68); the active
@@ -8756,7 +8787,7 @@ Short records for the rest of the v0.15.2 review batch (full behavior in Tracker
 - **Programmatic coverage (Sekmeht's ask, same version)**: the batch's pure logic is locked by
   `tmp-rules-harness` (machine-local, 34 cases — ruleIdentity, `asGlobalRules` + the `_global`
   store, `applyProfileImport` global-awareness per §39.7, the `_shared.yaml` bridge, and
-  `planReconnect` in [reconnectPlan.ts](src/renderer/reconnectPlan.ts) — F62's eligibility rules
+  `planReconnect` in [reconnectPlan.ts](../src/renderer/reconnectPlan.ts) — F62's eligibility rules
   extracted pure precisely for this) plus the F59 split cases in `tmp-cmd-harness`. The version's
   test plan tags harness-locked items `[auto]`; the React wiring stays the manual pass.
 
@@ -8812,7 +8843,7 @@ sweep is worth doing. See pitfall #125.
 
 v0.18.0 makes Lichborne cross-platform. **Windows x64 is the stable platform; Linux x64 (AppImage) and macOS arm64 (dmg+zip) ship as labeled BETAS.** The macOS build is deliberately **NOT NOTARIZED** — a free-project decision (no Apple Developer account; the $99/yr Developer ID cert is revisited only if Mac demand proves out). It shipped unsigned at first and has carried our self-signed certificate since v0.21.1 (§41.8). Consequences, all handled explicitly:
 
-- First launch is blocked by Gatekeeper (macOS 15+ removed the right-click bypass). **CORRECTED v0.18.1 (B238, ohbeanz — the first real Mac tester):** the expectation written here was the friendly *"unidentified developer → Open Anyway"* prompt. What actually happens on Apple Silicon is **"Lichborne is damaged and can't be opened. You should move it to the Trash."** — a dead end with no Open Anyway button, and phrasing that tells the user to delete a perfectly good download. Two causes, both now addressed: **(a)** Apple Silicon requires *every* executable to carry a signature and the kernel refuses an unsigned arm64 binary, but `CSC_IDENTITY_AUTO_DISCOVERY=false` made electron-builder skip signing entirely — so [build/afterPack.cjs](build/afterPack.cjs) now **ad-hoc signs** (`codesign --sign -`) the packaged app before the dmg/zip are built, and FAILS the build if that errors rather than shipping an unrunnable artifact; **(b)** the download carries `com.apple.quarantine` regardless, so the docs now lead with `xattr -cr /Applications/Lichborne.app` instead of an Open Anyway step that may never be offered. **Whether ad-hoc signing alone converts "damaged" into the recoverable Open Anyway prompt is UNVERIFIED** — no Mac here, and CI can build but cannot exercise Gatekeeper — so the docs give the `xattr` route as the primary instruction and a tester has to confirm the rest.
+- First launch is blocked by Gatekeeper (macOS 15+ removed the right-click bypass). **CORRECTED v0.18.1 (B238, ohbeanz — the first real Mac tester):** the expectation written here was the friendly *"unidentified developer → Open Anyway"* prompt. What actually happens on Apple Silicon is **"Lichborne is damaged and can't be opened. You should move it to the Trash."** — a dead end with no Open Anyway button, and phrasing that tells the user to delete a perfectly good download. Two causes, both now addressed: **(a)** Apple Silicon requires *every* executable to carry a signature and the kernel refuses an unsigned arm64 binary, but `CSC_IDENTITY_AUTO_DISCOVERY=false` made electron-builder skip signing entirely — so [build/afterPack.cjs](../build/afterPack.cjs) now **ad-hoc signs** (`codesign --sign -`) the packaged app before the dmg/zip are built, and FAILS the build if that errors rather than shipping an unrunnable artifact; **(b)** the download carries `com.apple.quarantine` regardless, so the docs now lead with `xattr -cr /Applications/Lichborne.app` instead of an Open Anyway step that may never be offered. **Whether ad-hoc signing alone converts "damaged" into the recoverable Open Anyway prompt is UNVERIFIED** — no Mac here, and CI can build but cannot exercise Gatekeeper — so the docs give the `xattr` route as the primary instruction and a tester has to confirm the rest.
 - **Auto-update was OFF on darwin until v0.21.1 (§41.8):** `setupAutoUpdater` returned early, and the menu's Check for Updates answered with a download-from-GitHub notice (main.ts). Windows (NSIS + latest.yml) and Linux (AppImage + latest-linux.yml) auto-update normally. **That notice used to be invisible (B356)** — it went out on `updater-log`, which the renderer only printed to the console, so the menu item appeared to do nothing. It now carries the `[notice] ` prefix and shows as an "Updates" toast (§18.4, Diagnostics).
 - If an Apple cert ever lands: add it + notarytool secrets to the mac CI job and remove the afterPack signing. Moving certificates costs Mac players one manual install (§41.8).
 
@@ -8916,12 +8947,12 @@ An authenticated **HTML scrape** of store.play.net, all in MAIN:
 
 ### 42.3 Architecture
 
-- **All network work in main** ([src/main/simucoin/](src/main/simucoin/)) — the AI-adapter rule: the password never crosses IPC (the renderer names an ACCOUNT; main pulls the credential from `passwords.ts`/safeStorage itself), the renderer never sees store HTML, and a renderer `fetch` would be CSP-blocked anyway. Only `SimuCoinStatus` crosses back.
+- **All network work in main** ([src/main/simucoin/](../src/main/simucoin/)) — the AI-adapter rule: the password never crosses IPC (the renderer names an ACCOUNT; main pulls the credential from `passwords.ts`/safeStorage itself), the renderer never sees store HTML, and a renderer `fetch` would be CSP-blocked anyway. Only `SimuCoinStatus` crosses back.
 - **Cookies AND cache:** an **in-memory** Electron partition (`session.fromPartition('simucoin', { cache: false })`, no `persist:` prefix → never written to disk), reset via `resetJar()` (cookies **+ `clearCache()`**) before every attempt and after every run, with `Cache-Control: no-cache` on every request. Requests go through Electron's `net` (Chromium stack: real cookie handling, proxy support, HTTPS validation) with a whole-request timeout. **`cache: false` is load-bearing, not hygiene (B229):** ASP.NET pairs the sign-in form's `__RequestVerificationToken` FIELD with a matching COOKIE, and a partition's HTTP cache is storage that `clearStorageData({storages:['cookies']})` does NOT touch — so a cached sign-in page served a **stale token against a fresh cookie** and the second account of a session was rejected. Never let the token GET be cacheable.
 - **One automatic retry on `auth-failed`** against a fully reset jar (B229) — the user's own successful "click try again", automated. Bounded to one extra attempt (a wrong password must never become a retry storm against Simutronics' login) and **cannot double-claim**, because `auth-failed` returns before any claim POST. A second rejection is reported as a real credential problem, not a transient one.
 - **In-flight guard** (`inFlight` map, per account): two windows — or a click racing the startup pass — must never run two sign-ins, let alone two claim POSTs, for one account.
 - **Multi-account runs are SEQUENTIAL** (startup pass and `/simucoin` alike): parallel store logins are rude and racy.
-- **[constants.ts](src/main/simucoin/constants.ts) is the ONLY file that knows store HTML.** A store redesign is a one-file fix. `parseNextAt` is deliberately conservative (only clear day/hour counts) — **never invent a schedule**, because a wrong "next claim" hides the icon while coins ARE waiting, the worst failure this feature has.
+- **[constants.ts](../src/main/simucoin/constants.ts) is the ONLY file that knows store HTML.** A store redesign is a one-file fix. `parseNextAt` is deliberately conservative (only clear day/hour counts) — **never invent a schedule**, because a wrong "next claim" hides the icon while coins ARE waiting, the worst failure this feature has.
 
 ### 42.4 Failure posture — go quiet, never guess
 
@@ -8929,11 +8960,11 @@ Every failure resolves to a status, never an exception: an unrecognized sign-in 
 
 ### 42.5 UI & consent
 
-- **Coin button in the AppBar** ([SimuCoinButton.tsx](src/renderer/components/SimuCoinButton.tsx)) — app-level, because an allotment belongs to an ACCOUNT, not a character (pitfall #57's converse: a per-session component must not own account state). **Quiet by default (UX standard #1): it renders NOTHING when no account is opted in or offerable** — no dead icon for players who don't use this.
+- **Coin button in the AppBar** ([SimuCoinButton.tsx](../src/renderer/components/SimuCoinButton.tsx)) — app-level, because an allotment belongs to an ACCOUNT, not a character (pitfall #57's converse: a per-session component must not own account state). **Quiet by default (UX standard #1): it renders NOTHING when no account is opted in or offerable** — no dead icon for players who don't use this.
 - **The coin is a drawn SVG object, and there is ONE artwork with two states.** A struck **copper/bronze** face (rim → radial face → bevel ring → struck "S" → static glint → a sweeping specular band). Colors are **baked, not theme vars** — it depicts an OBJECT, the same Principle #4 exception as the map tiles and the moons' lore colors — with ONE exception: an outer `.sc-coin-ring` mixed from `--text-primary`, so a fixed-palette object still keeps a visible edge on any theme. **Nothing to claim ⇒ the SAME artwork under a light `grayscale`**, never a second palette, so the two states can't drift; a claim then *brightens* the coin (400ms transition) instead of swapping an icon. Claimable adds full colour, a breathing glow, and the sweeping sheen; busy spins it. **Every animation is dropped under `:root[data-epilepsy-safe='true']` while the COLOUR is kept** — the colour is the signal, the motion is decoration. Sized in `em` so it tracks the game font (never `rem`, pitfall #45), and its def ids are `useId`-namespaced (pitfall #95).
 - **Retuned in v0.19.0 (B272), and the reasoning generalises.** It shipped as minted GOLD dulled to `grayscale(.85) brightness(.78)` at `opacity: .55`, which measures **2.36** contrast against a dark app bar and **1.34** against Classic Light — and that is the state it wears nearly all the time, since the button renders whenever an account is eligible, not only when coins wait. Two things were wrong. **The hue:** gold's value sits close to a light theme's background and its desaturated form close to a dark one's, so it had no reliable separation at either end; copper (`#bd6f38`) is a mid-tone that stays warm against both families, and the accent used by the ready border, tint, glow and badge moved with it so the button reads as one object. **The dulling:** the loud/quiet distinction is already carried by that chrome, so the coin only ever needed to read as *dormant* — UX standard #1 removes NOISE, it does not hide controls. Now `grayscale(.4)` at `opacity: .9` with brightness untouched, since lowering brightness is precisely what killed it on dark themes. Measured **3.58 / 3.04** after, both clear of the 3:1 non-text floor.
 - **Consent is per account, shown on the surface that enables it** (the AI-consent precedent): the disclosure names exactly what is sent (the saved account password, over HTTPS, to store.play.net), that nothing goes anywhere else, and that no store data is written to disk. **Nothing touches the network before that opt-in.** An account with no saved password is never offered (there's no other credential source).
-- **Config** ([simucoinConfig.ts](src/renderer/simucoinConfig.ts)): `{ consented, autoClaim, lastBalance?, lastCheckedAt? }` per account, the two flags default false → `SharedProfile.simucoin` → `_shared.yaml` (Principle #1). Optional field, non-breaking, **no migration**. Deliberately NOT a Transfer category (machine-local + credential-gated — the `ai`/`automationStats` precedent). Both the loader and `importSharedProfile` coerce each entry, so a hand-edited YAML can't yield a half-shaped record that reads as consented.
+- **Config** ([simucoinConfig.ts](../src/renderer/simucoinConfig.ts)): `{ consented, autoClaim, lastBalance?, lastCheckedAt? }` per account, the two flags default false → `SharedProfile.simucoin` → `_shared.yaml` (Principle #1). Optional field, non-breaking, **no migration**. Deliberately NOT a Transfer category (machine-local + credential-gated — the `ai`/`automationStats` precedent). Both the loader and `importSharedProfile` coerce each entry, so a hand-edited YAML can't yield a half-shaped record that reads as consented.
 - **Slash surface** (Principle #11): `/simucoin` (bare = status) · `check` · `claim`, aliases `/sc`, `/simucoins`, plus a `NOUN_HELP` line. A **bare+verbs noun** — covered automatically by the registry-derived `NOUNS_WITH_VERBS`; its bare form takes no args, so the palette rule holds. Executors are synchronous while a run is a store round-trip, so they report only whether it **started**; results arrive as a toast + the popover.
 
 ### 42.6 Reporting an async result from a synchronous executor (B234)
@@ -9001,7 +9032,7 @@ app-bar popover, which broke at scale — JadedSoul's 7 accounts produced a popo
   invents a date.
 
 **Mechanics worth keeping.** `simucoinStateText` and `SIMUCOIN_DISCLOSURE` are single-sourced in
-[simucoinConfig.ts](src/renderer/simucoinConfig.ts) so no two surfaces can describe a state — or the
+[simucoinConfig.ts](../src/renderer/simucoinConfig.ts) so no two surfaces can describe a state — or the
 password promise — differently (the B234 lesson). Settings is per-session and the coin is app chrome, so
 "Set up in Settings…" crosses that gap with a `lichborne:open-settings` DOM event carrying a section name,
 answered only by the ACTIVE GameWindow (pitfall #57, the `lichborne:session-action` shape); Settings
@@ -9017,13 +9048,13 @@ point at Settings. No profile-shape change — still `SharedProfile.simucoin`.
 
 ### 43.1 Decision
 
-**There is ONE modal look across the client — the About Lichborne chrome — and every dialog wears it** (Sekmeht, 2026-07-27, after the launcher restyle: *"I loved the work you did with the logon screen… can you do the same for Automations / Contacts"*). Dialogs that each look slightly different make a well-built client read as assembled rather than designed. [about.css](src/renderer/styles/about.css) is the reference implementation.
+**There is ONE modal look across the client — the About Lichborne chrome — and every dialog wears it** (Sekmeht, 2026-07-27, after the launcher restyle: *"I loved the work you did with the logon screen… can you do the same for Automations / Contacts"*). Dialogs that each look slightly different make a well-built client read as assembled rather than designed. [about.css](../src/renderer/styles/about.css) is the reference implementation.
 
 This is the **second half of a unification deferred since v0.11.2**. That release shipped the SAFE slice — the `--modal-w-standard` / `--modal-h-standard` SIZE tokens — and explicitly held back the chrome (background / header / backdrop / close-button) because changing a shared surface risks the light-theme regressions of pitfall #55. v0.18.0 proceeds with that risk managed by a per-dialog audit (43.4).
 
 ### 43.2 The tokens
 
-The recipe lives in `:root` in [global.css](src/renderer/styles/global.css) so retuning the house look is one edit:
+The recipe lives in `:root` in [global.css](../src/renderer/styles/global.css) so retuning the house look is one edit:
 
 | Token | Role |
 |---|---|
@@ -9090,7 +9121,7 @@ The v0.18.0 tokens unified the *surface* of a dialog. The v0.19.7 UI/UX audit (B
 
 Four pieces of shared machinery replace them. A fifth, the shared number field, joined in v0.20.4 (§53.3).
 
-**1. Control classes: [ui.css](src/renderer/styles/ui.css).**
+**1. Control classes: [ui.css](../src/renderer/styles/ui.css).**
 - **Controls:** `ui-btn` (plus `--primary`, `--danger` and `--ghost`, each combinable with `--sm`), `ui-close`, `ui-field` (plus `--code`), `ui-tabs` / `ui-tab`, `ui-section-label`, `ui-hint` and `ui-empty`.
 - **Menus (v0.19.8):** `ui-menu` (the popover box) and `ui-menu-item` (the row) plus `--on` / `--baseline` / `--nowrap` and the `ui-menu-mark` ✓ gutter. **Membership is decided by rem-vs-em, not by looks.** A menu opened from a DIALOG is rem-sized app chrome and takes these — the convertible set turned out to be exactly the z-450 dialog-popover tier (GroupPicker, the Macros "$" picker, ColorField, the Automations ⋯). A menu opened from GAME-AREA chrome must scale with Settings → Font Size (Principle #9, pitfall #45) and must NOT: `.app-bar-more-item`, `.ctx-menu-item`, `.ms-item`, `.panel-add-item`, `.exp-picker-option` and the slash palette are em-sized, and `.panel-add-item` was converted rem→em as a *bug fix* (B290). **Hosts COMPOSE rather than replace** (`class="ui-menu-item gp-menu-item"`): two of the four query their own class for ↑/↓ roving focus and one styles its children through `.ma-var-item code` / `span`, so swapping the class out would silently kill keyboard navigation and child styling. Two differences were normalised rather than preserved, both unexplained drift: the hover moved to `--modal-ctl-hover` (translucent, correct on a dialog surface) from `--bg-hover` (an opaque per-theme hex meant for the app background), and two menus' `--bg-base` surface moved to `--bg-raised`.
 - **Dialog skeleton:** `ui-modal-backdrop` → `ui-modal` → `ui-modal-head` / `ui-modal-title` → *(optional sub-bar — §43.8)* → `ui-modal-body` → `ui-modal-foot`.
@@ -9101,7 +9132,7 @@ Four pieces of shared machinery replace them. A fifth, the shared number field, 
 - **Load order is part of the design.** ui.css is imported FIRST in main.tsx, ahead of App and therefore ahead of every component stylesheet. That lets a component rule of equal specificity refine a primitive instead of losing to it. global.css loads after App, as it always has. Importing ui.css from global.css would make every primitive override every component rule it ties with.
 - The classes are rem-sized app chrome. In-game panels, which scale with the font setting, keep their own em-sized controls (pitfall #45).
 
-**2. One confirm: [confirm.ts](src/renderer/confirm.ts), [ConfirmHost.tsx](src/renderer/components/ConfirmHost.tsx) and [InlineConfirm.tsx](src/renderer/components/InlineConfirm.tsx).** There are exactly two shapes.
+**2. One confirm: [confirm.ts](../src/renderer/confirm.ts), [ConfirmHost.tsx](../src/renderer/components/ConfirmHost.tsx) and [InlineConfirm.tsx](../src/renderer/components/InlineConfirm.tsx).** There are exactly two shapes.
 - **`confirmAction()` / `confirmDelete(kind, name)`** is a themed dialog at the confirm tier (2080).
   - It covers any destructive action on something that is not already open in an editor: a row ✕, Reset to defaults, Rebuild, a bulk remove, clearing a key.
   - A danger confirm focuses Cancel, so a reflexive Enter destroys nothing. Esc and a backdrop click cancel.
@@ -9112,14 +9143,14 @@ Four pieces of shared machinery replace them. A fifth, the shared number field, 
   - Game-area hosts pass their own em-sized button classes.
 - `window.confirm` is gone from the renderer. It freezes the whole window and ignores the theme, which is why `window.alert` was already banned.
 
-**3. The unsaved-changes guard: [useUnsaved.ts](src/renderer/hooks/useUnsaved.ts).**
+**3. The unsaved-changes guard: [useUnsaved.ts](../src/renderer/hooks/useUnsaved.ts).**
 - **In an editor:**
   - It keeps a baseline beside its draft and computes `dirty = differs(draft, baseline)`. The comparison ignores key order and undefined values.
   - It guards its own selection switches with `confirmDiscard(dirty, …)` and reports upward with `useReportUnsaved(dirty)`.
 - **In a container dialog** (Automations, Contacts, the Lich Dashboard…), a `useUnsavedScope()` routes close, Esc, the backdrop and tab or scope switches through `scope.guard()`.
 - The prompt reads "Discard unsaved changes?", with **Discard changes** / **Keep editing**.
 
-**4. Focus follows the dialog stack: [useEscapeClose.ts](src/renderer/hooks/useEscapeClose.ts).** The Esc stack (pitfall #141) already knows when the first dialog opens and the last one closes, so it now owns focus too.
+**4. Focus follows the dialog stack: [useEscapeClose.ts](../src/renderer/hooks/useEscapeClose.ts).** The Esc stack (pitfall #141) already knows when the first dialog opens and the last one closes, so it now owns focus too.
 - **Opening the first live dialog** blurs a covered command input (`.command-input`, `.ov-inputbar-input`). Enter can no longer reach the game from under a dialog (B375).
 - **Closing the last dialog** hands focus to the registered home when focus was left nowhere or in the app bar (B376). The home is the Overview's input bar in the Overview, otherwise the active command bar. App registers it through ConfirmHost's `homeFocus` prop.
 - **A confirm** hands focus back to whatever held it when the confirm opened — but only when the confirmed action left focus nowhere. That action often focuses something itself (a "+ New" focusing its name field), and restoring unconditionally stole focus back from it a frame later. A queued second confirm inherits the first one's return target, since the button the first would have returned to is about to be removed.
@@ -9447,7 +9478,7 @@ Surfaced while bug-checking v0.18.6 (which added two rare-path `scheduleProfileS
 | Squabbles.yaml | 1,174 KB | 40.3 ms | 53.5 ms |
 | Agan.yaml | 589 KB | ~20 ms | 22.0 ms |
 
-Both run in MAIN ([profiles.ts](src/main/profiles.ts)), and main owns every session socket — so this is §45.2's highest-severity class: **every connected character stalls for that window**. On top of the parse/serialize, `exportCharacterProfile` read-merge-writes, so a save also ships the profile main→renderer and back — two ~1.2 MB structured clones (unmeasured).
+Both run in MAIN ([profiles.ts](../src/main/profiles.ts)), and main owns every session socket — so this is §45.2's highest-severity class: **every connected character stalls for that window**. On top of the parse/serialize, `exportCharacterProfile` read-merge-writes, so a save also ships the profile main→renderer and back — two ~1.2 MB structured clones (unmeasured).
 
 **The shape of the data explains it: 935 KB of Squabbles' 953 KB of state is `highlights` alone.** A settings toggle re-serializes an entire imported ruleset.
 
@@ -9530,7 +9561,7 @@ Renderer private ≈ working set, so it is committed heap, not shared pages. Sam
 
 **Three findings, all long-standing, none a v0.19.x regression:**
 
-- **B462 — the Lich map tile cache never evicted** ([MapImageView.tsx](src/renderer/components/panels/MapImageView.tsx)). `.has`/`.get`/`.set` only; 273 tiles ≈ 26.9 MB on disk, ~35.7 MB base64. Now an LRU at 30. Dates to v0.3.0.
+- **B462 — the Lich map tile cache never evicted** ([MapImageView.tsx](../src/renderer/components/panels/MapImageView.tsx)). `.has`/`.get`/`.set` only; 273 tiles ≈ 26.9 MB on disk, ~35.7 MB base64. Now an LRU at 30. Dates to v0.3.0.
 - **B463 — the map datasets were parsed per CHARACTER, not per app.** 14.7 MB of Lich map JSON (~52k rooms) plus a 12.3 MB Genie cache, held in per-component state, with MapPanel mounted per character across two mount sites. Now module-level caches keyed by source path with in-flight dedup. **What is shared and what is not is the load-bearing distinction** — see pitfall #159.
 - **B461 — the per-stream line cap inverted at exactly the cap.** `slice(-(MAX - lines.length))` is `slice(-0)` when a batch carries exactly 500, and `-0 === 0`, so it kept the whole buffer and compounded (verified 500 → 1000 → 1500). Pitfall #158.
 
@@ -9915,7 +9946,7 @@ scrolls. So thirty characters all fit on a 4K and stay readable (scrolling) on a
 laptop, with no count-buckets to get wrong. `align-content: start` must stay OFF
 — it collapses rows to content height and defeats the `1fr`.
 
-**Column count is chosen by `planGrid` ([overviewLayout.ts](src/renderer/overviewLayout.ts)), which is PURE and harnessed** (`tmp-rules-harness` §I). It
+**Column count is chosen by `planGrid` ([overviewLayout.ts](../src/renderer/overviewLayout.ts)), which is PURE and harnessed** (`tmp-rules-harness` §I). It
 evaluates every candidate 1..count and keeps the best-scoring shape. Three things
 it must do, each of which was a real bug the harness caught before the feature
 was ever run:
@@ -9992,7 +10023,7 @@ Rakkor's "at the minimum".
 
 **It is a PARALLEL CAPTURE, and it has to be.** Reading `lines` or `streamLines`
 is wrong in both directions, because of the routing decision at
-[GameWindow.tsx:2541](src/renderer/components/GameWindow.tsx#L2541):
+[GameWindow.tsx:2541](../src/renderer/components/GameWindow.tsx#L2541):
 
 - a **watched** stream routes to `streamLines` and never reaches main — so a
   card reading `lines` is blind, and blind **worse the better the user's panel
@@ -10044,7 +10075,7 @@ new window, move to the main window, disconnect, reconnect — plus **Close**,
 which the tab omits because it already carries an ✕.
 
 **One definition, two surfaces.** `buildCharacterMenu`
-([characterMenu.ts](src/renderer/characterMenu.ts)) is shared by the tab bar and
+([characterMenu.ts](../src/renderer/characterMenu.ts)) is shared by the tab bar and
 the card. A right-click that offers different options depending on which
 representation of a character you happened to hit is an inconsistency nobody
 reports as a bug — they just learn to distrust one of them. The order it encodes
@@ -10393,7 +10424,7 @@ cannot and does not try to reach those.
 
 ### 48.3 Architecture
 
-- **`AttachConnection`** ([src/main/connection/AttachConnection.ts](src/main/connection/AttachConnection.ts))
+- **`AttachConnection`** ([src/main/connection/AttachConnection.ts](../src/main/connection/AttachConnection.ts))
   is the transport, deliberately free of electron imports so a plain-node harness
   can exercise the protocol. It **sends nothing on connect** — no login key, no
   `FE:` line — because anything a detachable client writes is dispatched to the
@@ -10440,7 +10471,7 @@ drives the tile ⋯ menu entry, the modal prefill, an attach-first tile Connect
 (falling back to a normal login when nothing is listening and the tile has a real
 account), the tab's Reconnect, and the bulk paths.
 
-`planReconnect` ([src/renderer/reconnectPlan.ts](src/renderer/reconnectPlan.ts))
+`planReconnect` ([src/renderer/reconnectPlan.ts](../src/renderer/reconnectPlan.ts))
 gains an **attach branch that bypasses the account arithmetic**. Those rules exist
 to protect a *login* from DR's one-character-per-account law; an attach starts no
 login, so the dedup/already-on/conflict-chooser machinery does not apply. The
@@ -10455,8 +10486,9 @@ recorded rather than skipped silently; this is that record.
 The reasoning matches the Experiences precedent (§34.6): attach is **one-time
 setup, not an in-play verb.** You attach once per session from the launcher, and
 thereafter the saved target makes it a single click on the tile — there is no
-repeated action a command would accelerate, and the three fields it needs
-(character, host, port) are exactly what a form is better at than a command line.
+repeated action a command would accelerate, and the four fields it needs
+(character, game, host, port; the game since the GS4 stack, §56.7.3) are exactly
+what a form is better at than a command line.
 Revisit if attach ever grows an in-play action (re-attach on demand, switching
 targets mid-session) — that *would* deserve a verb.
 
@@ -10499,7 +10531,7 @@ What does NOT change:
 
 ### 49.2 The link, and why it is a CSS variable
 
-A linked field stores `var(--lb-color-<id>, #fallback)` in the SAME string field that held a hex. Each window defines `--lb-color-<id>` on its root from the palette (`applyPaletteVars`, [colors.ts](src/renderer/colors.ts)): at module load, after every save, and on a cross-window `storage` event.
+A linked field stores `var(--lb-color-<id>, #fallback)` in the SAME string field that held a hex. Each window defines `--lb-color-<id>` on its root from the palette (`applyPaletteVars`, [colors.ts](../src/renderer/colors.ts)): at module load, after every save, and on a cross-window `storage` event.
 
 Every place that paints a rule color already writes the field's string straight into inline CSS: `color`, `background`, a glow's `text-shadow`, an effect's `--fx-c1`/`--fx-c2`, the Tableau's avatar tints. So the link:
 
@@ -10524,7 +10556,7 @@ Two alternatives were rejected:
 
 ### 49.4 Surfaces
 
-- **ColorField** ([ColorField.tsx](src/renderer/components/ColorField.tsx), styles in ui.css): the one color control, replacing eleven hand-rolled picker + hex pairs (Highlights ×3, contact templates ×6, Groups, trigger echo). This is also UX #12's control vocabulary.
+- **ColorField** ([ColorField.tsx](../src/renderer/components/ColorField.tsx), styles in ui.css): the one color control, replacing eleven hand-rolled picker + hex pairs (Highlights ×3, contact templates ×6, Groups, trigger echo). This is also UX #12's control vocabulary.
   - **Closed:** a swatch, then either the free-text box or, when linked, a chip with the color's name and a link glyph. The chip is dashed when its color was removed.
   - **Open (popover, z 450):**
     - Your colors, which link.
@@ -10539,7 +10571,7 @@ Two alternatives were rejected:
     - **typing a name** opens a suggestion list (`suggestColors`): your colors first, matched anywhere in the name; built-ins by prefix; web names by prefix from 3 characters; nothing for a #hex, a `$variable` or a link; at most 8.
     - ↑/↓ move through it and Enter or a click picks. Focus never leaves the box (`role="combobox"` + `aria-activedescendant`; rows cancel mousedown). A pick of yours becomes the linked chip and focus moves onto it. Esc closes only the list.
   - **Typing** one of your color names and leaving the box links it too. Enter in a form that saves on Enter (Triggers' `enterToSave`) is claimed by an open list or an unresolved name first; the next Enter saves.
-- **Automations → Colors tab** ([ColorsPanel.tsx](src/renderer/components/ColorsPanel.tsx)): list/detail on the shared `.hp-*` layout.
+- **Automations → Colors tab** ([ColorsPanel.tsx](../src/renderer/components/ColorsPanel.tsx)): list/detail on the shared `.hp-*` layout.
   - **Sidebar:** Your colors (with a use count), Built-in, and a Removed section that appears only when there are any.
   - **Detail:** name, color, a preview line plus a background swatch with a low-contrast hint, and "Used by" for the open character plus All-characters rules. Both the tab and its tooltip say another character may use the color too.
   - The scope switch is disabled here with a tooltip, because the palette is app-wide.
@@ -10588,7 +10620,7 @@ swatch, a typable box with type-ahead, and a popover offering **your colours**
 and the built-ins. What they do NOT do is link.
 
 **Why copy.** A theme leaves this machine by a route the palette does not
-travel. `exportTheme` ([myThemes.ts](src/renderer/myThemes.ts)) writes a
+travel. `exportTheme` ([myThemes.ts](../src/renderer/myThemes.ts)) writes a
 `.lichborne-theme.json` containing nothing but `name`, `basedOn` and `vars`, and
 `importTheme` validates only that much. A linked theme handed to someone else
 would still PAINT correctly — `var(--lb-color-x, #hex)` falls back to the baked
@@ -10672,7 +10704,7 @@ Three tester requests from the same week, built together. Two came from subkermo
 
 **It follows the active character**, like the game font: `applySettingsToDOM` runs for whoever owns the document, so two characters with different styles switch as you switch tabs, and the Overview cards all show the front character's styles.
 
-**Editor.** [TextStylesEditor.tsx](src/renderer/components/TextStylesEditor.tsx), `.tse-` prefix. One `<details>` row per kind; the summary shows what's set and a live preview drawn by the real `renderSegment` on the game background, so the preview is the game's own paint (pitfall #127). The row body is only built while open (each Font select lists every installed font). The size box takes a draft so typing "150" doesn't clamp at the "1".
+**Editor.** [TextStylesEditor.tsx](../src/renderer/components/TextStylesEditor.tsx), `.tse-` prefix. One `<details>` row per kind; the summary shows what's set and a live preview drawn by the real `renderSegment` on the game background, so the preview is the game's own paint (pitfall #127). The row body is only built while open (each Font select lists every installed font). The size box takes a draft so typing "150" doesn't clamp at the "1".
 
 **Effects per kind.** A `TextStyleTarget` may declare `effects`; room descriptions offer only `PARAGRAPH_EFFECTS` (none, glow, pulse, neon). A description is a paragraph (median 364 characters in the captured session) and several are mounted while you travel, so Wave and Bounce would animate every character and the sweeping gradients would repaint whole paragraphs every frame. Glow is static, Pulse animates opacity only, Neon changes at a few keyframes. `coerceTextStyle(raw, id)` enforces the list on load; the editor explains the shorter list in the row. A new long-text kind should declare `effects` the same way.
 
@@ -10702,7 +10734,7 @@ The compass (§5.7, "Floating Compass") was one fixed design. v0.20.1 gives it s
 
 - **Size scales the whole geometry through one `--fc-cell` variable** — cells, gaps, glyph size, text stroke and the UP/DOWN/OUT row. B305 recorded that scaling the glyphs alone breaks the grid; this is the "whole geometry together" it asked for. At 24px every value equals the old fixed CSS.
 - **The backing is drawn from `--bg-app`** (subtle is 72% of it), so it is dark on dark themes and light on light ones. The v0.7.x backing (B90) was a fixed `rgba(0,0,0,.55)` with a blur, which dropped a black blob on light themes and smeared the text behind; neither is repeated.
-- **Click-to-walk makes EVERY direction a button, lit or not (Sekmeht).** A spell can hide a room's exits, so nothing lights, and a player who knows the way must still be able to try it — the game decides whether the move works. Lit only sets brightness; an unlit cell's tooltip reads "Try going north (no obvious exit shown)" and it brightens halfway on hover, never fully (full still means the game showed an exit). The gaps between cells stay `pointer-events: none`, so a click between arrows still lands on the text. A cell sends the full direction word through the canonical echoing `sendCommand` (it echoes `>north` and is logged), from the shared [exitWords.ts](src/renderer/exitWords.ts) — also the Room panel's table, because `dn` is not a command and `down` is. The buttons don't take focus on mouse-down (the next Enter must send what's typed, not walk again) and Space walks too.
+- **Click-to-walk makes EVERY direction a button, lit or not (Sekmeht).** A spell can hide a room's exits, so nothing lights, and a player who knows the way must still be able to try it — the game decides whether the move works. Lit only sets brightness; an unlit cell's tooltip reads "Try going north (no obvious exit shown)" and it brightens halfway on hover, never fully (full still means the game showed an exit). The gaps between cells stay `pointer-events: none`, so a click between arrows still lands on the text. A cell sends the full direction word through the canonical echoing `sendCommand` (it echoes `>north` and is logged), from the shared [exitWords.ts](../src/renderer/exitWords.ts) — also the Room panel's table, because `dn` is not a command and `down` is. The buttons don't take focus on mouse-down (the next Enter must send what's typed, not walk again) and Space walks too.
 - **The Ctrl+F search bar moved above the compass** (z 5 → 11), because a top-right compass now overlaps it.
 - `coerceSettings` validates all six on load, falling back to `DEFAULT_SETTINGS` rather than restated literals (pitfall #121).
 
@@ -10724,7 +10756,7 @@ A plain left-click does nothing; the cursor is the context-menu cursor and the t
 
 **The syntax is DR's own.** From the in-game `SAY` help (captured by Sekmeht): `SAY @PERSON message`; `SAY /EMOTE @PERSON message` and `SAY @PERSON /EMOTE message` both work; `SAY`, `'` and `"` are interchangeable. Whisper is `whisper PERSON message`. Knowledge.md records it.
 
-**What's already typed is kept** ([sayTo.ts](src/renderer/utils/sayTo.ts), `directedLine`, harnessed): an empty bar gets the bare prefix; a say line (any of the three verbs, an emote and a target in either order) or a whisper line gives up its message and its target is replaced; a say line keeps its verb and emote; a whisper drops the emote; anything else becomes the message. `/setemote` and `/help` are SAY's own sub-commands, not emotes.
+**What's already typed is kept** ([sayTo.ts](../src/renderer/utils/sayTo.ts), `directedLine`, harnessed): an empty bar gets the bare prefix; a say line (any of the three verbs, an emote and a target in either order) or a whisper line gives up its message and its target is replaced; a say line keeps its verb and emote; a whisper drops the emote; anything else becomes the message. `/setemote` and `/help` are SAY's own sub-commands, not emotes.
 
 **Adding an option** is one `CtxItem` in the menu block at the end of `TableauExperience`. A verb that types into the command bar goes through `onDirect` and `directedLine`; one that sends straight away goes through `onCommand`. No slash command — the menu is the surface.
 
@@ -10733,7 +10765,7 @@ A plain left-click does nothing; the cursor is the context-menu cursor and the t
 
 ## 51. The Living Tableau in combat, and a screen that holds still (v0.20.2)
 
-v0.20.2 grew the Living Tableau ([TableauExperience.tsx](src/renderer/components/experiences/TableauExperience.tsx)) from a social scene with a combat facet into a working view of a fight: who is fighting whom, where they stand, how your group is doing, and what just died. It came from a run of Sekmeht's requests and a lot of captured XML from his two characters, Agan and Sekmeht, hunting together. The same release chased the long-standing "screen quiver" and found several causes.
+v0.20.2 grew the Living Tableau ([TableauExperience.tsx](../src/renderer/components/experiences/TableauExperience.tsx)) from a social scene with a combat facet into a working view of a fight: who is fighting whom, where they stand, how your group is doing, and what just died. It came from a run of Sekmeht's requests and a lot of captured XML from his two characters, Agan and Sekmeht, hunting together. The same release chased the long-standing "screen quiver" and found several causes.
 
 Everything here stays inside the Tableau's own guardrails: it **reads** the game (assess, the combat stream, the group stream, the room list) and never sends anything on its own. Every send is a click or a menu pick by the player: face, assess, look, group verbs.
 
@@ -10741,7 +10773,7 @@ Everything here stays inside the Tableau's own guardrails: it **reads** the game
 
 - **Social** is the Tableau as it was: the conversation circle, the arc of seats, your group in a row beside you.
 - **Combat** turns on while an assess is fresh or a player is engaged with you (⚙ **Combat view**, `hidden.battle`). It is **off to start** (`defaultHidden`), so the out-of-the-box Tableau is the social scene with the cockpit, creature marks and fight lines. The scene becomes a **battlefield** laid out from the game's own relations.
-- **The solver** ([battlefield.ts](src/renderer/battlefield.ts), pure, harnessed) turns assess relations into positions:
+- **The solver** ([battlefield.ts](../src/renderer/battlefield.ts), pure, harnessed) turns assess relations into positions:
   - each relation is a spring read relative to the target's heading (facing = in front, flanking = to a side, behind = behind), at a distance from its range (melee / pole / missile);
   - connected pieces of the relation graph become clusters: **yours** (centre), **your group's** (beside you on your baseline, nearest first), **everyone else's** (a band above);
   - a warm start from the previous solve keeps flank sides from mirror-flipping between assesses;
@@ -10753,9 +10785,9 @@ Everything here stays inside the Tableau's own guardrails: it **reads** the game
 
 ### 51.2 Player combat (duels)
 
-- A **duel** is another player engaged with you ([`computeDuels`](src/renderer/components/experiences/TableauExperience.tsx)), from two sources, newer winning:
+- A **duel** is another player engaged with you ([`computeDuels`](../src/renderer/components/experiences/TableauExperience.tsx)), from two sources, newer winning:
   - the **assess** (they face or advance on you, or they are your target);
-  - the game's **range narration**, parsed verbatim from two-sided captures ([combatExtract.ts](src/shared/combatExtract.ts) `parseEngagementLine`): "You begin to advance on X", "X closes to pole weapon range on you!", "You retreat back to pole range", "X retreats from you", the stealthy "You notice X as he stealthily closes…".
+  - the game's **range narration**, parsed verbatim from two-sided captures ([combatExtract.ts](../src/shared/combatExtract.ts) `parseEngagementLine`): "You begin to advance on X", "X closes to pole weapon range on you!", "You retreat back to pole range", "X retreats from you", the stealthy "You notice X as he stealthily closes…".
 - **Retreating steps one band back** (melee → pole → missile) and never ends a fight. Only an **empty assess** ends it, or the player leaving the room.
 - **Leaving the room** is a scene departure with a direction, or a logoff. GameWindow records it as `walkedOut[name]` (recorded during a replay too, stamped with the event's own time); `computeDuels` ends a duel whose engagement is older than that (`leftSince`). Their arrival, or your own room change, clears the record.
 - **A room change clears the room's fight in the batch that carries it** (`noteRoomChange`: engagements, facing, walk-outs and the assess, pitfall #166), so an ambush that arrives with the room survives. A change is the title's TEXT changing or the nav id changing, never the number inside the title: for a display_lichid player the same room's title arrives twice, first with the game's number and then with Lich's, which had read every LOOK as a move. Records are kept up to `ENGAGE_TTL_MS` (10 minutes).
@@ -10766,7 +10798,7 @@ Everything here stays inside the Tableau's own guardrails: it **reads** the game
 
 ### 51.3 Your group
 
-- Parsed from the **`group` stream** ([experiences.ts](src/renderer/experiences.ts) `parseGroupLines`). Only the lines between the **last** "Members of your group" header and its footer count, so a stray "Note: …" line can't become a member.
+- Parsed from the **`group` stream** ([experiences.ts](../src/renderer/experiences.ts) `parseGroupLines`). Only the lines between the **last** "Members of your group" header and its footer count, so a stray "Note: …" line can't become a member.
 - **Read before mutes and substitutes.** GameWindow keeps its own copy of the raw group text from each batch, so a user rule on the header can't break the roster. A clear arriving alone holds the last list for 400ms rather than blinking it out.
 - **The row**: members beside you, a Leader chip, members in another room faded at the ends. Right-click offers the group verbs from GROUP HELP (make leader, retreat, leave, refresh, add, join), as one deliberate send each.
 - **Health**: a hurt member shows a short meter in your own health bar's colours (`healthBand`), filled to the bottom of the GROUP word's 10% band with the band hatched. The ladder is DR's Vitality table, cross-checked against logs (Knowledge.md). A word not in the table reads as under 40% and is flagged.
@@ -10786,7 +10818,7 @@ Everything here stays inside the Tableau's own guardrails: it **reads** the game
 ### 51.5 Creatures by id: DR's `<crtrStatus>` roster
 
 - **The feed.** After every `room objs` refresh, DR sends one `<crtrStatus exist="ID" …/>` per creature, in the same order as the bold names, each carrying the creature's live flags: `dead`, `disengaged`, `hostile`, `sleeping`, `prone`, `stunned`, `webbed`, and the rest of Lich's `CRTR_*_FLAGS`. A flag absent means off. Facts and citations: Knowledge.md.
-- **The parser** ([StormFrontParser.ts](src/main/parser/StormFrontParser.ts)) turns a refresh into one `creature-roster` event at the next prompt (`flushRoster`):
+- **The parser** ([StormFrontParser.ts](../src/main/parser/StormFrontParser.ts)) turns a refresh into one `creature-roster` event at the next prompt (`flushRoster`):
   - names pair by position only when the counts match (Lich's rule);
   - a room change emits an empty roster **in stream order**, before the new room's list;
   - a lone tag batch without a room list is dropped;
@@ -10794,7 +10826,7 @@ Everything here stays inside the Tableau's own guardrails: it **reads** the game
   - the roster is sticky state, snapshotted for replay.
 - **On walking into a room** the tags arrive with the room (verified from Sekmeht's capture: the room list comes twice, the second followed by the tags, then Lich re-sends the title with its room number added, which the parser treats as the same room). `look` refreshes nothing.
 - **Trusted only when it agrees** with the room's creature list (same count of living plus dead). Otherwise the Tableau falls back to the name-based display, so the stage is never emptier than the room list says. This came from Sekmeht walking into rooms and seeing no creatures until an assess.
-- **The corrected assess.** [`correctAssess`](src/renderer/components/experiences/TableauExperience.tsx) (pure, harnessed) keeps the last assess current until the next one:
+- **The corrected assess.** [`correctAssess`](../src/renderer/components/experiences/TableauExperience.tsx) (pure, harnessed) keeps the last assess current until the next one:
   1. it drops creatures the roster no longer lists;
   2. it applies **range lines** newer than the assess (a player exactly by name; a creature, being anonymous, by moving the same-named one not already at that range);
   3. it applies your last **turn to face**, newer than the assess. The game's reply has no id, so GameWindow remembers a `FACE #id` for five seconds. The id counts only when the reply names the same kind of creature; otherwise the name must match exactly one living creature. Your old target takes the place the reply names ("…on your flank at melee").
@@ -10808,12 +10840,12 @@ Everything here stays inside the Tableau's own guardrails: it **reads** the game
 
 ### 51.6 Reactions, moments and the place
 
-- **Strikes on you** ([combatExtract.ts](src/shared/combatExtract.ts) `parseStrikeLine`, verbatim from captures): dodge, evade, block and parry (matched by the defence's shape rather than the gear, so any weapon or shield works, plus the stomp you deflect or step away from) and hits with their severity and body part. A word floats off your figure, and the attacker flashes when it's unambiguous. Never from a replay.
+- **Strikes on you** ([combatExtract.ts](../src/shared/combatExtract.ts) `parseStrikeLine`, verbatim from captures): dodge, evade, block and parry (matched by the defence's shape rather than the gear, so any weapon or shield works, plus the stomp you deflect or step away from) and hits with their severity and body part. A word floats off your figure, and the attacker flashes when it's unambiguous. Never from a replay.
 - **The gauges wake on any blow in either direction**: a combat-stream line or a balance/position reading sets a pulse (at most once a second), with no roundtime of your own needed. **Only fighting wakes them** (`combatLive = duels.size > 0 || pulseLive`), never a roundtime or a condition: a crafting script's back-to-back roundtimes held them up in a quiet town for hours (B495). An 8-second hold carries them between blows, then they fade over 3.5s. The rings still show your roundtime and the avatar still pulses for a wound.
 - **Moments**: a gold burst for a new rank; a violet glow while you prepare a spell, with its name under you.
 - **Poses**: an emote's verb plays a one-shot movement (bow dips, wave wiggles, laugh bounces).
 - **The place** — a layered scene read from the room's DESCRIPTION, with the title adding weight (Sekmeht: *"descriptions are what players see"*). Two files, split on purpose:
-  - **[tableauScene.ts](src/renderer/components/experiences/tableauScene.ts) decides; it is pure and harnessed.** `sceneOf(title, desc)` returns a `SceneSpec` of LAYERS, because a room is usually a mixture (a road through a forest, a river under peaks), not one category:
+  - **[tableauScene.ts](../src/renderer/components/experiences/tableauScene.ts) decides; it is pure and harnessed.** `sceneOf(title, desc)` returns a `SceneSpec` of LAYERS, because a room is usually a mixture (a road through a forest, a river under peaks), not one category:
     - `enclosure`: outdoor, indoor or cave. Indoor and cave replace everything else.
     - `far` (the horizon): peaks, hills, dunes, the sea, a distant skyline.
     - `mid` (what stands nearer): pines, broadleaf trees, palms, buildings, castle walls, ruins, a shrine, a farm, gravestones, reeds.
@@ -10823,7 +10855,7 @@ Everything here stays inside the Tableau's own guardrails: it **reads** the game
   - **How it scores:** each feature has weighted word patterns; each pattern group counts at most two matches, and a title match counts three times. Misleading phrases are stripped first ("waves of heat", "a sea of faces", "an icy stare", "sea-green", "keep watch"). A sentence about the distance ("peaks rise in the distance") feeds only the far layer, at half weight. Title-only features (`indoorT`, `townT`, `fortT`, `caveT`, `fallsT`) ignore the description, where those words are asides ("the shop's front door"). "Falls" is title-only because in prose it is nearly always the verb ("the ground falls away"); surf needs the sea to be HERE (a score of 5), not mentioned; indoors needs a ceiling, furniture or an indoor title, and must beat the outdoor evidence.
   - **Tuned against the whole Lich map DB** (18,950 rooms) with `tmp-v0202-harness/scene-db.ts` (the distribution, or real rooms per layer with their descriptions) and reviewed visually with `gallery.tsx` (six real rooms per kind, drawn by the real component and stylesheet, on a light and a dark theme). Last distribution: 11,873 outdoor / 5,384 indoor / 1,688 cave. **Re-run both after any change to a pattern** — a word that reads well in one room is often a figure of speech in fifty others.
   - **Cost:** about 60µs per room as of v0.20.2, run once per room change (a `useMemo` on title + description). v0.20.3's things, towns and review rules raised it to about 0.3ms (§52.8), still negligible at one call per room change.
-  - **[tableauBackdrop.tsx](src/renderer/components/experiences/tableauBackdrop.tsx) draws:** a 400×40 horizon SVG painted far → mid → near (stars first at night), and a 400×100 ground SVG under the figures for a road narrowing to the vanishing point, a winding river, crop furrows, swamp puddles, lava cracks or floorboards. Shapes come from a generator seeded by the title, so a room always looks the same and two rooms of a kind differ. Static: no animation, memoized, the busiest case (a shop wall) about 160 shapes in v0.20.2 (v0.20.3: mean 47, worst 237, §52.8).
+  - **[tableauBackdrop.tsx](../src/renderer/components/experiences/tableauBackdrop.tsx) draws:** a 400×40 horizon SVG painted far → mid → near (stars first at night), and a 400×100 ground SVG under the figures for a road narrowing to the vanishing point, a winding river, crop furrows, swamp puddles, lava cracks or floorboards. Shapes come from a generator seeded by the title, so a room always looks the same and two rooms of a kind differ. Static: no animation, memoized, the busiest case (a shop wall) about 160 shapes in v0.20.2 (v0.20.3: mean 47, worst 237, §52.8).
   - **The horizon height follows the stage's WIDTH** (`--tb-band: min(10cqw, 20cqh)`): the skyline keeps its drawn proportions and is capped at a fifth of the height so a wide, short panel tab keeps room for the figures. The backdrop is the size container, so the gradient that uses `--tb-band` is painted on its `::before` (pitfall #172).
   - **Theme-safe by construction:** silhouettes are 15% / 8% (far) mixes of the scene text over transparent, ground tints a fixed hue at 8–12%. Checked on Classic Light, where silhouettes had been too faint at the old 11% / 6%.
   - a sky band from the server clock (`exactSunPhase`), none indoors or in caves;
@@ -10840,7 +10872,7 @@ Sekmeht has seen, for many versions, the whole screen "quiver" for a moment. A t
 
 - **The first connect re-fonted the window.** Boot applied the default settings; the character's own font and weight arrived in a plain effect, AFTER the first paint, so the new game screen drew once in the wrong font and then re-flowed. The settings now apply in a **layout effect** (before paint), and boot starts in the **last displayed character's** settings (`LAST_DISPLAY_CHARACTER_KEY`), so the first connect usually changes nothing.
 - **Tabs changed width mid-login.** The health % on a character tab rendered only once the first health reading arrived; now its slot is always reserved.
-- **The tab strip's scrollbar grew the app bar.** It took 5px the moment the tabs overflowed, and the strip is the tallest thing in the bar, so every line of text below moved. The native scrollbar is hidden. [useOverlayScrollX](src/renderer/hooks/useOverlayScrollX.ts) draws a thin thumb **over** the tabs' bottom edge and fades the clipped edges with a CSS mask; the wheel scrolls sideways and the thumb drags. Nothing in it takes layout space. **The thumb is transparent to plain clicks (B503):** only a primary-button press drags, nothing scrolls until the pointer has moved 3px, a drag ends on `lostpointercapture` or a move with the button up, and a press that never moved, or a right-click, is re-dispatched to the tab under it (`elementsFromPoint`), because its grab area lies over the tabs' bottom edge.
+- **The tab strip's scrollbar grew the app bar.** It took 5px the moment the tabs overflowed, and the strip is the tallest thing in the bar, so every line of text below moved. The native scrollbar is hidden. [useOverlayScrollX](../src/renderer/hooks/useOverlayScrollX.ts) draws a thin thumb **over** the tabs' bottom edge and fades the clipped edges with a CSS mask; the wheel scrolls sideways and the thumb drags. Nothing in it takes layout space. **The thumb is transparent to plain clicks (B503):** only a primary-button press drags, nothing scrolls until the pointer has moved 3px, a drag ends on `lostpointercapture` or a move with the button up, and a press that never moved, or a right-click, is re-dispatched to the tab under it (`elementsFromPoint`), because its grab area lies over the tabs' bottom edge.
 - **A settings tweak in one window repainted another window in this window's theme.** Re-applying the theme for a settings change re-saved `lichborne.theme`, which fired a storage event in every other window. A settings-only repaint now passes `applyTheme(theme, { persist: false })`. A real theme change, or a window taking over the document, still saves, so per-character themes on tab switch work as before.
 - **Font family/weight changes and leaving the Overview** now re-pin the story window (`stickToBottom(true)` deps).
 - **Inside the Tableau** (found by the bug checks):
@@ -10869,13 +10901,13 @@ The Tableau's surface is its window: the ⚙ layers, the right-click menus and t
 
 ## 52. The Tableau's sense of place, room by room (v0.20.3)
 
-v0.20.2 gave the Living Tableau a layered backdrop read from the room's description (§51.6). v0.20.3 turned it into a picture of *where you are*: each town drawn in its own style, rooms furnished from what their description names, and things standing in the scene. Then every room in the map was read and judged, and the rules were tuned against what the reviewers found. The split from §51.6 holds: [tableauScene.ts](src/renderer/components/experiences/tableauScene.ts) **decides** (pure, harnessed), [tableauBackdrop.tsx](src/renderer/components/experiences/tableauBackdrop.tsx) **draws** (static, memoized, deterministic). A third file, [tableauPlaces.ts](src/renderer/components/experiences/tableauPlaces.ts), knows the towns.
+v0.20.2 gave the Living Tableau a layered backdrop read from the room's description (§51.6). v0.20.3 turned it into a picture of *where you are*: each town drawn in its own style, rooms furnished from what their description names, and things standing in the scene. Then every room in the map was read and judged, and the rules were tuned against what the reviewers found. The split from §51.6 holds: [tableauScene.ts](../src/renderer/components/experiences/tableauScene.ts) **decides** (pure, harnessed), [tableauBackdrop.tsx](../src/renderer/components/experiences/tableauBackdrop.tsx) **draws** (static, memoized, deterministic). A third file, [tableauPlaces.ts](../src/renderer/components/experiences/tableauPlaces.ts), knows the towns.
 
 ### 52.1 Towns
 
 - **39 towns in 13 building styles** (`PLACES`, `TownStyle`): river (gabled houses, chimneys, a spire: the Crossing, Riverhaven, Therenborough…), harbor (boardwalks on pilings, masts), tiers (Ratha's and Aesry's terraces), floating (Mer'Kresh on platforms over water), sandstone (Muspar'i's domes), crystal (Shard's spires), elven (Leth Deriel's great tree), dwarven (doors carved into a rock face), logs, clan (longhouses and a palisade), tents (Zaldi Taipa), ruins (Throne City, Dirge) and fortress (Ain Ghazal, Hvaral). A town can also set a default horizon (`far`), a lake mist (Aesry) or volcanic country (Dirge, Sicle Grove, Arthelun).
 - **Which town a room is in**, in order:
-  1. its title's place name, through `PLACE_PREFIXES`. That table is GENERATED from the Lich map's `location` field by [tools/gen-place-data.mjs](tools/gen-place-data.mjs) (184 title prefixes, 3,948 rooms), because districts and buildings often never name their town ("[Undershard, …]", "[Crossing Temple, …]"). It is committed rather than read at runtime, so it works without Lich (Principle #2). Re-run the generator when the map grows; its output must stay byte-identical to the committed file.
+  1. its title's place name, through `PLACE_PREFIXES`. That table is GENERATED from the Lich map's `location` field by [tools/gen-place-data.mjs](../tools/gen-place-data.mjs) (184 title prefixes, 3,948 rooms), because districts and buildings often never name their town ("[Undershard, …]", "[Crossing Temple, …]"). It is committed rather than read at runtime, so it works without Lich (Principle #2). Re-run the generator when the map grows; its output must stay byte-identical to the committed file.
   2. a town name at the start of the title (`NAMES`);
   3. **the last town this character was in** (Sekmeht: walk into a building in Shard and the title stops saying Shard). GameWindow keeps it per character in a memo over `resolvePlace` and passes it to the Experience as `place`. It is dropped as soon as a room reads as open wilderness, so leaving town by an unnamed road doesn't carry Shard's spires to the next village. **While a room's description hasn't arrived yet it is kept**: a room change clears the description, and judging the title alone could read as open country and lose the town for good.
 - `resolvePlace` is **idempotent** (calling it again with its own answer returns the same answer), which is what makes it safe inside a memo that writes a ref (the pitfall #70 hazard).
@@ -10959,7 +10991,7 @@ Scenery is drawn from the room, with the ⚙ **Scenery** layer to turn it off. T
 Vellinous asked for the Rakash Moonskin times that Mahtra's DRMoonWatch site shows; Mahtra (Destahd) pointed us at [the code](https://github.com/MahtraDR/DRMoonWatch).
 
 - **What it is.** Rakash take their moonskin form while **Katamba is full** (Knowledge.md §16): from the minute the phase index becomes 4 until the minute it leaves 4. It is a pure function of time, and Lichborne already had the phase math (F64a, `moonPhase`), so nothing new is needed from the game, Lich or moonwatch. DRMoonWatch has no license, so the algorithm is re-derived from our own constants rather than copied.
-- **The math** ([experiences.ts](src/renderer/experiences.ts)):
+- **The math** ([experiences.ts](../src/renderer/experiences.ts)):
   - `nextPhaseChange(moon, serverMs, target, leaving)` steps `moonPhase`'s exact integer math minute by minute (a phase can only change on a minute, so this is exact, unlike `secondsToNext`'s averaged rate);
   - `moonskinWindow(serverMs)` returns the window in progress or the next one, `{ active, start, end }` in server time;
   - `nextFullAt(moon, serverMs)`.
@@ -11044,7 +11076,7 @@ Settings clamped the font to 10–24 while View → Font, a panel's A−/A+ and 
 
 ### 53.3 One number field (B514)
 
-Every numeric field committed on each keystroke, so a half-typed value was final: backspacing the font size snapped it to 8, some boxes refused to be cleared, and the log retention box saved 3 and 36 on the way to 365. [NumberField.tsx](src/renderer/components/NumberField.tsx) replaces all twelve:
+Every numeric field committed on each keystroke, so a half-typed value was final: backspacing the font size snapped it to 8, some boxes refused to be cleared, and the log retention box saved 3 and 36 on the way to 365. [NumberField.tsx](../src/renderer/components/NumberField.tsx) replaces all twelve:
 
 - The box holds exactly what you type, as a draft.
 - **Enter, blur, ↑/↓ and the spinner commit.** An out-of-range number is clamped at that moment and the box shows the clamped value. A spinner click arrives as a plain `Event` rather than an `InputEvent`, which is how it is told apart from typing.
@@ -11104,7 +11136,7 @@ The active character tab stopped 3–4px above the app bar's bottom border, beca
 Sekmeht asked, after B516, for a look at "other bugs for persistence". Three read-only audits (app-wide settings, per-character settings, main-process files) produced about 35 candidates; each serious one was confirmed by reading the code before fixing.
 
 **Fixed in v0.20.4:**
-- **Crash-safe writes** ([atomicWrite.ts](src/main/atomicWrite.ts)): `.tmp` + `fsync` + rename over the target, retried when antivirus holds the file. Used for profiles, `passwords.json` and `ai-keys.json` (B517, B518).
+- **Crash-safe writes** ([atomicWrite.ts](../src/main/atomicWrite.ts)): `.tmp` + `fsync` + rename over the target, retried when antivirus holds the file. Used for profiles, `passwords.json` and `ai-keys.json` (B517, B518).
 - **Unreadable files are kept, never overwritten** (B519, B518): main moves a file that doesn't parse to an object aside as `{name}.unreadable-{ts}`, refuses to write over one it couldn't move, and the launcher, a connect or the shared import shows a toast naming the kept file. The connect paths clear a character's working copy only when no profile file existed, so a damaged profile is rebuilt from the working copy rather than blanked. Both savers refuse to overwrite a NEWER `profileVersion`.
 - **Per-character theme** (B520): stored under `lichborne.characterTheme.{name}`, written by the GameWindow and the import, read by the save and by a GameWindow when it mounts. The shared `lichborne.theme` remains the boot fallback and the cross-window paint signal.
 - **Custom-theme list kept current** (B521): `saveMyThemes` dispatches `lichborne:my-themes-changed`; GameWindows reload on it and on the `storage` event.
@@ -11121,7 +11153,7 @@ Sekmeht asked, after B516, for a look at "other bugs for persistence". Three rea
 - **`/theme` status** reports this character's theme, not the shared key; a cleared character's theme record is removed with it.
 - **The panel tab strip's thumb is display-only** (it blocked drops, drags and hover over the tabs' lower half); see §53.5.
 - **Second bug check:** a file that can't be moved aside is reported once per run, not on every save; damaged or locked files are left out of the rolling backups (copies of a broken file would push the good ones out); a damaged password or AI-key store raises the same toast; Esc no longer undoes a ↑/↓ or spinner step; the Window zoom row steps once from a level outside its range instead of jumping, and re-reads the real level after setting it; the panel thumb's unused drag wiring was removed.
-- **Final check (before packaging):** every read of a profile, `_shared.yaml`, `passwords.json` or `ai-keys.json` goes through `readFileRetrying` ([atomicWrite.ts](src/main/atomicWrite.ts)), which retries for about 300ms while the file is locked. A momentary lock (antivirus scanning a profile just copied in) used to fail the import, and the save right after rebuilt the file's `state` from a working copy that is empty on a fresh machine. Tested against a real exclusive lock: a 150ms lock is ridden out, a 1s lock still fails and blocks the write as before. `NumberField` also treats a non-number `value` as its minimum (an older macro without `delayMs` saved `null` after a ↑/↓).
+- **Final check (before packaging):** every read of a profile, `_shared.yaml`, `passwords.json` or `ai-keys.json` goes through `readFileRetrying` ([atomicWrite.ts](../src/main/atomicWrite.ts)), which retries for about 300ms while the file is locked. A momentary lock (antivirus scanning a profile just copied in) used to fail the import, and the save right after rebuilt the file's `state` from a working copy that is empty on a fresh machine. Tested against a real exclusive lock: a 150ms lock is ridden out, a 1s lock still fails and blocks the write as before. `NumberField` also treats a non-number `value` as its minimum (an older macro without `delayMs` saved `null` after a ↑/↓).
 - `tmp-persist/` has 21 cases.
 
 **Found and left for later (not fixed in v0.20.4):**
@@ -11350,7 +11382,7 @@ Needed whatever else is decided, because Attach and `--frostbite` users get the 
 
 - **Every linked name is clickable:** in the main window, every stream panel (docked or floating) and the Room panel. A left-click opens that name's menu. A right-click puts it above the usual text menu (Modify Text ▸ / Trigger ▸ / Show in Log).
 - **What is excluded:** a click that ends a text selection, and a click on something with its own click (a `<d cmd>` command link, a web link). **The game's actions come first for every player name (Sekmeht, 2026-10-29: "the default behavior from the game trumps everything").** A contact's name that carries a link opens the link menu; on a session receiving the rich stream (`richStreamSeenRef`), a contact's name WITHOUT a link (DR's arrival/departure lines, "Paff goes out.") opens the same player menu, with Look by name (`handleContactClick` → `buildPlayerMenu`). On the legacy stream a contact's name opens the card, as before.
-- **[gameLinks.ts](src/renderer/gameLinks.ts) owns it:**
+- **[gameLinks.ts](../src/renderer/gameLinks.ts) owns it:**
   - `linkDataAttrs` puts `data-exist` / `data-noun` / `data-link` / `data-bold` on the rendered element: on `renderSegment`'s element, or on `renderSegmentFull`'s wrapper when a highlight or contact splits the segment. The split runs inside drop the link, so a menu never shows half a name.
   - `linkAtElement` reads the link back from the element under a click.
   - `buildLinkMenu` makes the items.
@@ -11397,7 +11429,7 @@ GemStone already sends links and doubled bold whatever the client string (wiki �
 - GS adds `<roommeta>`, `health` in `crtrStatus`, and three injury radios.
 - Much of Lichborne is DR-specific: experience mind states, Moons, the Spell Monitor, assess, and the Tableau's combat.
 
-Recommended: a separate version once the DR work is done. (The GS4 timed-effects panel landed with the gs4-support PR — §56.)
+Recommended: a separate version once the DR work is done. (GS4 support then landed as the GS4 stack, PRs #4–#10: the GS4 shards in `GAMES`, the Effects, Experience, Encumbrance and Creatures panels, and family gates on the DR-only surfaces — §56.)
 
 ### 55.8 Open questions and risks
 
@@ -11459,7 +11491,7 @@ A percWindow block can cross a flush, so the Spell Monitor treats a reading that
 The golden run now covers all 24 fixtures (`golden-eol.ts`, baseline `golden-v0210/`); against the previous baseline the only change is the new `rich-stream` event.
 
 **How it works:**
-- **The line.** `SET_FRONTEND_CAPS room_element game_links double_bold` ([frontendCaps.ts](src/main/connection/frontendCaps.ts), `FRONTEND_CAPS_LINE`). Lich consumes it and stops rewriting the rich stream for this client (Knowledge.md §17). Scripts are unaffected: they always see the stream as the game sent it.
+- **The line.** `SET_FRONTEND_CAPS room_element game_links double_bold` ([frontendCaps.ts](../src/main/connection/frontendCaps.ts), `FRONTEND_CAPS_LINE`). Lich consumes it and stops rewriting the rich stream for this client (Knowledge.md §17). Scripts are unaffected: they always see the stream as the game sent it.
 - **When.** On a Lich launch, right after `connectWithRetry` (the two handshake lines were written synchronously before it, so order holds). On an attach, straight after connecting and before the `look`, so the room comes back rich; again on every re-attach (`Session.attachRich` carries the request).
 - **The setting.** `AdvancedSettings.richStream` (app-wide, Lich Setup → **Game stream**; `_shared.yaml` `advancedSettings.richStream`, optional, coerced by `coerceRichStream`):
   - **absent — "Rich (Saga) stream (default)" (B544).** The setting is STORED only when the player picks a mode; absent resolves through `effectiveRichStream()` to `RICH_STREAM_DEFAULT` (shared/types.ts, read by main's `shouldDeclareRichStream` too), today `'auto'` (Sekmeht, 2026-11-01: rich is the default, Legacy stream is the opt-out; `auto` and not `on` because an older Lich forwards the declaration line to the game). The first build stored the default itself: `loadAdvanced` filled it in and `saveAdvanced` wrote the whole object back, so every machine that ran it had `'auto'` saved as a "choice" and a later change of the default would have reached nobody. Lich Setup lists the default option first; `/richstream default` clears the key; `buildSharedProfile` carries `richStream` only when set (a conditional spread, so the key stays absent); `importSharedProfile` leaves a local choice alone when the file has no key. Limitation: a pre-release machine that saved `'auto'`/`'off'` keeps it (indistinguishable from a choice); the release notes say to pick once. Decision (Sekmeht, 2026-10-29): Legacy "until they want to switch it over";
@@ -11477,9 +11509,13 @@ The golden run now covers all 24 fixtures (`golden-eol.ts`, baseline `golden-v02
 
 **Not verified in play yet:** everything above is fixture-tested; the first live sessions on Lich 5.23.0 are the test plan's job. A familiar's view on the rich stream is still unseen (§55.8).
 
-## 56. GemStone IV panels — Effects, Experience, Encumbrance, Creatures (PR #1, gs4-support)
+## 56. GemStone IV support — panels, login by game, Lich installs, profile keys (PRs 4–10, the gs4 stack)
 
-GemStone sends four timed-effect dialogs: `Active Spells`, `Buffs`, `Debuffs` and `Cooldowns`. Each one is a `<dialogData>` of `<progressBar id value text time>` rows. The parser already turned them into `effects-update` events (`EffectsUpdateEvent`, replay-sticky as `effects:<dialog>`). This section is the panel that shows them: [EffectsPanel.tsx](src/renderer/components/panels/EffectsPanel.tsx), with its time math in [gsEffects.ts](src/renderer/gsEffects.ts).
+GemStone IV support landed as a stack of seven PRs, #4–#10, split from the single PR #1 (closed): #4 the connectivity foundation, #5 the Effects panel and GS4 stream routing (§56.1–§56.3, except the DR Infomon gate), #6 the Experience, Encumbrance and Creatures panels and the DR Infomon gate (§56.4–§56.5), #7 the login filter and the §56.7 plan, #8 per-game and per-character Lich installs (§56.7.1), #9 shard names, the grouped wizard and GS4 professions (§56.7.2), #10 profile keys and their migration (§56.7.3).
+
+**The foundation (#4).** `GameFamily` (`'DR' | 'GS4'`) is derived from the shard code by `gameFamilyFromCode` (types.ts), never stored: anything not starting with `DR` is GS4, and an empty code is DR. The GS4 shards are in the `GAMES` table (lichSettings.ts) with their ports and Lich flags: GS3 10024 `--gemstone`, GST 10624 `--gemstone --test`, GSF 10324 `--shattered`. Main sets `parser.family` from the login or attach game code (main.ts), and the parser's one family gate is the inline-roomName title fallback, which never runs for DR. The Lich Map works for both games and `find-lich-map-file` takes the family, so a Lich install holding both games' map data loads the right one. Genie Maps is DR-only: there is no GS4 Genie map data, so on GS4 the button is hidden and the view is forced to the Lich Map (MapPanel.tsx).
+
+GemStone sends four timed-effect dialogs: `Active Spells`, `Buffs`, `Debuffs` and `Cooldowns`. Each one is a `<dialogData>` of `<progressBar id value text time>` rows. The parser already turned them into `effects-update` events (`EffectsUpdateEvent`, replay-sticky as `effects:<dialog>`). §56.1–§56.2 are the panel that shows them: [EffectsPanel.tsx](../src/renderer/components/panels/EffectsPanel.tsx), with its time math in [gsEffects.ts](../src/renderer/gsEffects.ts).
 
 ### 56.1 The wire, as captured
 
@@ -11522,8 +11558,8 @@ Found by replaying the 184 GS4 captures through the parser and checking each str
 
 ### 56.4 GS4 Experience and Encumbrance panels
 
-- **The `exp` tab works in both games.** On GS4 it renders [GsExperiencePanel.tsx](src/renderer/components/panels/GsExperiencePanel.tsx) in place of DR's skill ladder, so `/panel open exp` and a transferred layout work in either game. `exp` left `PANEL_GAMES`. The one place it stays DR-only is a Views card, whose compact `exp` view is DR's ladder.
-- **Encumbrance is its own GS4-only panel** (`encumbrance`, [EncumbrancePanel.tsx](src/renderer/components/panels/EncumbrancePanel.tsx)), as in Saga, showing the load name, its 0–100 bar and the game's description line. A fresh GS4 layout's bottom zone is Effects, Experience, Encumbrance and Log.
+- **The `exp` tab works in both games.** On GS4 it renders [GsExperiencePanel.tsx](../src/renderer/components/panels/GsExperiencePanel.tsx) in place of DR's skill ladder, so `/panel open exp` and a transferred layout work in either game. `exp` left `PANEL_GAMES`. The one place it stays DR-only is a Views card, whose compact `exp` view is DR's ladder.
+- **Encumbrance is its own GS4-only panel** (`encumbrance`, [EncumbrancePanel.tsx](../src/renderer/components/panels/EncumbrancePanel.tsx)), as in Saga, showing the load name, its 0–100 bar and the game's description line. A fresh GS4 layout's bottom zone is Effects, Experience, Encumbrance and Log.
 - **The wire.** The parser gathers each `expr` / `encum` `<dialogData>` and emits one `gs-experience` / `gs-encumbrance` event at its close. Both are replay-sticky in main, and `reset()` clears them. The `mindstate` / `encumbrance` vital-updates still go out as before, and trigger and macro variables now read them: `$mindstate` and `$encumbrance` (0–100, also trigger conditions; 0 on a DR character), answering the PR #1 review's question.
   - Attributes seen in all 184 captures: `mindState`'s `field_exp`, `max_field_exp`, `exp`, `ascension_exp` and `until_next`.
   - Only while active: `rpa` (1.5, 2 or 3) and `lumnis` (stage 2–5).
@@ -11542,7 +11578,7 @@ Found by replaying the 184 GS4 captures through the parser and checking each str
 
 ### 56.5 GS4 Creatures panel and creature health
 
-- **The panel** (`creatures`, GS4-only, [CreaturesPanel.tsx](src/renderer/components/panels/CreaturesPanel.tsx)) lists the room's creatures from the roster, one row each:
+- **The panel** (`creatures`, GS4-only, [CreaturesPanel.tsx](../src/renderer/components/panels/CreaturesPanel.tsx)) lists the room's creatures from the roster, one row each:
   - the name, in the game's creature colour while hostile;
   - its markers (`inferior`, `challenging`, the boss and mount flags), each with a tooltip;
   - the game's exact health as numbers and a bar (green above 50%, amber above 25%, red below; the colour-blind remap of §56.2 covers them);
@@ -11580,17 +11616,17 @@ Found by replaying the 184 GS4 captures through the parser and checking each str
 - Saga 0.10.7, minified: the `expr` / `encum` parse, plus the Experience rows (Total, Capped, Session, Pulse, Tutelage).
 - warlock3: draws these dialogs generically from the server's layout.
 
-### 56.7 Login by game, and a Lich install per game or per character (planned 2026-11-02)
+### 56.7 Login by game, and a Lich install per game or per character (planned 2026-11-02, built in PRs #7–#10)
 
-A plan, built in the order at the end. Sections get marked as they land.
+Planned in PR #7 and built in the order at the end (§56.7.4): the filter in #7, the installs in #8, shard names, the wizard and professions in #9, profile keys in #10. Each subsection describes the code as built.
 
 **Decisions (Sekmeht, 2026-11-02):**
 - A character's Lich install is chosen per game AND per character, layered as in 56.7.1.
-- The same-name fix (56.7.3) is in this PR, as its last phase.
-- One character per account stays one IN TOTAL, across both games. `planReconnect` keeps keying on the account alone, deliberately: an account has one character on at a time across DR and GS4.
+- The same-name fix (56.7.3) ships in the same stack, as its last PR (#10).
+- One character per account stays one IN TOTAL, across both games. `planReconnect` keeps keying on the account alone, deliberately: an account has one character on at a time across DR and GS4. **This is Simutronics' rule, verified** (Horibu, 2026-11-03, answering the review of #4): an account can have only one character logged in at a time, whichever game it is in, so the same-account guards (Team Login, the background connect, Reconnect Last, the conflict modal) are right to ignore the game.
 - The login screen gets an **All / DR / GS** filter (56.7.2).
 
-**What was there (read 2026-11-02):**
+**What was there before the stack (read 2026-11-02; history, not current behaviour):**
 - **One Lich install for everything.** `AdvancedSettings.lichPath` / `rubyPath` (`lichborne.advancedSettings`, replicated to `_shared.yaml`). Every connect path reads it: `runConnect` (card Connect, tab Reconnect, background connect), the Team Login per-member connect, and attach (only for the rich-stream support check).
 - **Post-connect code reads the global through three private copies of `getLichPath()`:** `useLichBridge` (script list), `LichDashboard` (Vars, Settings, Sessions, Scripts, Profiles, from that install's `data/lich.db3` and `scripts/`) and `MapPanel` (the Lich Map's `maps/`).
 - **Startup discovery** fills the global value when it doesn't validate.
@@ -11600,7 +11636,7 @@ A plan, built in the order at the end. Sections get marked as they land.
 
 #### 56.7.1 Which Lich install a character uses
 
-**Status:** BUILT. Resolution, storage and the session-carried path in step 1; the Lich Setup rows, the Edit Profile override and `/lich install` in step 2.
+**Status:** BUILT (PR #8). Resolution, storage and the session-carried path in step 1; the Lich Setup rows, the Edit Profile override and `/lich install` in step 2.
 
 **Resolution, most specific first:** the character's own override; else the game family's default (DR or GS4); else the global install.
 - **By family, not by shard.** GS3/GSX/GST/GSF share one install, as do DR/DRX/DRT/DRF.
@@ -11616,31 +11652,31 @@ A plan, built in the order at the end. Sections get marked as they land.
 
 **One resolver, everywhere:**
 - `resolveLichInstall(adv, game, override)` in lichSettings.ts is pure; `resolveCharacterLichInstall(adv, character, game)` reads the override from the character's profile AT CONNECT TIME (a tab's Reconnect builds its card from the session record, which has no override). It feeds `runConnect`, the Team Login member connect and attach.
-- The resolved `lichPath` is carried on the session: main's `meta` and `RosterEntry` (so a decoupled window keeps it), `SessionInfo` and `SessionRecord`. [sessionLich.ts](src/renderer/sessionLich.ts) replaces the private readers (three named above, plus GameWindow's two: the script-list path and the Moons `sun` read): GameWindow provides `SessionLichPathContext`, components read `useSessionLichPath()`, and a hook in GameWindow takes `sessionLichPath(session)`. Each falls back to the default install, so the Dashboard, the script list and the Lich Map read the install the session launched from. Without this a GS4 character would launch from its GS4 install while its dashboard showed the DR install's Vars.
+- The resolved `lichPath` is carried on the session: main's `meta` and `RosterEntry` (so a decoupled window keeps it), `SessionInfo` and `SessionRecord`. [sessionLich.ts](../src/renderer/sessionLich.ts) replaces the private readers (three named above, plus GameWindow's two: the script-list path and the Moons `sun` read): GameWindow provides `SessionLichPathContext`, components read `useSessionLichPath()`, and a hook in GameWindow takes `sessionLichPath(session)`. Each falls back to the default install, so the Dashboard, the script list and the Lich Map read the install the session launched from. Without this a GS4 character would launch from its GS4 install while its dashboard showed the DR install's Vars.
 - MapPanel's parse caches already key by source path, so two installs cache twice.
-- **Launch serialization stays one queue.** Every Lich binds 11024 and serves one front-end, whichever folder it runs from.
+- **Launch serialization stays one queue.** Every Lich binds its shard's game port (11024 for DR Prime, 10024 for GS4 Prime) and serves one front-end, whichever folder it runs from.
 
 **UI:**
 - **Lich Setup** has a "Lich install by game" section under the default install (`GameInstallRow` in LichSetupFields.tsx; Lich Setup only, not the legacy LoginScreen). Each game reads "Same as the install above" (no entry stored) or "Its own install", which opens the path pair. An entry left without a Lich path is dropped by `loadAdvanced`.
 - **Edit Profile** has a "Lich install" row: the game's install (named, with its path in the hint) or "Its own install". Save is refused while "Its own install" has no Lich path, rather than silently saving the game's. Saving dispatches `CHARACTER_LICH_CHANGED_EVENT` so an open session re-reads it.
-- **The path pair is one component,** [LichInstallFields.tsx](src/renderer/components/LichInstallFields.tsx): Ruby and Lich paths, in that order to match the default install's editor just above, with Browse and the same debounced ✓/✕ existence check. A path of the wrong kind (Lich not `.rbw`/`.rb`; on Windows, Ruby not `.exe`) gets ✕ and a warning, with **Swap them** when the pair is reversed: with the order reversed between the two editors, a pair entered by habit came out swapped and failed to launch with a bare `spawn EFTYPE`. The default install's editor (LichSetupFields) runs the same check and offers the same Swap (round 4 of the review of #8), so a reversed default is flagged too. LichConnection's launch pre-flight refuses a wrong-kind pair with a sentence, for every install; App adds where the failing path is set (`withInstallHint`): a character's own install points to Edit profile → Lich install, a game's to Lich Setup's per-game row (Auto Detect only fills in the default). The Ruby is judged on its own source (`ResolvedLichInstall.rubySource`), since a blank Ruby is inherited from the game's or the default install: a Ruby refusal with the default Ruby keeps the base "Open Lich Setup" sentence (Auto Detect does fix that one), adding only that the install could have its own Ruby (round 5 of the review of #8). A blank Ruby shows the Ruby it inherits as its placeholder and gets no ✓/✕. The default install keeps LichSetupFields (Auto-detect, the Ruby advisory).
+- **The path pair is one component,** [LichInstallFields.tsx](../src/renderer/components/LichInstallFields.tsx): Ruby and Lich paths, in that order to match the default install's editor just above, with Browse and the same debounced ✓/✕ existence check. A path of the wrong kind (Lich not `.rbw`/`.rb`; on Windows, Ruby not `.exe`) gets ✕ and a warning, with **Swap them** when the pair is reversed: with the order reversed between the two editors, a pair entered by habit came out swapped and failed to launch with a bare `spawn EFTYPE`. The default install's editor (LichSetupFields) runs the same check and offers the same Swap (round 4 of the review of #8), so a reversed default is flagged too. LichConnection's launch pre-flight refuses a wrong-kind pair with a sentence, for every install; App adds where the failing path is set (`withInstallHint`): a character's own install points to Edit profile → Lich install, a game's to Lich Setup's per-game row (Auto Detect only fills in the default). The Ruby is judged on its own source (`ResolvedLichInstall.rubySource`), since a blank Ruby is inherited from the game's or the default install: a Ruby refusal with the default Ruby keeps the base "Open Lich Setup" sentence (Auto Detect does fix that one), adding only that the install could have its own Ruby (round 5 of the review of #8). A blank Ruby shows the Ruby it inherits as its placeholder and gets no ✓/✕. The default install keeps LichSetupFields (Auto-detect, the Ruby advisory).
 - **Slash command (Principle #11):** `/lich install` (BUILT) reports the folder this session runs from and where that choice comes from (character / game / default). When the settings have changed since the session connected, it also says what the next connect will use. Ruby is always reported as the next connect's: a session records the Lich path it launched from, not its Ruby, so a Ruby changed mid-session must not read as the running one (review of #8). Setting paths stays a dialog: it is one-time setup with file browsing.
 
 #### 56.7.2 Organising the login screen by game
 
-- **An All / DR / GS filter** (BUILT: `GameFilterBar` / `effectiveGameFilter` in Launcher.tsx, the shared `ui-tabs` chips with a per-game count) on the launcher (both the full screen and the + modal). It shows only when the saved characters span both games (UX #1), and narrows the account sections, Favorites and Teams (a team shows when any of its members is in that game). An account with no character in that game drops out. The choice is a per-viewer convenience in `lichborne.launcher.gameFilter`. A stale choice whose game no longer has characters reads as All. **No slash command:** the launcher is the pre-session screen, where the command bar doesn't exist.
-- **Tile meta shows the shard name** ("GemStone IV Prime") rather than the code; the code stays in the tooltip. (BUILT; an unknown code shows as itself.)
-- **The wizard's game step is grouped** into DragonRealms and GemStone IV columns, each shard named without the game's name (BUILT, `GAME_GROUPS` in AddCharacterWizard.tsx).
-- **Edit Profile per family** (BUILT, `guildTerms(game)` in CharacterNotesEditor.tsx). GS4 professions (`GS4_PROFESSIONS`) replace DR guilds, "Profession" and "Level" replace "Guild" and "Circle", and the tile and Team Login pills follow. The stored fields stay `guild`/`circle`. A stored key the game's list doesn't know stays selectable, so opening the editor never drops it. GameWindow reads the profile's guild as a DR guild ONLY for a DR character: a GS4 "empath" must not pick the DR badge or the Tableau's Touch.
-- **The hero says what the client is for** (BUILT, `heroTagline`): "DragonRealms Client" or "GemStone IV Client" when every saved character is in one game, "DragonRealms & GemStone IV Client" when both are present and on first run.
+- **An All / DR / GS filter** (BUILT in PR #7: `GameFilterBar` / `effectiveGameFilter` in Launcher.tsx, the shared `ui-tabs` chips with a per-game count) on the launcher (both the full screen and the + modal). It shows only when the saved characters span both games (UX #1), and narrows the account sections, Favorites and Teams (a team shows when any of its members is in that game). An account with no character in that game drops out. The choice is a per-viewer convenience in `lichborne.launcher.gameFilter`. A stale choice whose game no longer has characters reads as All. **No slash command:** the launcher is the pre-session screen, where the command bar doesn't exist.
+- **Tile meta shows the shard name** ("GemStone IV Prime") rather than the code; the code stays in the tooltip. (BUILT in PR #9; an unknown code shows as itself.)
+- **The wizard's game step is grouped** into DragonRealms and GemStone IV columns, each shard named without the game's name (BUILT in PR #9, `GAME_GROUPS` in AddCharacterWizard.tsx). The test shards (DRT, GST, `TEST_SHARDS`) are not offered: a hint says to pick Prime and flip the tile's TEST pill.
+- **Edit Profile per family** (BUILT in PR #9, `guildTerms(game)` in CharacterNotesEditor.tsx). GS4 professions (`GS4_PROFESSIONS`) replace DR guilds, "Profession" and "Level" replace "Guild" and "Circle", and the tile and Team Login pills follow. The stored fields stay `guild`/`circle`. A stored key the game's list doesn't know stays selectable, so opening the editor never drops it. GameWindow reads the profile's guild as a DR guild ONLY for a DR character: a GS4 "empath" must not pick the DR badge or the Tableau's Touch.
+- **The hero says what the client is for** (BUILT in PR #9, `heroTagline`): "DragonRealms Client" or "GemStone IV Client" when every saved character is in one game, "DragonRealms & GemStone IV Client" when both are present and on first run.
 
-#### 56.7.3 A character is its name on a shard (BUILT)
+#### 56.7.3 A character is its name on a shard (BUILT, PR #10)
 
 **Decision (Sekmeht, 2026-11-03):** every character's data is keyed by its shard AND its name, for every game. A GSF Tysong who is a bard keeps a different layout and settings from a GS3 Tysong who is a wizard. Existing profiles migrate on first launch. A test instance is a mirror copy of its Prime, so it uses the Prime character's profile. GemStone IV has no Platinum any more, so GSX is gone from the shard list. That leaves five profile shards: **DR, DRX, DRF, GS3, GSF**.
 
-**The key:** `Name@SHARD` ([src/shared/profileKey.ts](src/shared/profileKey.ts), shared by main and the renderer).
+**The key:** `Name@SHARD` ([src/shared/profileKey.ts](../src/shared/profileKey.ts), shared by main and the renderer).
 - `profileKey(name, game)` builds it. `profileShard` folds a test shard into its Prime (`TEST_SHARDS`: DRT → DR, GST → GS3).
-- `profileNameOf(key)` reads the name back, and `testPair(game)` drives the tile's TEST pill, now on GS Prime as well as DR.
+- `profileNameOf(key)` reads the name back, and `testPair(game)` drives the tile's TEST pill, now on GS Prime as well as DR. The pill flips the profile's `game` between Prime and test, and a connect uses that code's port and Lich flags (`gameOptionByCode(c.game)` in App.tsx), so only the storage key is folded.
 - '@' never occurs in a character name, is filename-safe everywhere, and isn't the '.' that `lichborne.{scope}.` prefix scans split on.
 
 **What is keyed:**
@@ -11651,7 +11687,7 @@ A plan, built in the order at the end. Sections get marked as they land.
 
 `session.character` stays the NAME: it is what the game, Lich (`game:char`), contacts, `$characterName` and everything on screen use. GameWindow derives `profile` once; the CharacterProvider value, `LauncherCharacter.profile`, Transfer's rows and the wizard's owner map are keys. The Lich-launch log is filed by key too (`Logs/lich-launch/{Name@SHARD}.log`), so two namesakes launching at once on different shards don't overwrite one file. So is the raw XML capture (`Logs/raw/{Name@SHARD}_{date}.xml`), along with its per-session on/off switch.
 
-**Migration** ([profileKeyMigration.ts](src/main/profileKeyMigration.ts)), at app-ready, before the first window:
+**Migration** ([profileKeyMigration.ts](../src/main/profileKeyMigration.ts)), at app-ready, before the first window:
 - **Where a file goes:** each legacy `profiles/{Name}.yaml`, in `profiles/` and `profiles/Archive/`, becomes `{character}@{profileShard(game)}.yaml`. The inputs are the file's own `character` and `game`, the same ones `loadCharacterCards` reads. So a DR Prime profile, or one naming no game, lands on DR (Sekmeht's "bound to DR Prime"), while a DRX or DRF profile keeps its own shard instead of being pointed at Prime's port.
 - **Safety:** every legacy YAML is first copied to `profiles/PreKeyBackup/`. A file that can't be read right now (locked) is left where it is; one that won't parse is moved aside as `.unreadable-*`, as a launcher read would, so its notice still shows. When the target already exists it wins, and the legacy file goes to `PreKeyBackup/` as `{name}.superseded-{ts}.yaml` (an older build can write `Name.yaml` again after a migration). `listCharacterProfiles` lists only `@` names, so a bare file can never become a second tile. A second run does nothing.
 - **What moves with it:** its `.bak`s, and its Session Log folder together with the files inside it. A log move that fails (a day file held open on Windows) stays listed in `{userData}/profile-key-log-moves.json` and is retried at every start, file by file; a day the new folder already has is kept where it is, never overwritten. A backup already in `PreKeyBackup/` is never overwritten either (a later copy gets a timestamp).
@@ -11664,14 +11700,33 @@ A plan, built in the order at the end. Sections get marked as they land.
 
 **Guards against a missed call site:** `writeCharacterProfile` and `session-log:append` refuse a non-key in main, and `scopedKey` logs a bare scope once.
 
+**Attach:** the Attach dialog names the character AND its game (review of #4), so an attach reads exactly that `Name@SHARD` profile for its account; a namesake on another shard or game lends neither its account nor its files (review of #10). The dialog autofills a name filed on two shards only when one tile is clearly meant: the only one, or the only one with a saved attach target. Tile, team and reconnect attaches pass their own game and account.
+
 **The wizard:** a fetched character matches a profile by name AND shard. The same name on another shard is a new character, which retires B614's cross-game rule. A re-file (B542) is the same key under another account.
 
 #### 56.7.4 Order of work
 
-1. The resolver, the session-carried install and the three readers. (BUILT.)
-2. Lich Setup per-game rows, the Edit Profile override and `/lich install`. (BUILT.)
-3. The launcher filter, shard names, the grouped wizard and Edit Profile per family. (BUILT.)
-4. Profiles keyed by name and shard, with the migration. (BUILT.)
+1. The resolver, the session-carried install and the readers. (BUILT, PR #8.)
+2. Lich Setup per-game rows, the Edit Profile override and `/lich install`. (BUILT, PR #8.)
+3. The launcher filter (BUILT, PR #7), shard names, the grouped wizard, the hero and Edit Profile per family (BUILT, PR #9).
+4. Profiles keyed by name and shard, with the migration. (BUILT, PR #10.)
 5. **Future: copy one character's setup to another in one step.** Profile Transfer (F38, launcher → Transfer) already does this through a bundle file: export from GS3 Tysong, import into GS3 Char3, choosing categories (layout, highlights, triggers, macros, …). The future step is a "Copy settings to…" item in the tile ⋯ menu that runs `buildProfileExport` → `applyProfileImport` with no file in between: pick the targets and the categories, done. Transfer's pickers show each character's shard, so two Tysongs can be told apart.
 
-**Tests:** a harness for `resolveLichInstall` and the `_shared.yaml` round-trip (including a file without `installs`); a GS4 session whose Dashboard, script list and map read the GS4 install; the key migration on a scratch userData (DR, DRX, DRT, GS3, no game, unreadable, existing target, Archive, backups, logs; run three times); two Tysongs (GS3 and GSF) keeping separate files and scopes, the localStorage move, legacy team and Reconnect Last names, and the wizard's roster match.
+**Tests run (from the PR test plans):** a harness for `resolveLichInstall`, the `_shared.yaml` round-trip (including a file without `installs`) and an in-game save keeping a character's install (#8); the Lich Dashboard, script list and Lich Map inside a GS4 session on its own install, all reading that install (#10); the key migration on a scratch userData (DR, DRX, DRT, GS3, no game, unreadable, existing target, Archive, backups, logs; run three times) plus an interruption harness (#10); two Tysongs (GS3 and GSF) keeping separate files and scopes, the localStorage move, legacy team and Reconnect Last names, and the wizard's roster match (#10).
+
+**Seen live** (Horibu), on three Windows builds of the stack:
+- **Build `1469b29`** (2026-11-03; the stack tip after round 3 of the review, so it has #10's legacy-name-map fix): the first launch migrated a real profiles folder, and existing DR characters kept their settings, layouts and Session Logs (#10).
+- **Build `106434b`** (2026-11-03; `1469b29` plus the swapped Ruby/Lich fix that became #8's `1ea7b7b`):
+  - GS4 panels: Effects, SEARCH output in main, speech in Conversation and the Bounties tab (#5); Experience, Encumbrance, Creatures and click-to-target (#6).
+  - A GS4 character on its own install from Lich Setup, and another on its own install from Edit Profile (#8).
+  - Genie Maps gated on GS4, including a second GS4 account, and Team Login and Profile Transfer with a GS4 character (#10).
+- **Test build `da63d12`** (2026-11-04, run 41846706616; the restacked tip on v0.21.1: Electron 45, React 19, js-yaml 5, better-sqlite3 13):
+  - The migration re-run on the same real profiles folder, restored from `PreKeyBackup/`. Both files were renamed with size and timestamp unchanged, the originals were copied to `PreKeyBackup/`, and the launcher showed both characters with their settings, layouts and Session Logs (#10).
+  - A swapped Ruby/Lich pair in the DragonRealms per-game row: the warning, **Swap them** (which swapped it), and a connect refused with "… These paths come from the DragonRealms install, so fix them in Lich Setup → Lich install by game." (#8).
+  - The vitals bar text option on a GS4 character: Settings → Layout → Vitals bar text in all three modes, and `/vitals` (#15).
+  - A sanity pass on the new toolchain: the GS4 panels, own installs and Team Login.
+
+**Not yet verified live:**
+- The swapped-pair variants not hit above (#8): the default install's editor warning, and the refusal for a character's own install or an inherited Ruby. They are covered by rendering the real components and by probes of the real resolver and hint.
+- The old-name map held in every window (#10). It only matters on a full localStorage, and was checked with two instances of the real modules.
+- The first release from the org has its own checks (#13).

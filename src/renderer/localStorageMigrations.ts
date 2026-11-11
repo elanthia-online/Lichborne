@@ -42,7 +42,7 @@ function withParsedObject<T extends Record<string, unknown>>(
 }
 
 // v0.8.10: rename the panel/stream id 'conversations' (plural — Lichborne's
-// pre-v0.8.10 form) to 'conversation' (singular — Stormfront / Wrayth / Genie /
+// pre-v0.8.10 form) to 'conversation' (singular — Wrayth / Genie /
 // Frostbite convention). Touches: tabs arrays (id/type/label fields), active-id
 // strings, settings.panelFontSizes keys, trigger watchStream values. The parser
 // also keeps a 'conversations' → 'conversation' STREAM_MAP entry as a backward
