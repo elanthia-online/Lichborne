@@ -243,8 +243,8 @@ export default function BulkConnectPicker({ groups, initialSetName = null, onCan
 
         <div className="cne-body">
           <p className="ui-hint">
-            Pick one character from each account you want to bring. DragonRealms allows one
-            character per account, so anyone already logged in is skipped.
+            Pick one character from each account you want to bring. An account can have one
+            character on at a time, so anyone already logged in is skipped.
           </p>
 
           {/* ── ACCOUNTS ─────────────────────────────────────────────────── */}

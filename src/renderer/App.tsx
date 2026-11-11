@@ -604,8 +604,8 @@ function AppShell() {
   // openAttachModal, which loads the prefill (last attach) and the saved
   // per-character targets (for name → host:port autofill) before showing it.
   const [showAttach, setShowAttach] = useState(false)
-  const [attachInitial, setAttachInitial] = useState<{ character: string; host: string; port: number } | null>(null)
-  const [attachKnown, setAttachKnown] = useState<Record<string, { host: string; port: number }>>({})
+  const [attachInitial, setAttachInitial] = useState<{ character: string; host: string; port: number; game?: string } | null>(null)
+  const [attachKnown, setAttachKnown] = useState<Record<string, { game: string; attach?: { host: string; port: number } }>>({})
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingCancelledRef = useRef(false)
   // A character connected while another is already open logs in in the
@@ -1425,11 +1425,11 @@ function AppShell() {
     const key = `bg:${c.account}|${c.name}`.toLowerCase()
     setShowAdd(false)
     if (bgConnectsRef.current.some(b => b.key === key)) return
-    // One character per account (DR's rule): a second login on an account
+    // One character per account, across both games: a second login on an account
     // already logging in would only fail with "invalid login key".
     const sameAccount = bgConnectsRef.current.find(b => b.c.account.toLowerCase() === c.account.toLowerCase())
     if (sameAccount) {
-      showToast({ title: `${c.name} was not connected`, message: `${sameAccount.c.name} is already logging in on account ${c.account}, and DragonRealms allows one character per account.` })
+      showToast({ title: `${c.name} was not connected`, message: `${sameAccount.c.name} is already logging in on account ${c.account}, and an account can have one character on at a time.` })
       return
     }
     const cancel = { current: false }
@@ -1679,15 +1679,20 @@ function AppShell() {
     out?: { sessionId?: SessionId; characterId?: CharacterId },
     // A team login's background attach: no focus change, no dialog closed.
     quiet?: boolean,
+    // The Attach dialog's game picker. It wins over the profile's game: the
+    // picker is prefilled from that profile, so a different value is the
+    // player's choice. Without it the default is DR (every attach was DR
+    // before GS4).
+    chosenGame?: string,
   ): Promise<string | null> {
     let account = fixed?.account ?? 'attach'
-    let game = fixed?.game ?? 'DR'
+    let game = fixed?.game ?? chosenGame ?? 'DR'
     if (!fixed) {
       try {
         const existing = await window.api.readCharacterProfile(character)
           .catch(() => null) as { account?: string; game?: string } | null
         if (existing?.account) account = existing.account
-        if (existing?.game) game = existing.game
+        if (existing?.game && !chosenGame) game = existing.game
       } catch { /* no profile — placeholders stand */ }
     }
 
@@ -1721,7 +1726,7 @@ function AppShell() {
     // next session starts from) and the global last-attach key (prefills the
     // modal when it opens blank). The refreshKey bump makes a just-created
     // stub tile appear without a restart.
-    try { localStorage.setItem(ATTACH_LAST_KEY, JSON.stringify({ character, host, port })) } catch { /* ignore */ }
+    try { localStorage.setItem(ATTACH_LAST_KEY, JSON.stringify({ character, host, port, game })) } catch { /* ignore */ }
     try {
       await saveCharacterAttach(character, account, game, { host, port })
       setLauncherRefreshKey(k => k + 1)
@@ -1758,7 +1763,7 @@ function AppShell() {
   // matching characterId: the first tab vanishes, its session is orphaned in
   // main (still attached, no longer reachable), and it looks like attaching
   // the second character "replaced" the first instead of adding to it.
-  async function runAttachFromModal(character: string, host: string, port: number): Promise<string | null> {
+  async function runAttachFromModal(character: string, host: string, port: number, game: string): Promise<string | null> {
     const name = character.trim()
     const existing = sessions.find(s => s.character.toLowerCase() === name.toLowerCase())
     if (existing?.status.connected) {
@@ -1773,19 +1778,19 @@ function AppShell() {
       return null
     }
     if (existing) window.api.destroySession(existing.sessionId)
-    return runAttach(name, host, port)
+    return runAttach(name, host, port, undefined, undefined, undefined, undefined, game)
   }
 
   // Open the Attach modal with its memory loaded: the per-character targets
   // (for autofill as the name is typed) and the last successful attach (for
   // the blank-open prefill). Both are best-effort — the modal works empty.
   async function openAttachModal() {
-    let known: Record<string, { host: string; port: number }> = {}
+    let known: Record<string, { game: string; attach?: { host: string; port: number } }> = {}
     try {
       const cards = await loadCharacterCards()
-      for (const c of cards) if (c.attach) known[c.name.toLowerCase()] = c.attach
+      for (const c of cards) known[c.name.toLowerCase()] = { game: c.game, attach: c.attach }
     } catch { /* no tiles yet — nothing to autofill */ }
-    let initial: { character: string; host: string; port: number } | null = null
+    let initial: { character: string; host: string; port: number; game?: string } | null = null
     try { initial = JSON.parse(localStorage.getItem(ATTACH_LAST_KEY) ?? 'null') } catch { /* ignore */ }
     setAttachKnown(known)
     setAttachInitial(initial)
@@ -2551,7 +2556,7 @@ function AppShell() {
             <div className="launcher-dialog-body">
               <div>Some accounts from your last session already have a character connected.</div>
               <div className="launcher-dialog-note">
-                DragonRealms allows one character per account at a time — choose which character to
+                An account can have one character on at a time — choose which character to
                 use on each account. Switching disconnects the current character first (its tab stays
                 open in case you want to log back into it later).
               </div>

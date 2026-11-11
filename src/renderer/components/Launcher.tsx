@@ -112,10 +112,24 @@ interface Props {
 // first because it's the canonical / most-common game; DRX and DRF follow.
 // DRT tiles render under the DR section — DRT is a per-character override on
 // DR, not a fourth tier (same SGE auth, same character list, different shard).
-const GAME_SECTIONS: { key: 'DR' | 'DRX' | 'DRF'; label: string; matches: (game: string) => boolean }[] = [
+//
+// GS4 shards (GS3/GSX/GST/GSF) each get their OWN section rather than being
+// folded into an existing one — unlike DRT, there's no verified evidence GS4's
+// Test shard shares an account's character list with GS4 Prime the way DR's
+// does, so this doesn't assume it (the conservative default: a section per
+// distinct shard code, same as DRX/DRF already get). If a character's `game`
+// matches none of these, it is silently dropped from every account's rendered
+// sections (groupCharacters below) — every code the wizard/GAMES table can
+// produce MUST have a matching section here, or its characters become
+// invisible in the launcher despite existing on disk.
+const GAME_SECTIONS: { key: 'DR' | 'DRX' | 'DRF' | 'GS3' | 'GSX' | 'GST' | 'GSF'; label: string; matches: (game: string) => boolean }[] = [
   { key: 'DR',  label: 'DragonRealms',          matches: g => g === 'DR' || g === 'DRT' },
   { key: 'DRX', label: 'DragonRealms Platinum', matches: g => g === 'DRX' },
   { key: 'DRF', label: 'DragonRealms Fallen',   matches: g => g === 'DRF' },
+  { key: 'GS3', label: 'GemStone IV',           matches: g => g === 'GS3' },
+  { key: 'GSX', label: 'GemStone IV Platinum',  matches: g => g === 'GSX' },
+  { key: 'GST', label: 'GemStone IV Test',      matches: g => g === 'GST' },
+  { key: 'GSF', label: 'GemStone IV Shattered', matches: g => g === 'GSF' },
 ]
 
 // Launcher hero logo. Lives in src/renderer/public/ (the about-theme.mid
@@ -482,8 +496,14 @@ export async function saveCharacterAttach(
     // character wants to see that character, and this fires once per attach —
     // it is not a persistent override of their choice.
     expandAccountOnce(profile.account ?? account)
-    if (profile.attach?.host === attach.host && profile.attach?.port === attach.port) return
-    await window.api.writeCharacterProfile(characterName, { ...profile, attach })
+    // An attach-only stub takes the game it was just attached with, so a stub
+    // saved under the wrong game is corrected by re-attaching with the right
+    // one. A real login profile keeps its game: at this layer a DR and a GS4
+    // character of the same name share one file, and repointing it would
+    // move the login character to the other game.
+    const regame = profile.account === 'attach' && profile.game !== game
+    if (!regame && profile.attach?.host === attach.host && profile.attach?.port === attach.port) return
+    await window.api.writeCharacterProfile(characterName, { ...profile, attach, ...(regame ? { game } : {}) })
     return
   }
   // Prior accounts, read BEFORE the write, for the 1→2 transition below.

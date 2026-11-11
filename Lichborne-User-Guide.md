@@ -155,9 +155,10 @@ Lichborne can simply attach to it:
 lich --login Yourcharacter --headless 8001
 ```
 
-Then in Lichborne click **⇋ Attach** in the launcher's top bar and fill in three
-fields — character name, host (`127.0.0.1` if it's the same machine), and the
-port you used. No account name, no password: the headless Lich already logged
+Then in Lichborne click **⇋ Attach** in the launcher's top bar and fill in four
+fields — character name, the game it's playing (filled in for you when the
+character already has a tile), host (`127.0.0.1` if it's the same machine), and
+the port you used. No account name, no password: the headless Lich already logged
 itself in.
 
 Why you might want this:

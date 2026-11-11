@@ -89,12 +89,19 @@ export default function VitalsBar({ vitals, labels, compact = false, thresholds 
             // B333: compact mode shows only an acronym (H / M / IF…), so the
             // tooltip spells it out; regular mode already shows the full name.
             <div key={id} className="vital-bar"
-              title={compact ? `${fullLabel}${v.max > 0 ? `: ${v.current}%` : ''}` : undefined}>
+              title={compact ? `${fullLabel}${v.max > 0 ? `: ${Math.round(pct)}%` : ''}` : undefined}>
               <div className="vital-track">
                 <div className={vitalFillClass(id, pct, thresholds)} style={{ width: `${pct}%` }} />
               </div>
               <span className="vital-text">
-                {label}{v.max > 0 ? `${sep}${v.current}%` : ''}
+                {/* GS4 support: shows the COMPUTED percentage, not raw
+                    `current` — verified live against a real GS4 capture
+                    (Ilten @ GST, 2026-08-27), whose health/mana/stamina/
+                    spirit current/max are real numbers (e.g. 160/160), not
+                    the 0-100 percentage DR's vitals always were. This is a
+                    no-op for DR (max is always 100 there, so pct === current
+                    already) and a real fix for GS4 (100%, not "160%"). */}
+                {label}{v.max > 0 ? `${sep}${Math.round(pct)}%` : ''}
               </span>
             </div>
           )

@@ -80,7 +80,7 @@ import { savePassword, loadPassword, deletePassword } from './passwords'
 import { registerAIHandlers } from './ai'
 import { registerSimuCoinHandlers } from './simucoin'
 import { restoredBoundsFor, trackWindowState, flushWindowState } from './windowState'
-import { IPC } from '../shared/types'
+import { IPC, gameFamilyFromCode } from '../shared/types'
 import { makeCharacterId } from '../shared/characterId'
 import type {
   AttachCredentials, GameEvent, GameEventBatch, LoginCredentials, LoginResult,
@@ -178,6 +178,10 @@ function snapshotKey(evt: GameEvent): string | null {
     case 'room-id':       return 'room-id'
     case 'exp-component': return `exp:${evt.skill}`
     case 'injury-update': return 'injury'
+    // GS4's timed-effect dialogs — sticky like injury-update (a window
+    // takeover must repaint current Active Spells/Buffs/Debuffs/Cooldowns,
+    // not wait for the next server refresh), one snapshot slot per dialog.
+    case 'effects-update': return `effects:${evt.dialog}`
     // §35: the cast is sticky state — a window taking over the session must
     // repaint the Tableau without waiting for the next room update.
     // scene-arrive/depart stay history events (transient edges; future
@@ -1187,6 +1191,7 @@ ipcMain.handle(CH.LOGIN, async (event, creds: LoginCredentials): Promise<LoginRe
   // connect resolves — see below.
   s.replayTarget = s.ownerWindowId
   s.holdingForReplay = true
+  s.parser.family = gameFamilyFromCode(creds.game)   // the inline-roomName gate
   s.meta = {
     characterId: makeCharacterId(creds.account, creds.character, creds.game),
     account: creds.account,
@@ -1258,6 +1263,7 @@ ipcMain.handle(CH.LOGIN_ATTACH, async (event, creds: AttachCredentials): Promise
   // subscriber and dropped on the floor.
   s.replayTarget = s.ownerWindowId
   s.holdingForReplay = true
+  s.parser.family = gameFamilyFromCode(creds.game)   // the inline-roomName gate
   s.meta = {
     characterId: makeCharacterId(creds.account, creds.character, creds.game),
     account: creds.account,
@@ -1958,15 +1964,27 @@ function lichDirFrom(lichPath: string): string {
   return path.dirname(expandHome(lichPath))
 }
 
-ipcMain.handle('find-lich-map-file', (_e, lichPath: string): { jsonPath: string; mapsDir: string } | null => {
+ipcMain.handle('find-lich-map-file', (_e, lichPath: string, family?: 'DR' | 'GS4'): { jsonPath: string; mapsDir: string } | null => {
   if (!lichPath) return null
   const lichDir = lichDirFrom(lichPath)
   const mapsDir = path.join(lichDir, 'maps')
-  // Scan all subdirs under data/ for the highest-sequence map-*.json
+  // Scan subdirs under data/ for the highest-sequence map-*.json. Lich saves
+  // maps to `File.join(DATA_DIR, XMLData.game)` (map_base.rb) — one directory
+  // PER GAME, named with Lich's own game code, which always starts "DR" or
+  // "GS" (verified: `XMLData.game =~ /^DR/` / `=~ /^GS/` throughout lich-5,
+  // e.g. account.rb/messaging.rb/global_defs.rb). Filtering by `family` here
+  // (when given) stops a player who has BOTH a DR and a GS4 character's map
+  // data under the same Lich install from having the globally-newest map
+  // file across BOTH games win regardless of which one is connected — e.g. a
+  // GS4 map saved after the DR one would otherwise load GS4 room data for a
+  // connected DR character. `family` is optional (not undefined) so an older
+  // renderer/preload pairing degrades to the pre-GS4 "scan everything" search
+  // rather than erroring.
   const dataRoot = path.join(lichDir, 'data')
   try {
     const gameDirs = fs.readdirSync(dataRoot, { withFileTypes: true })
       .filter(e => e.isDirectory())
+      .filter(e => !family || (family === 'DR' ? /^DR/i.test(e.name) : /^GS/i.test(e.name)))
       .map(e => path.join(dataRoot, e.name))
     const candidates = gameDirs.flatMap(dir => {
       try {
