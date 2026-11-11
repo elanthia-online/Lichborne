@@ -2424,9 +2424,10 @@ ipcMain.on('check-for-updates',  () => {
 })
 
 // ── Dual-feed update check (Elanthia-Online handover — DESIGN §18.4.1) ──────
-// Lichborne is moving from github.com/SekmehtDR/Lichborne to
-// github.com/elanthia-online/Lichborne. Every shipped install has the OLD repo
-// baked into its app-update.yml (extraResources), so the check tries the new
+// Lichborne moved from github.com/SekmehtDR/Lichborne to
+// github.com/elanthia-online/Lichborne (transferred; the old URLs redirect).
+// Installs built before the cut-over have the OLD repo baked into their
+// app-update.yml (extraResources), so the check tries the new
 // home FIRST and falls back to the legacy repo. Correct on both sides of the
 // transfer:
 //   - BEFORE: elanthia-online/Lichborne doesn't exist (404 on releases.atom)
@@ -2817,8 +2818,8 @@ function setupMenu() {
         { label: 'User Guide (TBA)', enabled: false },
         { label: 'Discord', click: () => { void shell.openExternal('https://discord.gg/ZDkXCeR72J') } },
         { type: 'separator' },
-        { label: 'GitHub Repository', click: () => { void shell.openExternal('https://github.com/SekmehtDR/Lichborne') } },
-        { label: 'Report a Bug…',     click: () => { void shell.openExternal('https://github.com/SekmehtDR/Lichborne/issues') } },
+        { label: 'GitHub Repository', click: () => { void shell.openExternal('https://github.com/elanthia-online/Lichborne') } },
+        { label: 'Report a Bug…',     click: () => { void shell.openExternal('https://github.com/elanthia-online/Lichborne/issues') } },
         { type: 'separator' },
         { label: 'Check for Updates…', click: () => sendMenuAction('check-updates') },
         { type: 'separator' },

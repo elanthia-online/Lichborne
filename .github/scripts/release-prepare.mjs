@@ -17,7 +17,7 @@ import { readFileSync, existsSync } from 'fs'
 const pkg = JSON.parse(readFileSync('package.json', 'utf-8'))
 const version = pkg.version
 const tag = `v${version}`
-const [owner, repo] = (process.env.GITHUB_REPOSITORY ?? 'SekmehtDR/Lichborne').split('/')
+const [owner, repo] = (process.env.GITHUB_REPOSITORY ?? 'elanthia-online/Lichborne').split('/')
 
 const token = process.env.GH_TOKEN
 if (!token) {

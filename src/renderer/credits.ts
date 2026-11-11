@@ -44,11 +44,13 @@ export const TESTERS = [
 ]
 
 // The project's home at the Elanthia-Online org (v0.20.4, Sekmeht). Used only by
-// Help → About. The updater's feeds and the other hardcoded links are a separate
-// cut-over (DESIGN §18.4.1).
+// Help → About. Done early; the rest of the move (publish owner, app-update.yml,
+// the release scripts, the Help-menu links) came with the Phase-3 cut-over,
+// DESIGN §18.4.1. The updater's feeds still list both homes on purpose.
 export const REPO_URL = 'https://github.com/elanthia-online/Lichborne'
-// The AI Processing & Privacy notice (AINOTICE.md) — future GitHub location; the
-// file is committed at the repo root, so it resolves once the repo is public.
+// The AI Processing & Privacy notice (AINOTICE.md), at the repo root. Shipped
+// builds open this URL, so the file must stay at the root (see CLAUDE.md's
+// Documentation discipline).
 export const AI_NOTICE_URL = 'https://github.com/elanthia-online/Lichborne/blob/main/AINOTICE.md'
 // Discord invite — ALSO hardcoded in main.ts's Help → Discord menu item; keep
 // the two in sync and rotate BOTH per major version (see CLAUDE.md's Discord
