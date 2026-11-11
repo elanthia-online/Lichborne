@@ -1,6 +1,7 @@
 // Lich Dashboard — the per-session modal that SURFACES Lich's own state, in
 // five tabs: Scripts (list / run / edit `.lic` files), Variables (Lich
-// `Vars`), DR Infomon (a catalog of drinfomon accessors), Settings (read-only
+// `Vars`), DR Infomon (a catalog of drinfomon accessors; DR sessions only),
+// Settings (read-only
 // `lich.db3` settings + feature flags) and Profile (YAMLs)
 // (`scripts/profiles/*.yaml` with js-yaml validation).
 //
@@ -45,6 +46,7 @@ hljs.registerLanguage('yaml', yamlLang)
 hljs.registerLanguage('ruby', rubyLang)   // .lic scripts (Scripts editor)
 import { createPortal } from 'react-dom'
 import type { SessionInfo } from './LoginScreen'
+import { gameFamilyFromCode, type GameFamily } from '../../shared/types'
 import '../styles/lich-panels.css'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1725,18 +1727,21 @@ function DrInfomonTab({ lichPath, session, onSendCommand }: { lichPath: string; 
 // ── Dashboard shell ───────────────────────────────────────────────────────────
 
 // `title` is the tab's tooltip — what the section IS, since a one-word label
-// doesn't say (UX standard #8).
-const TABS: { id: DashTab; label: string; title: string }[] = [
+// doesn't say (UX standard #8). `games` limits a tab to those families:
+// drinfomon (DRStats / DRSkill / DRSpells / DRRoom) is DragonRealms-only.
+const TABS: { id: DashTab; label: string; title: string; games?: GameFamily[] }[] = [
   { id: 'scripts',   label: 'Scripts',    title: 'Browse, run and edit the .lic scripts in your Lich install' },
   { id: 'variables', label: 'Variables',  title: "Lich's Vars for each character — editable for the connected one" },
-  { id: 'drinfomon', label: 'DR Infomon', title: "The game values Lich's drinfomon keeps in memory, and how to use them in a script" },
+  { id: 'drinfomon', label: 'DR Infomon', title: "The game values Lich's drinfomon keeps in memory, and how to use them in a script", games: ['DR'] },
   { id: 'settings',  label: 'Settings',   title: "Lich's own settings and feature flags, read from lich.db3 (read-only)" },
   { id: 'profiles',  label: 'Profile (YAMLs)', title: 'The YAML profiles in scripts/profiles — view, validate and edit' },
 ]
 
 export default function LichDashboard({ session, initialTab = 'scripts', onClose, onSendCommand, onRunCommand, closeRequest }: Props) {
   const lichPath = getLichPath()
-  const [tab, setTab] = useState<DashTab>(initialTab)
+  const family = gameFamilyFromCode(session.game)
+  const tabs = TABS.filter(t => !t.games || t.games.includes(family))
+  const [tab, setTab] = useState<DashTab>(() => tabs.some(t => t.id === initialTab) ? initialTab : 'scripts')
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -1796,7 +1801,7 @@ export default function LichDashboard({ session, initialTab = 'scripts', onClose
         {/* Navigation — a quiet row on the body surface, never inside the accent
             band (UX #10: only the top-level header is accent). */}
         <div className="ui-tabs ld-tab-nav" role="tablist" aria-label="Lich Dashboard sections">
-          {TABS.map(t => (
+          {tabs.map(t => (
             <button key={t.id} type="button" role="tab" aria-selected={tab === t.id}
               className={`ui-tab${tab === t.id ? ' ui-tab--active' : ''}`}
               title={t.title}
@@ -1809,7 +1814,7 @@ export default function LichDashboard({ session, initialTab = 'scripts', onClose
           <div className="ld-body">
             {tab === 'scripts'   && <ScriptsTab   lichPath={lichPath} session={session} onSendCommand={onSendCommand} />}
             {tab === 'variables' && <VarsTab      lichPath={lichPath} session={session} onRunCommand={onRunCommand} />}
-            {tab === 'drinfomon' && <DrInfomonTab lichPath={lichPath} session={session} onSendCommand={onSendCommand} />}
+            {tab === 'drinfomon' && family === 'DR' && <DrInfomonTab lichPath={lichPath} session={session} onSendCommand={onSendCommand} />}
             {tab === 'settings'  && <SettingsTab  lichPath={lichPath} />}
             {tab === 'profiles'  && <ProfilesTab  lichPath={lichPath} session={session} />}
           </div>

@@ -337,6 +337,8 @@ export const MACRO_VARS: { name: string; desc: string }[] = [
   { name: 'stamina',       desc: 'stamina %' },
   { name: 'spirit',        desc: 'spirit %' },
   { name: 'concentration', desc: 'concentration %' },
+  { name: 'mindstate',     desc: 'mind % (GemStone IV)' },
+  { name: 'encumbrance',   desc: 'encumbrance % (GemStone IV)' },
   { name: 'rt',            desc: 'roundtime seconds' },
   { name: 'ct',            desc: 'cast time seconds' },
   { name: 'stance',        desc: 'current stance' },
