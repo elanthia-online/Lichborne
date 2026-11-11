@@ -105,7 +105,7 @@ Three steps and a one-time in-game command, and you're playing.
 
 All downloads are on the **[Releases page](https://github.com/elanthia-online/Lichborne/releases/latest)**.
 
-**Windows (stable):** run `Lichborne-X.Y.Z-setup.exe` — no admin rights needed. Windows may show a **SmartScreen** warning (no code-signing certificate yet); click **More info → Run anyway**. It's safe. Auto-updates with one click when a new version lands.
+**Windows (stable):** run `Lichborne-X.Y.Z-setup.exe` — no admin rights needed. Windows may show a **SmartScreen** warning (no code-signing certificate yet); click **More info → Run anyway**. It's safe. Auto-updates with one click when a new version lands. The installer asks whether to put a shortcut on your desktop (ticked by default); when you install a newer version over an old one, a shortcut you already have stays where you put it.
 
 **Linux (beta):** download the `.AppImage`, `chmod +x` it, run it. Two tips:
 
