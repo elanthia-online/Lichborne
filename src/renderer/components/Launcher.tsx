@@ -36,7 +36,9 @@ import type { CharacterProfile } from '../profile-types'
 import { loadLastSessionCharacters, exportSharedProfile, reportUnreadableProfiles } from '../profile'
 import { loadBulkSets, saveBulkSets, removeBulkSet, upsertBulkSet, BULK_SET_NAME_MAX, BULK_SETS_KEY, BULK_SETS_CHANGED_EVENT } from '../bulkSets'
 import ContextMenu, { type CtxItem } from './ContextMenu'
-import CharacterNotesEditor, { guildLabel } from './CharacterNotesEditor'
+import CharacterNotesEditor, { guildLabel, type ProfilePatch } from './CharacterNotesEditor'
+import { type LichInstall, coerceLichInstall, announceCharacterLichChanged } from '../lichSettings'
+import { differs } from '../hooks/useUnsaved'
 import { makeCharacterId } from '../../shared/characterId'
 import { gameFamilyFromCode, type GameFamily } from '../../shared/types'
 import { characterColor, useCharacterColors } from '../characterColors'
@@ -56,6 +58,8 @@ export interface LauncherCharacter {
   // Attach mode: last detachable listener this character attached to.
   // Presence lights up the tile ⋯ menu's "⇋ Attach" action.
   attach?: { host: string; port: number }
+  // This character's own Lich install (DESIGN §56.7.1), set in Edit Profile.
+  lich?: LichInstall
 }
 
 interface Props {
@@ -479,6 +483,7 @@ export async function loadCharacterCards(): Promise<LauncherCharacter[]> {
       circle:   p.circle,
       notes:    p.notes,
       attach:   p.attach,
+      lich:     coerceLichInstall(p.lich),
     } as LauncherCharacter
   }))
   void reportUnreadableProfiles()
@@ -640,7 +645,7 @@ async function setCharacterFavorite(characterName: string, nextFavorite: boolean
 // their tight purpose-built call sites.
 async function patchCharacterProfile(
   characterName: string,
-  patch: Partial<Pick<CharacterProfile, 'guild' | 'circle' | 'notes'>>,
+  patch: Partial<Pick<CharacterProfile, 'guild' | 'circle' | 'notes' | 'lich'>>,
 ): Promise<void> {
   const raw = await window.api.readCharacterProfile(characterName)
   if (!raw || typeof raw !== 'object') return
@@ -1148,9 +1153,10 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
     if (lastSessionTiles.length > 0) onReconnectLast?.(lastSessionTiles)
   }
 
-  async function handleSaveNotes(c: LauncherCharacter, patch: { guild: string | undefined; circle: number | undefined; notes: string | undefined }) {
+  async function handleSaveNotes(c: LauncherCharacter, patch: ProfilePatch) {
     try {
       await patchCharacterProfile(c.name, patch)
+      if (differs(patch.lich, c.lich)) announceCharacterLichChanged(c.name)
       setCharacters(prev => prev?.map(x => x.name === c.name ? { ...x, ...patch } : x) ?? prev)
       setEditingNotes(null)
     } catch (err) {
@@ -1625,6 +1631,8 @@ export default function Launcher({ onConnect, onAddNew, onAttach, onAttachCharac
         <CharacterNotesEditor
           characterName={editingNotes.name}
           characterId={makeCharacterId(editingNotes.account, editingNotes.name, editingNotes.game)}
+          game={editingNotes.game}
+          initialLich={editingNotes.lich}
           initialGuild={editingNotes.guild}
           initialCircle={editingNotes.circle}
           initialNotes={editingNotes.notes}

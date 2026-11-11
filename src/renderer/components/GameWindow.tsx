@@ -70,7 +70,7 @@ import { loadAnalyticsEnabled, recordFire } from '../automationStats'
 import { loadTriggers, saveTriggers, type TriggerRule } from '../triggers'
 import { useTriggerEngine, playWavFile, vitalPercent, secondsLeft, type TriggerGameState } from '../hooks/useTriggerEngine'
 import { loadAliases, loadMacros, saveAliases, saveMacros, resolveAlias, resolveMacro, matchKeyCombo, getMacroToken, newMacro, parseCursorMarker, splitTypedCommands, type AliasRule, type MacroRule } from '../macros'
-import { IS_MAC, loadAdvanced, saveAdvanced } from '../lichSettings'
+import { IS_MAC, loadAdvanced, saveAdvanced, coerceLichInstall, resolveLichInstall, type LichInstall, CHARACTER_LICH_CHANGED_EVENT, CHARACTER_LICH_CHANGED_KEY } from '../lichSettings'
 import { loadSimuCoinConfig, accountConfig } from '../simucoinConfig'
 import ContactPopover from './ContactPopover'
 import MapPanel from './panels/MapPanel'
@@ -97,6 +97,7 @@ import ThemePicker from './ThemePicker'
 import SettingsPanel from './SettingsPanel'
 import SessionLogModal from './SessionLogModal'
 import ContextMenu, { type CtxItem } from './ContextMenu'
+import { SessionLichPathContext, sessionLichPath } from '../sessionLich'
 import { GameLinkContext, buildLinkMenu, buildPlayerMenu, linkAtElement, hasOwnClick, noteSelectionEnded, selectionJustEnded, type GameLinkActions, type GameLinkMenu } from '../gameLinks'
 // B391: the one text context-menu builder, shared with every stream panel.
 import { buildTextMenu, joinMenuGroups } from './panels/StreamPanel'
@@ -1180,19 +1181,39 @@ export default function GameWindow({
   const [exits, setExits]           = useState<string[]>([])
   const [newLineCount, setNewLineCount] = useState(0)
 
-  // LichBridge — script tracking
-  const lichPath = (() => {
-    try { return JSON.parse(localStorage.getItem('lichborne.advancedSettings') ?? '{}').lichPath ?? '' } catch { return '' }
-  })()
+  // LichBridge — script tracking. The install this session started from
+  // (DESIGN §56.7.1), which may not be the default one.
+  const lichPath = sessionLichPath(session)
+  // This character's own install as it stands NOW (for /lich install's "the
+  // next connect uses…"): read from its profile at mount, and again when Edit
+  // Profile saves it (the event in this window, the storage key in others).
+  // Never on focus: a profile read blocks main (B550).
+  const lichOverrideRef = useRef<LichInstall | undefined>(undefined)
+  useEffect(() => {
+    const read = () => {
+      window.api.readCharacterProfile(session.character)
+        .then(raw => { lichOverrideRef.current = raw && typeof raw === 'object' ? coerceLichInstall((raw as { lich?: unknown }).lich) : undefined })
+        .catch(() => {})
+    }
+    read()
+    const onChanged = (e: Event) => { if ((e as CustomEvent<string>).detail === session.character) read() }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === CHARACTER_LICH_CHANGED_KEY && e.newValue?.startsWith(`${session.character}:`)) read()
+    }
+    window.addEventListener(CHARACTER_LICH_CHANGED_EVENT, onChanged)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener(CHARACTER_LICH_CHANGED_EVENT, onChanged)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [session.character])
   // Idea A (Binu): only auto-poll `;listall` while a Lich Scripts panel is open.
   // lichPollRef is the gate read inside useLichBridge's interval; the effect by
   // `lichScriptsOpen` (below the layout state) keeps it in sync and fires one
   // immediate seed poll on open. Closed → zero `;listall` injected.
   const lichPollRef = useRef(false)
   const { scripts: lichScripts, lastUpdated: lichLastUpdated, pending: lichPending,
-          pauseScript, resumeScript, killScript, refresh: refreshScripts } = useLichBridge(session.sessionId, !dropped, lichPollRef)
-
-  void lichPath
+          pauseScript, resumeScript, killScript, refresh: refreshScripts } = useLichBridge(session.sessionId, !dropped, lichPollRef, lichPath)
 
   // Layout sizes
   const [panelWidth, setPanelWidth]       = useState(() => loadInt(scopedKey(session.character, 'panelWidth'), DEFAULT_PANEL_WIDTH, MIN_PANEL_WIDTH, MAX_PANEL_WIDTH))
@@ -1386,8 +1407,6 @@ export default function GameWindow({
   useEffect(() => {
     if (sunState || !moonData || !session.useLich) return
     if (sunFetchRef.current !== 'failed') return  // Firebase pending/succeeded → let it seed
-    let lichPath = ''
-    try { lichPath = JSON.parse(localStorage.getItem('lichborne.advancedSettings') ?? '{}').lichPath ?? '' } catch { /* no path → skip */ }
     if (!lichPath) return
     let cancelled = false
     window.api.lichGetVars(lichPath, `${session.game}:${session.character}`).then(rows => {
@@ -1411,7 +1430,7 @@ export default function GameWindow({
       setSunState({ riseAt })
     }).catch(() => { /* unreadable db → the observed-prose path still works */ })
     return () => { cancelled = true }
-  }, [sunState, moonData, session.useLich, session.game, session.character])
+  }, [sunState, moonData, session.useLich, session.game, session.character, lichPath])
   const moonsState = useMemo<MoonsState | undefined>(
     () => moonData ? { ...moonData, ...(sunState ? { sun: sunState } : {}) } : undefined,
     [moonData, sunState])
@@ -5378,6 +5397,12 @@ export default function GameWindow({
         viaLich: session.useLich,
         gs4: gameFamily === 'GS4',
       }),
+      getLichInstall: () => ({
+        sessionPath: lichPath,
+        next: resolveLichInstall(loadAdvanced(), session.game, lichOverrideRef.current),
+        viaLich: session.useLich,
+        gameName: gameFamilyName(gameFamily),
+      }),
       setRichStream: (mode: RichStreamMode | undefined) => {
         // undefined removes the key (JSON.stringify drops it), so "default"
         // is stored as absent and follows a later change of the default.
@@ -6810,6 +6835,7 @@ export default function GameWindow({
   return (
     <HighlightsContext.Provider value={highlightsCtxValue}>
     <ContactsContext.Provider value={contactsCtxValue}>
+    <SessionLichPathContext.Provider value={lichPath}>
     <GameLinkContext.Provider value={linkMenu}>
     <div ref={gameLayoutRef} className={`game-layout${layoutMode === 'free' ? ' game-layout--free' : ''}${expAnyOpen ? ' game-layout--has-exp' : ''}`}>
       {/* The per-session toolbar row was folded into the app-level app-bar
@@ -7297,6 +7323,7 @@ export default function GameWindow({
 
     </div>
     </GameLinkContext.Provider>
+    </SessionLichPathContext.Provider>
     </ContactsContext.Provider>
     </HighlightsContext.Provider>
   )

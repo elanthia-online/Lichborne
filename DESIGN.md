@@ -11600,9 +11600,12 @@ A plan, built in the order at the end. Sections get marked as they land.
 
 #### 56.7.1 Which Lich install a character uses
 
+**Status:** BUILT. Resolution, storage and the session-carried path in step 1; the Lich Setup rows, the Edit Profile override and `/lich install` in step 2.
+
 **Resolution, most specific first:** the character's own override; else the game family's default (DR or GS4); else the global install.
 - **By family, not by shard.** GS3/GSX/GST/GSF share one install, as do DR/DRX/DRT/DRF.
-- **An install is the pair `{ lichPath, rubyPath }`.** Lich 5.18+ refuses an older Ruby, so the two travel together.
+- **An install is the pair `{ lichPath, rubyPath }`.** Lich 5.18+ refuses an older Ruby, so the two travel together. A blank Ruby falls through the same chain (a character's own Lich with no Ruby uses its game's Ruby, then the default's).
+- **Every writer of the character YAML must keep `lich`.** `exportCharacterProfile` (the in-game save) copies the launcher's fields by name, so `lich` is in that list; the launcher's helpers and Profile Transfer spread the existing file.
 - **Only explicit choices are stored** (the B544 rule). Absent means inherit, and a resolved value is never written back. A DR-only player sees nothing new and nothing migrates.
 - **Startup discovery only ever fills the global value.**
 
@@ -11612,15 +11615,16 @@ A plan, built in the order at the end. Sections get marked as they land.
 - Neither rides Profile Transfer or team bundles: they are paths on one machine.
 
 **One resolver, everywhere:**
-- `resolveLichInstall(game, override)` in lichSettings.ts feeds every connect site.
-- The resolved `lichPath` is carried on the session (`SessionInfo`), and one `sessionLichPath` helper replaces the three private readers, so the Dashboard, the script list and the Lich Map read the install the session launched from. Without this a GS4 character would launch from its GS4 install while its dashboard showed the DR install's Vars.
+- `resolveLichInstall(adv, game, override)` in lichSettings.ts is pure; `resolveCharacterLichInstall(adv, character, game)` reads the override from the character's profile AT CONNECT TIME (a tab's Reconnect builds its card from the session record, which has no override). It feeds `runConnect`, the Team Login member connect and attach.
+- The resolved `lichPath` is carried on the session: main's `meta` and `RosterEntry` (so a decoupled window keeps it), `SessionInfo` and `SessionRecord`. [sessionLich.ts](src/renderer/sessionLich.ts) replaces the private readers (three named above, plus GameWindow's two: the script-list path and the Moons `sun` read): GameWindow provides `SessionLichPathContext`, components read `useSessionLichPath()`, and a hook in GameWindow takes `sessionLichPath(session)`. Each falls back to the default install, so the Dashboard, the script list and the Lich Map read the install the session launched from. Without this a GS4 character would launch from its GS4 install while its dashboard showed the DR install's Vars.
 - MapPanel's parse caches already key by source path, so two installs cache twice.
 - **Launch serialization stays one queue.** Every Lich binds 11024 and serves one front-end, whichever folder it runs from.
 
 **UI:**
-- **Lich Setup** gets per-game rows (DragonRealms, GemStone IV) under the default install. Each defaults to "Same as default" and expands to the path fields when changed.
-- **Edit Profile** gets a "Lich install" row: the game default, or this character's own paths.
-- **Slash command (Principle #11):** `/lich install` reports which install the session uses and where that came from. Setting paths stays a dialog: it is one-time setup with file browsing.
+- **Lich Setup** has a "Lich install by game" section under the default install (`GameInstallRow` in LichSetupFields.tsx; Lich Setup only, not the legacy LoginScreen). Each game reads "Same as the install above" (no entry stored) or "Its own install", which opens the path pair. An entry left without a Lich path is dropped by `loadAdvanced`.
+- **Edit Profile** has a "Lich install" row: the game's install (named, with its path in the hint) or "Its own install". Save is refused while "Its own install" has no Lich path, rather than silently saving the game's. Saving dispatches `CHARACTER_LICH_CHANGED_EVENT` so an open session re-reads it.
+- **The path pair is one component,** [LichInstallFields.tsx](src/renderer/components/LichInstallFields.tsx): Ruby and Lich paths, in that order to match the default install's editor just above, with Browse and the same debounced ✓/✕ existence check. A path of the wrong kind (Lich not `.rbw`/`.rb`; on Windows, Ruby not `.exe`) gets ✕ and a warning, with **Swap them** when the pair is reversed: with the order reversed between the two editors, a pair entered by habit came out swapped and failed to launch with a bare `spawn EFTYPE`. The default install's editor (LichSetupFields) runs the same check and offers the same Swap (round 4 of the review of #8), so a reversed default is flagged too. LichConnection's launch pre-flight refuses a wrong-kind pair with a sentence, for every install; App adds where the failing path is set (`withInstallHint`): a character's own install points to Edit profile → Lich install, a game's to Lich Setup's per-game row (Auto Detect only fills in the default). The Ruby is judged on its own source (`ResolvedLichInstall.rubySource`), since a blank Ruby is inherited from the game's or the default install: a Ruby refusal with the default Ruby keeps the base "Open Lich Setup" sentence (Auto Detect does fix that one), adding only that the install could have its own Ruby (round 5 of the review of #8). A blank Ruby shows the Ruby it inherits as its placeholder and gets no ✓/✕. The default install keeps LichSetupFields (Auto-detect, the Ruby advisory).
+- **Slash command (Principle #11):** `/lich install` (BUILT) reports the folder this session runs from and where that choice comes from (character / game / default). When the settings have changed since the session connected, it also says what the next connect will use. Ruby is always reported as the next connect's: a session records the Lich path it launched from, not its Ruby, so a Ruby changed mid-session must not read as the running one (review of #8). Setting paths stays a dialog: it is one-time setup with file browsing.
 
 #### 56.7.2 Organising the login screen by game
 
