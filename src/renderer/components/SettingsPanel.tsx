@@ -25,6 +25,7 @@
 // detects monospace with a canvas width test; `LEGACY_KEYS` migrates retired
 // preset keys, and `cascadia` is deliberately NOT one of them (see below).
 
+import { profileNameOf } from '../../shared/profileKey'
 import { useState, useEffect, useRef, useId } from 'react'
 import { loadCommandHistorySettings, saveCommandHistorySettings, CMD_HISTORY_MIN_MAX } from '../commandHistorySettings'
 import { loadCharacterNoticesEnabled, saveCharacterNoticesEnabled } from '../characterNotices'
@@ -128,7 +129,7 @@ const PREVIEW_LINES = [
 
 interface Props {
   settings: AppSettings
-  character: string                 // owning character — for "Open Logs Folder"
+  character: string                 // the profile key (Name@SHARD, DESIGN §56.7.3): its settings and "Open Logs Folder"
   onChange: (s: AppSettings) => void
   layoutMode?: 'panels' | 'free'    // §33 — grey out panel-only toggles in Windowed Panels
   onClose: () => void
@@ -380,7 +381,7 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
   async function resetToDefaults() {
     const ok = await confirmAction({
       title: 'Reset settings to defaults?',
-      message: `Display, accessibility, layout and behavior settings for ${character} go back to their defaults.`,
+      message: `Display, accessibility, layout and behavior settings for ${profileNameOf(character)} go back to their defaults.`,
       detail: 'That includes the font, line height, text weight, text styles, the compass options and any per-panel text sizes. Settings shared by every character — Overview, command history, Session Log, AI and SimuCoins — are not changed.',
       confirmLabel: 'Reset',
       danger: true,
@@ -1649,7 +1650,7 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
             order — [destructive] … [Close] — and asks first. */}
         <div className="ui-modal-foot">
           <button type="button" className="ui-btn ui-btn--danger" onClick={() => { void resetToDefaults() }}
-                  title={`Font, accessibility, layout and behavior settings for ${character}`}>
+                  title={`Font, accessibility, layout and behavior settings for ${profileNameOf(character)}`}>
             Reset to defaults
           </button>
           <span className="ui-modal-foot-spacer" />

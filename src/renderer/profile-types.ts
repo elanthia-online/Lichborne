@@ -121,7 +121,7 @@ export interface SharedProfile {
   // was live (across all windows) the last time any session was open. Written
   // by the primary window on every non-empty roster change. Optional → older
   // files default to [] (no reconnect offer).
-  lastSessionCharacters?: { account: string; name: string }[]
+  lastSessionCharacters?: { account: string; name: string; game?: string }[]
   // Global cross-character rules (F37, v0.15.2) — apply to EVERY character,
   // merged at runtime after each character's own rules. Stored here (not in
   // any {Character}.yaml) because they're deliberately not character-bound;

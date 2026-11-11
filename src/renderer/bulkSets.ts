@@ -5,7 +5,10 @@
 // have a set named farm that logs in my best farming character from whichever
 // accounts I want"* — so a set is a named TEAM, not a named account.
 //
-// A set stores CHARACTER NAMES. The account is derivable from the character
+// A set stores PROFILE KEYS, `Name@SHARD` (DESIGN §56.7.3), since the same
+// name can be a different character on another shard. A set written before
+// that holds bare names, and `coerce` turns each into its key
+// (keyForLegacyName). Before keys it stored CHARACTER NAMES. The account is derivable from the character
 // (and a character can move accounts about as often as never), so storing names
 // keeps a set meaningful even if the picker's grouping changes. Names that no
 // longer exist are dropped at LOAD time rather than pruned on disk — a set that
@@ -16,9 +19,11 @@
 // character profile. Rides `SharedProfile.bulkSets` → `_shared.yaml` with the
 // three registrations Principle #1 requires.
 
+import { keyForLegacyName } from './legacyProfileNames'
+
 export interface BulkSet {
   name: string
-  /** Character names, at most one per account (DR allows one active each). */
+  /** Profile keys (`Name@SHARD`), at most one per account (DR allows one active each). */
   characters: string[]
   /** Pinned into the launcher's Favorites block — Sekmeht: "think of
    *  favorites as their quick select to things", so it holds both characters
@@ -47,7 +52,7 @@ function coerce(raw: unknown): BulkSet[] {
     const key = name.toLowerCase()
     if (seen.has(key)) continue
     const characters = Array.isArray(r?.characters)
-      ? r!.characters.filter((c): c is string => typeof c === 'string' && !!c.trim())
+      ? r!.characters.filter((c): c is string => typeof c === 'string' && !!c.trim()).map(keyForLegacyName)
       : []
     if (characters.length === 0) continue
     seen.add(key)

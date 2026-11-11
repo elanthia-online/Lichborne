@@ -151,6 +151,8 @@ declare global {
       // Profile I/O
       readSharedProfile: () => Promise<unknown | null>
       writeSharedProfile: (data: unknown) => Promise<void>
+      takeProfileKeyRenames: () => Promise<{ from: string; to: string; archived?: true }[]>
+      ackProfileKeyRenames: () => Promise<void>
       readCharacterProfile: (character: string) => Promise<unknown | null>
       characterProfileExists: (character: string) => Promise<boolean>
       takeProfileNotices: () => Promise<{ file: string; keptAs: string | null }[]>

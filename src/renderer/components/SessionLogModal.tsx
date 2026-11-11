@@ -20,6 +20,7 @@
 // Lich Scripts panel; sharing it let each restyle the other (B367). Chrome is
 // the About look via the shared ui.css primitives (B400).
 
+import { profileNameOf } from '../../shared/profileKey'
 import { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback, useId } from 'react'
 import { backdropHandlers } from "../utils/backdropClose"
 import { useEscapeClose } from '../hooks/useEscapeClose'
@@ -38,7 +39,7 @@ import '../styles/session-log.css'
 // the raw files via "Open logs folder".
 
 interface Props {
-  character: string
+  character: string   // the profile key (Name@SHARD, DESIGN §56.7.3): the log folder; the name is shown
   // When set (right-click → "Show in Log"), the modal opens straight into
   // Quick Search with this exact line text pre-filled and the search run.
   initialSearch?: string | null
@@ -488,7 +489,7 @@ export default function SessionLogModal({ character, initialSearch, onClose }: P
       >
 
         <div className="slog-header">
-          <span className="slog-title" id={titleId}>Session Log — {character}</span>
+          <span className="slog-title" id={titleId}>Session Log — {profileNameOf(character)}</span>
           <div className="ui-tabs" role="tablist" aria-label="Session Log views">
             {VIEWS.map(v => (
               <button
@@ -569,7 +570,7 @@ export default function SessionLogModal({ character, initialSearch, onClose }: P
               {rows.length === 0 && !loading && (
                 <div className="slog-empty">
                   {totalLines === 0
-                    ? `No log for ${character} on ${date}.`
+                    ? `No log for ${profileNameOf(character)} on ${date}.`
                     : 'No lines match the current stream filter.'}
                 </div>
               )}

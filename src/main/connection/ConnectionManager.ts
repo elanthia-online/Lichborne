@@ -36,6 +36,7 @@ import { LichConnection } from './LichConnection'
 import { AttachConnection } from './AttachConnection'
 import { SGEConnection } from './SGEConnection'
 import { gameFamilyFromCode, gameFamilyName, type AttachCredentials, type LoginCredentials } from '../../shared/types'
+import { profileKey } from '../../shared/profileKey'
 import { FRONTEND_CAPS_LINE, shouldDeclareRichStream } from './frontendCaps'
 
 const CLIENT_ID = 'FE:WRAYTH /VERSION:1.0.1.22 /P:WIN_UNKNOWN /XML'
@@ -126,8 +127,9 @@ export class ConnectionManager extends EventEmitter {
         const loginKey = await loginKeyPromise
 
         this.emit('status', step(4, LICH_STEPS, 'Starting Lich…'))
-        // creds.character names the per-session launch log file (Logs/lich-launch/).
-        await this.lich.launch(creds.rubyPath, creds.lichPath, creds.lichMode, creds.lichArguments, creds.character)
+        // The profile key names the per-session launch log (Logs/lich-launch/
+        // {Name@SHARD}.log), so namesakes on two shards don't share a file.
+        await this.lich.launch(creds.rubyPath, creds.lichPath, creds.lichMode, creds.lichArguments, profileKey(creds.character, creds.game))
 
         // NAMED as the connect it actually is. `connectWithRetry` does not
         // poll-then-connect — it retries the REAL connection until the port

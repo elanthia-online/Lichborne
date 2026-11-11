@@ -24,6 +24,7 @@ import { app } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
+import { isProfileKey } from '../shared/profileKey'
 import { writeFileAtomic, readFileRetrying, quarantineFile, isPlainObject, hasQuarantinedCopy, takeQuarantineNotices } from './atomicWrite'
 
 // v0.6.4: profiles moved from `<install-dir>/profiles/` to `<userData>/profiles/`
@@ -211,6 +212,13 @@ export function characterProfileExists(character: string): boolean {
 }
 
 export function writeCharacterProfile(character: string, data: unknown): void {
+  // Every character file is `Name@SHARD.yaml` (DESIGN §56.7.3). A bare name
+  // here is a caller that missed the key, and would recreate a legacy file
+  // the migration just moved: refuse it loudly rather than write it.
+  if (!isProfileKey(character)) {
+    console.error(`[profiles] refusing to write "${character}.yaml": not a Name@SHARD key`)
+    throw new Error(`not a profile key: ${character}`)
+  }
   ensureProfilesDir()
   atomicWriteFile(
     path.join(getProfilesDir(), `${character}.yaml`),
@@ -225,6 +233,10 @@ export function listCharacterProfiles(): string[] {
     return fs.readdirSync(dir)
       .filter(f => f.endsWith('.yaml') && f !== '_shared.yaml')
       .map(f => f.replace(/\.yaml$/, ''))
+      // Only `Name@SHARD` files are characters (DESIGN §56.7.3); a bare
+      // `Name.yaml` is one the startup migration couldn't move, or an older
+      // build wrote, and must not show as a second tile.
+      .filter(isProfileKey)
   } catch { return [] }
 }
 
@@ -266,6 +278,7 @@ export function listArchivedProfiles(): string[] {
     return fs.readdirSync(dir)
       .filter(f => f.endsWith('.yaml'))
       .map(f => f.replace(/\.yaml$/, ''))
+      .filter(isProfileKey)
   } catch { return [] }
 }
 
