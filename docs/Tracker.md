@@ -6,6 +6,20 @@
 
 ---
 
+## v1.0.0 — GemStone IV support (PRs #4–#13, #15, Horibu) · Windows desktop shortcut (PR #16, Horibu)
+
+The first release for both games, hence 1.0.0 (Sekmeht). Horibu is Tysong (one person; credits now list him once, as Tysong: a developer in the README, a contributor in About). Horibu's eleven open PRs, merged locally on 2026-11-10 for testing and not yet pushed: the ten-layer GS4 stack in stack order (#4 foundation, #5 Effects + stream routing, #6 Experience/Encumbrance/Creatures, #7 game filter + login plan, #8 Lich installs per game/character, #9 shard names + wizard by game, #10 `Name@SHARD` profile keys + migration, #12 docs into `docs/`, #13 the elanthia-online release config, #15 vitals bar text), then #16. #1 was split into this stack and is closed.
+
+- **How:** each PR is its own `--no-ff` merge commit naming Horibu (`4f74f5c` … `1b75ceb`), since every commit is authored `mrhoribu`. All eleven were cut from `dffdea3`, and all merged with no conflicts. #16 predates #12's docs move; git's rename detection carried its User Guide sentence into `docs/`.
+- **Checked:** both builds, both `tsc` configs and `check-workflow.mjs` pass; `tmp-hl-harness` 70/70. `tmp-rules-harness` passes 458 of 459. The one failure is B442, which fails on `dffdea3` too. Four cases failed after the merge because they still expected bare names; they now expect #10's keying (`Agan@DR`, Reconnect Last carrying `game`, owners keyed `name@shard`, a DRF namesake a new character rather than B614's shared file), plus one new case: DRT shares DR's profile, so a transfer there is still seen.
+- **Data before the first launch:** #10's migration is one-way, and the dev build shares `%APPDATA%\lichborne` with the installed client. Both that folder and the repo's `profiles/` were copied to `C:\temp\lichborne-data-backup-2026-11-10` and checked byte for byte.
+- **1.0.0 is the general release** (Sekmeht; out of alpha): README, User Guide and the release notes say so. Linux and macOS leave beta at the same time (they were beta since v0.18.0); the per-platform labels are gone from the README, the User Guide and CLAUDE.md. The Mac build is still not notarized, so a first install still needs `xattr -cr`.
+- **Seen in the first local test:** a GS4 character connects. The window title and character tab show the shard's game code (`GS3`, Simutronics' own code for GS4 Prime). That stays for 1.0.0 by decision (Sekmeht): friendlier names come later as a cosmetic update. A short-label version was tried here and backed out to keep 1.0.0 to the PRs as merged; the User Guide now explains the codes.
+- **Not in this release:** B623 (DR now sends shop output on `ShopWindow`) and the Lich 5.24 review notes are kept in `stash@{0}`.
+- **Unverified:** a real release from the elanthia-online repo (#13), and #16 on real Windows (it was tested under Wine).
+
+Slash surface: `/vitals` (#15) and `/lich install` (#8), both in the registry. Profile shape: no `profileVersion` bump. #10 renames the files instead (`Name@SHARD`, by `src/main/profileKeyMigration.ts` before the first window opens, with copies in `profiles/PreKeyBackup/`), and older builds can't read the new names.
+
 ## v0.21.1 — Mac auto-update (F137) · platform update (Electron 45, React 19, Vite 8, TypeScript 7, better-sqlite3 13, js-yaml 5) · Test build workflow (PR #14, Horibu)
 
 ohbeanz's report: every Mac update meant a manual download and `xattr` again. Squirrel.Mac only requires an update to satisfy the running app's own signature requirement, so a stable self-signed certificate is enough, with no Apple account (DESIGN §41.8).

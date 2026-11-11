@@ -1,137 +1,185 @@
 # Lichborne
 
-A DragonRealms and GemStone IV client for people who've spent years in Wrayth, Genie, or Frostbite — and have opinions about all three.
+**A game client for DragonRealms and GemStone IV.**
 
-It connects through [Lich5](https://github.com/elanthia-online/lich-5) (recommended) or straight to the game server, and it's free.
+[![Latest release](https://img.shields.io/github/v/release/elanthia-online/Lichborne?label=download&color=2ea043)](https://github.com/elanthia-online/Lichborne/releases/latest)
+![Platforms](https://img.shields.io/badge/Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-supported-blue)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-lightgrey)](LICENSE)
 
-**[Download the latest release →](https://github.com/elanthia-online/Lichborne/releases/latest)** · Windows · Linux (beta) · macOS (beta)
+> [!NOTE]
+> **Lichborne 1.0 is out, and it now plays GemStone IV as well as DragonRealms.** Your characters from both games live in one launcher, side by side.
 
-<!-- A screenshot belongs here — a client is a visual product, and one image of a
-     real layout says more than any paragraph below. Ideally a populated window:
-     game text, a couple of panels, the vitals bar. -->
+Free, open source, and built by players who've used Wrayth, Genie and Frostbite for years. It works great with [Lich5](https://github.com/elanthia-online/lich-5), and it also connects straight to the game if you don't use Lich.
 
----
+**[⬇ Download Lichborne 1.0](https://github.com/elanthia-online/Lichborne/releases/latest)** · [Install steps](#install) · [User Guide](docs/Lichborne-User-Guide.md)
 
-## What it is
-
-A front-end for DragonRealms: the window you actually play in. It renders the game, gives you somewhere to put your streams, and remembers how you like things.
-
-It plays GemStone IV too (Prime and Shattered), with panels of its own for effects, encumbrance and creatures. A few views are still DragonRealms-only; the [User Guide](docs/Lichborne-User-Guide.md#dragonrealms-and-gemstone-iv) lists which.
-
-It isn't a replacement for Lich — Lich still owns your scripts, maps, and automation. Lichborne is the display and configuration layer on top, and it makes what Lich already knows visible. You can also play without Lich entirely; you'll just be doing more by hand.
-
-**Status: alpha.** Actively developed, used daily by a small group of testers. Windows is the mature platform; Linux and macOS builds work but are younger. Come say hello on Discord: the invite is inside Lichborne, so [download it](#getting-started) first, then choose **Help → Discord**.
+<!-- A screenshot belongs here: a real layout with game text, a few panels and
+     the vitals bar says more than anything below. -->
 
 ---
 
-## Why it's different
+## Why players use it
 
-- **Your setup follows you.** Everything saves to plain YAML files, per character — panel layout, highlights, macros, contacts, theme. Copy them to another machine, back them up, or hand one to a friend.
-- **Every character in one window.** Tabs, `Ctrl+Tab` to switch, and Quick Send to fire a command at another character without leaving the one you're on. Pop any character into its own window and it all still works.
-- **See every character at once.** DragonRealms is one character per account, so multi-boxing means tabbing around to find out who needs you. Switch to **Overview** and every character in the window becomes a live card — vitals, what's wrong, the room, and a feed of their game text — with an input bar to type at one of them or all of them. Switch back and nothing has moved.
-- **Panels that float or dock.** Keep the tidy docked layout, or switch to Windowed Panels and drag everything where you want it — windows snap to each other, then lock so nothing moves by accident.
-- **Your session can outlive the client.** Start Lich headless and Lichborne will *attach* to that already-logged-in session, so closing the window doesn't log you out — reopen later, recover from a crash, or pick the same character up from another machine. ([how](docs/Lichborne-User-Guide.md#3b-or-attach-to-a-lich-thats-already-running))
-- **Ready for DragonRealms' rich stream.** With Lich 5.23 or later, Lichborne can read the newer game stream the Saga client uses (on by default; switch back in Lich Setup → Game stream). Click a creature, an item or a player in game text to look at it, face it or pick it up, aimed at exactly that one even among identical creatures. ([more](docs/Lichborne-User-Guide.md#the-game-stream-rich-or-legacy))
-- **Bring your old config with you.** The import wizard reads Genie, Frostbite, and Wrayth configs: highlights with their colours, macros, name lists, gags, substitutions, and colour presets. It shows you exactly what it will import before it does.
-- **Graphical Experiences.** Optional views that float over your layout — or dock into a panel: a Living Tableau that draws the room and everyone in it, and turns into a battlefield when you fight (right-click someone to say or whisper to them), a Moons view that puts Elanthia's sky — phases, weather, sunrise — in front of you, and a Spell Monitor showing everything currently on you as live countdowns. All beta, and all cost nothing until you open them.
-- **Configure it without a mouse.** Type `/` in the command bar and a palette lists every client command. `/highlight add "goblin" red` while you're hunting, `/mute add "swirling fog"` when the spam starts, `/help` when you forget.
-- **AI is optional and stays out of the way.** Bring your own Anthropic key and Catch Me Up will summarise what you missed. It's off unless you turn it on, it never sends commands to the game, and your credentials are scrubbed before anything leaves your machine — details in [AINOTICE.md](AINOTICE.md).
+### 🧙 All your characters, one window
+
+- **Tabs for every character.** Switch with `Ctrl+Tab`. Send a command to another character without leaving yours (Quick Send). Pop any character out into its own window.
+- **Overview.** See every character at once as a live card: health, what's wrong, where they are, and what they just saw. Type to one of them or all of them.
+- **Teams.** Save a group and log them all in with one click. **Reconnect Last** brings back whoever was on when you quit.
+- **Stay logged in when you close it.** Attach to a Lich that's already running, and closing Lichborne no longer logs you out. Come back later, or pick up from another computer. ([How](docs/Lichborne-User-Guide.md#3b-or-attach-to-a-lich-thats-already-running))
+
+### 🎨 Make it look the way you want
+
+- **Panels that dock or float.** Use a neat docked layout, or drag windows anywhere. They snap together, and you can lock them in place.
+- **The Living Tableau.** A picture of the room and everyone in it. In a fight it becomes a battlefield: who's on you, your balance and position, and your roundtime.
+- **Moons and Spell Monitor** (DragonRealms). See Elanthia's sky, moon phases and weather, and every spell on you as a countdown that turns amber, then red, before it runs out.
+- **21 themes**, plus a theme editor. Colour-blind, high-contrast, large-print and epilepsy-safe modes work everywhere.
+
+### ⚙️ Power without writing scripts
+
+- **Automations.** Highlights, triggers, macros, aliases, mutes and substitutes, all set up with forms. A health check finds rules that are broken, doubled up, or clashing.
+- **Slash commands.** Type `/` to see them all. Add a highlight mid-hunt with `/highlight add "goblin" red`, or hide spam with `/mute add "swirling fog"`.
+- **Lich, out in the open.** See and control your running scripts, edit your Lich variables, and follow yourself on the Lich Map.
+- **Your setup is just files.** Layouts, highlights, macros and themes save per character as plain files you can back up or move. **Transfer** copies a whole setup to another character.
+- **Catch Me Up (optional AI).** Back from a break? Ask what you missed: who talked to you, what you fought, what you learned. Uses your own Anthropic key, is off until you turn it on, and never sends commands to the game. [What it sends](AINOTICE.md).
+
+> [!TIP]
+> Coming from Genie, Frostbite or Wrayth? The **import wizard** brings your highlights, macros, name lists, gags and substitutes with you.
 
 ---
 
-## What you get out of it
+## Install
 
-If you've spent years tuning Genie highlights or rebuilding a Wrayth layout after a reinstall, the thing you get here is **not losing that work again**. Your configuration is a folder of readable files that you own.
+Downloads are on the **[latest release page](https://github.com/elanthia-online/Lichborne/releases/latest)**. After you install it once, Lichborne updates itself.
 
-If you run several characters, they live in one app that knows about all of them — one place to look, one set of settings, one click to bring the whole team back online, and a heads-up in whatever window you're looking at when one of them drops.
+<details open>
+<summary><b>🪟 Windows</b></summary>
 
-And if you already run Lich, Lichborne sits alongside it. Same install, same paths, nothing to reconfigure.
+1. Download the file ending in **`-setup.exe`**.
+2. Run it. You don't need admin rights.
+3. If a blue **SmartScreen** box appears, click **More info → Run anyway**. (Lichborne isn't code-signed yet, so Windows doesn't recognise it.)
+4. Pick whether you want a desktop shortcut, then finish.
+
+</details>
+
+<details open>
+<summary><b>🍎 macOS (Apple Silicon)</b></summary>
+
+1. Download the file ending in **`-mac-arm64.dmg`**.
+2. Open it and drag **Lichborne** into **Applications**.
+3. Open **Terminal** (Applications → Utilities) and run this once:
+
+   ```bash
+   xattr -cr /Applications/Lichborne.app
+   ```
+
+4. Open Lichborne from Applications.
+
+</details>
+
+<details open>
+<summary><b>🐧 Linux (x64)</b></summary>
+
+1. Download **`Lichborne.AppImage`**.
+2. Make it runnable and start it:
+
+   ```bash
+   chmod +x Lichborne.AppImage
+   ./Lichborne.AppImage
+   ```
+
+3. If it won't start on Ubuntu 22.04 or newer, install FUSE 2:
+
+   ```bash
+   sudo apt install libfuse2t64   # Ubuntu 24.04
+   sudo apt install libfuse2      # Ubuntu 22.04
+   ```
+
+Keep the name `Lichborne.AppImage` so updates and shortcuts keep working.
+
+</details>
+
+> [!IMPORTANT]
+> **Mac users: don't skip step 3.** Without it, macOS says *"Lichborne is damaged and can't be opened."* It isn't damaged. Lichborne just isn't notarized by Apple (that needs a paid certificate), and the command clears the warning. You only run it once.
 
 ---
 
 ## Getting started
 
-**1. Download and install.** Grab the [latest release](https://github.com/elanthia-online/Lichborne/releases/latest).
+1. **Set up Lich (recommended).** Already use [Lich5](https://github.com/elanthia-online/lich-5)? Open **⚙ Lich Setup** on the launcher and click **Auto-detect**. New to Lich? Start with the [Lich install guide](https://github.com/elanthia-online/lich-5/wiki/Documentation-for-Installing-and-Upgrading-Lich). On macOS and Linux you'll also need Ruby 4.
+2. **Add your account.** Click **+ Add account**, sign in and pick your game. Lichborne finds your characters and makes a tile for each.
+3. **Play.** Click a character to connect, then open **Layout** to arrange your panels. Everything saves for that character automatically.
 
-- **Windows** — run the installer. SmartScreen may warn you (the app isn't code-signed yet): **More info → Run anyway**.
-- **Linux** — download `Lichborne.AppImage`, `chmod +x` it, run it. On Ubuntu 22.04 or newer you may need FUSE 2 first: `sudo apt install libfuse2t64` (24.04) or `libfuse2` (22.04). If you have an older download with a version number in its name, rename it once to `Lichborne.AppImage` so updates keep the same name.
-- **macOS** — open the `.dmg` and drag Lichborne to Applications. macOS will call it *"damaged"* on first launch; it isn't — that's how Apple Silicon phrases *"not notarized"*. Clear it once with `xattr -cr /Applications/Lichborne.app`.
+> [!TIP]
+> Don't use Lich? Choose **Direct** on a character's tile to connect straight to the game. You'll miss Lich's extras (scripts, variables, the Lich Map), but everything else works.
 
-**2. Set up Lich (recommended).** If you already run [Lich5](https://github.com/elanthia-online/lich-5), point Lichborne at it: **⚙ Lich Setup → Auto-detect**. On macOS and Linux you'll need Ruby 4 installed too. Skipping this is fine — pick **Direct** on a character tile and you'll connect straight to the game without Lich's features.
+<details>
+<summary><b>⌨️ Keyboard shortcuts</b></summary>
 
-**3. Add your account.** Click **+ Add account**, sign in and pick your game. Lichborne finds your characters and makes a tile for each one. You do this once per account, for each game you play on it.
-
-**4. Connect and arrange.** Click a character, then open **Layout** to place your panels. Whatever you change is saved for that character automatically.
-
----
-
-## Keyboard shortcuts
-
-| Key | Action |
+| Key | What it does |
 |---|---|
-| `Ctrl+Tab` | Next character tab |
-| `Ctrl+1` … `Ctrl+9` | Jump to character by slot |
-| `Ctrl+Shift+Enter` | Quick Send — command another character without switching |
-| `Ctrl+F` | Search the game window |
-| `PageUp` / `PageDown` | Scroll the text window |
-| `Ctrl+Home` / `Ctrl+End` | Top of history / back to live |
-| `Ctrl+Enter` / `Alt+Enter` | Send your last / second-to-last command |
+| `Ctrl+Tab` | Next character |
+| `Ctrl+1` … `Ctrl+9` | Jump to a character |
+| `Ctrl+Shift+Enter` | Quick Send to another character |
+| `Ctrl+F` | Search the game text |
+| `PageUp` / `PageDown` | Scroll the game text |
+| `Ctrl+Home` / `Ctrl+End` | Jump to the top / back to live |
+| `Ctrl+Enter` / `Alt+Enter` | Repeat your last / second-to-last command |
 | `Esc` | Clear the command line |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom in / out / reset |
 
-Plain `Home` and `End` move your cursor in the command box, where it usually is — hold `Ctrl` to scroll the game text instead. On macOS the `Cmd` versions work too, and zoom is `Cmd` only (`Cmd+=` / `Cmd+-` / `Cmd+0`). Macro keys (F1–F12 and Ctrl/Alt combos) are yours to bind in the Automations panel.
+On a Mac, use `Cmd` for zoom. Set your own macro keys in **Automations**.
+
+</details>
 
 ---
 
-## Known limitations
+## Good to know
 
-Worth knowing before you install:
-
-- **No paid code signing yet.** Windows shows a SmartScreen warning; macOS needs the one-time `xattr -cr` above.
-- **All three platforms update themselves.** On a Mac that starts from v0.21.1, which you install by hand once.
-- **macOS builds are Apple Silicon only.** Ask on Discord (**Help → Discord** in the app) if you need Intel.
-- **Linux and macOS are beta.** Everything works; they're just younger than the Windows build.
-- **Map tracking depends on what the game sends.** The Lich Map follows room IDs and is the most reliable — more so if you turn on DragonRealms' room-number display. The Genie Map matches on room name and description, so it can lag in areas full of identically-named rooms; a `LOOK` resyncs it.
+- **No code signing yet.** That's why Windows shows SmartScreen and macOS needs the one-time command.
+- **macOS builds are for Apple Silicon only.** Need Intel? Ask on Discord.
+- **A few views are DragonRealms-only:** Moons, Spell Monitor and Genie Maps. The [User Guide](docs/Lichborne-User-Guide.md#dragonrealms-and-gemstone-iv) lists what each game gets.
+- **Maps follow what the game sends.** The Lich Map is the most accurate. If a map loses you, type `LOOK`.
 
 ---
 
-## Documentation
+## Learn more
 
-- **[User Guide](docs/Lichborne-User-Guide.md)** — the full tour: every feature, what it does, and how to set it up.
-- **[AI Notice](AINOTICE.md)** — what the AI features send, what's scrubbed, and where your key lives.
-- **[Knowledge](docs/Knowledge.md)** — verified notes on how Lich and DragonRealms actually behave.
+- 📖 **[User Guide](docs/Lichborne-User-Guide.md)** — every feature and how to set it up
+- 🔒 **[AI Notice](AINOTICE.md)** — what the AI feature sends and what it never sends
+- 💬 **Discord** — open Lichborne and choose **Help → Discord**
 
 ---
 
 ## Credits
 
-Built with the DragonRealms community, and shaped by the people who use it.
+Made with the DragonRealms and GemStone IV communities.
 
-**Developers** — Sekmeht, Binu
+**Developers** — Sekmeht, Binu, Tysong
 
-**Contributors** — Rakkor, Illiahanna, Elore, Morress, Legiro, Rhorgul, Thanator, Mahtra, Zithri, Qij, Kahlen, Vaddon, Crobin, Horibu
+**Contributors** — Rakkor, Illiahanna, Elore, Morress, Legiro, Rhorgul, Thanator, Mahtra, Zithri, Qij, Kahlen, Vaddon, Crobin
 
 **Testers** — Cirostar, Damiza, Tirost, Wilhellm
 
-Thanks also to [Thires](https://github.com/Thires/SimuCoins), whose Genie SimuCoins plugin showed how that feature works, and to the Genie maps team, whose hand-curated map data the Genie map view renders.
+Special thanks to **Tysong**, who brought GemStone IV to Lichborne, to [Thires](https://github.com/Thires/SimuCoins), whose Genie SimuCoins plugin showed how that feature works, and to the Genie maps team, whose maps the Genie map view draws.
 
----
+<details>
+<summary><b>🛠 Building from source</b></summary>
 
-## Building from source
-
-Most people want the [releases page](https://github.com/elanthia-online/Lichborne/releases/latest), not this section.
+Most people want the [release page](https://github.com/elanthia-online/Lichborne/releases/latest) instead. You'll need Node 24 or newer.
 
 ```bash
 npm install
 npm start
 ```
 
-Needs Node 24+. Build commands, project layout, conventions, and the release pipeline are documented in [CLAUDE.md](CLAUDE.md) and [DESIGN.md](docs/DESIGN.md) — and every source file opens with a comment block saying what it is, where it sits in the pipeline, and what not to break, so the code itself is a reasonable place to start reading.
+How the code is laid out, and how releases are built, is in [CLAUDE.md](CLAUDE.md) and [DESIGN.md](docs/DESIGN.md). Every source file starts with a short comment explaining what it does.
+
+</details>
 
 ---
 
 ## License
 
-Lichborne is open source under the [BSD 3-Clause License](LICENSE) — the same license as [Lich](https://github.com/elanthia-online/lich-5) itself. Copyright © 2026 Sekmeht and Binu.
+Open source under the [BSD 3-Clause License](LICENSE), the same license as [Lich](https://github.com/elanthia-online/lich-5). Copyright © 2026 Sekmeht and Binu.
 
 DragonRealms, GemStone IV and Wrayth (formerly StormFront) are trademarks or registered trademarks of Simutronics Corp. Lichborne is an independent, unofficial community project — not affiliated with, sponsored by, or endorsed by Simutronics. Playing through Lichborne requires your own Simutronics account and is subject to Simutronics' terms of service.

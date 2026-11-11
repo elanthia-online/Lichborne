@@ -7,6 +7,8 @@
 // renamed JadedSoul (≡ Jaded — one person, counts combined; BUGS.md still says
 // "JadedSoul"/"Jaded", so count those toward Illiahanna);
 // Elore is the renamed Aubrey AND ≡ Cherisse (one person, combined count → 3rd);
+// Tysong ≡ Horibu (GitHub mrhoribu; history logs "Horibu", so count those
+// toward Tysong; listed once, as Tysong — Sekmeht, v1.0.0);
 // Binu is a co-CREATOR (in DEVELOPERS, never a credits list).
 export const DEVELOPERS = ['Sekmeht', 'Binu']
 
@@ -34,7 +36,11 @@ export const CONTRIBUTORS = [
   'Vaddon',
   // Promoted from TESTERS in v0.20.4 (Sekmeht). No item logged in BUGS.md
   // under this name yet, so the tail of the volume ordering.
-  'Crobin', 'Horibu',
+  'Crobin',
+  // Tysong ≡ Horibu (see the identity notes above). Listed as a DEVELOPER in
+  // the README's credits and as a contributor here, by Sekmeht's choice
+  // (v1.0.0): keep both when re-sorting.
+  'Tysong',
 ]
 
 // All still at zero logged reports, so alphabetical is the stable order here —

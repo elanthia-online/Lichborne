@@ -66,22 +66,23 @@ A few ideas shape everything:
 - **Your setup follows you.** Every panel move, color tweak, and contact edit saves automatically to plain files you own. Restart, switch characters, or move to a new PC — it's all exactly where you left it.
 - **Lich is recommended, but not required.** Lichborne shines brightest connected through [Lich5](https://github.com/elanthia-online/lich-5), which unlocks maps, spell timers, variables, and scripts. But you can connect **straight to the game** with no Lich at all, and Lichborne stays genuinely usable — the features that need Lich simply fall back gracefully. See the [Feature Matrix](#feature-matrix-with-lich-vs-without-lich).
 
-**Current state:** Lichborne is in **alpha** — the core experience is solid and improving fast. It runs on **Windows (x64, stable)**, and as of v0.18.0 on **Linux (AppImage, beta)** and **macOS (Apple Silicon, beta)** too — see [Install](#1-install) for the per-platform notes.
+**Current state:** Lichborne reached **general release** with 1.0.0 — the core experience is solid and still improving fast. It runs on **Windows (x64)**, **Linux (AppImage)** and **macOS (Apple Silicon)** — see [Install](#1-install) for the per-platform notes.
 
 ---
 
 ## What's New in the Latest Version
 
-**v0.21.1**
+**v1.0.0**
 
-- **Lichborne now updates itself on a Mac** (thanks, Zithri). Update from v0.21.0 or
-  earlier by downloading v0.21.1 and running `xattr -cr /Applications/Lichborne.app`
-  one last time. After that, updates arrive in the app, as on Windows and Linux.
-  A brand-new Mac install still needs that command once.
-- **Test builds** (thanks, Horibu). A tester can now be handed a build of an unreleased
-  change. Those expire after 7 days and, on a Mac, need `xattr -cr` each time.
-- **Everything under the hood is current.** Lichborne runs on Electron 45 (Chromium 156),
-  with the latest browser security fixes. Nothing looks or works differently.
+- **GemStone IV** (thanks, Tysong). Prime, Shattered and Test, with Effects, Experience,
+  Encumbrance and Creatures panels of their own. See
+  [DragonRealms and GemStone IV](#dragonrealms-and-gemstone-iv) for which views each game has.
+- **Characters are filed by name and shard.** The first start renames your files once and
+  keeps a copy of the originals in `profiles\PreKeyBackup\`. Older versions can't read the
+  new names.
+- **A game filter, shard names and a Lich install per game or per character** on the launcher.
+- **Vitals bar text:** a percentage, the game's numbers (GemStone IV) or just the name.
+- **Windows:** the installer asks about a desktop shortcut and leaves yours where it is on upgrade.
 
 ## On the Horizon (Roadmap)
 
@@ -92,7 +93,6 @@ Lichborne is actively developed. A few things we're heading toward — direction
 - **More Lichborne Experiences.** The graphical scenes (Living Tableau, Moons, Spell Monitor) are the first of a larger set of "graphics for text players" — richer combat instruments, wound/status visuals, and more.
 - **More AI helpers.** Catch Me Up is the first BYOK ("bring your own key") AI feature. Others are designed and on the way — always optional, always with a working non-AI baseline, and always privacy-first.
 - **A proper Discord community** for feedback and bug reports (join from **Help → Discord** in the app).
-- **Linux and Mac out of beta.** The v0.18.0 platform betas graduate once they've soaked with testers — if you play on either, your reports are what get them there.
 - **Code signing**, to remove the first-install warnings (Windows SmartScreen now; Apple's paid certificate on a Mac if demand shows).
 
 ---
@@ -105,16 +105,16 @@ Three steps and a one-time in-game command, and you're playing.
 
 All downloads are on the **[Releases page](https://github.com/elanthia-online/Lichborne/releases/latest)**.
 
-**Windows (stable):** run `Lichborne-X.Y.Z-setup.exe` — no admin rights needed. Windows may show a **SmartScreen** warning (no code-signing certificate yet); click **More info → Run anyway**. It's safe. Auto-updates with one click when a new version lands. The installer asks whether to put a shortcut on your desktop (ticked by default); when you install a newer version over an old one, a shortcut you already have stays where you put it.
+**Windows:** run `Lichborne-X.Y.Z-setup.exe` — no admin rights needed. Windows may show a **SmartScreen** warning (no code-signing certificate yet); click **More info → Run anyway**. It's safe. Auto-updates with one click when a new version lands. The installer asks whether to put a shortcut on your desktop (ticked by default); when you install a newer version over an old one, a shortcut you already have stays where you put it.
 
-**Linux (beta):** download the `.AppImage`, `chmod +x` it, run it. Two tips:
+**Linux:** download the `.AppImage`, `chmod +x` it, run it. Two tips:
 
 - **It keeps one name: `Lichborne.AppImage`.** Auto-update replaces that file in place, so desktop shortcuts and dock favourites keep working. Downloads before v0.19.7 had the version number in the name (`Lichborne-0.19.6.AppImage`); if yours does, rename it once to `Lichborne.AppImage`. Otherwise the next update switches it to the new name itself, and any shortcut to the old name stops working.
 - **If it won't start on Ubuntu 22.04 or newer**, install FUSE 2, which AppImages need: `sudo apt install libfuse2t64` on 24.04, or `sudo apt install libfuse2` on 22.04. Running it from a terminal shows the FUSE error if that's the cause.
 
 If "Remember password" is greyed out, your desktop lacks a keyring service — install GNOME Keyring or KWallet, or just type the password each session.
 
-**macOS (beta, Apple Silicon):** open the `.dmg`, drag Lichborne to Applications. **The first launch needs one Terminal command** — open Terminal and paste:
+**macOS (Apple Silicon):** open the `.dmg`, drag Lichborne to Applications. **The first launch needs one Terminal command** — open Terminal and paste:
 
 ```bash
 xattr -cr /Applications/Lichborne.app
@@ -122,7 +122,7 @@ xattr -cr /Applications/Lichborne.app
 
 Then open Lichborne normally. You won't need it again: from v0.21.1 on, Lichborne updates itself on a Mac too. If macOS instead offers **System Settings → Privacy & Security → "Open Anyway"**, that route works too.
 
-**Why?** Apple charges $99/yr for the certificate that makes this warning go away, and Lichborne is a free project. Without it macOS quarantines the download — and on Apple Silicon it phrases that as **"Lichborne is damaged and can't be opened. You should move it to the Trash."** Nothing is damaged and nothing needs trashing: that's simply how macOS says "not notarized by Apple." The app is safe and the source is public. **Mac updates are manual** — check the Releases page for new versions.
+**Why?** Apple charges $99/yr for the certificate that makes this warning go away, and Lichborne is a free project. Without it macOS quarantines the download — and on Apple Silicon it phrases that as **"Lichborne is damaged and can't be opened. You should move it to the Trash."** Nothing is damaged and nothing needs trashing: that's simply how macOS says "not notarized by Apple." The app is safe and the source is public, and once it's installed it updates itself.
 
 ### 2. Set up Lich (recommended)
 
@@ -225,6 +225,8 @@ Lichborne plays both games. Most of this guide applies to either one. A few pane
 - **GemStone IV only:** the **Effects** panel (your Buffs, Debuffs, Cooldowns and Active Spells, with time left), the **Encumbrance** panel, and the **Creatures** panel (each creature in the room with its health; click one to target it). Add them from a panel's **+** button.
 - **DragonRealms only:** the **Active Spells** panel, the **Genie Maps** view (there are no Genie maps for GemStone IV; the Lich Map works for both), and the **Moons** and **Spell Monitor** Experiences.
 - **Different in each game:** the **Experience** panel shows skills and learning for DragonRealms, and level, experience and training points for GemStone IV. In **Edit profile…**, a GemStone IV character has a **Profession** and **Level** where a DragonRealms one has a **Guild** and **Circle**.
+
+The character tab and the window title show each shard by its game code, the one Simutronics' login uses: **GS3** is GemStone IV Prime, **GSF** Shattered and **GST** Test (and **DR**, **DRX**, **DRF**, **DRT** for DragonRealms). The launcher tiles spell the names out.
 
 ### Views: Session and Overview
 
@@ -810,7 +812,7 @@ Lichborne keeps a clean, dated **plain-text log** of every session — the game 
 
 ## Appendix D — Troubleshooting & known limits
 
-- **Platforms:** Windows x64 (stable), Linux x64 AppImage (beta), macOS Apple Silicon (beta). Linux/Mac are new in v0.18.0 — report anything odd on Discord (**Help → Discord**).
+- **Platforms:** Windows x64, Linux x64 AppImage and macOS Apple Silicon, all in general release since 1.0.0. Report anything odd on Discord (**Help → Discord**).
 - **First-install warnings** — expected on two platforms (no code-signing certs): Windows SmartScreen → **More info → Run anyway**. On macOS the download is quarantined, and Apple Silicon words that as **"Lichborne is damaged and can't be opened"** — it isn't damaged, that's Apple's phrasing for "not notarized". Clear it once with `xattr -cr /Applications/Lichborne.app` (or use **System Settings → Privacy & Security → Open Anyway** if macOS offers that instead).
 - **Mac: updates need v0.21.1 or later.** Earlier Mac builds can't update themselves, so get v0.21.1 from the Releases page once. After that, updates arrive in the app, as on Windows and Linux.
 - **Mac: "Lichborne wants to access your Desktop"?** That's the Lich **Auto-detect** looking for the wiki-standard `~/Desktop/Lich5` install — allow it (or browse to Lich manually).
