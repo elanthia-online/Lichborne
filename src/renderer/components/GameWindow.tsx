@@ -44,6 +44,7 @@ import { pressable } from '../utils/pressable'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { GameEvent, StreamTextEvent, TextLine, LineStyleHint, RoomState, TextSegment, InjuryState, FireLogEntry, SessionLogRecord, SimuCoinStatus, CreatureStatus, RichStreamMode } from '../../shared/types'
 import { gameFamilyFromCode, gameFamilyName, type GameFamily } from '../../shared/types'
+import type { EffectsState } from '../gsEffects'
 import { normalizeStreamId } from '../../shared/streamAliases'
 import { redactForAI } from '../../shared/redact'
 import { TextLineRow } from './TextLineRow'
@@ -76,14 +77,14 @@ import VitalsBar from './VitalsBar'
 import IconBar from './IconBar'
 import FloatingCompass from './FloatingCompass'
 import { directedLine, type DirectedVerb } from '../utils/sayTo'
-import PanelFrame, { type TabDef, type PanelType, PANEL_LABELS, ALL_PANEL_TYPES, makeTab, expIdFromTab, panelTypeAvailable } from './PanelFrame'
+import PanelFrame, { type TabDef, type PanelType, PANEL_LABELS, ALL_PANEL_TYPES, makeTab, makeCustomTab, expIdFromTab, panelTypeAvailable, filterPanelTypesForFamily } from './PanelFrame'
 import PanelManager from './PanelManager'
 import WindowLayer from './WindowLayer'
 import ExperienceLayer from './ExperienceLayer'
 import ExperienceShelf from './ExperienceShelf'
 import { SORT_MODES, type SortMode } from '../expParse'
 import { resolvePlace, type PlaceKey } from './experiences/tableauPlaces'
-import { EXPERIENCES, experienceById, defaultHiddenMap, loadExperiences, saveExperiences, deriveSpellState, parseGroupLines, type GroupState, parseMoonLine, mergeMoonReport, parseTimeLine, SUN_RISE_RE, SUN_SET_RE, WEATHER_GLANCE_RE, type ExperienceInstance, type SceneCast, type SceneSpeechItem, type SceneMoveItem, type MoonsState, type WeatherInfo, type CalendarInfo, type SpellState, type SceneMoment, type SpellPulse, emptySpellPulse, recordSpellPulse, SPELL_ENDED_TTL_MS, type FaceTurn } from '../experiences'
+import { EXPERIENCES, experienceById, experienceAvailable, defaultHiddenMap, loadExperiences, saveExperiences, deriveSpellState, parseGroupLines, type GroupState, parseMoonLine, mergeMoonReport, parseTimeLine, SUN_RISE_RE, SUN_SET_RE, WEATHER_GLANCE_RE, type ExperienceInstance, type SceneCast, type SceneSpeechItem, type SceneMoveItem, type MoonsState, type WeatherInfo, type CalendarInfo, type SpellState, type SceneMoment, type SpellPulse, emptySpellPulse, recordSpellPulse, SPELL_ENDED_TTL_MS, type FaceTurn } from '../experiences'
 import { parseCombatPosition, parseCombatBalance, parseCombatRange, parseAssessLine, RANGE_ORDER, parseFaceReply, mayBeEngagementLine, parseEngagementLine, applyEngagement, stepOutRange, balanceFromAssessStatus, mayBeStrikeLine, parseStrikeLine, type CombatRange, type AssessEntity, type Engagement, type EngagementEvent, type StrikeEvent } from '../../shared/combatExtract'
 import { guildToFocusOption } from '../focusTemplates'
 import { showToast } from '../toasts'
@@ -461,6 +462,9 @@ const ROOM_STREAMS = new Set([
 // tab-hosted ⚙ layer popover (F55 follow-up — the gear was floating-window-only,
 // so a tab-only Moons had no path to "hide the horizon" etc.).
 const EXPERIENCE_TAB_DEFS = EXPERIENCES.map(e => ({ id: e.id, label: e.label, options: e.options }))
+// Per family, still module-level (pitfall #82c): GS4 drops DR's Moons and
+// Spell Monitor from the + menu's [e] section.
+const EXPERIENCE_TAB_DEFS_GS4 = EXPERIENCE_TAB_DEFS.filter(d => experienceAvailable(experienceById(d.id)!, 'GS4'))
 
 const NEVER_DISCOVER = new Set([
   'main', 'raw',
@@ -472,6 +476,7 @@ const NEVER_DISCOVER = new Set([
   'logons',     // → arrivals
   'talk',       // → conversation (v0.8.10: renamed from plural)
   'whispers',   // → conversation (v0.8.10: also routes to the combined Conversation feed)
+  'speech',     // → conversation (GS4's speech window)
   'conversations', // → conversation (v0.8.10 backward alias; legacy plural)
   'percwindow', // → spells
   'inventory',  // → inv
@@ -535,6 +540,16 @@ const STREAM_FALLBACK: Record<string, string> = {
   // the user adds the panel), never dumped to main. (DR sends group content
   // ONLY inside the pushStream block — no native outside-copy — so dropping
   // the fallback loses nothing in main, unlike the speech case in B136.)
+  //
+  // GemStone IV's `loot` stream (SEARCH results) is a LOG — appended, never
+  // cleared — and the game sends it nowhere else: 0 of 609 captured lines
+  // reached main, so with no panel open a SEARCH printed nothing at all.
+  loot:          'main',
+  // NO bounty / society fallback, for the `group` reason above: both are GS4
+  // STATE windows (`<clearStream>` then the whole task, repainted after every
+  // kill or sale — up to 30 times a session), while the progress line itself
+  // ("[You have 17 kills remaining.]") already goes to main. A fresh GS4
+  // character gets a Bounties tab instead (defaultMidTabs).
 }
 
 const DEFAULT_PANEL_WIDTH = 280
@@ -648,15 +663,24 @@ const TimerDisplay = memo(function TimerDisplay({ rtExpires, ctExpires, aimExpir
 // GS4 support: 'exp' (<ExpPanel/>) is DR-only (PANEL_GAMES in PanelFrame.tsx)
 // — defaulting a fresh GS4 character's bottom zone to it would render the DR
 // mindstate-ladder panel with meaningless data, not just an empty one. No
-// GS4-native experience panel exists yet, so default to just Log until one
-// does. Module-level (not per-component) so both the initial useState default
+// GS4-native experience panel exists yet, so GS4 gets the Effects panel
+// (its timed spells/buffs/debuffs/cooldowns — Saga ships its Timers panel
+// visible too) beside Log instead. Module-level (not per-component) so both the initial useState default
 // and resetLayout()'s "Reset Panels" default read the SAME function and can't
 // drift (pitfall #113's class of bug).
 function defaultBottomTabs(family: GameFamily): TabDef[] {
-  return family === 'GS4' ? [makeTab('log')] : [makeTab('exp'), makeTab('log')]
+  return family === 'GS4' ? [makeTab('effects'), makeTab('log')] : [makeTab('exp'), makeTab('log')]
 }
 function defaultBottomActiveId(family: GameFamily): string {
-  return family === 'GS4' ? 'log' : 'exp'
+  return family === 'GS4' ? 'effects' : 'exp'
+}
+// GS4: no `spells` — that is DR's percWindow stream (PANEL_GAMES); GS4's
+// active spells are a section of the Effects panel in the bottom zone. GS4
+// gets the game's Bounties window instead: a state window with no main
+// fallback (see STREAM_FALLBACK), so without a tab it is out of sight.
+function defaultMidTabs(family: GameFamily): TabDef[] {
+  const tabs = [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths')]
+  return family === 'GS4' ? [...tabs, makeCustomTab('bounty')] : [...tabs, makeTab('spells')]
 }
 // Same creatures, same names, same states, in the same order.
 function sameRoster(a: readonly CreatureStatus[], b: readonly CreatureStatus[]): boolean {
@@ -736,6 +760,10 @@ export default function GameWindow({
       setEngagements([])
       setAssessCast([])
       setAssessAt(0)
+      // GS4 timed effects from the dropped connection: each runs down from its
+      // block's `at`, and a dialog the new connection leaves empty may never be
+      // resent to clear it.
+      setEffectsState({})
       setCreatureRoster(null)
       setFaceTurn(null)
       setWalkedOut(prev => (Object.keys(prev).length > 0 ? {} : prev))
@@ -1175,7 +1203,7 @@ export default function GameWindow({
   // Panel tabs — 3 right-column zones + 1 main-top zone, persisted to localStorage (per-character)
   const [topTabs, setTopTabs]       = useState<TabDef[]>(() => loadTabs(scopedKey(session.character, 'topTabs'),    [makeTab('conversation')]))
   const [topActiveId, setTopActiveId]   = useState(() => loadStr(scopedKey(session.character, 'topActiveId'),    'conversation'))
-  const [midTabs, setMidTabs]       = useState<TabDef[]>(() => loadTabs(scopedKey(session.character, 'midTabs'),    [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths'), makeTab('spells')]))
+  const [midTabs, setMidTabs]       = useState<TabDef[]>(() => loadTabs(scopedKey(session.character, 'midTabs'),    defaultMidTabs(gameFamily)))
   const [midActiveId, setMidActiveId]   = useState(() => loadStr(scopedKey(session.character, 'midActiveId'),    'thoughts'))
   const [bottomTabs, setBottomTabs] = useState<TabDef[]>(() => loadTabs(scopedKey(session.character, 'bottomTabs'), defaultBottomTabs(gameFamily)))
   const [bottomActiveId, setBottomActiveId] = useState(() => loadStr(scopedKey(session.character, 'bottomActiveId'), defaultBottomActiveId(gameFamily)))
@@ -1933,6 +1961,7 @@ export default function GameWindow({
   const [discoveredStreams, setDiscoveredStreams] = useState<string[]>([AI_STREAM])
   const [streamTitles, setStreamTitles]           = useState<Record<string, string>>({})
   const [injuryState, setInjuryState]             = useState<InjuryState>({})
+  const [effectsState, setEffectsState]           = useState<EffectsState>({})
 
   // ── Views: per-session accumulators (v0.19.0, DESIGN §47) ─────────────────
   // Placed here so every input above is in scope. The counters run ALWAYS, even
@@ -2017,10 +2046,11 @@ export default function GameWindow({
     // The others stay out because nothing renders them: `map` is graphical,
     // `injuries` already surfaces as the wound chip, `room` is structured
     // sub-streams, `lichScripts` is the `;listall` poll, raw/debug are
-    // diagnostics.
+    // diagnostics. `effects` (GS4) is rendered from effects-update state, like
+    // `injuries`, so a feed of it could only ever be empty.
     const skip = new Set([
       'main', 'raw', 'debug', 'room',
-      'map', 'lichscripts', 'injuries',
+      'map', 'lichscripts', 'injuries', 'effects',
     ])
     const ids: string[] = []
     // Lowercase for the COMPARISON only — the id pushed is the original, because
@@ -3094,7 +3124,7 @@ export default function GameWindow({
   useEffect(() => {
     if (layoutMode === 'free' && !freeInitRef.current && freeWindows.length === 0) {
       freeInitRef.current = true
-      setFreeWindows(seedDefaultWindows())
+      setFreeWindows(seedDefaultWindows(gameFamily))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -3154,6 +3184,9 @@ export default function GameWindow({
       const labelUpdates: Record<string, string> = {}
       const indicatorUpdates: Record<string, boolean> = {}
       const newDiscovered: string[] = []
+      // Ids that actually had text pushed to them this batch (see the
+      // family-hidden builtin rule in the discovery filter below).
+      const pushedStreams = new Set<string>()
       // Inline room description capture (Genie/Lich map matching). DR streams the
       // room desc inline as `<preset id='roomDesc'>…</preset>` in the `main`
       // stream — it is NOT a `<component id='room desc'>`, so the only path that
@@ -3655,6 +3688,12 @@ export default function GameWindow({
           case 'injury-update':
             setInjuryState(evt.parts)
             break
+          // GS4's timed-effect dialogs: each block replaces its dialog's whole
+          // list. The clear='t' block and its refill share one line, so they
+          // land in this same batch and only the refill is ever painted.
+          case 'effects-update':
+            setEffectsState(prev => ({ ...prev, [evt.dialog]: { entries: evt.entries, at: evt.at } }))
+            break
           // §35 scene events. The cast is sticky state (replay-snapshotted in
           // main) feeding the Experiences; arrive/depart are transient edges
           // reserved for future choreography — when consumed, gate them on
@@ -3764,6 +3803,7 @@ export default function GameWindow({
           }
           case 'stream-push':
             newDiscovered.push(evt.stream)
+            pushedStreams.add(evt.stream)
             break
           case 'rich-stream':
             richStreamSeenRef.current = true
@@ -4085,7 +4125,17 @@ export default function GameWindow({
             if (seenInBatch.has(id)) return false
             const lower = id.toLowerCase()
             if (NEVER_DISCOVER.has(lower)) return false
-            if (ALL_PANEL_TYPES.includes(lower as PanelType)) return false
+            // A builtin id is never discovered (pitfall #27) — except one this
+            // character's game hides (PANEL_GAMES), and only once text is
+            // actually PUSHED to it. GS4 declares a `Spells` window at login,
+            // which lowercases to DR's builtin `spells` (DR-only); no capture
+            // has ever filled it, so a declaration alone would offer an
+            // always-empty "Spells" everywhere. If a script ever pushes to it,
+            // it becomes reachable as a discovered stream.
+            if (ALL_PANEL_TYPES.includes(lower as PanelType)) {
+              if (panelTypeAvailable(lower as PanelType, gameFamily)) return false
+              if (!pushedStreams.has(id)) return false
+            }
             seenInBatch.add(id)
             return true
           })
@@ -4721,7 +4771,7 @@ export default function GameWindow({
     // zone; right-column top default is just Conversations now.
     const defaultMainTop = [makeTab('room'), makeTab('combat')]
     const defaultTop = [makeTab('conversation')]
-    const defaultMid = [makeTab('thoughts'), makeTab('arrivals'), makeTab('deaths'), makeTab('spells')]
+    const defaultMid = defaultMidTabs(gameFamily)
     const defaultBot = defaultBottomTabs(gameFamily)
     setMainTopTabs(defaultMainTop); setMainTopActiveId('room')
     setTopTabs(defaultTop);         setTopActiveId('conversation')
@@ -5303,6 +5353,7 @@ export default function GameWindow({
         mode: loadAdvanced().richStream,   // undefined = Lichborne's default (B544)
         receiving: richStreamSeenRef.current,
         viaLich: session.useLich,
+        gs4: gameFamily === 'GS4',
       }),
       setRichStream: (mode: RichStreamMode | undefined) => {
         // undefined removes the key (JSON.stringify drops it), so "default"
@@ -5391,7 +5442,9 @@ export default function GameWindow({
       // runs applyTheme (which persists lichborne.theme + storage-syncs other
       // windows) and re-applies accessibility overlays via the hook.
       applyThemeId: id => setCurrentThemeId(id),
-      getOpenableStreams: () => [...ALL_PANEL_TYPES, ...discoveredStreams],
+      // Same family gate as the + menu, so `/panel open exp` can't put DR's
+      // Experience panel on a GS4 character (or `effects` on a DR one).
+      getOpenableStreams: () => [...filterPanelTypesForFamily(ALL_PANEL_TYPES, gameFamily), ...discoveredStreams],
       getOpenPanels: () => layoutMode === 'free'
         ? freeWindows.filter(w => w.kind === 'panel').flatMap(w => (w.tabs ?? []).map(t => t.id))
         : [
@@ -5849,6 +5902,7 @@ export default function GameWindow({
     discoveredStreams,
     streamTitles,
     injuryState,
+    effectsState,
     unreadIds: unreadStreams,
     streamTimestamps,
     onToggleTimestamp: toggleStreamTimestamp,
@@ -5876,7 +5930,7 @@ export default function GameWindow({
     // §34 dual-hosting: the + menu's [e] section + the tab renderer. Both
     // MUST ride sharedFrameProps (B193) so zone tabs and floating windows
     // behave identically.
-    experienceDefs: EXPERIENCE_TAB_DEFS,
+    experienceDefs: gameFamily === 'GS4' ? EXPERIENCE_TAB_DEFS_GS4 : EXPERIENCE_TAB_DEFS,
     renderExperienceTab,
     // F55 follow-up: the tab-hosted ⚙ reads/writes the SAME instance `hidden`
     // map the floating window uses. Plain per-render closures (PanelFrame is
@@ -5994,9 +6048,9 @@ export default function GameWindow({
 
   function buildWindowsFromCurrentLayout(): FloatWindow[] {
     const layoutEl = gameLayoutRef.current
-    if (!layoutEl) return seedDefaultWindows()
+    if (!layoutEl) return seedDefaultWindows(gameFamily)
     const C = layoutEl.getBoundingClientRect()
-    if (C.width <= 0 || C.height <= 0) return seedDefaultWindows()
+    if (C.width <= 0 || C.height <= 0) return seedDefaultWindows(gameFamily)
 
     // The window header is an OVERLAY as of v0.18.1 (see free-layout.css), so a
     // converted window reserves NO room for a title bar — the strip it hosts
@@ -6046,7 +6100,7 @@ export default function GameWindow({
     addChrome('icon',    measureH('.icon-bar', 36),     'Status')
     addChrome('command', measureH('.command-bar', 40),  'Command')
 
-    if (wins.length === 0) return seedDefaultWindows()
+    if (wins.length === 0) return seedDefaultWindows(gameFamily)
     return wins
   }
 
@@ -6280,6 +6334,11 @@ export default function GameWindow({
   function renderExperienceContent(expId: string, hidden?: Record<string, boolean>): React.ReactNode {
     const def = experienceById(expId)
     if (!def) return null
+    // A DR-only Experience carried onto a GS4 character (Profile Transfer
+    // copies open instances and tabs) says so instead of drawing DR data.
+    if (!experienceAvailable(def, gameFamily)) {
+      return <div className="ui-empty">{def.label} is a DragonRealms Experience; there is nothing for it to show in GemStone IV.</div>
+    }
     const C = def.component
     return (
       <C
@@ -6686,7 +6745,9 @@ export default function GameWindow({
               modeNames: modes.map(m => m.name),
               groupNames: groups.map(g => g.name),
               themeIds: [...THEMES.map(t => t.id), ...myThemes.map(t => t.id)],
-              openableStreams: [...ALL_PANEL_TYPES, ...discoveredStreams],
+              // The same family gate as getOpenableStreams, so the palette never
+              // suggests a panel that /panel open would then refuse.
+              openableStreams: [...filterPanelTypesForFamily(ALL_PANEL_TYPES, gameFamily), ...discoveredStreams],
               openPanels: layoutMode === 'free'
                 ? freeWindows.filter(w => w.kind === 'panel').flatMap(w => (w.tabs ?? []).map(t => t.id))
                 : [
@@ -7032,6 +7093,7 @@ export default function GameWindow({
           openIds={new Set(experiences.filter(i => i.open).map(i => i.id))}
           onToggle={toggleExperience}
           onClose={() => setShowExpShelf(false)}
+          gameFamily={gameFamily}
         />
       )}
 

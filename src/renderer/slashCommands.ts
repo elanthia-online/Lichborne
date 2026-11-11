@@ -59,7 +59,7 @@ export interface SlashContext {
   // v0.21.0 — DragonRealms' rich stream: the app-wide request (Lich Setup) and
   // what this session is receiving. A change applies from the next connect.
   // mode: the player's choice, or undefined for Lichborne's default (B544).
-  getRichStream: () => { mode: RichStreamMode | undefined; receiving: boolean; viaLich: boolean }
+  getRichStream: () => { mode: RichStreamMode | undefined; receiving: boolean; viaLich: boolean; gs4?: boolean }
   setRichStream: (mode: RichStreamMode | undefined) => void
   // v0.20.0 — character status notifications (app-wide).
   getCharacterNotices: () => boolean
@@ -1398,6 +1398,10 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
         return ok(`Rich stream: ${richStreamSettingText({ richStream: mode })} Applies from your next connect or a manual Reconnect (an automatic re-attach keeps the setting it connected with).`)
       }
       const r = ctx.getRichStream()
+      // GemStone sends its links and bold whatever the client asks for, and
+      // Lich's rich-stream rewrites are DragonRealms-only, so the setting
+      // changes nothing for a GS4 character (it isn't sent for one).
+      if (r.gs4) return ok(`Rich stream setting: ${richStreamSettingText({ richStream: r.mode })} It applies to DragonRealms only: GemStone IV always sends its own links and bold, so this character gets them either way.`)
       const now = !r.viaLich
         ? 'This character connects directly (no Lich), which always uses the legacy stream.'
         : r.receiving

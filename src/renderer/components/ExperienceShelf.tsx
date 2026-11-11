@@ -1,5 +1,6 @@
 import { useId, useRef } from 'react'
-import { EXPERIENCES } from '../experiences'
+import { EXPERIENCES, experienceAvailable } from '../experiences'
+import type { GameFamily } from '../../shared/types'
 import { backdropHandlers } from "../utils/backdropClose"
 import { useEscapeClose } from '../hooks/useEscapeClose'
 import '../styles/experiences.css'
@@ -18,9 +19,12 @@ interface Props {
   openIds: Set<string>
   onToggle: (id: string) => void
   onClose: () => void
+  // Only the Experiences this character's game has data for (Moons and Spell
+  // Monitor are DragonRealms-only).
+  gameFamily?: GameFamily
 }
 
-export default function ExperienceShelf({ openIds, onToggle, onClose }: Props) {
+export default function ExperienceShelf({ openIds, onToggle, onClose, gameFamily }: Props) {
   // B341: Esc closes the shelf. Rendered inline in GameWindow (not portaled),
   // so pass the root — a hidden character tab's shelf has no layout box and is
   // skipped rather than closed behind the user's back.
@@ -35,7 +39,7 @@ export default function ExperienceShelf({ openIds, onToggle, onClose }: Props) {
           <button type="button" className="ui-close" onClick={onClose} title="Close" aria-label="Close">✕</button>
         </div>
         <div className="ui-modal-body exp-shelf-body">
-          {EXPERIENCES.map(def => {
+          {EXPERIENCES.filter(def => experienceAvailable(def, gameFamily)).map(def => {
             const isOpen = openIds.has(def.id)
             return (
               <div key={def.id} className={`exp-shelf-row${isOpen ? ' exp-shelf-row--open' : ''}`}>
