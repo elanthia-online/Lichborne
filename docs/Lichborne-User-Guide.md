@@ -423,7 +423,7 @@ A change applies from your next connect (or a manual **Reconnect** — an attach
 
 ### Vitals & timers
 
-Your health/mana/etc. show in the **vitals bar** (there's a **Compact Vitals** option in Settings). **Roundtime** and **cast-time** live right inside the command box as a draining bar or per-second chips (your pick in Settings). DR's **aim timer** (`toggle aim`) rides there too in green. Colors are yours in the Theme Editor.
+Your health/mana/etc. show in the **vitals bar** (there's a **Compact Vitals** option in Settings). **Settings → Layout → Vitals bar text** chooses what each bar says beside its name, as Wrayth does: a **Percentage** (`Health 87%`, the default), the game's **Numbers** (`Health 310/355`, GemStone IV only, since DragonRealms sends percentages), or the **Name only** (`Health`, with the bar's fill showing the level). Hover a bar for whatever it isn't showing. `/vitals text percent|numbers|name` does the same. **Roundtime** and **cast-time** live right inside the command box as a draining bar or per-second chips (your pick in Settings). DR's **aim timer** (`toggle aim`) rides there too in green. Colors are yours in the Theme Editor.
 
 ### The Experience panel
 
@@ -716,6 +716,7 @@ Type `/` for the live palette; type `/help` in-game for the always-current list,
 - `/mode <Name>` (bare `/mode` lists modes) · `/group on|off <Name>`
 - `/panel open|close <stream>` · `/theme <name>` · `/clear`
 - `/timestamps on|off` · `/log search "text"`
+- `/vitals` (what the vitals bars show) · `/vitals text percent|numbers|name`
 - `/compass` (settings) · `/compass on|off` · `/compass size small|medium|large` · `/compass corner br|bl|tr|tl` · `/compass backing none|subtle|solid` · `/compass dim 25` · `/compass click on|off`
 - `/notices on|off` (toasts when your other characters come in, drop, or reconnect)
 - `/history` (status) · `/history min N` (skip remembering commands shorter than N characters)

@@ -6,8 +6,15 @@
 // progressbar customText — a Barbarian's "Inner Fire" mana); compact mode
 // derives its acronym from that LIVE label (IF, not I), so don't replace the
 // derivation with a fixed map.
+//
+// `text` is what each bar says beside its name, as in Wrayth: the percentage
+// (the default), the game's own numbers ("310/355"; GemStone IV only — DR
+// sends percentages, so `values` falls back to the percent there), or nothing
+// (`label`: the fill carries the level). Whatever is not shown is in the
+// tooltip, so the numbers are always one hover away.
 
 import '../styles/vitalsbar.css'
+import type { VitalsText } from '../settings'
 
 interface VitalState {
   current: number
@@ -30,6 +37,11 @@ interface Props {
    *  its header percentage (and its Critical/Hurt chips) agree; omitted, the
    *  game window's bar keeps its long-standing bands. */
   thresholds?: HealthThresholds
+  /** The text beside each name (Settings → Layout → Vitals bar text). */
+  text?: VitalsText
+  /** Whether `current`/`max` are the game's own numbers (GemStone IV). DR's
+   *  vitals are already percentages (max 100), so `values` shows the percent. */
+  hasValues?: boolean
 }
 
 const VITAL_ORDER = ['health', 'mana', 'concentration', 'stamina', 'spirit'] as const
@@ -67,7 +79,12 @@ function vitalFillClass(id: string, pct: number, t: HealthThresholds): string {
   return `vital-fill vital-fill--${id}`
 }
 
-export default function VitalsBar({ vitals, labels, compact = false, thresholds = SESSION_HEALTH_THRESHOLDS }: Props) {
+/** A vital's numbers as the game sends them: "310/355". */
+function valuesText(v: VitalState): string {
+  return `${Math.round(v.current)}/${Math.round(v.max)}`
+}
+
+export default function VitalsBar({ vitals, labels, compact = false, thresholds = SESSION_HEALTH_THRESHOLDS, text = 'percent', hasValues = false }: Props) {
   return (
     <div className={`vitals-strip${compact ? ' vitals-strip--compact' : ''}`}>
       <div className="vitals-row">
@@ -85,11 +102,19 @@ export default function VitalsBar({ vitals, labels, compact = false, thresholds 
             ? fullLabel.split(/\s+/).filter(Boolean).map(w => w.charAt(0).toUpperCase()).join('')
             : fullLabel
           const sep = compact ? ': ' : ' '
+          const percent = `${Math.round(pct)}%`
+          const showValues = text === 'values' && hasValues
+          const shown = v.max <= 0 || text === 'label' ? '' : showValues ? valuesText(v) : percent
+          // The full reading — name, percent and (GS4) the numbers — for the
+          // tooltip whenever the bar text leaves any of it out.
+          const full = v.max > 0 ? `${fullLabel}: ${percent}${hasValues ? ` (${valuesText(v)})` : ''}` : fullLabel
+          // GS4 always hides one of the two readings (percent or numbers).
+          const leftOut = compact || text === 'label' || hasValues
           return (
             // B333: compact mode shows only an acronym (H / M / IF…), so the
-            // tooltip spells it out; regular mode already shows the full name.
-            <div key={id} className="vital-bar"
-              title={compact ? `${fullLabel}${v.max > 0 ? `: ${Math.round(pct)}%` : ''}` : undefined}>
+            // tooltip spells it out; so does any text mode that leaves the
+            // percent or the numbers out.
+            <div key={id} className="vital-bar" title={leftOut ? full : undefined}>
               <div className="vital-track">
                 {/* Clamped fill only: GS4 mana can run above its max (558/508,
                     a mana boost; the game's own bar shows 100), and the text
@@ -104,7 +129,7 @@ export default function VitalsBar({ vitals, labels, compact = false, thresholds 
                     the 0-100 percentage DR's vitals always were. This is a
                     no-op for DR (max is always 100 there, so pct === current
                     already) and a real fix for GS4 (100%, not "160%"). */}
-                {label}{v.max > 0 ? `${sep}${Math.round(pct)}%` : ''}
+                {label}{shown ? `${sep}${shown}` : ''}
               </span>
             </div>
           )

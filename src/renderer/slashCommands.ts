@@ -16,7 +16,7 @@ import { newHighlight, type HighlightRule, HIGHLIGHT_EFFECTS, effectiveEffect } 
 import { CMD_HISTORY_MIN_MAX } from './commandHistorySettings'
 import { richStreamSettingText, type ResolvedLichInstall } from './lichSettings'
 import type { RichStreamMode } from '../shared/types'
-import type { CompassOptions } from './settings'
+import type { CompassOptions, VitalsText } from './settings'
 import { newMute, type MuteRule } from './mutes'
 import { newSubstitute, type SubstituteRule } from './substitutes'
 import { newContact, newTemplate, formatLastSeen, DR_GUILDS, type Contact, type ContactTemplate, findContactByName } from './contacts'
@@ -49,6 +49,10 @@ export interface SlashContext {
   getTriggers: () => TriggerRule[]
   applyTriggers: (rules: TriggerRule[]) => void
   getMainTimestamps: () => boolean
+  /** The vitals bar's text mode, and whether this game sends real numbers
+   *  (GemStone IV) rather than percentages (DR). */
+  getVitalsText: () => { text: VitalsText; hasValues: boolean }
+  setVitalsText: (text: VitalsText) => void
   /** v0.20.1 — the floating compass options (per character). */
   getCompass: () => CompassOptions
   setCompass: (patch: Partial<CompassOptions>) => void
@@ -276,6 +280,28 @@ const COMPASS_CORNER_WORDS: Record<string, CompassOptions['compassCorner']> = {
   bl: 'bottom-left',  'bottom-left': 'bottom-left',   bottomleft: 'bottom-left',
   tr: 'top-right',    'top-right': 'top-right',       topright: 'top-right',
   tl: 'top-left',     'top-left': 'top-left',         topleft: 'top-left',
+}
+
+// /vitals text's words → the setting. Wrayth's terms and the obvious synonyms.
+const VITALS_TEXT_WORDS: Record<string, VitalsText> = {
+  percent: 'percent', percentage: 'percent', pct: 'percent',
+  numbers: 'values', values: 'values', numeric: 'values',
+  name: 'label', label: 'label', none: 'label', off: 'label',
+}
+const VITALS_TEXT_DESC: Record<VitalsText, string> = {
+  percent: 'a percentage (Health 87%)',
+  values: "the game's numbers (Health 310/355)",
+  label: 'the name only (Health); hover a bar for the full reading',
+}
+
+function vitalsTextSummary(s: { text: VitalsText; hasValues: boolean }, justSet?: VitalsText): string {
+  // No GS4-style example (310/355) for a DR character: its bars never show it.
+  const what = s.text === 'values' && !s.hasValues ? "the game's numbers" : VITALS_TEXT_DESC[s.text]
+  const head = `${justSet ? 'Vitals bars now show' : 'Vitals bars show'} ${what}.`
+  const note = s.text === 'values' && !s.hasValues
+    ? ' DragonRealms sends percentages, so this character\'s bars keep them.'
+    : ''
+  return `${head}${note} Change it with /vitals text percent|numbers|name, or Settings → Layout → Vitals bar text.`
 }
 
 /** The bare /compass report — one line, every option. */
@@ -1266,6 +1292,36 @@ export const SLASH_COMMANDS: SlashCommandSpec[] = [
     },
   },
 
+  // ── /vitals (GS4 stack) ────────────────────────────────────────────────
+  // The vitals bar's text, as Wrayth offers it: percentage, the game's own
+  // numbers (GemStone IV), or the name only. Bare reports; `text` sets it.
+  // Settings → Layout → Vitals bar text is the same per-character setting.
+  {
+    noun: 'vitals', nounAliases: [], verb: '',
+    args: [], options: [], flags: [],
+    description: 'Show what the vitals bars display beside each name',
+    example: '/vitals',
+    run: (ctx) => ok(vitalsTextSummary(ctx.getVitalsText())),
+  },
+  {
+    noun: 'vitals', nounAliases: [], verb: 'text',
+    args: [{ name: 'percent|numbers|name', required: true, kind: 'word', hint: 'percent is the default; numbers is GemStone IV only' }],
+    options: [], flags: [],
+    description: 'Show a percentage, the game\'s numbers (GemStone IV), or just the name on each vitals bar',
+    example: '/vitals text numbers',
+    run: (ctx, p) => {
+      const raw = String(p.args[0] ?? '').toLowerCase()
+      // hasOwnProperty, not a bare index: "constructor" would resolve to a function.
+      const v = Object.prototype.hasOwnProperty.call(VITALS_TEXT_WORDS, raw) ? VITALS_TEXT_WORDS[raw] : undefined
+      if (!v) return err(`/vitals text takes percent, numbers or name — not "${raw}".`)
+      ctx.setVitalsText(v)
+      // The value just set, not a read-back: the context's settings are the
+      // ones captured when it was built, and setSettings lands on the next
+      // render, so getVitalsText() still returns the old mode here.
+      return ok(vitalsTextSummary({ ...ctx.getVitalsText(), text: v }, v))
+    },
+  },
+
   // ── /compass (v0.20.1) ─────────────────────────────────────────────────
   // A bare+verbs noun (the /ai shape): bare reports, the verbs change one
   // option each. on/off are verbs rather than a bare argument, because the
@@ -1751,6 +1807,7 @@ const NOUN_HELP: Record<string, string> = {
   compass:    'The floating compass — show or hide it, resize it, move it, give it a backing',
   notices:    'Turn the "character is in the game / disconnected" notifications on or off',
   lich:       'See which Lich install (folder) this character runs from, and why',
+  vitals:     'Choose what the vitals bars show: a percentage, the game\'s numbers (GemStone IV) or just the name',
   richstream: "Ask Lich for DragonRealms' rich (Saga) stream, or see which stream you're getting",
   clear:      'Wipe the main window (your Session Log still keeps everything)',
   colors:     'Named colors — make your own, and everything using one changes when you change it (/colors manage)',
