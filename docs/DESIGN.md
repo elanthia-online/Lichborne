@@ -2982,7 +2982,7 @@ Collapsed by default (never persisted — always starts closed). Expands to show
 ▾ Advanced / Lich Settings
 ┌─────────────────────────────────────────────────┐
 │ RUBY PATH (RUBY.EXE)                            │
-│ [ C:\Ruby4Lich5\4.0.0\bin\ruby.exe ] [ Browse ] │
+│ [ C:\Ruby4Lich5\current\bin\ruby.exe ] [Browse] │
 │ LICH PATH (LICH.RBW)                            │
 │ [ C:\Ruby4Lich5\Lich5\lich.rbw     ] [ Browse ] │
 │ DELAY (S)  PORT              MODE               │
@@ -4300,7 +4300,7 @@ account: EXAMPLEACCT   # last account name used; pre-fills the login form
 
 advancedSettings:
   lichPath: C:\Ruby4Lich5\Lich5\lich.rbw
-  rubyPath: C:\Ruby4Lich5\4.0.0\bin\ruby.exe
+  rubyPath: C:\Ruby4Lich5\current\bin\ruby.exe   # current = junction to the newest Ruby (§41.2)
   lichClientFlag: --stormfront   # --stormfront | --genie | --wizard | --avalon | --frostbite
   lichDelay: 5
   hideLichWindow: false
@@ -8852,6 +8852,7 @@ v0.18.0 makes Lichborne cross-platform. **Windows x64 is the stable platform; Li
 - Main: `process.platform`. Renderer: `window.api.platform` (preload exposes it synchronously) → `IS_MAC`/`IS_WINDOWS` in lichSettings.ts.
 - Per-platform `DEFAULT_RUBY`/`DEFAULT_LICH` (lichSettings.ts, single-sourced into profile.ts's shared-profile defaults): Windows keeps `C:\Ruby4Lich5\...`; Linux and Mac have an EMPTY `DEFAULT_RUBY` (a plausible system Ruby would pin users below the Ruby 4 that Lich 5.18+ requires — pitfall #115) and `~/Lich5/lich.rbw`. Discovery fills the Ruby in.
 - **Ruby discovery off Windows (B355, v0.19.7).** Candidates, in order: the rbenv shim, concrete rbenv versions newest-first, the asdf and mise shims, Homebrew's KEG paths (`/opt/homebrew/opt/ruby/bin/ruby`, `/usr/local/opt/ruby/bin/ruby` — Homebrew Ruby is keg-only and not linked into `bin/`) ahead of the plain Homebrew bins, then on Linux `/usr/bin/ruby`; **macOS never offers `/usr/bin/ruby`** (Apple's system Ruby is 2.6). Discovery takes the first candidate that reports Ruby 4 or newer (`firstModernRuby`, `ruby -v` per probe, 8s total budget): the silent startup pass saves NOTHING if there is none, and an explicit Auto-detect offers a Ruby 4 when the configured one is older. Windows is unchanged — no `ruby -v` on its silent path.
+- **Ruby discovery on Windows: the `current` link (v1.0.1, Tysong).** Ruby4Lich5's installer keeps `C:\Ruby4Lich5\current`, a directory junction to the newest Ruby it installed, and leaves older version folders on disk. Discovery offers `current\bin\ruby.exe` first and falls back to the newest version folder when there is no link (installs older than the 4.0.9 installer). A Ruby that exists but sits in a version folder (`C:\Ruby4Lich5\4.0.3\bin\ruby.exe`) moves onto `current` on both the silent startup pass and Auto-detect, in any install folder (the folder is read from the saved path, so Ruby4Lich5 on another drive is handled too), but only when `current` is the same or a newer version, read from the junction's target folder name; a hand-picked newer Ruby, a Ruby anywhere else, a `current` pointing at a non-version folder or outside its own install, and a broken link are left alone. The check reads the junction and never runs Ruby, so the silent path still spawns nothing. Logic in [rubyCurrent.ts](../src/main/rubyCurrent.ts) (fs/path only), harness `tmp-ruby-current/` (23 cases, real install plus synthetic junctions). When the install folder is itself a link (C:\Ruby4Lich5 pointing at another drive), the player's own path is kept and only the spelling is taken from the disk. **The messages say what to do:** a missing `current` path at Connect explains that it is the Ruby for Lich installer's shortcut and that reinstalling Ruby for Lich restores it (`currentFolderOf`), and each Auto-detect warning names the next step (reinstall, Auto-detect again, or Browse) with a link to the Lich install guide. `DEFAULT_RUBY` on Windows is the `current` path. Only the default install is moved: per-game and per-character installs (§56.7.1) keep the Ruby their owner typed. No slash command: one-time setup, like the rest of Lich Setup.
 - **`~`-relative paths are expanded in MAIN ONLY** via `expandHome` (src/main/homePath.ts) at every lichPath/rubyPath consumption point: LichConnection.launch, sqliteReader's lich.db3 derivation, lichDirFrom (maps/scripts/profiles), discovery validation. The renderer can't know the home dir synchronously, so it stores/displays `~` literally. **Rule: a new main-side consumer of these paths MUST expandHome.**
 - **Never resolve bare `ruby` from PATH**: GUI apps launched from Finder/the dock (and some Linux launchers) don't inherit the shell PATH that makes rbenv shims resolve — always explicit absolute paths.
 

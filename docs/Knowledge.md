@@ -1001,12 +1001,22 @@ These are the facts Lichborne's per-platform discovery (DESIGN §41.3) is built 
 
 | | Lich location | Ruby | Launch |
 |---|---|---|---|
-| **Windows** | `C:\Ruby4Lich5\Lich5\` | Ruby4Lich5 one-click installer (`C:\Ruby4Lich5\<ver>\bin\`) | `rubyw.exe lich.rbw` |
+| **Windows** | `C:\Ruby4Lich5\Lich5\` | Ruby4Lich5 one-click installer (`C:\Ruby4Lich5\<ver>\bin\`, and `C:\Ruby4Lich5\current\bin\` on newer installs — see below) | `rubyw.exe lich.rbw` |
 | **Fedora** | `~/Lich5` (zip extract; the wiki's launch line writes `~/lich5` — same page, both casings) | **system Ruby** via dnf (3.3/3.4 on Fedora 41–43) | `ruby ~/lich5/lich.rbw` |
 | **Debian / Chromebook** | `~/Lich5` | **rbenv**, Ruby **4.0.5** pinned (`rbenv install 4.0.5; rbenv global 4.0.5`) | same |
 | **macOS** | **`~/Desktop/Lich5`** (the guide literally drags the folder to the Desktop) | **rbenv via Homebrew**, Ruby 4.0.5; GTK3 via `brew install gtk+3` (+ gobject-introspection, adwaita-icon-theme) | `ruby ~/Desktop/Lich5/lich.rbw` |
 
 Facts that matter for a front-end integrating with these installs:
+
+- **Ruby4Lich5 keeps a `current` link to its newest Ruby (verified 2026-11-10 on a real install).**
+  `C:\Ruby4Lich5\current` is a directory **junction** to the newest version folder
+  (`current` → `C:\Ruby4Lich5\4.0.9`, created in the same minute as `4.0.9`), and its
+  `bin\ruby.exe -v` reports that version. The installer creates it: its uninstall record
+  (`unins000.dat`) lists `{app}\current`. Older version folders stay on disk after an
+  upgrade (`4.0.3` beside `4.0.9`), so a path into one keeps existing. The July 4.0.3
+  install had no `current`, so installs from before the 4.0.9 installer don't have it.
+  Lich itself never refers to `current`; it is an installer convenience (Tysong:
+  "you can use `C:\Ruby4Lich5\current\bin\rubyw.exe` instead of `…\4.0.9\bin\rubyw.exe`").
 
 - **rbenv's `ruby` only resolves through shell PATH** (`~/.rbenv/shims/ruby`). A GUI app launched
   from Finder/the dock gets the bare system PATH — so a client must store/probe the explicit shim

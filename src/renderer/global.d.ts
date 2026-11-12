@@ -96,6 +96,7 @@ declare global {
         rubyAlreadyValid: boolean; lichAlreadyValid: boolean
         richStreamSupported: boolean
         baseFolderExists: boolean; rubyVersion: string | null; isWindows: boolean
+        rubyMovedToCurrent: boolean
       }>
       platform: string
       arch: string

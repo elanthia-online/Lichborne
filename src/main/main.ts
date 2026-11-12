@@ -65,6 +65,7 @@ import * as os from 'os'
 import * as crypto from 'crypto'
 import * as cp from 'child_process'
 import { expandHome } from './homePath'
+import { pinnedToCurrent, rubyViaCurrent } from './rubyCurrent'
 import { autoUpdater } from 'electron-updater'
 import { ConnectionManager } from './connection/ConnectionManager'
 import { lichSupportsFrontendCaps } from './connection/frontendCaps'
@@ -1720,6 +1721,9 @@ ipcMain.handle('discover-lich-paths', async (_event, currentRuby: string, curren
     richStreamSupported: lichSupportsFrontendCaps(currentLich),
     baseFolderExists: false,
     rubyVersion:      null as string | null,
+    // Windows: a valid Ruby pinned to a Ruby4Lich5 version folder was moved
+    // onto the `current` link (rubyCurrent.ts), so the banner can say so.
+    rubyMovedToCurrent: false,
     // Back-compat field — LichSetupFields keyed its whole status banner on it
     // pre-v0.18.0. Kept in sync with `platform`.
     isWindows:        platform === 'win32',
@@ -1734,22 +1738,37 @@ ipcMain.handle('discover-lich-paths', async (_event, currentRuby: string, curren
     result.baseFolderExists = fs.existsSync(base)
     if (result.baseFolderExists) {
       if (!result.rubyAlreadyValid) {
-        try {
-          const versionDirs = sortVersionsDesc(
-            fs.readdirSync(base, { withFileTypes: true })
-              .filter(e => e.isDirectory() && /^\d+\.\d+\.\d+$/.test(e.name))
-              .map(e => e.name)
-          )
-          for (const v of versionDirs) {
-            const candidate = path.join(base, v, 'bin', 'ruby.exe')
-            if (fs.existsSync(candidate)) { result.rubyPath = candidate; break }
-          }
-        } catch {}
+        // Ruby4Lich5's `current` link first: it follows every Ruby update
+        // (rubyCurrent.ts). Installs older than the link get the newest
+        // version folder.
+        result.rubyPath = rubyViaCurrent('ruby.exe', base)
+        if (!result.rubyPath) {
+          try {
+            const versionDirs = sortVersionsDesc(
+              fs.readdirSync(base, { withFileTypes: true })
+                .filter(e => e.isDirectory() && /^\d+\.\d+\.\d+$/.test(e.name))
+                .map(e => e.name)
+            )
+            for (const v of versionDirs) {
+              const candidate = path.join(base, v, 'bin', 'ruby.exe')
+              if (fs.existsSync(candidate)) { result.rubyPath = candidate; break }
+            }
+          } catch {}
+        }
       }
       if (!result.lichAlreadyValid) {
         const candidate = path.join(base, 'Lich5', 'lich.rbw')
         if (fs.existsSync(candidate)) result.lichPath = candidate
       }
+    }
+    if (result.rubyAlreadyValid) {
+      // A Ruby that exists but is pinned to a version folder (a leftover
+      // 4.0.3 beside a newer install) moves onto `current`, which only ever
+      // points at the same or a newer Ruby. The install folder comes from the
+      // saved path, so Ruby4Lich5 on another drive is handled too. Runs on the
+      // silent startup pass: it reads the junction and never runs Ruby.
+      const moved = pinnedToCurrent(expandHome(currentRuby))
+      if (moved) { result.rubyPath = moved; result.rubyMovedToCurrent = true }
     }
   } else {
     // Linux + macOS. Lich: the wiki's zip lands in ~/Lich5 (docs also write

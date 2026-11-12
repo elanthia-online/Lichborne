@@ -197,6 +197,17 @@
   color: color-mix(in srgb, var(--color-danger) 78%, var(--text-primary));
 }
 
+/* The install-guide link on a warning/error banner takes the banner's own
+   text colour (contrast-tuned above for every theme) rather than a link blue,
+   and an underline so it still reads as a link. */
+.lich-discovery-status a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+
 /* ── Games List (read-only inventory in Lich Setup) ────────────────────── */
 
 /* The explanation under Lich Setup's "Game stream" select (v0.21.0): sits

@@ -27,6 +27,8 @@ import LichInstallFields, { pathKindProblem } from './LichInstallFields'
 // installer; Linux/Mac = the elanthia-online wiki layout (~/Lich5, rbenv).
 const LICH_HOME_LABEL = IS_WINDOWS ? 'C:\\Ruby4Lich5' : IS_MAC ? '~/Lich5 (or ~/Desktop/Lich5)' : '~/Lich5'
 const RUBY_FILE_LABEL = IS_WINDOWS ? 'ruby.exe' : 'ruby'
+// Shown under a Ruby/Lich warning so the player has somewhere to go.
+const LICH_INSTALL_GUIDE = 'https://github.com/elanthia-online/lich-5/wiki/Documentation-for-Installing-and-Upgrading-Lich'
 
 // One game's install row (DESIGN §56.7.1). Module scope, so its open state
 // survives the parent's re-renders (UX #4). "Same as above" REMOVES the entry
@@ -183,9 +185,16 @@ export default function LichSetupFields({ adv, setAdv, disabled = false, alwaysS
     let msg: string
     if (!dr.baseFolderExists && !drRubyOk && !drLichOk) {
       type = 'error'
-      msg = `No ${LICH_HOME_LABEL} folder found — please browse to your Ruby and Lich5 file locations manually.`
+      msg = `No ${LICH_HOME_LABEL} folder found. If Lich is installed somewhere else, use Browse to pick ${RUBY_FILE_LABEL} and lich.rbw. If it isn't installed yet, install it first, then click Auto-detect.`
     } else if (drRubyOk && drLichOk) {
-      if (rubyNew || lichNew) {
+      if (dr.rubyMovedToCurrent && !lichNew) {
+        // A working Ruby that was pinned to one version folder, now on
+        // Ruby4Lich5's `current` link (rubyCurrent.ts in main). Named from
+        // the real path, since the install may not be on C:.
+        const link = (dr.rubyPath ?? '').replace(/[\\/]bin[\\/]rubyw?\.exe$/i, '')
+        type = 'ok'
+        msg = `Ruby now uses ${link}, which the Ruby for Lich installer keeps pointed at your newest Ruby. Nothing else to do.`
+      } else if (rubyNew || lichNew) {
         const found = [rubyNew && 'Ruby', lichNew && 'Lich5'].filter(Boolean).join(' and ')
         type = 'ok'
         msg = `${found} path${rubyNew && lichNew ? 's' : ''} auto-discovered — verify before connecting.`
@@ -195,18 +204,34 @@ export default function LichSetupFields({ adv, setAdv, disabled = false, alwaysS
       }
     } else if (!drRubyOk && !drLichOk) {
       type = 'warn'
-      msg = `Ruby and Lich5 files not found in ${LICH_HOME_LABEL} — ensure Lich5 is properly installed, or browse to the correct file locations.`
+      msg = `Ruby and Lich5 weren't found in ${LICH_HOME_LABEL}. Install or repair Lich, then click Auto-detect again, or use Browse to pick ${RUBY_FILE_LABEL} and lich.rbw yourself.`
     } else if (!drRubyOk) {
       type = 'warn'
-      msg = `Ruby (${RUBY_FILE_LABEL}) not found — ensure Ruby for Lich5 is installed, or browse to the correct location.`
+      msg = IS_WINDOWS
+        ? `Ruby (${RUBY_FILE_LABEL}) wasn't found. Reinstall Ruby for Lich (it also restores C:\\Ruby4Lich5\\current), then click Auto-detect again, or use Browse to pick ${RUBY_FILE_LABEL} yourself.`
+        : `Ruby (${RUBY_FILE_LABEL}) wasn't found. Install Ruby 4, then click Auto-detect again, or use Browse to pick it yourself.`
     } else {
       type = 'warn'
-      msg = `Lich5 (lich.rbw) not found — ensure Lich5 is installed at ${LICH_HOME_LABEL}, or browse to the file manually.`
+      msg = `Lich5 (lich.rbw) wasn't found in ${LICH_HOME_LABEL}. Install or repair Lich, then click Auto-detect again, or use Browse to pick lich.rbw yourself.`
     }
     statusEl = (
       <div className={`lich-discovery-status lich-discovery-status--${type}`}>
         <span className="lich-discovery-icon">{type === 'ok' ? '✓' : type === 'warn' ? '⚠' : '✕'}</span>
-        <span>{msg}</span>
+        <span>
+          {msg}
+          {type !== 'ok' && (
+            <>
+              {' '}
+              <a
+                href={LICH_INSTALL_GUIDE}
+                title={LICH_INSTALL_GUIDE}
+                onClick={e => { e.preventDefault(); window.api.openUrl(LICH_INSTALL_GUIDE) }}
+              >
+                Lich install guide
+              </a>
+            </>
+          )}
+        </span>
       </div>
     )
   }

@@ -72,17 +72,11 @@ A few ideas shape everything:
 
 ## What's New in the Latest Version
 
-**v1.0.0**
+**v1.0.1**
 
-- **GemStone IV** (thanks, Tysong). Prime, Shattered and Test, with Effects, Experience,
-  Encumbrance and Creatures panels of their own. See
-  [DragonRealms and GemStone IV](#dragonrealms-and-gemstone-iv) for which views each game has.
-- **Characters are filed by name and shard.** The first start renames your files once and
-  keeps a copy of the originals in `profiles\PreKeyBackup\`. Older versions can't read the
-  new names.
-- **A game filter, shard names and a Lich install per game or per character** on the launcher.
-- **Vitals bar text:** a percentage, the game's numbers (GemStone IV) or just the name.
-- **Windows:** the installer asks about a desktop shortcut and leaves yours where it is on upgrade.
+- **Windows: Lichborne keeps up with your Ruby** (thanks, Tysong). It now uses
+  `C:\Ruby4Lich5\current`, which the Ruby for Lich installer keeps pointed at your newest
+  Ruby. A saved path to one version folder switches over on the next start.
 
 ## On the Horizon (Roadmap)
 
@@ -130,7 +124,7 @@ Then open Lichborne normally. You won't need it again: from v0.21.1 on, Lichborn
 
 - Install it per the **[official Lich install guide](https://github.com/elanthia-online/lich-5/wiki/Documentation-for-Installing-and-Upgrading-Lich)** — Windows has a one-click installer; Linux/Mac follow the wiki's steps (Lich in `~/Lich5`, Ruby 4.0+ via rbenv or your distro).
 - **Already running Lich** for Genie, Profanity, or another client? You're set — no reinstall.
-- In Lichborne, open **Lich Setup** (the **⚙ Lich Setup** button on the launcher, or **Settings → Lich Setup → Open Lich Setup…**) and hit **↺ Auto-detect**. Green checkmarks mean you're good. It knows each platform's standard install spots (on a Mac, the first detect asks permission to look at your Desktop folder — that's where the wiki's install lands). If your Ruby is older than 4.0, the dialog warns you — current Lich won't start on it.
+- In Lichborne, open **Lich Setup** (the **⚙ Lich Setup** button on the launcher, or **Settings → Lich Setup → Open Lich Setup…**) and hit **↺ Auto-detect**. Green checkmarks mean you're good. It knows each platform's standard install spots (on a Mac, the first detect asks permission to look at your Desktop folder — that's where the wiki's install lands). If your Ruby is older than 4.0, the dialog warns you — current Lich won't start on it. On Windows, Lichborne uses `C:\Ruby4Lich5\current`, a shortcut the Ruby for Lich installer keeps pointed at your newest Ruby, so updating Ruby needs no change in Lichborne. That works for Ruby for Lich in any folder, not just on `C:`.
 
 **One Lich for both games, or one each.** Every character uses the install you just set up, unless you say otherwise. Under **Lich install by game** in Lich Setup, set DragonRealms or GemStone IV to **Its own install** to run that game's characters from a different Lich folder (**Same as the install above** puts it back). A single character can have its own too: on its tile, ⋯ → **Edit profile…** → **Lich install**. Changes apply from the next connect, and `/lich install` tells you which install the character in front of you is using.
 
@@ -820,6 +814,7 @@ Lichborne keeps a clean, dated **plain-text log** of every session — the game 
 - **Linux: the Lich Dashboard shows "Couldn't read Lich's database"?** The message gives the reason. If it mentions `GLIBC`, your Linux is older than this build supports (Ubuntu 22.04, Debian 12 and Mint 21 are fine from v0.21.0 on).
 - **Linux: "Remember password" greyed out?** No keyring service found — install GNOME Keyring or KWallet; until then, type the password each session.
 - **Lich won't launch and says the Ruby and Lich paths look swapped (or, in older builds, `spawn EFTYPE`)?** The Ruby path must point at the Ruby program (`rubyw.exe` or `ruby.exe` on Windows) and the Lich path at `lich.rbw`. Wherever a pair is reversed, the editor shows a warning and a **Swap them** button: the default install and each **Lich install by game** row in **⚙ Lich Setup**, and a character's own install under its tile's **⋯ → Edit profile… → Lich install**. The launch message says which of those the character uses.
+- **Windows: "Ruby was not found at …\current\bin\ruby.exe"?** `current` is the shortcut the Ruby for Lich installer keeps to your newest Ruby, and it's missing (installs older than the 4.0.9 installer don't have it) or points at a Ruby that was removed. Open **⚙ Lich Setup** and click **↺ Auto-detect**, which picks your newest Ruby folder instead, or reinstall Ruby for Lich to put the shortcut back. If Auto-detect finds nothing, its warning links the Lich install guide.
 - **Linux/Mac: Lich won't launch from Lichborne but runs in a terminal?** Point the Ruby path at the **full rbenv path** (`~/.rbenv/shims/ruby`) — apps launched from the desktop don't see your shell's PATH. Auto-detect does this for you.
 - **Map marker stuck?** The Lich Map tracks by room id and is most reliable — turn on DR's room-number display so titles show a number like `[Town Square] (12345)`. The Genie Map matches by room name + description (its data has no ids), so in areas full of identically-named rooms it can briefly lag. A **`LOOK`** resyncs either map.
 - **Hand bar says "Empty" but you're holding something?** The common cause was fixed in v0.13.3. For rare genuine gaps (e.g. spell-summoned items DR doesn't announce), a **`GLANCE`** always resyncs your hands.

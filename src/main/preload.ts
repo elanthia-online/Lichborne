@@ -217,6 +217,7 @@ contextBridge.exposeInMainWorld('api', {
     rubyPath: string | null; lichPath: string | null
     rubyAlreadyValid: boolean; lichAlreadyValid: boolean
     baseFolderExists: boolean; rubyVersion: string | null; isWindows: boolean
+    richStreamSupported: boolean; rubyMovedToCurrent: boolean
   }> => ipcRenderer.invoke('discover-lich-paths', currentRuby, currentLich, opts),
 
   // Cross-platform (v0.18.0): which OS this renderer runs on ('win32' |

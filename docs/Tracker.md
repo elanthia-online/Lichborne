@@ -6,6 +6,21 @@
 
 ---
 
+## v1.0.1 — Ruby discovery follows Ruby4Lich5's `current` link (Tysong)
+
+Tysong pointed out that the Ruby for Lich installer keeps `C:\Ruby4Lich5\current`, a directory junction to the newest Ruby it installed (its uninstall record lists `{app}\current`; installs from before the 4.0.9 installer don't have it). Lichborne saved a version-folder path (`…\4.0.9\bin\ruby.exe`), so updating Ruby left it on the old one, since old version folders stay on disk.
+
+- **`src/main/rubyCurrent.ts` (new):** `currentRubyVersion` reads the junction's target name with `realpathSync` (and accepts only an `x.y.z` folder), `rubyViaCurrent` gives `current\bin\<exe>` when it exists, and `pinnedToCurrent` moves a saved `C:\Ruby4Lich5\<x.y.z>\bin\ruby(w).exe` onto `current` only when `current`'s version is the same or newer. Nothing runs Ruby, so the silent startup pass stays safe (no antivirus prompt).
+- **`discover-lich-paths`:** a missing Ruby now prefers `current`, then the newest version folder as before; an existing pinned Ruby is moved and the result says so (`rubyMovedToCurrent`), which Lich Setup shows as an ok banner.
+- **Default Ruby** on Windows is now `C:\Ruby4Lich5\current\bin\ruby.exe`.
+- **Any install folder:** the folder is read from the saved path (`<folder>\<x.y.z>\bin\ruby.exe` with a `current` link beside it), so Ruby4Lich5 on another drive moves too. The link must point inside that same install.
+- **Messages say what to do:** Connect with a missing `current` path explains that the Ruby for Lich installer keeps that shortcut and reinstalling it puts it back; each Auto-detect warning names the next step (reinstall, Auto-detect again, Browse) and links the Lich install guide (opened with `window.api.openUrl`, styled from the banner colour).
+- **Not moved:** a Ruby that isn't in a Ruby4Lich5 version folder, a hand-picked version newer than `current`, and the per-game and per-character installs (only the default install goes through discovery).
+- **Checked:** `tmp-ruby-current/test.ts`, 23 cases against the real install (current → 4.0.9, 4.0.3 left over) and synthetic junctions (newer pick, no link, link to a non-version folder, link into another install, broken link, an install folder that is itself a link), plus `currentFolderOf`.
+- **Bug check:** an install folder that is itself a link (C:\Ruby4Lich5 → another drive) had its saved path swapped for the link's target, because the casing fix used the fully resolved path; now only the spelling comes from the disk. The preload's `discoverLichPaths` type gained `rubyMovedToCurrent` and `richStreamSupported`, which the renderer type already had.
+
+Slash surface: no command by design (one-time setup, like the rest of Lich Setup; DESIGN §41.2). No profile-shape change: the saved `rubyPath` string just changes value.
+
 ## v1.0.0 — GemStone IV support (PRs #4–#13, #15, Horibu) · Windows desktop shortcut (PR #16, Horibu)
 
 The first release for both games, hence 1.0.0 (Sekmeht). Horibu is Tysong (one person; credits now list him once, as Tysong: a developer in the README, a contributor in About). Horibu's eleven open PRs, merged locally on 2026-11-10 for testing and not yet pushed: the ten-layer GS4 stack in stack order (#4 foundation, #5 Effects + stream routing, #6 Experience/Encumbrance/Creatures, #7 game filter + login plan, #8 Lich installs per game/character, #9 shard names + wizard by game, #10 `Name@SHARD` profile keys + migration, #12 docs into `docs/`, #13 the elanthia-online release config, #15 vitals bar text), then #16. #1 was split into this stack and is closed.

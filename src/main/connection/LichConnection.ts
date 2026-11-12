@@ -31,6 +31,7 @@ import * as path from 'path'
 import { app } from 'electron'
 import { EventEmitter } from 'events'
 import { expandHome } from '../homePath'
+import { currentFolderOf } from '../rubyCurrent'
 
 // Client ID string — Lich with --genie flag expects this format
 const CLIENT_ID = 'FE:WRAYTH /VERSION:1.0.1.22 /P:WIN_UNKNOWN /XML'
@@ -200,9 +201,17 @@ export class LichConnection extends EventEmitter {
       : wrongKind(rubywPath, lichPath)
       ?? null
     if (missing) {
+      // A missing `current` link gets its own explanation: the player never
+      // typed that path (it's the default, or Lichborne moved them onto it),
+      // so "Ruby was not found at …\current\…" alone means nothing to them.
+      const link = rubyPath && !fs.existsSync(rubyPath) ? currentFolderOf(rubyPath) : null
+      const why = link
+        ? ` ${link} is a shortcut the Ruby for Lich installer keeps pointed at your newest Ruby, ` +
+          'and it is missing or points at a Ruby that was removed. Reinstalling Ruby for Lich puts it back.'
+        : ''
       throw new Error(
-        `${missing}. Open Lich Setup (the launcher's ⚙ Lich Setup button, or Settings) ` +
-        'and set the Ruby and Lich paths — Auto Detect will find them if Lich and Ruby 4 are installed. ' +
+        `${missing}.${why} Open ⚙ Lich Setup (on the launcher, or from Settings) and click Auto-detect: ` +
+        'it finds Ruby and Lich if they are installed, or use Browse to pick them yourself. ' +
         'To play without Lich instead, switch this character to Direct on its tile.'
       )
     }

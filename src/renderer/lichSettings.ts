@@ -29,8 +29,11 @@ export const IS_WINDOWS = PLATFORM === 'win32'
 // fails existsSync, so discovery walks its priority list (rbenv shim → rbenv
 // versions newest-first → Homebrew → /usr/local → /usr/bin) and the system
 // Ruby is still found — as the LAST resort it should be.
+// Windows: Ruby4Lich5's `current` link, which its installer keeps pointing at
+// the newest Ruby (main's rubyCurrent.ts). An install older than the link
+// fails existsSync here, so discovery fills in the newest version folder.
 export const DEFAULT_RUBY =
-  IS_WINDOWS ? 'C:\\Ruby4Lich5\\4.0.0\\bin\\ruby.exe' : ''
+  IS_WINDOWS ? 'C:\\Ruby4Lich5\\current\\bin\\ruby.exe' : ''
 export const DEFAULT_LICH =
   IS_WINDOWS ? 'C:\\Ruby4Lich5\\Lich5\\lich.rbw'
   :            '~/Lich5/lich.rbw'
