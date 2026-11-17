@@ -5,6 +5,7 @@
 [![Latest release](https://img.shields.io/github/v/release/elanthia-online/Lichborne?label=download&color=2ea043)](https://github.com/elanthia-online/Lichborne/releases/latest)
 ![Platforms](https://img.shields.io/badge/Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-supported-blue)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-lightgrey)](LICENSE)
+[![Discord](https://img.shields.io/badge/Discord-join%20for%20help-5865F2?logo=discord&logoColor=white)](https://discord.gg/ZDkXCeR72J)
 
 > [!NOTE]
 > **Lichborne 1.0 is out, and it now plays GemStone IV as well as DragonRealms.** Your characters from both games live in one launcher, side by side.
@@ -136,7 +137,7 @@ On a Mac, use `Cmd` for zoom. Set your own macro keys in **Automations**.
 ## Good to know
 
 - **No code signing yet.** That's why Windows shows SmartScreen and macOS needs the one-time command.
-- **macOS builds are for Apple Silicon only.** Need Intel? Ask on Discord.
+- **macOS builds are for Apple Silicon only.** Need Intel? Ask on [Discord](https://discord.gg/ZDkXCeR72J).
 - **A few views are DragonRealms-only:** Moons, Spell Monitor and Genie Maps. The [User Guide](docs/Lichborne-User-Guide.md#dragonrealms-and-gemstone-iv) lists what each game gets.
 - **Maps follow what the game sends.** The Lich Map is the most accurate. If a map loses you, type `LOOK`.
 
@@ -146,7 +147,7 @@ On a Mac, use `Cmd` for zoom. Set your own macro keys in **Automations**.
 
 - 📖 **[User Guide](docs/Lichborne-User-Guide.md)** — every feature and how to set it up
 - 🔒 **[AI Notice](AINOTICE.md)** — what the AI feature sends and what it never sends
-- 💬 **Discord** — open Lichborne and choose **Help → Discord**
+- 💬 **[Discord](https://discord.gg/ZDkXCeR72J)** — questions and help (also in Lichborne under **Help → Discord**)
 
 ---
 
