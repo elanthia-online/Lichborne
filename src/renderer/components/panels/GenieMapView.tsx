@@ -23,7 +23,9 @@
 //     never a pre-filter (pitfall #70 — read it before touching the ladder).
 //   • "BFS over Genie arcs within a zone" / "Click-to-walk" — left-click PINS
 //     a path (or, on a cross-zone stub, switches zone); right-click WALKS via
-//     `sendWalkPath`, one command per `WALK_STEP_MS`. Handlers in the node
+//     `sendWalkPath`, which hands the route to the character's walker
+//     (genieWalk.ts, through GenieWalkContext; v1.0.2). The same walker
+//     answers `#goto` with the planner registered below. Handlers in the node
 //     layer's deps read their inputs from `walkCtxRef` so their identities
 //     stay stable and the whole-zone `nodeRects` memo holds.
 //   • "Fit-to-view + center-on-current" / "Pan / zoom" — the follow camera is
@@ -40,6 +42,27 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react'
 import type { GenieZone, GenieNode } from './mapTypes'
 import { noteAliases, COLOR_LEGEND, normalizeDesc, normalizeMatchKey } from './mapTypes'
+import { useGenieWalk, type GotoResult } from '../../GenieWalkContext'
+import type { GenieMapsStatus } from '../../../shared/types'
+
+const GENIE_MAPS_REPO = 'https://github.com/GenieClient/Maps'
+
+/** A running download as a button label: "Downloading… 1.4 MB" while there's
+ *  a number to show, plain "Downloading…" for starting/unpacking/finishing. */
+function busyText(verb: string, job: string): string {
+  return /\d/.test(job) ? `${verb}… ${job}` : `${verb}…`
+}
+
+/** "updated Nov 7, 2026 (6dd281b)" for the downloaded copy, or '' when unknown. */
+function managedMapsAge(m: GenieMapsStatus | null): string {
+  if (!m?.installed) return ''
+  const when = m.installedAt
+    ? new Date(m.installedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    : ''
+  const sha = m.commit ? m.commit.slice(0, 7) : ''
+  if (when && sha) return `updated ${when} (${sha})`
+  return when ? `updated ${when}` : sha
+}
 
 // ── Genie Map view ────────────────────────────────────────────────────────────
 //
@@ -90,6 +113,11 @@ interface Props {
   genieProgress:       { loaded: number; total: number } | null
   onPickGenieFolder:   () => void
   onClearGenieFolder:  () => void
+  // Genie maps download (v1.0.2): Lichborne's own copy in {userData}/GenieMaps.
+  managedMaps?:        GenieMapsStatus | null
+  usingManagedMaps?:   boolean          // the folder in use IS that copy
+  genieJob?:           string | null    // a download in progress, as a few words
+  onDownloadGenieMaps?: () => void
   // Genie Map Animations toggle (Settings). When false the map
   // permanently wears the animation pause, so the room effects stop. The
   // camera never glides either way (v0.20.5).
@@ -127,7 +155,6 @@ const NODE_RADIUS = NODE_SIZE / 2
 // font scale.
 const LABEL_X_NUDGE = 1
 const LABEL_Y_NUDGE = 1
-const WALK_STEP_MS = 600        // delay between sequenced walk commands
 
 // Arc color categories — mirrors Genie's logic in Mapper/MapForm.cs:
 //   - "climb" exits get their own color (lineclimb).
@@ -523,10 +550,53 @@ function bfsZoneRoomPath(zone: GenieZone, fromId: number, toId: number): number[
   return []
 }
 
+// `#goto <query>` (v1.0.2): Genie's own rule (Mapper/AutoMapper.cs, "goto"):
+// a number of up to five digits is a room id on the map you're on, anything
+// else is matched against room notes ("GL Barbarian|Agonar"). Genie takes a
+// note that STARTS with the text; we prefer an exact note first, and among
+// several matches the nearest one, where Genie took whichever came last in the
+// file. Within the current zone only, like Genie.
+export function planGenieGoto(query: string, loc: GenieMatch | null, zones: Map<string, GenieZone>): GotoResult {
+  if (!loc) return { error: '#goto: your place on the Genie map isn\'t known yet. Type LOOK, then try again.' }
+  const zone = loc.zone
+  const q = query.trim().toLowerCase()
+  const reach = (n: GenieNode) => bfsZonePath(zone, loc.node.id, n.id)
+  const go = (n: GenieNode): GotoResult => {
+    if (n.id === loc.node.id) return { error: `#goto: you're already at ${n.name}.` }
+    const moves = reach(n)
+    return moves.length > 0
+      ? { moves, label: n.name || `room ${n.id}` }
+      : { error: `#goto: there's no path on ${zone.name} from here to ${n.name || `room ${n.id}`}.` }
+  }
+  if (/^\d{1,5}$/.test(q)) {
+    const n = zone.nodes.find(x => x.id === Number(q))
+    return n ? go(n) : { error: `#goto: there's no room ${q} on ${zone.name}.` }
+  }
+  const notes = (n: GenieNode) => noteAliases(n.note).map(a => a.toLowerCase()).filter(a => !a.endsWith('.xml'))
+  const exact = zone.nodes.filter(n => notes(n).includes(q))
+  const matches = exact.length > 0 ? exact : zone.nodes.filter(n => notes(n).some(a => a.startsWith(q)))
+  if (matches.length > 0) {
+    if (matches.some(n => n.id === loc.node.id)) return { error: `#goto: you're already at ${loc.node.name}.` }
+    const reachable = matches
+      .map(n => ({ n, len: reach(n).length }))
+      .filter(x => x.len > 0)
+      .sort((a, b) => a.len - b.len)
+    return reachable.length > 0 ? go(reachable[0].n) : go(matches[0])
+  }
+  for (const other of zones.values()) {
+    if (other.id === zone.id) continue
+    if (other.nodes.some(n => notes(n).some(a => a.startsWith(q)))) {
+      return { error: `#goto: "${query.trim()}" is on ${other.name}. #goto only walks within the map you're on (${zone.name}).` }
+    }
+  }
+  return { error: `#goto: no room on ${zone.name} has a note starting "${query.trim()}". Hover a room on the Genie map to see its notes.` }
+}
+
 export default function GenieMapView({
   zones, roomTitle, roomDesc = '', roomExits, onSendCommand,
   genieMapsDir, genieLoading, genieReady, genieProgress,
   onPickGenieFolder, onClearGenieFolder, mapAnimations = false, persist,
+  managedMaps = null, usingManagedMaps = false, genieJob = null, onDownloadGenieMaps,
 }: Props) {
   // SEEDED FROM MapPanel's persist ref, not from nothing. Switching to the Lich
   // map UNMOUNTS this view (MapPanel renders it conditionally), so a fresh
@@ -548,7 +618,6 @@ export default function GenieMapView({
   const [selectedId,    setSelectedId]    = useState<number | null>(null)
   const [hoveredId,     setHoveredId]     = useState<number | null>(null)
   const [tooltipPos,    setTooltipPos]    = useState<{ x: number; y: number } | null>(null)
-  const [walking,       setWalking]       = useState(false)
   const [isDragging,    setIsDragging]    = useState(false)
   const [showLegend,    setShowLegend]    = useState(false)
   // Follow mode: when true, the camera keeps the current room centered
@@ -575,15 +644,12 @@ export default function GenieMapView({
   const inMotionRef = useRef(false)
   const svgRef    = useRef<SVGSVGElement | null>(null)
   const dragRef   = useRef<{ ox: number; oy: number; tx: number; ty: number } | null>(null)
-  const walkTimers = useRef<ReturnType<typeof setTimeout>[]>([])
+  // v1.0.2: walks run in this character's GameWindow (genieWalk.ts), not here,
+  // so closing the map or browsing another zone doesn't stop one.
+  const walkApi = useGenieWalk()
 
-  // Cleanup any in-flight walk timers on unmount or zone change.
-  useEffect(() => () => walkTimers.current.forEach(clearTimeout), [])
   useEffect(() => {
-    walkTimers.current.forEach(clearTimeout)
-    walkTimers.current = []
-    setWalking(false)
-    // Also clear UI selection state — without this, a node id selected
+    // Clear UI selection state — without this, a node id selected
     // in zone A keeps its gold outline if zone B happens to have a node
     // with the same numeric id (very common across zones since ids are
     // per-file). Same for hover state, which would otherwise show a
@@ -1200,31 +1266,14 @@ export default function GenieMapView({
   }, [])
 
   // ── Click-to-walk ───────────────────────────────────────────────────────
-  // Optional `onComplete` fires after the last walk command is sent.
-  // Used by stub-click navigation to defer the zone switch until the
-  // player has actually walked to the boundary room.
-  const sendWalkPath = useCallback((commands: string[], onComplete?: () => void) => {
-    walkTimers.current.forEach(clearTimeout)
-    walkTimers.current = []
-    if (commands.length === 0) { onComplete?.(); return }
-    setWalking(true)
-    commands.forEach((cmd, i) => {
-      const t = setTimeout(() => {
-        onSendCommand(cmd)
-        if (i === commands.length - 1) {
-          setWalking(false)
-          onComplete?.()
-        }
-      }, i * WALK_STEP_MS)
-      walkTimers.current.push(t)
-    })
-  }, [onSendCommand])
-
-  const stopWalk = useCallback(() => {
-    walkTimers.current.forEach(clearTimeout)
-    walkTimers.current = []
-    setWalking(false)
-  }, [])
+  // The route goes to this character's walker (GenieWalkContext), which sends
+  // one step per arrival. Without a walker (never, inside a GameWindow) the map
+  // sends only the first step, so a click still moves you.
+  const sendWalkPath = useCallback((commands: string[], label: string) => {
+    if (commands.length === 0) return
+    if (walkApi) walkApi.start(commands, label)
+    else onSendCommand(commands[0])
+  }, [walkApi, onSendCommand])
 
   // Left-click — pins the path to the clicked node (no walking). For stubs
   // (cross-zone markers), left-click instead switches the displayed zone
@@ -1327,6 +1376,16 @@ export default function GenieMapView({
     walkCtxRef.current = { activeZone, currentLocation, currentZoneId, sendWalkPath }
   }, [activeZone, currentLocation, currentZoneId, sendWalkPath])
 
+  // `#goto` typed in the command bar: this map plans it (it knows the zones and
+  // where you are). Registered once; the planner reads the latest through a ref.
+  const gotoCtxRef = useRef({ currentLocation, zones })
+  useEffect(() => { gotoCtxRef.current = { currentLocation, zones } })
+  const registerGoto = walkApi?.registerGoto
+  useEffect(() => {
+    if (!registerGoto) return
+    return registerGoto(q => planGenieGoto(q, gotoCtxRef.current.currentLocation, gotoCtxRef.current.zones))
+  }, [registerGoto])
+
   const onNodeContextMenu = useCallback((node: GenieNode, e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -1337,7 +1396,7 @@ export default function GenieMapView({
     if (loc.node.id === node.id) return
     const path = bfsZonePath(zone!, loc.node.id, node.id)
     if (path.length === 0) return
-    walk(path)
+    walk(path, node.name || `room ${node.id}`)
   }, [])
 
   // Hover handlers — pointer position relative to the canvas for the tooltip.
@@ -2379,20 +2438,42 @@ export default function GenieMapView({
   if (!genieMapsDir) {
     return (
       <div className="map-canvas-wrap">
-        <div className="map-empty">
+        {/* First-run setup (v1.0.2): a newcomer doesn't know what "Genie maps"
+            are, so this screen says what they get and offers ONE obvious
+            action. Downloading sets the shared folder (MapPanel), and the map
+            loads straight from it. Using an existing Genie folder is the quiet
+            second choice, for players who already run Genie. */}
+        <div className="map-empty genie-setup">
           <div className="map-empty-icon">🗺</div>
-          <div className="map-empty-msg">No Genie maps folder set</div>
-          <div className="map-empty-sub">
-            Genie Maps need a folder of community-maintained XML map files.
+          <div className="map-empty-msg genie-setup-title">Set up Genie Maps</div>
+          <div className="genie-setup-what">
+            A map of DragonRealms that follows you as you move.
             <br />
-            {/* Opened in the system browser via openUrl (the About dialog's pattern):
-                main has no window-open handler, so a bare target=_blank would
-                open an Electron window inside Lichborne (B525). */}
-            <a href="https://github.com/GenieClient/Maps/archive/refs/heads/main.zip" onClick={e => { e.preventDefault(); window.api.openUrl('https://github.com/GenieClient/Maps/archive/refs/heads/main.zip') }}>Download the maps ZIP</a> (from <a href="https://github.com/GenieClient/Maps" onClick={e => { e.preventDefault(); window.api.openUrl('https://github.com/GenieClient/Maps') }}>github.com/GenieClient/Maps</a>), unzip it, then use the button below to pick that folder.
+            Right-click any room to walk there.
           </div>
-          <button className="map-btn" onClick={onPickGenieFolder} style={{ marginTop: 12, pointerEvents: 'auto' }}>
-            📁 Pick Genie maps folder…
+          <button className="map-btn map-btn--primary genie-setup-btn" onClick={onDownloadGenieMaps}
+            disabled={!!genieJob || !onDownloadGenieMaps}
+            title="Download the Genie maps from GitHub into Lichborne's own folder and open the map">
+            {genieJob ? busyText('Downloading', genieJob) : '⇩ Download and set up Genie maps'}
           </button>
+          <div className="genie-setup-note">
+            {genieJob
+              ? 'The map opens as soon as it finishes.'
+              : <>
+                  About 4 MB, from the Genie maps team at{' '}
+                  {/* Opened in the system browser via openUrl (the About dialog's pattern):
+                      main has no window-open handler, so a bare target=_blank would
+                      open an Electron window inside Lichborne (B525). */}
+                  <a href={GENIE_MAPS_REPO} onClick={e => { e.preventDefault(); window.api.openUrl(GENIE_MAPS_REPO) }}>github.com/GenieClient/Maps</a>.
+                  {' '}Get the latest any time with ↻ Refresh maps on the map toolbar.
+                </>}
+          </div>
+          {!genieJob && (
+            <button className="genie-setup-alt" onClick={onPickGenieFolder}
+              title="Use a Genie maps folder you already have, such as Genie's own Maps folder">
+              Already use Genie? Pick its Maps folder instead…
+            </button>
+          )}
         </div>
       </div>
     )
@@ -2421,9 +2502,20 @@ export default function GenieMapView({
             <br />
             No <code>.xml</code> files were parsed.
           </div>
-          <button className="map-btn" onClick={onPickGenieFolder} style={{ marginTop: 12, pointerEvents: 'auto' }}>
-            📁 Pick a different folder…
-          </button>
+          <div className="genie-maps-actions">
+            <button className="map-btn map-btn--primary" onClick={onDownloadGenieMaps}
+              disabled={!!genieJob || !onDownloadGenieMaps}
+              title={usingManagedMaps
+                ? 'Get a fresh copy of the Genie maps from GitHub. The whole folder is replaced'
+                : "Download the Genie maps from GitHub into Lichborne's own folder and use them"}>
+              {genieJob
+                ? busyText(usingManagedMaps ? 'Refreshing' : 'Downloading', genieJob)
+                : usingManagedMaps ? '↻ Refresh maps' : '⇩ Download Genie maps'}
+            </button>
+            <button className="map-btn" onClick={onPickGenieFolder}>
+              📁 Pick a different folder…
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -2439,10 +2531,31 @@ export default function GenieMapView({
     // before the parent has subtracted its own children's heights.
     <div className="map-canvas-wrap" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* Toolbar */}
-      <div className="map-toolbar" style={{ flexShrink: 0 }}>
+      <div className="map-toolbar genie-map-toolbar" style={{ flexShrink: 0 }}>
         <button className="map-btn" onClick={onPickGenieFolder}
           title={`Choose the Genie maps folder (current: ${genieMapsDir})`}
           aria-label="Choose the Genie maps folder">📁</button>
+        {/* Refresh (v1.0.2, Sekmeht): on Lichborne's own copy this is a named
+            "Refresh maps" button, since getting the latest maps is the thing
+            people come back for. The download replaces the WHOLE folder (new
+            copy built beside it, then swapped in), so nothing stale survives.
+            The label folds to the icon in a narrow panel (map-panel.css).
+            With a folder of your own it stays a quiet ⇩: there it switches
+            folders, which isn't a refresh. */}
+        {onDownloadGenieMaps && (
+          <button className={`map-btn${usingManagedMaps ? ' genie-refresh-btn' : ''}`}
+            onClick={onDownloadGenieMaps} disabled={!!genieJob}
+            aria-label={usingManagedMaps ? 'Refresh the Genie maps' : 'Download the Genie maps'}
+            title={genieJob
+              ? `${usingManagedMaps ? 'Refreshing' : 'Downloading'} the Genie maps from GitHub…`
+              : usingManagedMaps
+                ? `Refresh maps: get the latest Genie maps from GitHub. The whole folder is replaced with a fresh copy; yours stays until the new one has downloaded${managedMapsAge(managedMaps) ? `. Yours: ${managedMapsAge(managedMaps)}` : ''}.`
+                : `Download the latest Genie maps from GitHub into Lichborne's own folder and use them instead of ${genieMapsDir}`}>
+            {usingManagedMaps
+              ? <>↻<span className="genie-refresh-label">{genieJob ? ` ${busyText('Refreshing', genieJob)}` : ' Refresh maps'}</span></>
+              : (genieJob ? (/\d/.test(genieJob) ? `⇩ ${genieJob}` : '⇩…') : '⇩')}
+          </button>
+        )}
         <select
           className="map-select"
           aria-label="Zone"
@@ -2490,8 +2603,15 @@ export default function GenieMapView({
             ? 'Legend — nothing to explain on this level (no coloured rooms, path types or cross-zone exits)'
             : showLegend ? 'Hide the legend' : 'Show the legend (room colours, path types, cross-zone exits)'}
         >▤</button>
-        {walking && (
-          <button className="map-btn" onClick={stopWalk} title="Stop walk">■</button>
+        {walkApi?.status && (
+          <span className="genie-walk-status"
+                title={`Walking to ${walkApi.status.label}. Each step waits for the game to show the next room.`}>
+            <span className="genie-walk-label">→ {walkApi.status.label}</span>
+            <span className="genie-walk-count">{walkApi.status.done}/{walkApi.status.total}</span>
+          </span>
+        )}
+        {walkApi?.status && (
+          <button className="map-btn" onClick={walkApi.stop} title="Stop the walk">■</button>
         )}
         {zoneLevels.length > 1 && (
           <span className="map-level-chips"
@@ -2527,7 +2647,7 @@ export default function GenieMapView({
               <div className="map-empty-icon">🗺</div>
               <div className="map-empty-msg">{zones.size} zones loaded · waiting for game data</div>
               <div className="map-empty-sub">
-                Connect to a character, or pick a zone from the dropdown above to browse.
+                In the game, type <code>LOOK</code> and the map finds your room. Or pick a zone from the list above to browse.
               </div>
             </div>
           </div>

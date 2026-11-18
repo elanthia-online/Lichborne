@@ -64,6 +64,17 @@ export interface AppSettings {
   // `bWebLinkSafety` setting. On by default — safer for users who don't
   // trust every script-emitted URL.
   webLinkSafety: boolean
+  // v1.0.2 (Damiza): Genie map walking (genieWalk.ts). A walk sends the next
+  // step when the game reports the arrival, so these shape it rather than time
+  // it. Only the Genie map uses them; the Lich map walks with `;go2`.
+  /** Steps that may be sent before the game confirms the last one, 1–3. */
+  mapWalkAhead: number
+  /** Send a failed step once more before stopping the walk. */
+  mapWalkRetry: boolean
+  /** Extra wait after each arrival, 0–1000 ms. */
+  mapWalkPauseMs: number
+  /** Echo each step in the game window as `>cmd`. */
+  mapWalkEcho: boolean
   mapAnimations: boolean   // Genie Maps room effects (glints, ripples, auras, healer heartbeat; NOT the location ping, which is shared with the Lich map); OFF by default since v0.20.5 (existing saves keep their value). The camera glide was removed the same release.
   // v0.8.4 (B113): text-weight offset for game text. Positive values
   // (0.2–0.6) add faux-bold via -webkit-text-stroke to compensate for
@@ -127,6 +138,17 @@ export function clampFontSize(n: number): number {
   return Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, Math.round(n)))
 }
 
+// Genie map walking: the ranges Settings and the load path both clamp through.
+export const MAP_WALK_AHEAD_MAX = 3
+export const MAP_WALK_PAUSE_MAX = 1000
+export const MAP_WALK_PAUSE_STEP = 50
+export function clampMapWalkAhead(n: number): number {
+  return Math.max(1, Math.min(MAP_WALK_AHEAD_MAX, Math.round(n)))
+}
+export function clampMapWalkPause(n: number): number {
+  return Math.max(0, Math.min(MAP_WALK_PAUSE_MAX, Math.round(n)))
+}
+
 export const DEFAULT_SETTINGS: AppSettings = {
   fontSize: 12,
   // 'cascadia' is a key into FONT_FAMILIES — resolves to
@@ -154,6 +176,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoLinkUrls: true,
   webLinkSafety: true,
   mapAnimations: false,
+  mapWalkAhead: 1,
+  mapWalkRetry: false,
+  mapWalkPauseMs: 0,
+  mapWalkEcho: true,
   textWeight: 0,
   panelFontSizes: {},
   // Static — the wordmark takes its colours from the theme, as it always has.
@@ -271,6 +297,10 @@ export function coerceSettings(s: AppSettings): AppSettings {
     compassDimOpacity: Number.isFinite(dim) ? Math.min(1, Math.max(0.1, dim)) : D.compassDimOpacity,
     compassClickable: typeof s.compassClickable === 'boolean' ? s.compassClickable : D.compassClickable,
     vitalsText: VITALS_TEXTS.includes(s.vitalsText) ? s.vitalsText : D.vitalsText,
+    mapWalkAhead: typeof s.mapWalkAhead === 'number' && Number.isFinite(s.mapWalkAhead) ? clampMapWalkAhead(s.mapWalkAhead) : D.mapWalkAhead,
+    mapWalkRetry: typeof s.mapWalkRetry === 'boolean' ? s.mapWalkRetry : D.mapWalkRetry,
+    mapWalkPauseMs: typeof s.mapWalkPauseMs === 'number' && Number.isFinite(s.mapWalkPauseMs) ? clampMapWalkPause(s.mapWalkPauseMs) : D.mapWalkPauseMs,
+    mapWalkEcho: typeof s.mapWalkEcho === 'boolean' ? s.mapWalkEcho : D.mapWalkEcho,
   }
 }
 

@@ -72,11 +72,13 @@ A few ideas shape everything:
 
 ## What's New in the Latest Version
 
-**v1.0.1**
+**v1.0.2**
 
-- **Windows: Lichborne keeps up with your Ruby** (thanks, Tysong). It now uses
-  `C:\Ruby4Lich5\current`, which the Ruby for Lich installer keeps pointed at your newest
-  Ruby. A saved path to one version folder switches over on the next start.
+- **Genie map walks keep up with you** (thanks, Damiza). Each step waits for the room, a
+  failed step stops the walk and says why, Genie's map steps (`rt west`, `script autoclimbup`)
+  work, and `#goto bank` walks to a room by its note or number.
+- **Lichborne downloads the Genie maps for you.** The first time you open the Genie map,
+  click **⇩ Download and set up Genie maps** and the map opens when it finishes. Click **↻ Refresh maps** on its toolbar to get the latest later.
 
 ## On the Horizon (Roadmap)
 
@@ -372,7 +374,7 @@ Open the **Maps** button for two very different map views. Both track your curre
 
 **Lich Map — native, zero setup.** Lichborne reads Lich's built-in map **artwork** straight out of your Lich installation's `maps` folder — so once your [Lich path is set](#2-set-up-lich-recommended), it just works. It shows the real map image with your current room highlighted, and it's the **most reliable tracker** because it matches by room **id**. Tip: turn on DragonRealms' room-number display (so room titles show a number like `[Town Square] (12345)`) and your marker stays locked on.
 
-**Genie Maps — the community XML maps, from a folder you point it at (DragonRealms only).** This view renders the community-maintained **Genie XML map files** directly. Download them from [github.com/GenieClient/Maps](https://github.com/GenieClient/Maps) ([direct ZIP](https://github.com/GenieClient/Maps/archive/refs/heads/main.zip), then unzip). The first time, point it at the **folder** where those files live (Lichborne remembers it, and caches the parse so every launch after the first is instant). It draws one zone at a time at the hand-curated coordinates the Genie maps team has refined for years, follows you as you walk, and auto-switches zones as you cross boundaries — with a pulsing sonar "you are here" ring that's easy to find.
+**Genie Maps — the community XML maps (DragonRealms only).** This view renders the community-maintained **Genie XML map files** from [github.com/GenieClient/Maps](https://github.com/GenieClient/Maps). The first time you open it, the screen says **Set up Genie Maps**: click **⇩ Download and set up Genie maps** and Lichborne fetches them (about 4 MB) into its own folder and opens the map when it finishes. Click **↻ Refresh maps** on the Genie map toolbar whenever you want the latest: the whole folder is replaced with a fresh copy, so nothing old is left behind, and your current copy stays until the new one has downloaded. If you already keep Genie's maps somewhere, click **Already use Genie? Pick its Maps folder instead…** under the button (it never changes a folder you picked). Lichborne caches the parse, so every launch after the first is instant. It draws one zone at a time at the hand-curated coordinates the Genie maps team has refined for years, follows you as you walk, and auto-switches zones as you cross boundaries — with a pulsing sonar "you are here" ring that's easy to find.
 
 **Rooms are color-coded by what they are — and each color has its own tiny animation** so you can recognize a room type at a glance without reading the legend:
 
@@ -386,7 +388,7 @@ Open the **Maps** button for two very different map views. Both track your curre
 
 …and more. Arcs between rooms are colored by exit kind (cardinal / climb / door), and floating labels mark landmarks. A **legend (▤)** spells out every color and glyph. The room effects are controlled by the **Genie Map Animations** setting, which is off by default; turn it on for a livelier map. Either way, the map follows you instantly as you move, and the ring marking where you are keeps pulsing, on this map and the Lich map alike (**Epilepsy safe mode** stops the pulse).
 
-**Getting around, either view:** **left-click** a room to pin its route on the map (study it, no walking); **right-click** to actually walk there — the moves echo in your game window step-by-step. Cross-zone exits are marked **↗** — left-click to peek at the neighbouring zone, right-click to walk to the boundary (the map switches only once you've truly arrived, never racing ahead). Hover any room for its id, exits, category, and a preview of the path you'd take.
+**Getting around, either view:** **left-click** a room to pin its route on the map (study it, no walking); **right-click** to actually walk there — the moves echo in your game window step-by-step. On the Genie map each step waits for the game to show the room before the next goes out; if a step fails (a shut door, you need to stand) the walk stops and tells you which step and why, and a few spots that need a Genie script stop in the room before with a note on what to do. The toolbar shows where you're headed, with **■** to stop, and taking a step yourself stops it too. Type `#goto bank` (a room's note) or `#goto 302` (its number) in the command bar to walk there on the map you're on. The walk options are in **Settings → Behavior**: steps ahead, a pause after each room, retry a failed step once, and whether each step shows in the game window. Cross-zone exits are marked **↗** — left-click to peek at the neighbouring zone, right-click to walk to the boundary (the map switches only once you've truly arrived, never racing ahead). Hover any room for its id, exits, category, and a preview of the path you'd take.
 
 *(Both views rely on Lich map data. Coming from Genie? The Genie XML maps often live in your Lich `maps` folder already — point the Genie view there.)*
 
@@ -763,6 +765,7 @@ lichborne/
   Logs/
     {Name}@{SHARD}/    — session logs, one folder per character
   TriggerLogs/         — files written by a trigger's "log to file" action
+  GenieMaps/           — the Genie maps, if you downloaded them from the Genie map
   window-state.json    — where each window was last placed (this computer only)
 ```
 

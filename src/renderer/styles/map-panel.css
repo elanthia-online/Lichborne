@@ -618,6 +618,35 @@
   margin-left: 4px;
 }
 
+/* v1.0.2: a Genie map walk under way — where to, and steps taken of the total.
+   Sized like the level chips beside it; the room name gives way first in a
+   narrow toolbar. */
+.genie-walk-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 22em;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--map-btn-border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 10%, var(--map-btn-bg));
+  color: var(--map-text);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.genie-walk-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.genie-walk-count {
+  flex-shrink: 0;
+  color: var(--map-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .map-chip {
   background: var(--map-btn-bg);
   border: 1px solid var(--map-btn-border);
@@ -1312,6 +1341,91 @@
 .map-empty-sub   { font-size: 0.92em; color: var(--map-text-muted); opacity: 0.6; }
 /* The overlay is click-through; the "Try Genie Maps" button inside it is not. */
 .map-empty .map-btn { pointer-events: auto; margin-top: 4px; }
+/* Links in the empty-state text too — the click-through overlay left them dead. */
+.map-empty-sub a { pointer-events: auto; color: color-mix(in srgb, var(--accent) 60%, var(--map-text)); }
+
+/* Genie maps download (v1.0.2): the empty state's two ways in, side by side. */
+.genie-maps-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+/* The suggested action. Accent hairline + tint, text mixed toward the game text
+   so it stays readable where a theme's accent is dark (pitfall #150). */
+.map-btn--primary {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--map-btn-border));
+  background: color-mix(in srgb, var(--accent) 14%, var(--map-btn-bg));
+  color: color-mix(in srgb, var(--accent) 45%, var(--map-text));
+}
+/* First-run setup screen (v1.0.2). Reading text sits at full muted colour, not
+   the 60% .map-empty-sub, which measures about 2:1 on light themes
+   (pitfall #150). Sized in em off the .map-panel anchor (B338). */
+.genie-setup { gap: 8px; padding: 0 1.5em; text-align: center; }
+.genie-setup-title { font-size: 1.25em; color: var(--map-text); }
+.genie-setup-what  { font-size: 1em; color: var(--map-text-muted); line-height: 1.5; }
+.genie-setup .genie-setup-btn {
+  margin-top: 6px;
+  font-size: 1.08em;
+  padding: 0.55em 1.2em;
+  line-height: 1;
+}
+/* While it downloads the button IS the progress readout, so it stays at full
+   strength rather than the 65% every other disabled .map-btn takes. */
+.genie-setup .genie-setup-btn:disabled { opacity: 1; cursor: progress; }
+.genie-setup-note { font-size: 0.92em; color: var(--map-text-muted); max-width: 32em; }
+.genie-setup-note a { pointer-events: auto; color: color-mix(in srgb, var(--accent) 60%, var(--map-text)); }
+/* The quiet second choice: reads as a link, keyboard-reachable as a button. */
+.genie-setup-alt {
+  pointer-events: auto;
+  margin-top: 2px;
+  padding: 2px 4px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.92em;
+  color: var(--map-text-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.genie-setup-alt:hover { color: var(--map-text); }
+/* "↻ Refresh maps" on the Genie toolbar. The toolbar is a container so the
+   label can fold to the bare ↻ when the panel is too narrow for it and the
+   zone list. Only the Genie toolbar is a container: it holds no popovers (the
+   zone list is a native <select>), so the stacking context this creates is
+   harmless (B179 was a dropdown buried this way). The threshold is em, so it
+   follows the font setting. */
+.genie-map-toolbar { container-type: inline-size; }
+/* A <button> doesn't inherit the font, so WORDS on a .map-btn draw in
+   Chromium's default UI font unless told (pitfall #113). The game font goes
+   on the words only: the icon-only buttons keep their glyphs, which the game
+   font draws smaller (▤). The label matches the zone list (11px); the ↻ keeps
+   the 13px every toolbar glyph has, so the button stays as tall as 📁. */
+.genie-refresh-btn { white-space: nowrap; }
+.genie-refresh-label { font-family: var(--game-font-family); font-size: 11px; }
+/* The setup and no-zones screens: the buttons read as part of the text. */
+.map-empty .map-btn { font-family: var(--game-font-family); }
+/* Scoped to the toolbar so it beats `.map-btn:disabled` (same specificity,
+   later in the file) by specificity, not by order (pitfall #111). */
+.genie-map-toolbar .genie-refresh-btn:disabled { opacity: 1; cursor: progress; }
+@container (max-width: 34em) {
+  .genie-refresh-label { display: none; }
+}
+.map-btn:disabled { cursor: default; opacity: 0.65; }
+.map-btn:disabled:hover {
+  background: var(--map-btn-bg);
+  border-color: var(--map-btn-border);
+  color: var(--map-text);
+}
+/* A busy primary button keeps its look under the cursor, which is usually
+   still resting on it after the click. Two classes so it wins by specificity. */
+.map-btn.map-btn--primary:disabled:hover {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--map-btn-border));
+  background: color-mix(in srgb, var(--accent) 14%, var(--map-btn-bg));
+  color: color-mix(in srgb, var(--accent) 45%, var(--map-text));
+}
 
 /* ── Room detail ──────────────────────────────────────────── */
 /* B338: the room detail is READING text, so everything below sizes in em off

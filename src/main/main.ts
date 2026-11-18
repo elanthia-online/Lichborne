@@ -58,7 +58,8 @@
 //    but `password:load` DOES return the saved account password to the
 //    renderer — the renderer builds LoginCredentials (with the password) for
 //    the LOGIN handler. Don't describe the boundary as stricter than it is.
-import { app, BrowserWindow, ipcMain, dialog, Menu, shell, session, clipboard, safeStorage, powerMonitor } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell, session, clipboard, safeStorage, powerMonitor, net } from 'electron'
+import { installGenieMaps, readGenieMapsStatus, type GenieMapsStatus, type GenieMapsResult } from './genieMapsDownload'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
@@ -1882,8 +1883,15 @@ ipcMain.handle('discover-lich-paths', async (_event, currentRuby: string, curren
 // password didn't remember" reads as a missing keyring, not a broken app.
 ipcMain.handle('secure-storage-available', () => safeStorage.isEncryptionAvailable())
 
-ipcMain.handle('browse-folder', async () => {
-  const result = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+// `startIn` opens the picker at the folder in use (the Genie map's 📁). It is
+// used only when it still exists, else the OS picks as before. The check is
+// async: a saved folder on a network share that's gone can take seconds to
+// fail, and a sync stat would hold up every game socket meanwhile.
+ipcMain.handle('browse-folder', async (_e, startIn?: string) => {
+  const start = typeof startIn === 'string' && startIn ? expandHome(startIn) : ''
+  let defaultPath: string | undefined
+  try { if (start && (await fs.promises.stat(start)).isDirectory()) defaultPath = start } catch { /* gone: no start */ }
+  const result = await dialog.showOpenDialog({ properties: ['openDirectory'], defaultPath })
   return result.canceled ? null : result.filePaths[0] ?? null
 })
 
@@ -1970,6 +1978,33 @@ ipcMain.handle('genie-cache:save', (_e, dir: string, zones: unknown[]): boolean 
     console.error('genie-cache:save failed:', e)
     return false
   }
+})
+
+// ── Genie maps download (v1.0.2) ──────────────────────────────────────────────
+// Downloads GenieClient/Maps into `{userData}/GenieMaps`, a folder Lichborne
+// owns; see genieMapsDownload.ts for the replace-only-when-ready rule. It is
+// app-wide (one folder for every character), so progress and the finished
+// status go to EVERY window: a map open in another window reloads too.
+// net.fetch, not Node's fetch, so a system proxy applies.
+
+ipcMain.handle('genie-maps:status', (): GenieMapsStatus => readGenieMapsStatus(app.getPath('userData')))
+
+ipcMain.handle('genie-maps:install', async (): Promise<GenieMapsResult> => {
+  let lastSent = 0
+  const result = await installGenieMaps({
+    userData: app.getPath('userData'),
+    fetchImpl: (url, init) => net.fetch(url, init),
+    onProgress: p => {
+      const now = Date.now()
+      if (p.phase === 'download' && now - lastSent < 100) return
+      lastSent = now
+      broadcastAll('genie-maps:progress', p)
+    },
+  })
+  if (result.ok) broadcastAll('genie-maps:updated', result.status)
+  else console.error('Genie maps download failed:', result.error)
+  broadcastAll('genie-maps:progress', { phase: 'done' })
+  return result
 })
 
 // ── Weather & Moons: community sun anchors ────────────────────────────────────

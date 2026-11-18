@@ -36,7 +36,7 @@ import { pressable } from '../utils/pressable'
 import { confirmAction } from '../confirm'
 import { createPortal } from 'react-dom'
 import type { SessionLogDiskUsage, SimuCoinStatus } from '../../shared/types'
-import { FONT_FAMILIES, FONT_FAMILY_LABELS, DEFAULT_SETTINGS, FONT_SIZE_MIN, FONT_SIZE_MAX, clampFontSize, resolveFontFamily, isFontPreset, type AppSettings } from '../settings'
+import { FONT_FAMILIES, FONT_FAMILY_LABELS, DEFAULT_SETTINGS, FONT_SIZE_MIN, FONT_SIZE_MAX, clampFontSize, MAP_WALK_PAUSE_MAX, MAP_WALK_PAUSE_STEP, clampMapWalkAhead, clampMapWalkPause, resolveFontFamily, isFontPreset, type AppSettings } from '../settings'
 import { HIGHLIGHT_EFFECTS, type HighlightEffect } from '../highlights'
 import { IS_MAC } from '../lichSettings'
 import NumberField from './NumberField'
@@ -669,11 +669,12 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
   const vAutoLink      = vis('Behavior', 'Auto-link URLs')
   const vWebSafety     = vis('Behavior', 'Web link safety', 'bounce')
   const vMapAnim       = vis('Behavior', 'Genie map animations')
+  const vMapWalk       = vis('Behavior', 'Genie map: steps ahead', 'Genie map: pause after each room', 'Genie map: try a failed step once more', 'Genie map: show each step', 'automapper', 'walk', 'travel', 'right-click', 'goto', 'speed')
   // The command-history row used to render whenever Behavior did, so a search
   // for "history" found nothing — and a search for "links" showed it anyway.
   const vCmdHist       = vis('Behavior', 'Remember commands of at least', 'command history', 'up-arrow', 'recall')
   const vNotices       = vis('Behavior', 'Character status notifications', 'toast', 'notification', 'disconnected', 'reconnected', 'ready')
-  const secBehavior    = vAutoLink || vWebSafety || vMapAnim || vCmdHist || vNotices
+  const secBehavior    = vAutoLink || vWebSafety || vMapAnim || vMapWalk || vCmdHist || vNotices
 
   const vAiEnable      = vis('AI', 'Enable AI features', 'artificial intelligence', 'byok')
   const vAiKey         = vis('AI', 'Anthropic API key', 'claude', 'byok')
@@ -1286,6 +1287,66 @@ export default function SettingsPanel({ settings, character, onChange, layoutMod
             onChange={v => set('mapAnimations', v)}
           />}
 
+          {/* v1.0.2 (Damiza) — Genie map walking, per character like the
+              animations above. The walk waits for each room (genieWalk.ts),
+              so these shape it rather than set a speed. */}
+          {vMapWalk && (<>
+          <div className="sp-field-row">
+            <label className="sp-field-label" htmlFor="sp-map-ahead">Genie map: steps ahead</label>
+            <select
+              id="sp-map-ahead"
+              className="sp-select"
+              value={settings.mapWalkAhead}
+              onChange={e => set('mapWalkAhead', clampMapWalkAhead(parseInt(e.target.value, 10)))}
+            >
+              <option value={1}>1 (wait for each room)</option>
+              <option value={2}>2</option>
+              <option value={3}>3</option>
+            </select>
+          </div>
+          <div className="sp-field-desc">
+            When you right-click a room on the Genie map, or type <code>#goto</code>, Lichborne sends a step and waits
+            for the game to show the next room before sending another. More steps ahead is faster, but the game only
+            lets so many commands wait: a standard account can use 2 here (one step moving, one waiting) and a premium
+            account 3. If the game refuses a step, the walk sends it again and keeps one fewer on the way.
+          </div>
+          <div className="sp-field-row">
+            <label className="sp-field-label" htmlFor="sp-map-pause">
+              Genie map: pause after each room{' '}
+              <span className="sp-field-hint">(0 = none)</span>
+            </label>
+            <div className="sp-number-row">
+              <button className="sp-num-btn" title="Shorter pause"
+                      onClick={() => set('mapWalkPauseMs', clampMapWalkPause(settings.mapWalkPauseMs - MAP_WALK_PAUSE_STEP))}>−</button>
+              <NumberField
+                id="sp-map-pause"
+                min={0} max={MAP_WALK_PAUSE_MAX} step={MAP_WALK_PAUSE_STEP}
+                value={settings.mapWalkPauseMs}
+                onCommit={v => set('mapWalkPauseMs', clampMapWalkPause(v))}
+                className="sp-number-input"
+              />
+              <button className="sp-num-btn" title="Longer pause"
+                      onClick={() => set('mapWalkPauseMs', clampMapWalkPause(settings.mapWalkPauseMs + MAP_WALK_PAUSE_STEP))}>+</button>
+              <span className="sp-field-hint">ms</span>
+            </div>
+          </div>
+          <div className="sp-field-desc">
+            Slows a walk down so you can read each room as you pass through. It doesn't make a walk safer: each step
+            already waits for the room before it.
+          </div>
+          <Toggle
+            label="Genie map: try a failed step once more"
+            description={'If a step fails ("You can\'t go there", "What were you referring to?"), send it one more time before stopping the walk. Off: the walk stops at the first failure and says which step it was.'}
+            checked={settings.mapWalkRetry}
+            onChange={v => set('mapWalkRetry', v)}
+          />
+          <Toggle
+            label="Genie map: show each step"
+            description="Echo each step of a walk in the game window, the way a typed command shows. Off keeps long walks out of your scrollback; the line saying the walk arrived or stopped still shows."
+            checked={settings.mapWalkEcho}
+            onChange={v => set('mapWalkEcho', v)}
+          />
+          </>)}
           {/* v0.20.0 — app-wide, like the command-history row below. */}
           {vNotices && <Toggle
             label="Character status notifications"

@@ -4032,13 +4032,7 @@ Two handlers on each node `<g>`. The SVG root has `onContextMenu={preventDefault
 
 `onNodeContextMenu` (**right-click**): walks to the clicked node. `preventDefault` + `stopPropagation`, then BFS within the current zone and `sendWalkPath`. For a stub this walks to the boundary room (the stub IS a real room in the current zone). Cross-zone click-to-walk is NOT supported — Genie arc destinations are zone-local IDs; the map auto-switches zones via the title-match effect once the player actually crosses.
 
-`sendWalkPath(commands, onComplete?)` clears any in-flight timers, then schedules each command at `WALK_STEP_MS` (600ms) intervals via `setTimeout`.
-
-Walk timers are cleared on zone change AND on unmount. Level change does NOT clear walk timers — paths can legitimately include up/down arcs. Walk commands echo to the game window as `>cmd` lines via `sendCommand`.
-
-Walk timers are cleared on zone change AND on unmount. Level change does NOT clear walk timers — click-to-walk paths can legitimately include up/down arcs.
-
-Walk commands are echoed to the game window as `>cmd` lines via `sendCommand` in `GameWindow.tsx`. Same code path as typed commands, quick-send, room-exit clicks, and in-text command links — they all share the `command-echo` preset.
+`sendWalkPath(commands, label)` hands the route to the character's walker (§19.18). Until v1.0.2 it sent one step every 600 ms (`WALK_STEP_MS`) on a timer, whatever the game answered; that is gone, along with the timers this component used to own, so closing the map or browsing another zone no longer stops a walk.
 
 #### 19.16.10 Rendering Layer Order
 
@@ -4209,13 +4203,89 @@ Player Housing (`#00FFFF`) was in `AURA_FIRE_COLORS` (hearth-glow flicker) throu
 
 When an animated aura class is applied, the `opacity` SVG attribute is omitted (`undefined`) so CSS owns opacity unambiguously — having both an attribute and a CSS animation on the same property creates browser-inconsistency.
 
+### 19.18 Genie map walking (v1.0.2)
+
+Damiza's report (posted on Discord as Obsidian): a right-click walk to the Crossing Barbarians' Guild sent `script crossingtrainerfix go barbarian guild` to the game ("Please rephrase that command"), kept sending the steps after it ("You can't go there"), and was slow at one step every 600 ms.
+
+**How Genie does it** (read from its source, 2026-11-16). A right-click doesn't send steps: it sends `.automapper <step> <step> …` (`Mapper/AutoMapper.cs`, `GraphForm_MoveMapPath`), handing the route to `automapper.cmd`, a ~2,500-line script the Genie maps team ships. That script sends a step, waits for the game's "Obvious paths", and reads every reply: failed (`move_FAIL`), try again (`move_RETRY`: "…wait", stunned, webbed), stand up, retreat, stow, closed shops. A step's first word is a TYPE (`rt west`, `swim south`, `search go faint trail`, `script autoclimbup`) that it strips and acts on, some by running a helper `.cmd`. Its only speed control is type-ahead: 1 by default, and its comments say standard accounts 1, premium 2, LTB 3. Genie's type-ahead counts commands WAITING behind the one moving (its loop sends while `typeahead >= depth`), so Genie's 1 is Lichborne's "steps ahead" 2: ours counts every step on its way.
+
+**Lichborne's version** is [genieWalk.ts](../src/renderer/genieWalk.ts), pure and harnessed (`tmp-genie-walk/`, 63 cases), driven from GameWindow:
+
+- **The step table (`planGenieStep`).** A fixed table of what each step amounts to, written from automapper.cmd and the helper scripts. It is not a script runtime: players can't edit it, and anything needing real logic stops the walk.
+  - `rt`, `swim`, `slow`, `ice`, `web`, `muck`, `wait`: removed, and the rest is sent.
+  - `a;b` sends both.
+  - `search go X` tries `go X` first, then `search` and `go X` again.
+  - `objsearch thing go X` searches the thing, then goes.
+  - `none` is skipped; `dive …` is sent as is.
+  - `script autoclimbup` / `autoclimbdown` become `climb up` / `climb down`, sent again on a slip.
+  - `script sandspit` / `hibintelligence` try the "other" barrel / steel door on "You can't do that."
+  - `script armoire` opens and searches it, then goes.
+  - `script hollowevevine` is `tap vine`.
+  - `script crossingtrainerfix <step>` is the step, as automapper.cmd's MOVE.RT sends it. (A first version also sent `out` and the step again on a failure; `out` moves you, and its arrival was counted as the step landing.) The official maps dropped it in January 2026 (GenieClient/Maps `096409a`, "DeleteTrainerFix"); older copies still have it, which is how Damiza hit it.
+- **Steps that need the player.** Every other `script …`, every `room …`, and any step with a Genie `#` or `.` command. The walk goes as far as the room before, then says what's needed (`MANUAL_SCRIPTS` has a sentence for each known one, from its `.cmd`).
+- **The walker (`GenieWalker`).**
+  - It sends a step and waits for the arrival: the `room-id` event from DR's `<nav rm>`. In Lich's 41 DR fixtures every `<nav>` came with a room change and LOOK/PEER/LOCATE sent none. One exception, from Agan's capture (2026-11-01): a Moon Mage's telescope view sends an empty `<nav/>` (no event) and then `<nav rm>` for the room you're standing in, 132 times there. The walker therefore ignores an arrival with the same room id as the last one; a route never steps into the room you're in, so that can't be a step landing. `onArrival(roomId)` is called for every arrival, walking or not, so the walker always knows the current room. Across Agan's, Sekmeht's and two more captures, no turn had more than one real move.
+  - It reads main-window lines against lists kept as written in automapper.cmd. A failure stops the walk, or tries once more if the setting is on. "Please rephrase" on a bare noun gets `go <noun>`, automapper's MOVE.GO. "…wait" and stuns resend after the roundtime. Standing, combat, full hands, invisibility, fatigue, mud, a closed way, the galley and the drawbridge stop the walk with a reason: it never stands, retreats or stows for you (Sekmeht's call).
+  - Steps ahead (1–3) pipelines plain steps only; anything with extra commands, a fallback, a retry list or a wait waits until it lands. "Sorry, you may only type ahead" with more than one step on its way means the game refused the newest: it is sent again once the one before lands, and the walk keeps one fewer on its way from then on.
+  - Genie's quick-send prefix `-N` (`push wall;-3 go wall`) is a wait of N seconds before that command (Genie's Command.cs turns `-` into `#send`, whose `Send()` reads a leading number as the pause). A bare `-` waits for nothing. Seven steps in today's maps use it. A part naming a Genie variable (`$haven.pw`) stops the walk, like a Genie command does.
+  - 15 s without an answer stops the walk (2 minutes for a climb or a step the game says is a long one).
+  - An arrival when nothing was sent stops it.
+  - So does any movement command you send yourself: every send path calls `noteSentRef`, and the walker's own sends set `walkSendingRef`.
+- **Where it lives.** One walker per character in GameWindow (it needs that character's arrivals, replies and send path). The map reaches it through `GenieWalkContext`, so both mount sites share it. A walk survives the map closing; a reconnect-in-place (pitfall #69) or unmount stops it quietly; a replayed batch never feeds it.
+- **What the player sees.**
+  - One line when a walk starts, saying how far it goes if a step will need them, and one when it arrives, pauses or stops, naming the step and the game's reply.
+  - The map toolbar shows "→ room 4/12" and ■ while it runs.
+  - Each step echoes `>cmd` unless "show each step" is off; it is logged either way.
+- **`#goto`.** Typed in the command bar (`dispatchUserText`, after the slash intercept), never sent to the game.
+  - The mounted map registers `planGenieGoto` through the context.
+  - Genie's rule (`AutoMapper.cs` "goto"): a number of up to five digits is a room id on the current map, anything else is matched against room notes.
+  - We prefer an exact note over a prefix, and the nearest match over the last one in the file.
+  - It works within the current map only, like Genie, and names the map a note is on when it isn't this one.
+  - Without a Genie map mounted it says to open one.
+- **Settings** (per character, Settings → Behavior, `AppSettings.mapWalk*`):
+  - steps ahead (1–3, default 1);
+  - try a failed step once more (off);
+  - pause after each room (0–1000 ms, 0);
+  - show each step (on).
+  These replaced the unreleased millisecond setting.
+- **No slash command, by decision (Sekmeht).** Settings stay in Settings, and `#goto` is Genie's own form, kept for Genie map users. The `/walkspeed` command that briefly existed in the 1.0.2 work was removed before release.
+
+### 19.19 Genie maps download (v1.0.2)
+
+Sekmeht's ask: download and update the Genie maps from inside Lichborne, into a folder it owns, instead of making players fetch the ZIP, unzip it and pick the folder.
+
+**Source.** `https://github.com/GenieClient/Maps/archive/refs/heads/main.zip` (redirects to codeload.github.com). Measured 2026-11-16: 4.07 MB, 163 entries, 18 MB unpacked, 93 top-level `Map*.xml`, stored and deflated entries only, no data descriptors, no ZIP64. Every entry sits under `Maps-main/`, and the archive's zip comment is the 40-hex commit id. GitHub sends no `Content-Length`, so progress is MB received, not a percentage.
+
+**Where.** `{userData}/GenieMaps`, the same folder for every character (the maps setting, `lichborne.genieMapsDir`, has always been app-wide). `Maps-main/` is stripped, so the XMLs sit at the top of GenieMaps the way Genie keeps them; the subfolders (Archived Maps, Festivals…, the scripts folder) come along and are ignored like any other subfolder (`list-map-dir` reads the top level only). A marker file `.lichborne-genie-maps.json` records the source, commit, install time and map count.
+
+**Replace only when ready** ([genieMapsDownload.ts](../src/main/genieMapsDownload.ts)). The ask was "purge the folder, fetch, extract"; the order is reversed so a failed download can never leave the player with no maps (Principle #3):
+1. Download the whole zip into memory (capped at 64 MB; 30 s with no bytes = stalled).
+2. Read it: refuse anything that isn't a zip, ZIP64, encrypted, multi-part, entries outside one top folder, unsafe names (`..`, drive letters, backslashes, Windows-reserved characters), a wrong size or CRC, more than 512 MB unpacked, or fewer than 10 top-level maps (a GitHub error page or an unrelated archive).
+3. Extract into `GenieMaps.new` and write the marker.
+4. Swap: `GenieMaps` → `GenieMaps.old`, `.new` → `GenieMaps`, delete `.old`. A failed swap puts the old folder back; a run killed between the two renames is repaired by the next one (a lone `.old` with no `GenieMaps` is restored before anything else).
+
+Every rename retries on `EBUSY`/`EPERM`/`EACCES`: the harness hit `EPERM` renaming a folder written a moment earlier (an antivirus scan). The update does purge the managed folder, so a file the player added there is gone after an update; the toolbar tooltip says the copy is replaced. Nothing outside these three fixed paths is ever deleted, and a folder the player picked is never touched.
+
+**The zip reader is hand-rolled** (central directory + `zlib.inflateRaw` + `zlib.crc32`), no new package. The module imports nothing from electron, so the harness drives it with a fake fetch; main passes `net.fetch` (system proxy honoured).
+
+**IPC.** `genie-maps:status` → `GenieMapsStatus`; `genie-maps:install` → `GenieMapsResult` (never throws; the error is a sentence). One run at a time: a second call joins the first. Progress (`genie-maps:progress`, ending with `{ phase: 'done' }` either way) and the finished status (`genie-maps:updated`) go to EVERY window, because the folder is shared.
+
+**Renderer** ([MapPanel.tsx](../src/renderer/components/panels/MapPanel.tsx)). On `updated`, every MapPanel drops the module parse cache for that folder (`bustGenieCache`) and reloads if it is using it; the disk parse cache misses on its own (new mtimes). The panel where you clicked switches to the managed folder if it was using another one. The folder setting now reaches every open map: a change is announced in-window (`lichborne:genie-maps-dir`) and across windows by the `storage` event, so picking or downloading in one panel no longer leaves the others on the old folder until they remount.
+
+**UI** ([GenieMapView.tsx](../src/renderer/components/panels/GenieMapView.tsx)). With no folder set, the first screen is **Set up Genie Maps** (`.genie-setup`): one sentence on what the map does, ONE large button **⇩ Download and set up Genie maps** (it stays at full strength while it shows the progress), a note on size and source, and the quiet second choice as a link-style button, **Already use Genie? Pick its Maps folder instead…**. Downloading sets the shared folder, so the map loads straight from it; and a panel that finds the maps already downloaded with no folder set adopts them instead of showing this screen again (a folder the player picked is never replaced). The "no zones loaded" state offers download and **📁 Pick a different folder…**; the "waiting for game data" state tells the player to type `LOOK`. The Genie map toolbar gains a button after 📁. On the managed copy it reads **↻ Refresh maps** (Sekmeht: the latest maps are what people come back for), folding to a bare ↻ when the toolbar is narrower than 34em (`.genie-map-toolbar` is a size container; it holds no popovers, so its stacking context is harmless); the tooltip says the whole folder is replaced and gives the last-updated date and commit. On a folder of the player's own it stays a quiet **⇩**, *download and switch*, because that is not a refresh. Busy labels read "Refreshing… 62%" / "Downloading… 1.4 MB", or just "Refreshing…" for the starting/unpacking/finishing phases (`busyText`), and stay at full strength since they are the progress readout. Both overrides must beat `.map-btn:disabled` and `.map-btn:disabled:hover` by SPECIFICITY, which come later in map-panel.css (pitfall #111): `.genie-map-toolbar .genie-refresh-btn:disabled` and `.map-btn.map-btn--primary:disabled:hover` (the cursor usually still rests on the button after the click). On a folder of the player's own the busy ⇩ shows "⇩…" until there is a number. `.map-btn` sets no font-family, so WORDS on one draw in Chromium's default UI font; the refresh label (11px, like the zone list) and the empty-state buttons set `var(--game-font-family)` themselves. Don't move that onto `.map-btn`: the icon-only buttons' glyphs (▤) come out smaller in the game font. The `.map-empty .map-btn` rule covers every map empty state, so the Lich map's "Try Genie Maps" follows it too. The toolbar's 📁 opens the folder picker AT the folder in use: `browse-folder(startIn?)` home-expands it and passes it as `defaultPath` only if an async stat says it's still a directory (never a sync stat in main, which a dead network share can hang for seconds). The setup screen passes nothing, so the OS chooses. A refresh replaces the whole folder by construction (new copy built beside it, then swapped in), which is what Genie's folder structure needs; it is never a merge. While a run is going the buttons show its progress and are disabled. Failure is an error toast ending "Nothing was changed."; success a toast with the map count. The empty-state links were dead (the overlay is `pointer-events: none`) and now work.
+
+**No background checks.** It downloads when the player clicks, never on its own (the SimuCoin stance: no automated polling of someone else's service). Checking whether GitHub has a newer commit (the commits API returns the id the marker stores) is a possible follow-up.
+
+**No slash command, by decision**, consistent with the rest of the Genie map work (Sekmeht): the map is the surface.
+
+**Privacy.** A plain GET to github.com with Electron's default user agent; nothing about the player is sent.
+
 ### 19.12 Future Work
 
 | Item | Notes |
 |---|---|
 | World map (F13) | Continuous multi-zone SVG — the Lich-native layout already runs over the entire reachable graph in principle; F13 reduces to raising `DEFAULT_HOPS` past the practical visual limit and adding zoom-aware culling so the hairball stays usable. Spec in §25.8 Phase 2. |
 | Exit stubs | Draw short stubs from room edge rather than center-to-center (Genie convention); cleaner at high zoom |
-| Configurable walk delay | 600 ms/step is hardcoded; expose as a setting |
 | Room notes / bookmarks | Player-added per-room annotations persisted locally |
 | Diagonal walls (one-way arrows) | Lich `wayto` is directional; render arrowheads on edges where the reciprocal entry doesn't exist |
 | Seed-conflict reconciliation | When two Genie nodes seed the same Lich room (or vice versa), the layout currently picks the first; a deterministic tiebreaker on confidence chip would be clearer |

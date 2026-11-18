@@ -28,7 +28,9 @@ import { useCharacter } from '../../CharacterContext'
 import { useProfileSaver } from '../../hooks/useProfileSaver'
 import MapImageView from './MapImageView'
 import GenieMapView, { type GenieMatch } from './GenieMapView'
-import type { GameFamily } from '../../../shared/types'
+import type { GameFamily, GenieMapsProgress, GenieMapsStatus } from '../../../shared/types'
+import { showToast } from '../../toasts'
+import { IS_WINDOWS } from '../../lichSettings'
 import { useSessionLichPath } from '../../sessionLich'
 import '../../styles/map-panel.css'
 
@@ -51,6 +53,7 @@ interface Props {
 }
 
 const GENIE_DIR_KEY  = 'lichborne.genieMapsDir'
+const GENIE_DIR_EVENT = 'lichborne:genie-maps-dir'
 
 // ── Shared parse caches — module scope, DELIBERATELY (v0.19.9) ───────────────
 //
@@ -171,6 +174,33 @@ function loadGenieCached(dir: string): Promise<Map<string, GenieZone> | null> {
 /** Publish a freshly XML-parsed zone set so sibling panels skip the cold path. */
 function primeGenieCache(dir: string, zones: Map<string, GenieZone>): void {
   if (zones.size > 0) genieCache = { key: dir, data: zones }
+}
+
+/** Forget the parsed zones for `dir` — its files were just replaced at the same path. */
+function bustGenieCache(dir: string): void {
+  if (genieCache && samePath(genieCache.key, dir))       genieCache = null
+  if (genieInflight && samePath(genieInflight.key, dir)) genieInflight = null
+}
+
+/** Folder paths compared loosely. A trailing separator never matters; case and
+ *  `\` vs `/` only on Windows. On Linux (and a case-sensitive Mac volume)
+ *  `Maps` and `maps` are different folders, and `\` is a legal file name
+ *  character, so there only the trailing `/` is ignored. */
+function samePath(a: string, b: string): boolean {
+  const n = (p: string) => IS_WINDOWS
+    ? p.replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase()
+    : p.replace(/\/+$/, '')
+  return !!a && !!b && n(a) === n(b)
+}
+
+/** The download's progress as a few words for the map toolbar. */
+function genieJobText(p: GenieMapsProgress): string {
+  if (p.phase === 'download') {
+    if (p.total) return `${Math.round(p.received / p.total * 100)}%`
+    return `${(p.received / 1048576).toFixed(1)} MB`
+  }
+  if (p.phase === 'extract') return 'unpacking'
+  return 'finishing'
 }
 
 // B172: memoized — the map re-renders when the room actually changes (its
@@ -437,22 +467,99 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
 
   // ── Genie folder controls ────────────────────────────────────────────────────
 
-  async function pickGenieFolder() {
-    const dir = await window.api.browseFolder()
-    if (!dir) return
-    localStorage.setItem(GENIE_DIR_KEY, dir)
+  // The folder is ONE app-wide setting (`lichborne.genieMapsDir`), but every
+  // MapPanel reads it into its own state at mount. So a change made here is
+  // announced to the other panels in this window (a DOM event) and reaches
+  // other windows through the `storage` event, and each panel adopts it.
+  function setSharedGenieDir(dir: string) {
+    if (dir) localStorage.setItem(GENIE_DIR_KEY, dir)
+    else localStorage.removeItem(GENIE_DIR_KEY)
     scheduleSharedProfileSave()
     setGenieMapsDir(dir)
+    window.dispatchEvent(new CustomEvent(GENIE_DIR_EVENT, { detail: dir }))
+  }
+
+  async function pickGenieFolder() {
+    // Start in the folder in use, so the 📁 button shows where your maps are.
+    const dir = await window.api.browseFolder(genieDirRef.current || undefined)
+    if (!dir) return
+    setSharedGenieDir(dir)
   }
 
   function clearGenieFolder() {
     genieGenRef.current++  // abort any in-flight load
-    localStorage.removeItem(GENIE_DIR_KEY)
-    scheduleSharedProfileSave()
-    setGenieMapsDir('')
+    setSharedGenieDir('')
     setGenieStatus('idle')
     setGenieProgress(null)
     setGenieZones(new Map())
+  }
+
+  const genieDirRef = useRef(genieMapsDir)
+  genieDirRef.current = genieMapsDir
+  useEffect(() => {
+    const adopt = (dir: string) => { if (dir !== genieDirRef.current) setGenieMapsDir(dir) }
+    const onLocal = (e: Event) => adopt(String((e as CustomEvent).detail ?? ''))
+    const onStorage = (e: StorageEvent) => { if (e.key === GENIE_DIR_KEY) adopt(e.newValue ?? '') }
+    window.addEventListener(GENIE_DIR_EVENT, onLocal)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener(GENIE_DIR_EVENT, onLocal)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [])
+
+  // ── Genie maps download (v1.0.2) ─────────────────────────────────────────────
+  //
+  // Lichborne keeps its own copy of GenieClient/Maps in {userData}/GenieMaps
+  // (main/genieMapsDownload.ts). Main broadcasts progress and the finished
+  // status to every window, so every open map shows the job and reloads when
+  // the files under it are replaced. Downloading while the map uses a folder
+  // of your own switches the app-wide setting to this copy, so every open map
+  // follows (setSharedGenieDir); the folder you picked is never touched.
+  const [managedMaps, setManagedMaps] = useState<GenieMapsStatus | null>(null)
+  const [genieJob, setGenieJob] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    window.api.genieMapsStatus().then(s => {
+      if (!live) return
+      setManagedMaps(s)
+      // Already downloaded but no folder chosen: use the download rather than
+      // showing the setup screen again. A folder the player picked is kept.
+      if (s.installed && !genieDirRef.current) setSharedGenieDir(s.dir)
+    }).catch(() => {})
+    const offProgress = window.api.onGenieMapsProgress(p => setGenieJob(p.phase === 'done' ? null : genieJobText(p)))
+    const offUpdated = window.api.onGenieMapsUpdated(s => {
+      setManagedMaps(s)
+      bustGenieCache(s.dir)
+      if (samePath(genieDirRef.current, s.dir)) loadGenie(genieDirRef.current)
+    })
+    return () => { live = false; offProgress(); offUpdated() }
+  }, [loadGenie])
+
+  async function downloadGenieMaps() {
+    const wasInstalled = !!managedMaps?.installed
+    setGenieJob('starting')
+    let r: Awaited<ReturnType<typeof window.api.genieMapsInstall>>
+    try { r = await window.api.genieMapsInstall() }
+    catch (e) { r = { ok: false, error: String((e as Error)?.message ?? e) } }
+    if (!r.ok) {
+      setGenieJob(null)
+      showToast({
+        kind: 'error',
+        title: "Couldn't download the Genie maps",
+        message: r.error
+          ? `${r.error[0].toUpperCase()}${r.error.slice(1)}. Nothing was changed.`
+          : 'Nothing was changed.',
+      })
+      return
+    }
+    setManagedMaps(r.status)
+    if (!samePath(genieDirRef.current, r.status.dir)) setSharedGenieDir(r.status.dir)
+    showToast({
+      kind: 'success',
+      title: wasInstalled ? 'Genie maps updated' : 'Genie maps downloaded',
+      message: `${r.status.maps ?? 'The'} maps from GitHub are ready.`,
+    })
   }
 
   // ── Derived ──────────────────────────────────────────────────────────────────
@@ -577,6 +684,10 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
           genieProgress={genieProgress}
           onPickGenieFolder={pickGenieFolder}
           onClearGenieFolder={clearGenieFolder}
+          managedMaps={managedMaps}
+          usingManagedMaps={!!managedMaps && samePath(genieMapsDir, managedMaps.dir)}
+          genieJob={genieJob}
+          onDownloadGenieMaps={downloadGenieMaps}
           mapAnimations={mapAnimations}
           persist={geniePersistRef.current}
         />

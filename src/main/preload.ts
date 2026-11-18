@@ -32,6 +32,7 @@ import type {
   CatchupDigest, CatchupProgress,
   AICapability, AIKeyStatus, AITestResult, AIChatRequest, AIChatChunk, AIChatDone, AIChatError,
   SimuCoinStatus, UserTextPayload, LaunchUrlPayload, CharacterNotice, RoutedToast,
+  GenieMapsStatus, GenieMapsProgress, GenieMapsResult,
 } from '../shared/types'
 
 // One shared list — see the note on IPC in shared/types.ts.
@@ -361,8 +362,8 @@ contextBridge.exposeInMainWorld('api', {
   flashWindow: () => ipcRenderer.send('flash-window'),
   writeLog: (filename: string, content: string) => ipcRenderer.send('write-log', filename, content),
 
-  browseFolder: (): Promise<string | null> =>
-    ipcRenderer.invoke('browse-folder'),
+  browseFolder: (startIn?: string): Promise<string | null> =>
+    ipcRenderer.invoke('browse-folder', startIn),
 
   listMapDir: (dir: string): Promise<{ name: string; path: string }[]> =>
     ipcRenderer.invoke('list-map-dir', dir),
@@ -380,6 +381,21 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('genie-cache:load', dir),
   genieCacheSave: (dir: string, zones: unknown[]): Promise<boolean> =>
     ipcRenderer.invoke('genie-cache:save', dir, zones),
+
+  // Genie maps download (v1.0.2) — the Lichborne-managed `{userData}/GenieMaps`.
+  // Progress and the finished status are broadcast to every window.
+  genieMapsStatus: (): Promise<GenieMapsStatus> => ipcRenderer.invoke('genie-maps:status'),
+  genieMapsInstall: (): Promise<GenieMapsResult> => ipcRenderer.invoke('genie-maps:install'),
+  onGenieMapsProgress: (cb: (p: GenieMapsProgress) => void) => {
+    const h = (_e: unknown, p: GenieMapsProgress) => cb(p)
+    ipcRenderer.on('genie-maps:progress', h)
+    return () => ipcRenderer.removeListener('genie-maps:progress', h)
+  },
+  onGenieMapsUpdated: (cb: (s: GenieMapsStatus) => void) => {
+    const h = (_e: unknown, s: GenieMapsStatus) => cb(s)
+    ipcRenderer.on('genie-maps:updated', h)
+    return () => ipcRenderer.removeListener('genie-maps:updated', h)
+  },
 
   findLichMapFile: (lichPath: string, family?: 'DR' | 'GS4'): Promise<{ jsonPath: string; mapsDir: string } | null> =>
     ipcRenderer.invoke('find-lich-map-file', lichPath, family),

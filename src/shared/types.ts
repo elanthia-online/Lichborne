@@ -1132,3 +1132,23 @@ export interface SimuCoinStatus {
   nextAt: number | null
   checkedAt: number
 }
+
+// ── Genie maps download (v1.0.2) ──────────────────────────────────────────────
+// The Lichborne-managed copy of GenieClient/Maps in `{userData}/GenieMaps`
+// (main/genieMapsDownload.ts). `commit` is the archive's commit id when the
+// zip carried one; `maps` counts its top-level Map*.xml files.
+export interface GenieMapsStatus {
+  dir: string
+  installed: boolean
+  commit: string | null
+  installedAt: number | null
+  maps: number | null
+}
+export type GenieMapsProgress =
+  | { phase: 'download'; received: number; total: number | null }
+  | { phase: 'extract'; done: number; total: number }
+  | { phase: 'replace' }
+  | { phase: 'done' }        // sent by main after every run, ok or not
+export type GenieMapsResult =
+  | { ok: true; status: GenieMapsStatus }
+  | { ok: false; error: string }

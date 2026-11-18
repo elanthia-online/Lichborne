@@ -37,6 +37,9 @@ export const CONTRIBUTORS = [
   // Promoted from TESTERS in v0.20.4 (Sekmeht). No item logged in BUGS.md
   // under this name yet, so the tail of the volume ordering.
   'Crobin',
+  // Promoted from TESTERS in v1.0.2 (Sekmeht). No item logged in BUGS.md under
+  // this name yet, so beside Crobin at the tail of the volume ordering.
+  'Damiza',
   // Tysong ≡ Horibu (see the identity notes above). Listed as a DEVELOPER in
   // the README's credits and as a contributor here, by Sekmeht's choice
   // (v1.0.0): keep both when re-sorting.
@@ -46,7 +49,7 @@ export const CONTRIBUTORS = [
 // All still at zero logged reports, so alphabetical is the stable order here —
 // there is no volume to sort by until someone files something.
 export const TESTERS = [
-  'Cirostar', 'Damiza', 'Tirost', 'Wilhellm',
+  'Cirostar', 'Tirost', 'Wilhellm',
 ]
 
 // The project's home at the Elanthia-Online org (v0.20.4, Sekmeht). Used only by

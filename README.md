@@ -40,6 +40,7 @@ Free, open source, and built by players who've used Wrayth, Genie and Frostbite 
 - **Automations.** Highlights, triggers, macros, aliases, mutes and substitutes, all set up with forms. A health check finds rules that are broken, doubled up, or clashing.
 - **Slash commands.** Type `/` to see them all. Add a highlight mid-hunt with `/highlight add "goblin" red`, or hide spam with `/mute add "swirling fog"`.
 - **Lich, out in the open.** See and control your running scripts, edit your Lich variables, and follow yourself on the Lich Map.
+- **Genie Maps** (DragonRealms). Lichborne downloads the Genie maps team's maps for you. Right-click a room to walk there one step at a time, or type `#goto bank`.
 - **Your setup is just files.** Layouts, highlights, macros and themes save per character as plain files you can back up or move. **Transfer** copies a whole setup to another character.
 - **Catch Me Up (optional AI).** Back from a break? Ask what you missed: who talked to you, what you fought, what you learned. Uses your own Anthropic key, is off until you turn it on, and never sends commands to the game. [What it sends](AINOTICE.md).
 
@@ -157,9 +158,9 @@ Made with the DragonRealms and GemStone IV communities.
 
 **Developers** — Sekmeht, Binu, Tysong
 
-**Contributors** — Rakkor, Illiahanna, Elore, Morress, Legiro, Rhorgul, Thanator, Mahtra, Zithri, Qij, Kahlen, Vaddon, Crobin
+**Contributors** — Rakkor, Illiahanna, Elore, Morress, Legiro, Rhorgul, Thanator, Mahtra, Zithri, Qij, Kahlen, Vaddon, Crobin, Damiza
 
-**Testers** — Cirostar, Damiza, Tirost, Wilhellm
+**Testers** — Cirostar, Tirost, Wilhellm
 
 Special thanks to **Tysong**, who brought GemStone IV to Lichborne, to [Thires](https://github.com/Thires/SimuCoins), whose Genie SimuCoins plugin showed how that feature works, and to the Genie maps team, whose maps the Genie map view draws.
 

@@ -55,6 +55,8 @@ import { buildNameRegex } from '../utils/renderWithContacts'
 import { wrapExternalLink } from '../utils/renderSegment'
 import { ContactsContext } from '../ContactsContext'
 import { HighlightsContext, useCompiledHighlights } from '../HighlightsContext'
+import { GenieWalker, planGenieWalk, isMovementCommand, parseGotoLine, type WalkStatus } from '../genieWalk'
+import { GenieWalkContext, type GenieWalkApi, type GotoPlanner } from '../GenieWalkContext'
 import { loadContacts, loadContactTemplates, saveContacts, saveContactTemplates, newContact, findContactByName, type Contact } from '../contacts'
 import { confirmDelete } from '../confirm'
 import { loadHighlights, saveHighlights, type HighlightRule } from '../highlights'
@@ -1159,9 +1161,19 @@ export default function GameWindow({
   // game's (Sekmeht's capture), so comparing it read one room as two (bug check).
   const streamRoomRef = useRef<{ title: string | null; navId: number | null }>({ title: null, navId: null })
   const pendingFaceRef = useRef<{ id: string | null; at: number } | null>(null)
+  // v1.0.2: the Genie map walker (genieWalk.ts), created further down once the
+  // send helpers exist. `walkSendingRef` is true while the walker itself sends,
+  // so the movement check below can tell its steps from yours.
+  const walkerRef = useRef<GenieWalker | null>(null)
+  const walkSendingRef = useRef(false)
   const noteSentRef = useRef((cmd: string) => {
     const m = /^\s*face\s+(?:#(\d+)|\S.*)$/i.exec(cmd)
     if (m) pendingFaceRef.current = { id: m[1] ?? null, at: Date.now() }
+    // Every send path comes through here (typed, macros, aliases, exit clicks,
+    // the compass, triggers), so a step you take yourself ends a Genie map walk.
+    if (!walkSendingRef.current && walkerRef.current?.active && isMovementCommand(cmd)) {
+      walkerRef.current.stop('you took a step yourself')
+    }
   })
   // ASSESS — the per-creature tactical snapshot (facing/flank/behind + range +
   // id) parsed from the `assess` stream. `assessAccumRef` accumulates one block
@@ -3307,6 +3319,8 @@ export default function GameWindow({
             // turn's roundtime (it anchors RT on the <prompt> tag), so this is
             // when RT-waiting trigger commands can judge the RT correctly.
             if (prompt) notePromptRef.current()
+            // A Genie map walk reads the game's reply to each step (genieWalk.ts).
+            if (stream === 'main' && !prompt && !batch.replay && walkerRef.current?.active) walkerRef.current.onLine(lineText)
             // The prompt that closes an assess block. Empty ⇒ combat is over:
             // queue a disengage IN ORDER with this batch's other engagement
             // lines, and clear the snapshot and the range below.
@@ -3664,6 +3678,9 @@ export default function GameWindow({
             // correctly even when title hasn't refreshed.
             // A different id is a different room (a nav-only teleport). An id
             // appearing where there was none is the same room getting its number.
+            // The game's arrival tag: what a Genie map walk waits for (never a
+            // replayed one — that walk happened before this window took over).
+            if (!batch.replay) walkerRef.current?.onArrival(evt.roomId)
             if (streamRoomRef.current.navId != null && evt.roomId !== streamRoomRef.current.navId) noteRoomChange()
             streamRoomRef.current = { ...streamRoomRef.current, navId: evt.roomId }
             roomUpdates.roomId = evt.roomId
@@ -5717,6 +5734,14 @@ export default function GameWindow({
         return
       }
     }
+    // v1.0.2: `#goto bank` / `#goto 302` walks there on the Genie map, the way
+    // Genie's own #goto does. Never sent to the game (DR has no #goto).
+    const gotoQuery = parseGotoLine(text)
+    if (gotoQuery !== null) {
+      runGoto(gotoQuery)
+      if (opts.clearInput) setCommand('')
+      return
+    }
     // F59 (v0.15.2): ';' command separator — `n;n;e` is three commands (the
     // Genie model every convert types reflexively). splitTypedCommands
     // returns a LICH line (first non-space char ';') verbatim so `;commands`
@@ -5906,6 +5931,76 @@ export default function GameWindow({
   // reach (declared above their useMemo, before this definition — so the ref
   // bridges the ordering). sendCommand is []-deps stable, so this runs once.
   useEffect(() => { sendCommandRef.current = sendCommand }, [sendCommand])
+
+  // ── Genie map walking (v1.0.2, DESIGN §19.18) ─────────────────────────────
+  // One walker per character. It sends a step, waits for the game's arrival
+  // (the 'room-id' event below) and reads main-window replies (the stream-text
+  // branch), so it lives here with the event loop rather than in the map, which
+  // may be closed mid-walk or mounted twice. The map reaches it through
+  // GenieWalkContext; `#goto` reaches it from dispatchUserText.
+  const [walkStatus, setWalkStatus] = useState<WalkStatus | null>(null)
+  const walkSettingsRef = useRef(settings)
+  useEffect(() => { walkSettingsRef.current = settings })
+  const walkSayRef = useRef<(text: string) => void>(() => {})
+  useEffect(() => { walkSayRef.current = t => emitClientLines([t]) })
+  if (!walkerRef.current) {
+    walkerRef.current = new GenieWalker({
+      send: cmd => {
+        if (walkSettingsRef.current.mapWalkEcho) {
+          setLines(prev => appendEcho(prev, cmd))
+          lastMainLineRef.current = null
+        }
+        walkSendingRef.current = true
+        try { noteSentRef.current(cmd) } finally { walkSendingRef.current = false }
+        window.api.sendCommand(sessionIdRef.current, cmd)
+        logToSession([{ ts: Date.now(), stream: 'cmd', text: `>${cmd}` }])
+      },
+      say: text => walkSayRef.current(text),
+      rtLeft: () => Math.max(0, (triggerCtxRef.current.rtExpires - Date.now()) / 1000),
+      status: setWalkStatus,
+      setTimeout: (fn, ms) => setTimeout(fn, ms),
+      clearTimeout: h => clearTimeout(h as ReturnType<typeof setTimeout>),
+    })
+  }
+  // Stop quietly when the character goes away; a reconnect-in-place gets a new
+  // sessionId without a remount (pitfall #69), and a walk must not carry over.
+  useEffect(() => () => walkerRef.current?.stop(), [])
+  const walkSessionRef = useRef(session.sessionId)
+  useEffect(() => {
+    if (walkSessionRef.current !== session.sessionId) {
+      walkSessionRef.current = session.sessionId
+      walkerRef.current?.stop()
+    }
+  }, [session.sessionId])
+  const startGenieWalk = useCallback((moves: string[], label: string) => {
+    const s = walkSettingsRef.current
+    walkerRef.current!.start(planGenieWalk(moves), label,
+      { ahead: s.mapWalkAhead, retryOnce: s.mapWalkRetry, pauseMs: s.mapWalkPauseMs })
+  }, [])
+  const stopGenieWalk = useCallback(() => walkerRef.current?.stop('you stopped it'), [])
+  // Every mounted Genie map registers; the newest answers. A list, not one
+  // slot: closing the Maps overlay must hand #goto back to a map panel that is
+  // still open.
+  const gotoPlannersRef = useRef<GotoPlanner[]>([])
+  const registerGoto = useCallback((fn: GotoPlanner) => {
+    gotoPlannersRef.current = [...gotoPlannersRef.current, fn]
+    return () => { gotoPlannersRef.current = gotoPlannersRef.current.filter(f => f !== fn) }
+  }, [])
+  const genieWalkCtx = useMemo<GenieWalkApi>(
+    () => ({ start: startGenieWalk, stop: stopGenieWalk, status: walkStatus, registerGoto }),
+    [startGenieWalk, stopGenieWalk, walkStatus, registerGoto])
+  /** `#goto <room number | note>` typed in the command bar. */
+  function runGoto(query: string) {
+    const planners = gotoPlannersRef.current
+    const planner = planners[planners.length - 1]
+    if (!query) emitClientLines(['#goto needs a place: a room number on the Genie map, or a room note such as "bank".'])
+    else if (!planner) emitClientLines(['#goto works with the Genie map: open Maps (or a map panel) and choose Genie Maps.'])
+    else {
+      const r = planner(query)
+      if ('error' in r) emitClientLines([r.error])
+      else startGenieWalk(r.moves, r.label)
+    }
+  }
 
   // B172: stable identities (see clearStream note) — these feed the memoized
   // StreamPanel through sharedFrameProps. Defined here (above their old
@@ -6862,6 +6957,7 @@ export default function GameWindow({
     <ContactsContext.Provider value={contactsCtxValue}>
     <SessionLichPathContext.Provider value={lichPath}>
     <GameLinkContext.Provider value={linkMenu}>
+    <GenieWalkContext.Provider value={genieWalkCtx}>
     <div ref={gameLayoutRef} className={`game-layout${layoutMode === 'free' ? ' game-layout--free' : ''}${expAnyOpen ? ' game-layout--has-exp' : ''}`}>
       {/* The per-session toolbar row was folded into the app-level app-bar
           (AppBar.tsx) in the top-chrome redesign (Phase 2c) — its buttons now
@@ -7347,6 +7443,7 @@ export default function GameWindow({
       )}
 
     </div>
+    </GenieWalkContext.Provider>
     </GameLinkContext.Provider>
     </SessionLichPathContext.Provider>
     </ContactsContext.Provider>
