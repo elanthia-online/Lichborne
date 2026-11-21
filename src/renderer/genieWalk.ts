@@ -82,12 +82,14 @@ const MANUAL_SCRIPTS: Record<string, string> = {
   ggbypass:        'turn the torch on the wall (or the stone basin) until the stone wall opens, then go wall',
   oshumanor:       'go east, turn the sconce, go west, then go door',
   abbeyhatch:      'go secret hatchway (if it isn\'t there, go ironbound door, turn the sconce and come back)',
-  shardlocksmith:  'ask Malik about kilam, order fife, then offer him the price he names',
+  // Re-read against each .cmd file (v1.1.0): the last four used to say only
+  // "the step the Genie maps team scripted", which told the player nothing.
+  shardlocksmith:  'ask Malik about kilam, order fife, then offer (the Genie maps team\'s script offers a huge sum, asks again if Malik laughs, and waits a few seconds after)',
   automoveenterdobeks: 'kiss the scorpion and wait out the stun, then stand',
-  mistwoodcliff:   'peer path, go down, then the direction the path shows',
-  peerchurch:      'the church step that the Genie maps team scripted',
-  infusionentry:   'the entry step that the Genie maps team scripted',
-  sharddetour:     'the detour that the Genie maps team scripted',
+  mistwoodcliff:   'peer path, go down, go the direction the path shows, then go northwest',
+  peerchurch:      'climb tree, peer church, climb trunk, then go the direction the peer showed',
+  infusionentry:   'look sun and look star to learn your aspect, then turn the crank, pull the rope at the white and black taps until each wheel shows your aspect, pull the lever until the bier shows it, and open coffin, go coffin, close coffin',
+  sharddetour:     'Shard\'s gates are shut at night to non-citizens: go round to another gate, or with more than 250 Athletics climb the wall (climb the ladder or stairway, then the embrasure, to get out)',
 }
 
 function manual(index: number, raw: string, hint: string): WalkPlan['manual'] {

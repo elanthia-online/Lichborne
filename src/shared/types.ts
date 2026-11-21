@@ -1152,3 +1152,26 @@ export type GenieMapsProgress =
 export type GenieMapsResult =
   | { ok: true; status: GenieMapsStatus }
   | { ok: false; error: string }
+
+// What Lich's own data files say is WHERE (main/lichMapData.ts), for the Graph
+// map's Find lens (v1.1.0). One row is one named thing and the Lich room ids
+// that have it. `rooms` are LICH ids (the map's `id`, not the game's uid).
+export type MapDataCategory = 'hunting' | 'forage' | 'town' | 'shrine' | 'mining' | 'lumber' | 'climbing' | 'swimming'
+export interface MapDataRow {
+  category: MapDataCategory
+  name:     string
+  town?:    string
+  rooms:    number[]
+  note?:    string      // a few words: a rank range, an NPC's name
+}
+export interface MapDataFile {
+  file:     string
+  rows:     number
+  missing?: boolean     // the file isn't there (a Lich install without dr-scripts data)
+  error?:   string      // it is there and couldn't be read or understood
+}
+export interface MapDataResult {
+  rows: MapDataRow[]; files: MapDataFile[]
+  /** The files' sizes and times when read (`lich:map-data-stamp` gives the current one). */
+  stamp?: string
+}

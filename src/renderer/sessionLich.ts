@@ -32,3 +32,11 @@ export function sessionLichPath(session: { lichPath?: string } | null | undefine
 export function useSessionLichPath(): string {
   return useContext(SessionLichPathContext) || defaultLichPath()
 }
+
+/** Whether this GameWindow's character is connected THROUGH Lich (launch or
+ *  attach), as opposed to directly. A surface that hands work to a Lich script
+ *  (the Graph map's `;go2`) reads this; false outside any GameWindow. */
+export const SessionUsesLichContext = createContext<boolean>(false)
+export function useSessionUsesLich(): boolean {
+  return useContext(SessionUsesLichContext)
+}

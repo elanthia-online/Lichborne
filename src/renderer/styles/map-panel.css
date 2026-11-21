@@ -570,6 +570,18 @@
   background: var(--map-btn-bg);
 }
 
+/* A view that isn't set up yet (the Graph map before both maps are here):
+   greyed but still a button, since clicking it shows what to add. Muted text
+   plus a dashed border rather than opacity, which reads too faint to find
+   again on several themes (pitfall #150). Not while it's the view you're on. */
+.map-btn--locked:not(.map-btn--active) {
+  /* Partway from muted to the normal button text: bare --text-muted measured
+     2.29:1 on Thief and 2.93 on Necromancer (tmp-graph-map/contrast-locked.ts);
+     this keeps every theme at 3:1 or more and still reads as greyed. */
+  color: color-mix(in srgb, var(--map-text-muted) 55%, var(--map-text));
+  border-style: dashed;
+}
+
 .map-btn--active.map-btn--refresh {
   animation: map-spin 1s linear infinite;
   display: inline-block;
@@ -1344,6 +1356,59 @@
 /* Links in the empty-state text too — the click-through overlay left them dead. */
 .map-empty-sub a { pointer-events: auto; color: color-mix(in srgb, var(--accent) 60%, var(--map-text)); }
 
+/* The Graph map's checklist (v1.1.0, GraphNeeds in MapPanel): what's here,
+   what's missing, and the one button to add it. Unlike other empty states it
+   takes clicks and scrolls, so a short panel can't cut the buttons off. */
+.map-empty.gx-needs {
+  pointer-events: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  justify-content: safe center;
+  padding: 12px 16px;
+  text-align: center;
+}
+.gx-needs-what {
+  max-width: 34em;
+  color: var(--map-text-muted);
+  line-height: 1.4;
+}
+.gx-needs-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  width: min(36em, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+.gx-needs-row {
+  display: grid;
+  grid-template-columns: 1.4em auto 1fr;
+  column-gap: 8px;
+  row-gap: 6px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border: 1px solid var(--map-btn-border);
+  border-radius: var(--radius-sm);
+  background: var(--map-btn-bg);
+  line-height: 1.35;
+}
+.gx-needs-mark { color: var(--map-text-muted); font-weight: 600; text-align: center; }
+.gx-needs-row--ok .gx-needs-mark { color: color-mix(in srgb, #3fb950 70%, var(--map-text)); }
+.gx-needs-name { color: var(--map-text); font-weight: 600; white-space: nowrap; }
+.gx-needs-state { color: var(--map-text-muted); min-width: 0; }
+/* The actions sit under the words, lined up with the name. */
+.gx-needs-act { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.gx-needs-act .map-btn { margin-top: 0; }
+.gx-needs-note {
+  max-width: 34em;
+  margin-top: 8px;
+  font-size: 0.92em;
+  color: var(--map-text-muted);
+  line-height: 1.4;
+}
+
 /* Genie maps download (v1.0.2): the empty state's two ways in, side by side. */
 .genie-maps-actions {
   display: flex;
@@ -1398,6 +1463,63 @@
    harmless (B179 was a dropdown buried this way). The threshold is em, so it
    follows the font setting. */
 .genie-map-toolbar { container-type: inline-size; }
+
+/* ── The room card (hover) ─────────────────────────────────────────────────
+   Three blocks split by hairlines: the Genie facts, Lich's facts (Graph map),
+   and what a click does. Facts are a two-column grid, a small muted label
+   beside its value, so the labels can be scanned (Sekmeht, v1.1.0: the old
+   card was "a blob of text", every line the same weight). Spacing is a few
+   pixels per block, so the card grows very little. Font size comes inline
+   (the panel-font chain, pitfall #58). */
+.genie-card {
+  position: absolute;
+  z-index: 10;
+  padding: 6px 9px 7px;
+  background: var(--map-chrome-bg, rgba(20, 20, 22, 0.95));
+  border: 1px solid var(--map-border, #555);
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  color: var(--map-text, #ddd);
+  line-height: 1.35;
+  pointer-events: none;
+}
+.genie-card-title { font-weight: bold; }
+.genie-card-sub { margin-top: 1px; font-size: 0.88em; color: var(--map-text-muted, #888); }
+.genie-card-stub { margin-top: 3px; font-size: 0.91em; color: var(--map-arc-special, #ffb74d); }
+.genie-card-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  row-gap: 2px;
+  margin-top: 6px;
+  font-size: 0.91em;
+}
+/* A hairline row between blocks, across both columns, so one grid keeps every
+   value at the same column. */
+.genie-card-sep {
+  grid-column: 1 / -1;
+  height: 1px;
+  margin: 3px 0;
+  background: var(--map-border-subtle, rgba(255, 255, 255, 0.12));
+}
+.genie-card-k {
+  padding-top: 0.12em;
+  font-size: 0.86em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--map-text-muted, #888);
+}
+.genie-card-v { min-width: 0; overflow-wrap: anywhere; }
+.genie-card-muted { color: var(--map-text-muted, #888); }
+.genie-card-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  vertical-align: middle;
+  border: 1px solid var(--map-border, #555);
+}
 /* A <button> doesn't inherit the font, so WORDS on a .map-btn draw in
    Chromium's default UI font unless told (pitfall #113). The game font goes
    on the words only: the icon-only buttons keep their glyphs, which the game
@@ -1410,7 +1532,9 @@
 /* Scoped to the toolbar so it beats `.map-btn:disabled` (same specificity,
    later in the file) by specificity, not by order (pitfall #111). */
 .genie-map-toolbar .genie-refresh-btn:disabled { opacity: 1; cursor: progress; }
-@container (max-width: 34em) {
+/* 46em since v1.1.0: ◆ ⊡ ▤ and the level chips joined this row, so the label
+   folds before the row has to wrap. */
+@container (max-width: 46em) {
   .genie-refresh-label { display: none; }
 }
 .map-btn:disabled { cursor: default; opacity: 0.65; }

@@ -301,6 +301,11 @@ async function removeDir(dir: string): Promise<void> {
   await fsp.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 }
 
+/** The message when the maps folder can't be moved aside (Sekmeht hit it with
+ *  Explorer open on its "Copy These to Genie's Scripts Folder" subfolder). */
+export const FOLDER_IN_USE =
+  "Windows wouldn't let Lichborne replace the Genie maps folder, because it or a folder inside it is open in File Explorer or another program. Close that window and try again."
+
 let inflight: Promise<GenieMapsResult> | null = null
 
 /**
@@ -344,7 +349,19 @@ async function runInstall({ userData, fetchImpl, url = GENIE_MAPS_ZIP_URL, onPro
 
     onProgress?.({ phase: 'replace' })
     const hadOld = fs.existsSync(dir)
-    if (hadOld) await renameRetrying(dir, old)
+    if (hadOld) {
+      try { await renameRetrying(dir, old) } catch (e) {
+        // Windows won't rename a folder while File Explorer (or any program)
+        // has it, or a folder inside it, open; nine retries over ~5 s didn't
+        // outlast it, so it isn't a virus scanner's moment. Nothing has been
+        // touched yet. Say what to do rather than echo "EPERM … rename".
+        const code = (e as NodeJS.ErrnoException).code
+        // Windows only: on Linux and macOS an open folder can be renamed, and
+        // EACCES there is a real permissions problem worth showing as it is.
+        if (process.platform === 'win32' && (code === 'EPERM' || code === 'EBUSY' || code === 'EACCES')) throw new Error(FOLDER_IN_USE)
+        throw e
+      }
+    }
     try {
       await renameRetrying(staging, dir)
     } catch (e) {

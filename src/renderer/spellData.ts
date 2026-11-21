@@ -1,7 +1,7 @@
 // GENERATED — do not edit by hand. Run: node tools/gen-spell-data.mjs
 //
 // Spell/ability reference for the Spell Monitor's badges and abbreviations,
-// derived from Lich's `scripts/data/base-spells.yaml` (430 entries).
+// derived from Lich's `scripts/data/base-spells.yaml` (431 entries).
 // Committed rather than read from a Lich install, because the Spell Monitor
 // works without Lich (Principle #2) — see tools/gen-spell-data.mjs.
 //
@@ -14,7 +14,7 @@
 // silent by design (no badge), never a wrong one.
 
 /** b = badge letter, l = tooltip label, a = abbreviation, g = guild. Terse keys
- *  because this table is ~29KB in the bundle. */
+ *  because this table is ~30KB in the bundle. */
 export interface SpellRef { b: string; l: string; a?: string; g?: string }
 
 export const SPELL_DATA: Record<string, SpellRef> = {
@@ -295,6 +295,7 @@ export const SPELL_DATA: Record<string, SpellRef> = {
   "Plague of Scavengers": {"b":"X","l":"Metamagic","a":"PLS","g":"Ranger"},
   "Platinum Hands of Kertigen": {"b":"A","l":"Augmentation","a":"PHK","g":"Trader"},
   "Prosperity Everlasting": {"b":"X","l":"Metamagic","a":"PREV","g":"Trader"},
+  "Prosperity in Absentia": {"b":"U","l":"Utility","a":"PRIA","g":"Trader"},
   "Prosperity in Darkness": {"b":"X","l":"Metamagic","a":"PRDA","g":"Trader"},
   "Protection from Evil": {"b":"W","l":"Warding","a":"PFE","g":"Cleric"},
   "Psychic Shield": {"b":"W","l":"Warding","a":"PSY","g":"Moon Mage"},

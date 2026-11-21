@@ -105,9 +105,10 @@ export const TRANSFER_CATEGORIES: TransferCategory[] = [
   },
   {
     id: 'viewPrefs', label: 'Panel View Preferences', kind: 'config',
-    desc: 'Map view mode & zoom, per-stream timestamps, script palette, Exp panel focus/sort options, the Overview card’s stream.',
+    desc: 'Map view mode & zoom, the Graph map’s lens and toggles, per-stream timestamps, script palette, Exp panel focus/sort options, the Overview card’s stream.',
     suffixes: [
-      'mapViewMode', 'lichMapScale', 'streamTimestamps', 'scriptPalette',
+      // graphMapPrefs (v1.1.0): the Graph map's world/zone level, lens and toggles.
+      'mapViewMode', 'graphMapPrefs', 'lichMapScale', 'streamTimestamps', 'scriptPalette',
       'focus', 'expPins', 'expSort', 'expSortDesc', 'expFocusMode', 'rxpCapMin',
       // v0.19.0 Views: which stream that character's Overview card shows. It is
       // a panel view preference like the rest, so it belongs here — and Transfer

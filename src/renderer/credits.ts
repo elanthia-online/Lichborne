@@ -73,3 +73,11 @@ export const ABOUT_BLURB =
   "It's been a joy to work directly with folks from all walks to build a game " +
   'client rooted in a love for DragonRealms — for the GMs and staff who make it ' +
   'such a wonderful game, and for the vibrant Lich community.'
+
+// Whose work the maps stand on (v1.1.0, the Graph map). The room layouts are
+// the Genie maps team's; room knowledge is Lich's map and the dr-scripts data
+// files; the world's layout follows Elanthipedia's Zone map and Travel map and
+// the Ranik maps they index. No map picture is bundled with Lichborne.
+export const MAP_CREDITS =
+  'The maps stand on the work of the Genie maps team, the Lich and dr-scripts ' +
+  "map keepers, and Elanthipedia's Zone map, Travel map and Ranik maps."

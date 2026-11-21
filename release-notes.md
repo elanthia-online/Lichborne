@@ -1,39 +1,58 @@
-## v1.0.2
+## v1.1.0
 
-### Genie map walks that keep up with you
+### The Graph map: a new way to look at the world
 
-Right-clicking a room on the Genie map now walks you there the way Genie does: one step, wait for the room, next step. Thanks to Damiza for the report.
+The map now has a third view, **Graph**, beside Lich Map and Genie Maps. It puts the two together: the Genie maps draw the rooms, and Lich's map says what is in them. DragonRealms only, and it needs both sets of maps. Until you have both, the Graph button is greyed out; click it anyway and it shows which map is missing, with a button to add it (Lich Setup, or a one-click Genie maps download). Once both are there, it turns into the Graph map by itself. It works on a direct connection too; only Go needs Lich running.
 
-- **Faster and safer.** Each step goes out as soon as the game shows the room you walked into, instead of every 0.6 seconds no matter what.
-- **It stops when something goes wrong, and says why.** "You can't go there", a shut door, needing to stand, being in combat, full hands: the walk stops and tells you which step it was and what the game said. A "...wait" or a stun just pauses it until you can move again.
-- **It understands Genie's map steps.** Steps the maps write as `rt west`, `swim south`, `search go faint trail`, `pull lever;go door` or `script autoclimbup` used to go to the game as written and fail. Now they're sent the way Genie sends them.
-- **Some steps need you.** A few spots in the maps rely on a Genie script to get through (pushing the boulder at the Gate of Souls, the Dragon's Spine recital). The walk takes you to the room before and tells you what to do.
-- **The map shows where you're headed.** The Genie map's toolbar shows the room you're walking to and how many steps are done, with ■ to stop. Taking a step yourself stops it too.
+**One map at a time (Zone)**
 
-### #goto
+- **Your marker is exact.** It is placed by the game's room number, so it can't pick the wrong one of forty rooms with the same name.
+- **Find things.** Type "jadice flower", "rats", "bank" or "gem shop crossing" in the Find box and every room that has it lights up. It tells you how many there are and which one is nearest. It knows forage items, hunting grounds (with their rank ranges), town services, shrines, mining and lumber areas, and climbing and swimming spots.
+- **Go.** Once you've found something, press **Go ▸** and Lich walks you to it (the nearest one, if there are several). Needs Lich.
+- **Ways Genie doesn't draw.** Dashed lines show links Lich knows about. A framed room with a small number on its corner leads to rooms Lich has mapped beyond the edge of the Genie map.
+- **Point at a room** to see its Lich room number and what is there.
+- **Right-click a room to go there.** With Lich, this hands the trip to Lich's `go2`, so it works across maps. Without Lich it uses the Genie map's own walk.
+- About one room in six can't be matched to Lich's map, mostly places Lich hasn't mapped. Those rooms still work the way they do on the Genie map.
 
-Type `#goto bank` or `#goto 302` in the command bar to walk to a room on the Genie map by its note or its number, just like Genie. It works on the map you're on, and the Genie map needs to be open.
+**The whole world (World)**
 
-### Walk settings
+- Every map is a bubble sitting where it really is in Elanthia, on a drawing of the five provinces. The bigger the bubble, the more rooms the map has.
+- Roads join the towns, one line for each pair, so the map shows the highways rather than a web of every exit. A town's own gates and side maps join it once you zoom in. Boats and other rides (named, like the *Skirr'lolasu* or the sand barge) are faint dashed curves, and swims or climbs that need Athletics are marked too.
+- **Layers ▾** turns parts of the world off and on: roads, boats, the small side maps, town and map names, water and regions, provinces, and the key. Everything starts on, and your choices are kept for each character.
+- A key along the bottom explains the circles and the lines.
+- Point at a map to see how many zones away it is and in which direction, and all of its own connections. Click it to open it.
+- The Find box works here too: the maps that have what you're looking for light up.
+- Click a town's name to open its Elanthipedia page.
 
-In **Settings → Behavior**, per character:
+The world's layout comes from Elanthipedia's Zone map and Travel map, and the place positions were read from the official Simutronics maps and checked region by region against the province drawings. Thank you to everyone who keeps those up to date. None of those pictures are included; the drawing is Lichborne's own.
 
-- **Steps ahead:** how many steps can be on their way before the game shows the room. 1 is the default and waits for each room. A standard account can use 2 (one step moving, one waiting), a premium account 3. If the game refuses a step for being too far ahead, the walk sends it again and keeps one fewer on the way.
-- **Pause after each room:** slows a walk down if you like to read each room as you pass.
-- **Try a failed step once more** before stopping.
-- **Show each step** in the game window, or keep long walks out of your scrollback.
+### New players get the map that works for them
 
-### Lichborne gets the Genie maps for you
+The first time you open the map it starts on the Lich Map if Lich is on your computer, and on Genie Maps (one click to download) if it isn't. A map that's missing something has a greyed button: click it to see what it needs. Without Lich, the Lich Map now says plainly that it needs Lich and offers Lich Setup and the Genie maps, instead of reporting a missing map file from a folder you don't have.
 
-No more downloading a ZIP, unzipping it and hunting for the folder. Open **Maps → Genie Maps**, and the first screen says **Set up Genie Maps**. Click **⇩ Download and set up Genie maps**: Lichborne fetches the current maps from [GenieClient/Maps](https://github.com/GenieClient/Maps) (about 4 MB) into its own folder, and the map opens as soon as it finishes.
+### Maps notice when they're updated
 
-- **Get the latest whenever you like** with **↻ Refresh maps** on the Genie map toolbar. It replaces the whole folder with a fresh copy, so nothing old is left behind. Hover it to see when your copy was last updated.
-- **Your maps are safe if the download fails.** The old copy stays until the new one is fully downloaded and checked.
-- **Already have Genie's maps?** Click **Already use Genie? Pick its Maps folder instead…** under the button. It never changes a folder you picked.
+Lich's map, Lich's data files and the Genie maps all get updated often, and an open map now picks that up without a restart:
 
-> [!TIP]
-> On an older copy of the Genie maps? One click on **⇩** switches you to the current ones.
+- **A new Lich map is noticed again.** Since Lich 5.20 the "Map loaded" message names the script that loaded the map ("--- go2 Map loaded …"), and Lichborne only recognised the old wording, so an open map usually kept the old one until you restarted.
+- **Switching map views or coming back to the window** also checks for a new Lich map, a Genie folder that changed (Genie's own updater, for example) and new data files for Find. Only what changed is re-read.
+- **No needless reloads.** A map that hasn't changed is no longer re-read and redrawn each time Lich mentions it.
+- **↺ re-reads everything.** Lich updates its files from its repository as it starts, sometimes after the map has already read them. If something new (a hunting ground, a shop) doesn't show up yet, press **↺** on the map toolbar: it re-reads Lich's map, the Genie maps and Lich's data files, and the Graph map matches them up again. Clicking into the Find box also checks for updated data files on its own.
+- **Every character gets the update.** When one character's map loads newer maps, the other characters' maps switch to them too, instead of keeping the old ones.
 
-### Also
+### Smoother maps
 
-- Damiza is now listed as a contributor in **Help → About Lichborne**.
+- **Zooming no longer stutters.** Zooming in some maps stuttered badly, on the Genie Maps view as well as the new Graph view; Shard to Gondola was the worst. The cause was the little axe drawn on lumberjacking rooms: no ordinary font has an axe, and every zoom step sent the window searching the system's fonts for one. The axe and pickaxe are now drawn as shapes, and those maps zoom as smoothly as the rest. Zooming also no longer pops up room cards as the map slides under your pointer.
+- **DragonRealms and GemStone characters together.** Lichborne kept only one Lich map in memory, and the two games use different ones, so opening one character's map often re-read the whole file (several seconds) because the other game's map had been loaded in between. Each game's map now stays loaded.
+
+### Clearer stops on a Genie map walk
+
+When a walk reaches a step you have to do yourself, it now says what to do for every one of them. Several used to say only that the Genie maps team had scripted it. Shard's night-time detour, for example, now says the gates are shut to non-citizens at night, and how to go round or over the wall.
+
+### Also fixed
+
+- **Refreshing the Genie maps with their folder open** in File Explorer now tells you to close that window and try again, instead of a raw Windows error. Your maps were never touched either way.
+
+### Spell Monitor
+
+The Spell Monitor's spell list is up to date with Lich's again. It now knows the Trader spell **Prosperity in Absentia**, so that spell gets its Utility badge and its PRIA abbreviation.

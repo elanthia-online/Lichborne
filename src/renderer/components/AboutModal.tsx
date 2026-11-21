@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { DEVELOPERS, CONTRIBUTORS, TESTERS, REPO_URL, DISCORD_URL, AI_NOTICE_URL, ABOUT_BLURB } from '../credits'
+import { DEVELOPERS, CONTRIBUTORS, TESTERS, REPO_URL, DISCORD_URL, AI_NOTICE_URL, ABOUT_BLURB, MAP_CREDITS } from '../credits'
 import { parseMidi, createMidiPlayer, loadArrayBuffer, type MidiPlayback } from '../midiPlayer'
 import { useEscapeClose } from '../hooks/useEscapeClose'
 import '../styles/about.css'
@@ -95,6 +95,7 @@ export default function AboutModal({ onClose }: { onClose: () => void }) {
 
         <div className="about-body">
           <p className="about-blurb">{ABOUT_BLURB}</p>
+          <p className="about-blurb">{MAP_CREDITS}</p>
           <p className="about-thanks">Thank you all!</p>
           <p className="about-created">Created by {DEVELOPERS.join(' & ')}</p>
 

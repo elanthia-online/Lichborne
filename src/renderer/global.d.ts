@@ -23,7 +23,7 @@ import type {
   CatchupDigest, CatchupProgress,
   AICapability, AIKeyStatus, AITestResult, AIChatRequest, AIChatChunk, AIChatDone, AIChatError,
   SimuCoinStatus, CharacterNotice, RoutedToast,
-  GenieMapsStatus, GenieMapsProgress, GenieMapsResult,
+  GenieMapsStatus, GenieMapsProgress, GenieMapsResult, MapDataResult,
 } from '../shared/types'
 
 declare global {
@@ -135,14 +135,18 @@ declare global {
       readFile: (filePath: string) => Promise<string | null>
       // Genie parse cache
       genieCacheLoad: (dir: string) => Promise<unknown[] | null>
-      genieCacheSave: (dir: string, zones: unknown[]) => Promise<boolean>
+      genieCacheSave: (dir: string, zones: unknown[], fingerprint?: string) => Promise<boolean>
+      // Graph map — what Lich's data files say is where ({Lich}/scripts/data)
+      lichMapData: (lichPath: string) => Promise<MapDataResult>
+      lichMapDataStamp: (lichPath: string) => Promise<string>
+      genieCacheFingerprint: (dir: string) => Promise<string>
       // Genie maps download — the Lichborne-managed {userData}/GenieMaps
       genieMapsStatus: () => Promise<GenieMapsStatus>
       genieMapsInstall: () => Promise<GenieMapsResult>
       onGenieMapsProgress: (cb: (p: GenieMapsProgress) => void) => () => void
       onGenieMapsUpdated: (cb: (s: GenieMapsStatus) => void) => () => void
       // Lich file-system
-      findLichMapFile: (lichPath: string, family?: 'DR' | 'GS4') => Promise<{ jsonPath: string; mapsDir: string } | null>
+      findLichMapFile: (lichPath: string, family?: 'DR' | 'GS4') => Promise<{ jsonPath: string; mapsDir: string; stamp?: string } | { missing: 'lich' } | null>
       readMapImage: (mapsDir: string, imageName: string) => Promise<string | null>
       listLichScripts: (lichPath: string) => Promise<{ name: string; source: 'core' | 'custom'; lastModified: number }[]>
       listLichProfiles:  (lichPath: string) => Promise<string[]>

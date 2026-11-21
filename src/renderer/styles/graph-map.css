@@ -1,0 +1,440 @@
+/* Graph map (v1.1.0, DESIGN §19.20) — GraphMapView, GraphWorldView and the
+   layers GenieMapView draws for them. Prefixes: `.gx-` (this view) and
+   `.genie-graph-` (the layers inside the Genie map's SVG).
+
+   COLOUR. Every surface, line and label comes from the map's theme variables.
+   The few colours that carry MEANING (a province, a kind of trip, "found") are fixed hues mixed toward the theme's own map text or map
+   background, so the hue keeps its meaning while the contrast follows the
+   theme (pitfall #63). Checked on Classic Light, where `--map-bg` is white.
+
+   NOTHING HERE ANIMATES OR TRANSITIONS. Hover changes are instant. */
+
+.gx-root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+
+  /* Meaning-bearing colours, defined once. */
+  --gx-find: color-mix(in srgb, #ffb300 82%, var(--map-text));
+
+  --gx-zoluren:    #5f8fe0;
+  --gx-therengia:  #4fae6c;
+  --gx-ilithi:     #e07a8c;
+  --gx-forfedhdar: #c79a5b;
+  --gx-qi:         #b06fce;
+  --gx-none:       #8a8a8a;
+
+  --gx-walk:      color-mix(in srgb, var(--map-text) 55%, var(--map-bg));
+  --gx-athletics: color-mix(in srgb, #3f9bff 78%, var(--map-text));
+  --gx-vessel:    color-mix(in srgb, #f0a72e 80%, var(--map-text));
+  --gx-slow:      color-mix(in srgb, var(--map-text) 38%, var(--map-bg));
+  --gx-portal:    color-mix(in srgb, #b06fce 75%, var(--map-text));
+}
+
+/* ── The bar ──────────────────────────────────────────────────────────────── */
+
+/* TWO rows, each with one job (Sekmeht: "the find and everything just doesn't
+   align"). One wrapping row split things wherever it ran out of room: Go landed
+   on the next line, away from the chip it acts on. Now:
+     row 1  which map, and what's drawn on it: World/Zone, the Genie map's zone
+            list and buttons (portaled into .gx-nav), and Show at the right;
+     row 2  finding things: the Find box, the found chip, Go.
+   Same rows in every zone and at every width, so nothing reshuffles. Every
+   control is the same height, whichever component drew it. */
+/* `.map-subbar.gx-bar`, not `.gx-bar`: map-panel.css's `.map-subbar` sets
+   `align-items: center` at the same specificity, and in the app's bundle it
+   loads AFTER this file, so it won and the rows shrank and centred while the
+   other map views' bars sit left (pitfall #111; the screenshot harness loads
+   the files in the other order, which is how it got past it). */
+.map-subbar.gx-bar { flex-direction: column; align-items: stretch; justify-content: flex-start; flex-wrap: nowrap; gap: 3px; padding-top: 3px; padding-bottom: 3px; }
+.gx-row { display: flex; align-items: center; gap: 5px; row-gap: 3px; flex-wrap: wrap; min-width: 0; }
+.gx-bar .map-btn { font-size: 11px; padding: 1px 6px; line-height: 1.4; }
+.gx-seg { display: inline-flex; flex-shrink: 0; }
+/* The zone list, ◆ ⊡ ▤ and the level chips. Its width must not depend on the
+   zone: the "z: 0 1" chips appearing in a zone with levels used to push "Show"
+   onto a second row, so the map got shorter every time you walked into such a
+   zone (pitfall #170: a bar's height must not follow its content). So the chips
+   keep their place in a one-level zone (hidden, see GenieMapView's navButtons),
+   a Genie walk's status goes to the footer, and the group never wraps inside. */
+.gx-nav { display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap; min-width: 0; }
+.gx-nav:empty { display: none; }
+.gx-zone-select { flex: 0 1 15em; min-width: 8em; max-width: 15em; }
+.gx-nav .map-level-chips--placeholder { visibility: hidden; }
+.gx-nav .map-level-chips { margin-left: 2px; }
+/* Go: the one action in the bar that sends something, so it gets the accent
+   ring (accent text mixed toward the text colour: a bare accent can be dark on
+   a dark theme, pitfall #150). Disabled reads like any disabled button. */
+.gx-go:not(:disabled) {
+  color: color-mix(in srgb, var(--accent) 60%, var(--map-text));
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--map-btn-border));
+  font-weight: 600;
+}
+.gx-show { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; margin-left: auto; }
+/* Layer toggles stay QUIET: on is plain text with a tick, off is muted. The
+   accent is kept for what you are looking at (World/Zone, follow, the level),
+   so a resting bar doesn't light up five things at once (UX #1). The on/off
+   difference is a tick AND a colour, never colour alone. */
+.gx-toggle { color: var(--map-text-muted); }
+.gx-toggle::before { content: '✓'; display: inline-block; width: 1em; opacity: 0; }
+.gx-toggle--on { color: var(--map-text); }
+.gx-toggle--on::before { opacity: 1; }
+.gx-show-label {
+  margin-right: 1px;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--map-text-muted);
+}
+.gx-seg .map-btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.gx-seg .map-btn:last-child  { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; }
+
+/* The Find box takes the row, up to a readable width; the chip and Go follow it. */
+.gx-find { position: relative; flex: 1 1 15em; min-width: 9em; max-width: 26em; }
+.gx-find-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--map-text);
+  background: var(--map-select-bg);
+  border: 1px solid var(--map-btn-border);
+  border-radius: var(--radius-sm);
+}
+.gx-find-input::placeholder { color: var(--map-text-muted); }
+.gx-find-input:focus { outline: none; border-color: var(--accent); }
+.gx-find-input:disabled { opacity: 0.5; }
+
+/* The result list's length is data: bounded and scrollable (pitfall #109). */
+.gx-find-list, .gx-layers-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 2px);
+  left: 0;
+  min-width: 100%;
+  width: max-content;
+  max-width: min(30em, 80vw);
+  max-height: min(22em, 50vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg-raised);
+  border: 1px solid var(--map-border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+.gx-find-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: left;
+  color: var(--text-primary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.gx-find-row--on { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+
+/* Find results: a FIXED width and four fixed columns, so the list is the same
+   size whatever it holds and every row lines up. It used to size to its
+   longest row and squeeze each row's details differently. Sized in the rows'
+   own 11px so the columns and the list agree. Too-long text is trimmed with
+   "…"; the row's tooltip has all of it. */
+.gx-find-results {
+  font-size: 11px;
+  width: 41em;
+  max-width: min(41em, 80vw);
+}
+.gx-find-results .gx-find-row {
+  display: grid;
+  /* The kind column fits "Hunting ground", the longest kind, in the game's
+     monospace font; it was cut to "Hunting gro…" at 7.5em. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 9em) 8.8em 2.5em;
+  column-gap: 1em;
+}
+.gx-find-name, .gx-find-detail, .gx-find-kind {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gx-find-detail, .gx-find-kind { color: var(--text-secondary); }
+.gx-find-count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+.gx-find-none { padding: 5px 8px; font-size: 11px; color: var(--text-secondary); }
+
+/* World view: the Layers ▾ menu. The list wears the Find dropdown's chrome
+   (shared rule above) but hangs from the right, under its button. Items are
+   checkboxes: a tick AND a colour say on, never colour alone. On a popover
+   (--bg-raised) the off colour is --text-secondary, not the bar's muted
+   --map-text-muted, which fades out on light themes there (pitfall #150). */
+.gx-layers { position: relative; display: inline-flex; }
+.gx-layers-list { left: auto; right: 0; min-width: 12em; padding: 2px 0; }
+.gx-layers-item {
+  display: block;
+  width: 100%;
+  padding: 3px 10px 3px 6px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: left;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.gx-layers-item.gx-toggle { color: var(--text-secondary); }
+.gx-layers-item.gx-toggle--on { color: var(--text-primary); }
+.gx-layers-item:hover, .gx-layers-item:focus-visible { background: color-mix(in srgb, var(--accent) 18%, transparent); outline: none; }
+
+/* The footer: the Graph map's one line of REPORTS (counts, the Find results),
+   the same quiet strip the Genie map keeps under itself. */
+.gx-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--map-text-muted);
+  border-top: 1px solid var(--map-border-subtle);
+}
+.gx-foot-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+}
+.gx-foot-place { color: var(--map-text); }
+.gx-foot-walk { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; }
+.gx-foot-walk .map-btn { font-size: 10px; padding: 0 5px; line-height: 1.3; }
+.gx-foot-sep { opacity: 0.6; }
+
+.gx-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 14em;
+  padding: 0 2px 0 7px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--map-text);
+  border-radius: 999px;
+  /* A ring, not a fill: a fill under the text would cost it contrast (pitfall #150). */
+  box-shadow: inset 0 0 0 1px var(--gx-find);
+}
+.gx-pill-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gx-pill-x {
+  padding: 0 4px;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--map-text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.gx-pill-x:hover { color: var(--map-text); }
+
+/* ── Layers inside the Genie map ──────────────────────────────────────────── */
+
+.genie-graph-link {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 60%, var(--map-text));
+  stroke-width: 1.5px;
+  stroke-dasharray: 5 3;
+}
+.genie-graph-link--cond { stroke-dasharray: 1.5 3.5; }
+.genie-graph-veil { fill: var(--map-bg); opacity: 0.66; }
+.genie-graph-tint { stroke: var(--map-text); stroke-width: 1px; }
+/* A room with rooms beyond the map: framed, with its count on its own corner.
+   Frame and badge share one colour so they read as one mark. */
+.genie-graph-beyond {
+  --beyond-ink: color-mix(in srgb, var(--accent) 60%, var(--map-text));
+}
+.genie-graph-beyond-frame {
+  fill: none;
+  stroke: var(--beyond-ink);
+  stroke-width: 1.5px;
+}
+.genie-graph-beyond circle {
+  fill: var(--beyond-ink);
+  stroke: var(--map-bg);
+  stroke-width: 1px;
+}
+.genie-graph-beyond text { fill: var(--map-bg); font-weight: 700; user-select: none; }
+
+/* ── World view ───────────────────────────────────────────────────────────── */
+
+.gx-world {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
+  font-size: calc(var(--panel-font-size, var(--game-font-size, 12px)) * 0.9);
+  /* The sea: the map's own background, a touch toward blue. */
+  background: color-mix(in srgb, #3b6ea8 16%, var(--map-bg));
+}
+.gx-world:active { cursor: grabbing; }
+.gx-world-svg { display: block; }
+
+.gx-prov { stroke: color-mix(in srgb, var(--map-text) 45%, transparent); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.gx-prov--zoluren    { fill: color-mix(in srgb, var(--gx-zoluren) 20%, var(--map-bg)); }
+.gx-prov--therengia  { fill: color-mix(in srgb, var(--gx-therengia) 20%, var(--map-bg)); }
+.gx-prov--ilithi     { fill: color-mix(in srgb, var(--gx-ilithi) 20%, var(--map-bg)); }
+.gx-prov--forfedhdar { fill: color-mix(in srgb, var(--gx-forfedhdar) 20%, var(--map-bg)); }
+/* Qi'Reshalia is sea with islands in it: an outline, barely a fill. */
+.gx-prov--qi         { fill: color-mix(in srgb, var(--gx-qi) 7%, transparent); stroke-dasharray: 4 4; }
+.gx-isle { fill: color-mix(in srgb, var(--gx-qi) 22%, var(--map-bg)); stroke: color-mix(in srgb, var(--map-text) 40%, transparent); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+
+.gx-prov-name {
+  fill: color-mix(in srgb, var(--map-text) 24%, transparent);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Names sit on a halo of the map background so they read over any line. The
+   halo's WIDTH is set inline by GraphWorldView, divided by the zoom: a width
+   here would be in world units, grow with every zoom step and swallow the name. */
+.gx-label {
+  fill: var(--map-text);
+  paint-order: stroke;
+  stroke: var(--map-bg);
+  stroke-linejoin: round;
+  user-select: none;
+}
+.gx-label--city   { font-weight: 700; cursor: pointer; }
+.gx-label--town,
+.gx-label--island { fill: color-mix(in srgb, var(--map-text) 82%, var(--map-bg)); cursor: pointer; }
+.gx-label--quest  { fill: color-mix(in srgb, #4f8dff 70%, var(--map-text)); font-style: italic; cursor: pointer; }
+.gx-label--region { fill: color-mix(in srgb, #b8900f 62%, var(--map-text)); font-style: italic; pointer-events: none; }
+.gx-label--water  { fill: color-mix(in srgb, #4f8dff 45%, var(--map-text)); font-style: italic; pointer-events: none; }
+/* A map's own name under its bubble: quieter than a place name, never in the way of a click. */
+.gx-label--zone   { fill: color-mix(in srgb, var(--map-text-muted) 55%, var(--map-text)); pointer-events: none; }
+.gx-label--city:hover, .gx-label--town:hover, .gx-label--island:hover, .gx-label--quest:hover { text-decoration: underline; }
+
+.gx-link { fill: none; stroke: var(--gx-walk); stroke-width: 1.2px; }
+.gx-link--athletics { stroke: var(--gx-athletics); stroke-width: 1.8px; stroke-dasharray: 5 3; }
+.gx-link--vessel    { stroke: var(--gx-vessel); stroke-width: 1.8px; }
+.gx-link--slow      { stroke: var(--gx-slow); stroke-width: 1.8px; stroke-dasharray: 2 3; }
+.gx-link--portal    { stroke: var(--gx-portal); stroke-width: 1.2px; stroke-dasharray: 1 3; }
+.gx-link--on        { stroke-width: 2.6px; }
+.gx-link--walk.gx-link--on { stroke: var(--map-text); }
+/* The world view draws roads between stops, not every link (graphWorld.ts
+   `worldRoads`). A road is the highway: bold, round-ended, the walk colour
+   pushed toward the text so it reads on every theme. Boats are thin faint
+   curves; the spokes inside a city, fainter still and only when zoomed in.
+   Pointing at a map still draws its own links at full strength (--on). */
+.gx-road.gx-link--walk { stroke: color-mix(in srgb, var(--map-text) 70%, var(--map-bg)); stroke-width: 2.4px; stroke-linecap: round; }
+.gx-road.gx-link--athletics, .gx-road.gx-link--slow { stroke-width: 2px; }
+.gx-boat  { stroke-width: 1.2px; opacity: 0.45; stroke-dasharray: 6 4; }
+/* "Provinces" layer off: the land in one plain colour with no borders, so the
+   coast still reads against the sea; Qi'Reshalia's tinted sea area goes. */
+.gx-world--plain .gx-prov { fill: color-mix(in srgb, var(--map-text) 10%, var(--map-bg)); stroke: none; }
+.gx-world--plain .gx-prov--qi { fill: none; }
+.gx-local { stroke-width: 1px; opacity: 0.4; }
+
+.gx-zone { stroke: var(--map-text); stroke-width: 1px; cursor: pointer; }
+.gx-zone--zoluren    { fill: color-mix(in srgb, var(--gx-zoluren) 72%, var(--map-bg)); }
+.gx-zone--therengia  { fill: color-mix(in srgb, var(--gx-therengia) 72%, var(--map-bg)); }
+.gx-zone--ilithi     { fill: color-mix(in srgb, var(--gx-ilithi) 72%, var(--map-bg)); }
+.gx-zone--forfedhdar { fill: color-mix(in srgb, var(--gx-forfedhdar) 72%, var(--map-bg)); }
+.gx-zone--qi         { fill: color-mix(in srgb, var(--gx-qi) 72%, var(--map-bg)); }
+.gx-zone--none       { fill: color-mix(in srgb, var(--gx-none) 60%, var(--map-bg)); }
+.gx-zone:hover       { stroke-width: 2.4px; }
+/* Find lens: the zones that have it take the "found" colour; the rest step back. */
+.gx-zone.gx-zone--lit { fill: var(--gx-find); stroke-width: 1.8px; }
+.gx-zone.gx-zone--dim { fill-opacity: 0.22; stroke-opacity: 0.4; }
+
+.gx-here { fill: none; stroke: var(--map-current-color, #4caf50); stroke-width: 2.2px; }
+.gx-here--outer { stroke-width: 1px; stroke-opacity: 0.6; }
+/* The ping's look; its motion is `.genie-here-ping` in map-panel.css. */
+.gx-here-ping { fill: none; stroke: var(--map-current-color, #4caf50); stroke-width: 2.5px; }
+/* The same pulse with a shorter reach: the other maps ping round a small dot,
+   this one rings a whole zone's bubble, and 2.7× that washed over its
+   neighbours. TWO classes, so it beats `.genie-here-ping { animation: … }` by
+   specificity: map-panel.css loads AFTER this file in the app's bundle, and at
+   equal specificity its shorthand would put the 2.7× keyframe back (pitfall
+   #111; the screenshot harness loads them the other way round, so it can't
+   show this). Epilepsy safe mode's rule is more specific still and stops it. */
+.gx-here-ping.genie-here-ping { animation-name: gx-here-ping; }
+@keyframes gx-here-ping {
+  0%   { transform: scale(1);   opacity: 0; }
+  12%  { opacity: 0.7; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+.gx-card {
+  position: absolute;
+  z-index: 10;
+  width: max-content;
+  max-width: 260px;
+  padding: 6px 9px;
+  line-height: 1.4;
+  color: var(--map-text);
+  background: var(--map-chrome-bg);
+  border: 1px solid var(--map-border);
+  border-radius: 4px;
+  pointer-events: none;
+}
+.gx-card-name { font-weight: 700; }
+.gx-card-sub, .gx-card-hint { font-size: 0.91em; color: var(--map-text-muted); }
+.gx-card-hint { margin-top: 2px; font-style: italic; }
+.gx-card-line { font-size: 0.91em; }
+.gx-card-line--here { color: var(--map-current-color, #4caf50); }
+.gx-card-line--lit  { color: var(--gx-find); }
+.gx-card-trip { padding-left: 8px; border-left: 2px solid var(--gx-walk); margin-top: 1px; }
+.gx-card-trip--athletics { border-left-color: var(--gx-athletics); }
+.gx-card-trip--vessel    { border-left-color: var(--gx-vessel); }
+.gx-card-trip--slow      { border-left-color: var(--gx-slow); }
+.gx-card-trip--portal    { border-left-color: var(--gx-portal); }
+
+.gx-key {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  max-width: calc(100% - 50px);
+  padding: 3px 7px;
+  font-size: 0.86em;
+  line-height: 1.3;
+  color: color-mix(in srgb, var(--map-text-muted) 55%, var(--map-text));
+  background: color-mix(in srgb, var(--map-chrome-bg) 88%, transparent);
+  border: 1px solid var(--map-border-subtle);
+  border-radius: 4px;
+  pointer-events: auto;
+  cursor: default;
+}
+.gx-key-item { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+/* The circles (maps, islands, you) and the lines (roads, boats) are two kinds
+   of thing: a hairline between them. The key samples draw in screen pixels. */
+.gx-key-sep { align-self: stretch; width: 1px; background: var(--map-border-subtle); }
+.gx-key .gx-zone, .gx-key .gx-isle, .gx-key .gx-here { vector-effect: none; cursor: default; }
+.gx-reset { position: absolute; top: 6px; right: 6px; }
+
+.gx-shelf {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  max-width: calc(100% - 50px);
+}

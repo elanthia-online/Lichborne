@@ -4,7 +4,7 @@
 > Sources: Lich5 source tree (`C:\temp\lich-dev\lich-5`, live install `C:\Ruby4Lich5`), the DR `drinfomon` scripts, and captured game XML.
 > This is the LICH/DR *fact* layer — how Lich and DR actually behave. Lichborne's own implementation (how we consume these facts) lives in CLAUDE.md and DESIGN.md; each Lichborne pitfall that came from a Lich/DR fact points back here.
 > Scope: written DragonRealms-first. Facts that differ for GemStone IV are marked, and the GS4 wire facts the client relies on are in [GemStone IV — shards, room titles and creature tags](#gemstone-iv--shards-room-titles-and-creature-tags-verified-2026-11-03) (fuller captured-wire evidence: DESIGN §56).
-> Updated: 2026-11-03 (GemStone IV shards, room titles and creature tags; the per-game attach resync; earlier: the injuries dialog is a full snapshot, 2026-10-14).
+> Updated: 2026-11-21 (the Genie maps team's other helper scripts); 2026-11-20 (places checked with Sekmeht: Tref Bain and Tref Dinta, the Zoluren coast, the wiki's city and geography categories; the other dr-scripts data files and the `custom/` folder; the Genie maps team's travel.cmd; earlier, 2026-11-19, map data: Lich's map JSON fields, the dr-scripts data files, Genie's file numbers and Transports map, the wiki's zone grid; earlier: GemStone IV shards, room titles and creature tags, 2026-11-03).
 
 ---
 
@@ -799,6 +799,7 @@ A running record of Lich releases we've reviewed: **what changed, whether it aff
 - **NEW opt-in title placements** (#1491 + #1500). Defaults are unchanged — nothing is embedded in the title unless the player opts in — but `;display roomid title` can now produce shapes no earlier Lich emitted:
   - `[Town Square - 1234] (230008)` — Lich's own id in the dash slot, the game's RealID in parens.
   - `[Town Square - 1234 - (u230008)]` — **the UID INSIDE the brackets**, which is the one that broke Lichborne's subtitle parser (the dash pattern needs digits at the end; this ends with `)`, and the parens pattern needs them after the `]`). Fixed in v0.19.1; all 8 shapes are covered.
+- **The "map loaded" message names the script that triggered the load** (#1495, found 2026-11-19, missed by the 2026-08-16 review). `Map.load_json` (`lib/common/map/map_base.rb:466`) announces a loaded database with `map_loaded_message(filename)` (`:533`): `"--- #{Script.current.name} Map loaded #{filename}"` when a script is running, else `"--- Map loaded #{filename}"`. `filename` is the full path of the `map-*.json`. Before 5.20.0, DR's map code (`map_dr.rb`) always printed `--- Map loaded …` (GemStone's already named the script). The load is lazy and once per Lich session (`return true if loaded?`), so the line appears the first time anything asks for the map (usually a script, so with its name) and again after a reload. Lichborne matched only the unnamed form until v1.1.0.
 
 ### Lich 5.20.1 — verified 2026-09-14 (no break; one fix that HELPS Lichborne)
 
@@ -1732,3 +1733,98 @@ From two Capture XML sessions (Sekmeht, Agan) and Lich 6868b5d2:
 - **With the tunnel off:** zero stalls in 10.5 minutes on both characters, with their scripts running, worst 1.2 s. `health`, `exp` and `look` got their first line back in about 90–230 ms, from the send stamps.
 - **The player's view:** a command seems to hang while other text keeps coming. In the case captured, lines made over about 3 s arrived within half a second, then the command's reply. The reply wasn't slow on its own; it was behind the queue.
 - **Not proven:** this is one session each way, not a repeat with the tunnel back on, and the cause inside the tunnel or NordVPN's software is unknown. Parse time is ruled out (microseconds, and the stamp is before the parser). Only NordLynx on Windows was seen; other VPNs are untested.
+
+---
+
+## Map data — Lich's map JSON, the dr-scripts data files, Genie's files and the wiki's zone grid (verified 2026-11-19)
+
+Measured on a live install for the Graph map (DESIGN §19.20): `C:\Ruby4Lich5\Lich5\data\DR\map-1794921881.json` (18,981 rooms), `C:\Ruby4Lich5\Lich5\scripts\data\`, and the GenieClient/Maps download (93 zone files, 19,324 nodes).
+
+### Lich's map JSON: what each field really holds
+
+- **Fields and how often they are present** (of 18,981 rooms): `id`, `wayto`, `timeto` on all; `title`, `description`, `paths` on all but a handful; `uid` 15,762; `location` 14,769; `image` 13,982 (`image_coords` 13,974); `tags` 4,314.
+- **`timeto` values are not all numbers.** 43,712 numbers, 2 nulls, and **98 strings that are Ruby snippets**, for example `;e (DRStats.guild == 'Thief' && DRSkill.getmodrank('Athletics') >= 25) ? 0.2 : nil` and `;e unless UserVars.riverhaven_password then nil else 3 end`. Lich evaluates them at route time. A front end that runs no scripts cannot know those times. The largest plain number is 6,000.
+- **`wayto` values are commands, or Ruby.** 1,085 of 43,186 start `;e` (a StringProc: ferries that call `bescort`, swims that strip armour first).
+- **The default step is 0.2 seconds**, so Lich's `go2` covers about five rooms a second and a whole town is under ten seconds across.
+- **`image` names carry the WIKI (Ranik) map number**, in two styles: `Forfedhdar, 121, Boar Clan.gif` and `zoluren-13-ntr_and_dirge-1377283850.png` (also `forfedhdar-map124-…`). Some carry no number (`Ilithi, Shard.jpg`, `Qi, Merkresh-1.png`). `harajalmap96.jpg` is not map 96's number space (Hara'jaal is wiki 106): don't parse that style.
+- **`location`** is a fine-grained area name (229 distinct: "The Crossing", "Road to Horse Clan", "Ratha, Tiers One and Two"), or just the province name, or absent (4,212 rooms).
+- **`tags`**: 1,799 distinct. Mostly forage items; about 300 hunting-ground keys with underscores (`plague_wraiths`); services (`bank`, `gemshop`); and bookkeeping to ignore (`meta:mapname:…`, `meta:mapcategory:…`, `lich-map-no-uid-room`).
+- About a quarter of rooms have no image and only a province for a location, so they cannot be placed in the world on their own.
+- **The map holds stale copies of some rooms** (found 2026-11-19). Shard's "First Bank of Ilithi, Coin Exchange" is room 19280 (uid 2014102, location Shard) AND room 19281: same title, same description, no `uid`, no `location`, and a single link west to the bank, which links east to BOTH. A copy like that can never be the room the game reports you in. A copy can also carry the room's OLD description: the Shard Consulate's Silk Strings is 15405 (uid 2015306, today's wording) and 12855 (no uid, "Unfurled song scrolls cover dark oblong tables…"), and the foyer 12850 lists BOTH under the same command `west`. **Two `wayto` entries with the same plain command from one room means one destination is stale**, since a command can only take you one place. Anything that matches rooms by title and description will see an exact copy tie with the real room; prefer the one with a `uid` only when the other is an exact copy (its descriptions and its links are a subset of the real one's), since two genuinely different rooms can also look alike.
+- **Same-named rooms side by side are normal.** Kirm Morzindu has 20 "Observation Box" rooms, one behind each oak and birch door, each with its own `uid`; roads have runs of identical names ("Eastern Fields, Roadway"). The step (`go oak door`, `southeast`) is what tells them apart.
+
+### The dr-scripts data files (`{Lich}/scripts/data/base-*.yaml`)
+
+These are what dr-scripts uses to find things. They name **Lich room ids**. They are Ruby (Psych, YAML 1.1) files: anchors (`&crossing_nexus`), `<<: *anchor` merges, and numbers written `19_242`. Load them with a YAML 1.1 schema plus the merge tag.
+
+| File | Shape |
+|---|---|
+| `base-town.yaml` | `Town: { service: { id, name? } }`, plus lists (`attunement_rooms: [ids]`) and groups (`guild_leaders: { Guild: { name, id } }`). `currency` is not a place. |
+| `base-hunting.yaml` | `hunting_zones: { key: [ids] }`, `escort_zones: { key: { base, area, enter } }`, `hunting_areas_by_town: { Town: [keys] }`. **The rank range is only in a comment** above each key (`# https://elanthipedia.play.net/Rat   0-30`), sometimes two comments for two creatures. |
+| `base-forage.yaml` | `foragables: [{ item, rooms: [ids] }]` (about 600 KB). |
+| `base-shrines.yaml` | `shrines: { Town: [{ location, start_room, path_in?, push }] }`. |
+| `base-mining.yaml`, `base-lumber.yaml` | `mining_buddy_rooms` / `lumber_buddy_rooms: { area_key: [ids] }`. |
+| `base-athletics.yaml` | `athletics_options: { town: [{ room, targets }] }`, `practice_options: { key: { id, target } }`, `swimming_options: { key: { rooms: [ids] } }`; skill ranges in comments. |
+
+Measured: 1,141 entries across the seven files (459 town services, 370 hunting grounds of which 326 have a readable range, 132 forage items, 84 shrines, 23 mining and 40 lumber areas, 33 practice spots). 148 of 108,524 listed room ids are not in the map file.
+
+**Other files that name rooms** (surveyed 2026-11-20, 33 files in the folder; corrects an earlier note that stealing and crafting list no places):
+
+| File | Rooms |
+|---|---|
+| `base-healingherbs.yaml` | `herb_stocks: { Town: [{ name, room, price, size, stackable, quantity }] }`: herb shops and what they sell (87 entries) |
+| `base-consumables.yaml` | `Town: { key: { name, room, price, … } }`: arrows, bolts, rocks and supplies (40); the key is generic (`arrow`), the `name` per town (`boar-tusk arrows`) |
+| `base-theurgy.yaml` | per town: `herb_shop`, `wine_shop`, `incense_shop`, `oil_shop`, `flint_shop`, `parchment_shop`, `altar`, `bath`, `favor_altars: { Immortal: { id, adjective } }`, forage and sirese spots (166 ids); top-level `immortal_to_aspect` and `aspect_to_primer` tables; a `_P5 Shared` section that towns reuse is not a town |
+| `base-crafting.yaml` | per craft, per town: `npc-rooms`, `anvils`, `crucibles`, `grindstones`, `stock-room`, `repair-room`, `finisher-room`… (keys with hyphens) |
+| `base-art.yaml` | `art_options: [{ room, targets }]` (7) |
+| `base-stealing.yaml` | `:stealing_options: [{ town, item, item_in, room, … }]`, with difficulty bands per rank (318 items, 741 room fields) |
+
+In `base-town.yaml`, six towns have stat keys (`strength`, `agility`, …) holding `{ outer_room, inner_room }`; what those rooms are for isn't said in the file. `base-picking` has no rooms. **`base-capture.yaml` and `base-sigils.yaml` use Ruby-only tags** (`!ruby/regexp`, `!ruby/object:OpenStruct`), so a YAML 1.1 loader can't open them at all.
+
+**A player's own copy wins** (lich-5 #1431, July 2026; `lib/common/setup_files.rb` `get_data_glob_patterns`): `get_data` globs `scripts/data/custom/` BEFORE `scripts/data/`, and the first file found for a name wins, so a whole file in `custom/` replaces the standard one for that player's scripts (no merging). A front end reading only `scripts/data/` shows what the standard file says, not what the player's scripts use.
+
+### Genie's map files
+
+- **Genie's file number is NOT the wiki's map number.** `Map127_Boar_Clan.xml` is wiki map 121 (wiki 127 is Raven's Point); `Map126_Hawstkaal_Road` is wiki 119/120; `Map41_Ker'Leor_Fornsted_and_Hraval` is wiki 43–45; `Map58_Acenamacra_Village` is wiki 61b; `Map90e_Basalt_Isle` is wiki 90f. Many do agree (1, 30, 47, 67, 99), which is what makes the mismatch easy to miss. To go from a Genie zone to a wiki map, go through the Lich rooms it matches and read their `image` names.
+- **`Map998_Transports.xml` is the hub for every ride.** Its nodes form separate groups, each one vessel, and each group's boundary nodes (note = another zone's file) are that vessel's ports of call. Measured groups: Lybadel (Riverhaven, Ratha, Aesry), The Halasa Selhin (Ratha, Pokekehekepi, Aesry), The Skirr'lolasu (Ratha, Crossing), Gondola, Her Opulence (the Riverhaven ferry), The Desert Wind (the sand barge), Kertigen's Honor (the Segoltha ferry), Theren's Star (the Langenfirth barge).
+- **Towns share building names.** Every Traders' Guild has an "Auction Foyer" and "Auction Hall", and Lich's map may hold only one town's copy. A room title, even a unique one, does not identify a room.
+- Zones that barely match Lich's map: ones Lich hasn't mapped (Soul of Maelshyve, The Arch) and mazes of identical rooms (Pokekehekepi has 73 "Pokekehekepi korgi" rooms).
+- **How well the two maps agree** once rooms are matched by title, description and neighbours: 84% of Genie rooms have a Lich room; 95% of Genie's links between matched rooms are also Lich links; 94% the other way.
+
+### Elanthipedia's zone grid and travel map
+
+- **Zone map** (`/Zone_map`): an 11 × 11 grid, columns and rows numbered 0–10, **origin bottom-left**, 42 squares lettered A–PP, each "about 100 miles". Muspar'i is (1,10), Crossing (6,5), Shard (4,1), Corik's Wall (4,0), Aesry (10,7), Fang Cove (10,1). Each square lists its wiki map numbers; some maps are split across squares ("portion": 31, 34, 41, 120, 121, 9b). The page's distance rule is `d = floor(sqrt(dx² + dy²))`, used for teleports, the astral plane and familiars. The page says the data is "based on player observation" and "only an approximation", and carries an update-for-DR3 banner.
+- **Travel map** (`/Travel_map`): a not-to-scale diagram whose image map links each box to a wiki map (so it doubles as a town → wiki-map-number table), plus a table of how to reach about 45 places. Its key: plain line = walk; blue = needs real Athletics (Faldesu about 120, Jantspyre about 150, Segoltha about 350, the Velaka crossing); yellow = a vessel, usually paid; grey = a time-based choke point. (The Genie maps team's `travel.cmd`, below, uses about 200 for the Jantspyre's north crossing and about 90 for the south.)
+- **Official maps** (`/Simutronics_Maps`, `/Official_color_map`): Simutronics' copyright, "commercial use forbidden". The 2015 colour map (1500 × 1383) agrees with the grid to within about a square and a half for every place checked. The older "Ports of Call" map disagrees with it on Horse Clan (beside Leth Deriel on the old map; far south-west on the new map and the grid): trust the newer map and the grid. The sepia "Five Provinces" map is the only one that draws province borders.
+- **The Ports of Call map lines up with the colour map** to within two-thirds of a square on 17 shared towns (a least-squares fit, 2026-11-20; largest Langenfirth 0.66 and Arthe Dale 0.53). It names places the colour map doesn't: Faldesu Delta, Bay of Nenashyo and Twinsoul Bay (east of Leth Deriel), Wingtip Cove, Whitewing Bay, White Cove, The Neck, The Wolf's Maw, The Brine Mare (Ilithi's south-east coast), Sawstwar Lake (west of Ain Ghazal) and the Dragon Spine.
+- **The province drawings are pictures, not maps.** Sekmeht's five sepia province drawings (2026-11-20) agree with the game on direction almost everywhere, but the Ilithi one draws Chyolvea Tayeu'a far WEST of Shard. The Genie "Shard to Gondola Area" map (Map66) puts its 34 Chyolvea rooms north-east of Shard's gates, near the gondola, and the colour map and the wiki grid (square V) agree.
+
+### Places checked with Sekmeht (2026-11-20)
+
+- **Tref Bain and Tref Dinta are two places.** Tref Bain (Elanthipedia, Qi'Reshalian cities): an island "off the east coast of Leth Deriel and the northeast of Acenamacra", claimed by Qi'Reshalia, population about 10,000, outsiders not allowed beyond the docks of its port **Landfall** (also on the wiki's city list). Tref Dinta has no wiki page; it is the Zoluren town just south of Leth Deriel on the Southern Trade Route, right at the Zoluren–Ilithi border (Sekmeht). Lich's map files 3 "Tref Dinta" rooms under location Zoluren with no image; Genie has a "Tref Dinta" map and Tref Dinta rooms on "Southern Trade Route Part 2". The 2015 colour map labels Tref Bain on the coast between Silverclaw Hub and Acenamacra, which doesn't match the wiki's "island north-east of Acenamacra"; Sekmeht's call: follow the wiki. The Crossing's "Landfall Jetty" and "Landfall Dock" are a different Landfall.
+- **The Zoluren coast** (Sekmeht): it comes in on inlets toward the Crossing (Segoltha Bay) and near Leth Deriel (the Bay of Nenashyo), "this is why Acenamacra has a dock".
+- **Elanthipedia's `Category:Cities`** (last edited 2007): 65 pages in six province subcategories (Albarian 7, Forfedhdar 6, Ilithi 7, Qi'Reshalian 7, Therengian 11, Zoluren 8; 19 are in no subcategory). Of the 26 that Lichborne's world doesn't place: the 7 Albarian cities are another continent; Su Helmas "can not be accessed as a common location" (its page); Mir'Kazeril is a lore city "deep in what is now the Reach" that was destroyed; Vela'tohr Valley is in the Boar Clan Genie map (Lich maps 129 and 133–136, grid square EE); The Enclave is in Hara'jaal; Jeihrem's Burrow is with Basalt Isle (Genie spells it "Jeihrem's Barrow"); Berdna, Elirach, Gardul, Greystar Commune, High Hold, Karadel, Nenav Dalar, Odcoru, Sa'leng Upen, Teil Minavsel, Tifflan and Yuc Cugis have no room in Lich's or Genie's map data (Odcoru appears only as a shop, "Cefrit of Odcoru", on the Langenfirth to Siksraja map). "Sunfell Hub" is most likely Sunfall Hub.
+- **Elanthipedia's `Category:Geography`**: 16 subcategories (Cities 65, Docks 51, Drylands 9, Forests 13, Geological Formations 4, Islands 21, Land masses 3, Landmarks 100, Major temples 13, Mines 14, Mountains 19, Provinces 5, Routes 10, Wastelands 5, Waterways 37, Wetlands 10) plus the pages Elanthia and Zone map. The category pages list names only; a place's position is in its own page's prose.
+
+### `travel.cmd` — the Genie maps team's travel script (read 2026-11-20)
+
+`GenieMaps/Copy These to Genie's Scripts Folder/travel.cmd`, version 5.6.3 ("Updated: 10/10/26"; by Achilles, revised by Shroom), 8,261 lines. It routes a character anywhere in DR one step at a time ("in map N, walk to room R, then take the boat"), so the connections are spread through per-province sections (`CROSSING`, `ILITHI`, `THERENGIA`, `FORF`, `QITRAVEL`) rather than listed. Its map and room numbers are Genie's. These are the script's own facts, not checked in game:
+- **The gondola splits the world.** You board heading north from map 62 (Southern Trade Route Part 2) and heading south from map 66 (Shard to Gondola Area). Destinations north of it: Zoluren, Therengia and Qi'Reshalia; south of it: Ilithi, Forfedhdar, Aesry and Fang Cove.
+- **Ferries board from** maps 1, 7, 30, 35, 40, 41, 47, 48, 60, 90, 106, 107, 108, 113, 150 and 998. It knows 22 vessels by name, among them Her Opulence, Hodierna's Grace, Kertigen's Honor, His Daring Exploit, Northern Pride, Theren's Star, The Damaris' Kiss, The Evening Star, two skiffs, Desert Wind, Suncatcher, Riverhawk, Imperial Glory, the galleys Cercorim and Sanegazat, the Jolas, the Halasa Selhin, Night Sky, Skirr'lolasu, Kree'la, Degan, and the Gnomish warship (to and from Fang Cove).
+- **Mammoths:** Ratha → Fang Cove → Acenamacra is "the primary method for non-premium users". The Elanthipedia Travel map, and Lichborne's route note, say "estate holders"; one of them is out of date.
+- **Shortcuts by Athletics** (its defaults, "conservative"): the Jantspyre north about 200 (180 at best), south about 90; the Velaka Desert to Muspar'i 780 or more ("the hardest shortcut in the game"); a Thief-only tunnel from the Crossing to the Southern Trade Route.
+- **Platinum portals** in nine cities: Crossing (map 1 room 484), Aesry (99/115), Shard (67/455), Mer'Kresh (107/273), Riverhaven (30/331), Ratha (90/468), El'Bain's (40/254), Muspar'i (47/97), Hibarnhvidar (116/188).
+- The M'Riss–Langenfirth airship isn't in The Fallen (TF).
+
+### The Genie maps team's other helper scripts (read 2026-11-21)
+
+The same folder ships 14 small scripts that `automapper.cmd` runs for one awkward step (a map arc's `move="script name"`). Lichborne's Genie walker (`genieWalk.ts`) does the simple ones itself and, for the rest, stops in the room before and says what the script would have done. What each one does, from its own text (not checked in game):
+- **`sharddetour`**: Shard's gates are shut at night to non-citizens. Inside (Genie map 67, from gate rooms 1, 43 or 199) it walks round to another gate; outside it comes from maps 66, 68 or 69. With **more than 250 Athletics** it climbs the wall instead: out by ladder or stairway, a step, then the embrasure; in by the wall, a step, then the ladder or stairway.
+- **`shardlocksmith`**: `ask malik about kilam`, `order fife`, then `offer 10000000000`; "Malik laughs" means ask again, "You realize to your…" means done, then it waits 9 seconds.
+- **`peerchurch`**: `climb tree`, `peer church` (the reply names a direction), `climb trunk`, then that direction.
+- **`mistwoodcliff`**: `peer path` ("you would need to head X"), `down`, X, then `nw`.
+- **`ggbypass`** (the secret passage near Raven's Point and the Gear Gate): if the room doesn't already show "a gouged stone wall", `turn torch on wall` (or `turn basin on wall` in the cavern), then `go wall`. The wall closes again on its own.
+- **`infusionentry`**: a puzzle around Genie room 404. `look sun` and `look star` give your aspect (one of dolphin, panther, cat, ram, cobra, wolf, boar, raven, lion, wren); `turn crank`; at the white tap and the black tap, `pull rope` until each wheel shows your aspect's light or dark image (the script lists all twenty images); `pull lever` until the bier shows your aspect; then `open coffin`, `go coffin`, `close coffin`, and wait out the stun.
+- Walked by Lichborne itself: `autoclimbup` / `autoclimbdown`, `sandspit` (`go barrel`, else `go other barrel`), `hibintelligence` (the same with a steel door), `armoire`, `hollowevevine`. (`automoveenterdobeks`, kiss the scorpion and wait out the stun, stays with the player.)
+- **`speedtest`** only times `#goto` between rooms 200 apart; nothing for a map.
+- The movement subroutine they share has the same retry and mud lines as `automapper.cmd`, which the walker already copies.

@@ -60,6 +60,8 @@
 //    the LOGIN handler. Don't describe the boundary as stricter than it is.
 import { app, BrowserWindow, ipcMain, dialog, Menu, shell, session, clipboard, safeStorage, powerMonitor, net } from 'electron'
 import { installGenieMaps, readGenieMapsStatus, type GenieMapsStatus, type GenieMapsResult } from './genieMapsDownload'
+import { readLichMapData, lichMapDataStamp } from './lichMapData'
+import type { MapDataResult } from '../shared/types'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
@@ -1895,8 +1897,11 @@ ipcMain.handle('browse-folder', async (_e, startIn?: string) => {
   return result.canceled ? null : result.filePaths[0] ?? null
 })
 
-ipcMain.handle('list-map-dir', (_event, dir: string) => {
+ipcMain.handle('list-map-dir', (_event, rawDir: string) => {
   try {
+    // A Genie folder can arrive as `~/…` (a profile moved from Linux or macOS,
+    // or typed by hand); every other reader of it already expands it.
+    const dir = expandHome(rawDir)
     if (!fs.existsSync(dir)) return null  // directory moved/deleted
     return fs.readdirSync(dir)
       .filter(f => f.toLowerCase().endsWith('.xml'))
@@ -1933,7 +1938,8 @@ ipcMain.handle('read-file', (_event, filePath: string) => {
 const GENIE_CACHE_VERSION = 1
 const GENIE_CACHE_FILE = path.join(app.getPath('userData'), 'genie-cache.json')
 
-function computeGenieFingerprint(dir: string): string {
+function computeGenieFingerprint(rawDir: string): string {
+  const dir = expandHome(rawDir)
   // Sorted `name:mtimeMs:size` segments joined with `|`. Sorting makes the
   // result stable regardless of directory iteration order. Including size
   // alongside mtime catches the edge case where the OS rounds mtime to
@@ -1964,12 +1970,22 @@ ipcMain.handle('genie-cache:load', (_e, dir: string): unknown[] | null => {
   }
 })
 
-ipcMain.handle('genie-cache:save', (_e, dir: string, zones: unknown[]): boolean => {
+// The folder's fingerprint on its own (a stat per XML file, a few ms), so an
+// open map can notice a folder updated while Lichborne runs (Genie's own
+// updater, a git pull) without re-reading the 12 MB parse cache (v1.1.0).
+ipcMain.handle('genie-cache:fingerprint', (_e, dir: string): string => {
+  try { return dir ? computeGenieFingerprint(dir) : '' } catch { return '' }
+})
+
+ipcMain.handle('genie-cache:save', (_e, dir: string, zones: unknown[], fingerprint?: string): boolean => {
   try {
     const payload = {
       version: GENIE_CACHE_VERSION,
       dir,
-      fingerprint: computeGenieFingerprint(dir),
+      // The fingerprint the renderer took BEFORE parsing, when it sends one:
+      // a file changed mid-parse then fails the next load's check and is
+      // re-read, where a fingerprint taken now would vouch for stale zones.
+      fingerprint: typeof fingerprint === 'string' && fingerprint ? fingerprint : computeGenieFingerprint(dir),
       zones,
     }
     fs.writeFileSync(GENIE_CACHE_FILE, JSON.stringify(payload), 'utf-8')
@@ -2048,9 +2064,30 @@ function lichDirFrom(lichPath: string): string {
   return path.dirname(expandHome(lichPath))
 }
 
-ipcMain.handle('find-lich-map-file', (_e, lichPath: string, family?: 'DR' | 'GS4'): { jsonPath: string; mapsDir: string } | null => {
+// Graph map (v1.1.0): what Lich's own data files say is where. The renderer
+// names the install; the folder is composed HERE (expandHome + path.join live
+// in main, pitfall #100). Read-only, cached by file time, never throws: a file
+// that is missing or broken is reported per file in the result.
+ipcMain.handle('lich:map-data', async (_e, lichPath: string): Promise<MapDataResult> => {
+  if (!lichPath) return { rows: [], files: [] }
+  return readLichMapData(path.join(lichDirFrom(lichPath), 'scripts', 'data'))
+})
+// Just the files' sizes and times, so an open map can ask "did a dr-scripts
+// update change them?" cheaply each time it is shown (v1.1.0).
+ipcMain.handle('lich:map-data-stamp', async (_e, lichPath: string): Promise<string> => {
+  if (!lichPath) return ''
+  return lichMapDataStamp(path.join(lichDirFrom(lichPath), 'scripts', 'data'))
+})
+
+ipcMain.handle('find-lich-map-file', (_e, lichPath: string, family?: 'DR' | 'GS4'): { jsonPath: string; mapsDir: string; stamp: string } | { missing: 'lich' } | null => {
   if (!lichPath) return null
   const lichDir = lichDirFrom(lichPath)
+  // Lich itself isn't here (the default path on a computer without Lich:
+  // `C:\Ruby4Lich5\Lich5\lich.rbw`, or `~/Lich5/lich.rbw` on macOS and Linux,
+  // expanded above). Said apart from "no map file yet", so a new player is told
+  // the Lich Map needs Lich, not that a map-*.json is missing from a folder
+  // they don't have.
+  if (!fs.existsSync(expandHome(lichPath)) && !fs.existsSync(path.join(lichDir, 'lich.rbw'))) return { missing: 'lich' }
   const mapsDir = path.join(lichDir, 'maps')
   // Scan subdirs under data/ for the highest-sequence map-*.json. Lich saves
   // maps to `File.join(DATA_DIR, XMLData.game)` (map_base.rb) — one directory
@@ -2076,11 +2113,13 @@ ipcMain.handle('find-lich-map-file', (_e, lichPath: string, family?: 'DR' | 'GS4
           const m = /^map-(\d+)\.json$/i.exec(f)
           if (!m) return []
           const fp = path.join(dir, f)
-          try { return [{ fp, seq: parseInt(m[1], 10), mtime: fs.statSync(fp).mtimeMs }] } catch { return [] }
+          try { const st = fs.statSync(fp); return [{ fp, seq: parseInt(m[1], 10), mtime: st.mtimeMs, size: st.size }] } catch { return [] }
         })
       } catch { return [] }
     }).sort((a, b) => b.seq - a.seq || b.mtime - a.mtime)
-    if (candidates.length > 0) return { jsonPath: candidates[0].fp, mapsDir }
+    // `stamp` (time and size) lets the renderer tell a rewritten file at the
+    // same path from an unchanged one, so a reload re-reads only on a change.
+    if (candidates.length > 0) return { jsonPath: candidates[0].fp, mapsDir, stamp: `${Math.round(candidates[0].mtime)}:${candidates[0].size}` }
   } catch {}
   return null
 })

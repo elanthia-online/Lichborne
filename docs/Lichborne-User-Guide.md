@@ -72,13 +72,21 @@ A few ideas shape everything:
 
 ## What's New in the Latest Version
 
-**v1.0.2**
+**v1.1.0**
 
-- **Genie map walks keep up with you** (thanks, Damiza). Each step waits for the room, a
-  failed step stops the walk and says why, Genie's map steps (`rt west`, `script autoclimbup`)
-  work, and `#goto bank` walks to a room by its note or number.
-- **Lichborne downloads the Genie maps for you.** The first time you open the Genie map,
-  click **⇩ Download and set up Genie maps** and the map opens when it finishes. Click **↻ Refresh maps** on its toolbar to get the latest later.
+- **The Graph map.** A third map view that joins the Genie maps to Lich's map. Your marker is
+  placed by room number, a **Find** box lights up every room with what you're after (forage,
+  hunting grounds, shops), **Go** walks you to the nearest one, and right-click hands the trip
+  to Lich's `go2`.
+- **Smoother zooming** on the Genie maps, most of all in maps with lumberjacking rooms like
+  Shard to Gondola.
+- **The whole world on one screen.** Switch the Graph map to **World** to see every map where
+  it sits in Elanthia, joined by roads, boats and swims. Click one to open it. **Layers ▾**
+  turns roads, boats, side maps, names, provinces and the key off and on.
+- **Maps keep up with updates.** A new Lich map, new Lich data files or changed Genie maps are
+  picked up without a restart, and **↺** on the map toolbar re-reads them all whenever you like.
+- **The right map for new players.** The map opens on the Lich Map if you have Lich, and on
+  Genie Maps (with a one-click download) if you don't.
 
 ## On the Horizon (Roadmap)
 
@@ -219,7 +227,7 @@ High-level tours of what each feature does and where to configure it. Most thing
 Lichborne plays both games. Most of this guide applies to either one. A few panels and views read something only one game sends, so Lichborne offers them only for characters in that game:
 
 - **GemStone IV only:** the **Effects** panel (your Buffs, Debuffs, Cooldowns and Active Spells, with time left), the **Encumbrance** panel, and the **Creatures** panel (each creature in the room with its health; click one to target it). Add them from a panel's **+** button.
-- **DragonRealms only:** the **Active Spells** panel, the **Genie Maps** view (there are no Genie maps for GemStone IV; the Lich Map works for both), and the **Moons** and **Spell Monitor** Experiences.
+- **DragonRealms only:** the **Active Spells** panel, the **Genie Maps** and **Graph** map views (there are no Genie maps for GemStone IV; the Lich Map works for both), and the **Moons** and **Spell Monitor** Experiences.
 - **Different in each game:** the **Experience** panel shows skills and learning for DragonRealms, and level, experience and training points for GemStone IV. In **Edit profile…**, a GemStone IV character has a **Profession** and **Level** where a DragonRealms one has a **Guild** and **Circle**.
 
 The character tab and the window title show each shard by its game code, the one Simutronics' login uses: **GS3** is GemStone IV Prime, **GSF** Shattered and **GST** Test (and **DR**, **DRX**, **DRF**, **DRT** for DragonRealms). The launcher tiles spell the names out.
@@ -370,7 +378,9 @@ Tag player names with **colors, prefixes, and notes**. Their name then lights up
 
 ### Maps
 
-Open the **Maps** button for two very different map views. Both track your current room live and are best with Lich (see the notes below each).
+Open the **Maps** button for three map views. All of them track your current room live and are best with Lich (see the notes below each).
+
+**Which one opens first.** The first time you open the map, Lichborne starts you on the one that works for you: the **Lich Map** if Lich is on your computer, otherwise **Genie Maps**, which needs no Lich and downloads in one click. A map that's missing something has a greyed button; click it anyway to see what it needs and the button to add it. After that, the map remembers whichever view you last picked.
 
 **Lich Map — native, zero setup.** Lichborne reads Lich's built-in map **artwork** straight out of your Lich installation's `maps` folder — so once your [Lich path is set](#2-set-up-lich-recommended), it just works. It shows the real map image with your current room highlighted, and it's the **most reliable tracker** because it matches by room **id**. Tip: turn on DragonRealms' room-number display (so room titles show a number like `[Town Square] (12345)`) and your marker stays locked on.
 
@@ -389,6 +399,29 @@ Open the **Maps** button for two very different map views. Both track your curre
 …and more. Arcs between rooms are colored by exit kind (cardinal / climb / door), and floating labels mark landmarks. A **legend (▤)** spells out every color and glyph. The room effects are controlled by the **Genie Map Animations** setting, which is off by default; turn it on for a livelier map. Either way, the map follows you instantly as you move, and the ring marking where you are keeps pulsing, on this map and the Lich map alike (**Epilepsy safe mode** stops the pulse).
 
 **Getting around, either view:** **left-click** a room to pin its route on the map (study it, no walking); **right-click** to actually walk there — the moves echo in your game window step-by-step. On the Genie map each step waits for the game to show the room before the next goes out; if a step fails (a shut door, you need to stand) the walk stops and tells you which step and why, and a few spots that need a Genie script stop in the room before with a note on what to do. The toolbar shows where you're headed, with **■** to stop, and taking a step yourself stops it too. Type `#goto bank` (a room's note) or `#goto 302` (its number) in the command bar to walk there on the map you're on. The walk options are in **Settings → Behavior**: steps ahead, a pause after each room, retry a failed step once, and whether each step shows in the game window. Cross-zone exits are marked **↗** — left-click to peek at the neighbouring zone, right-click to walk to the boundary (the map switches only once you've truly arrived, never racing ahead). Hover any room for its id, exits, category, and a preview of the path you'd take.
+
+**Graph — the two maps joined (DragonRealms only).** The Genie maps know where every room is drawn. Lich's map knows the room numbers, what is in each room and how long it takes to get there. The **Graph** view puts the two together. It needs both: Lich's map (it comes with Lich) and the Genie maps (the download button above). Until you have both, the **Graph** button is greyed out. Click it anyway: it shows which map is missing, with the button to add it, and becomes the Graph map by itself once both are there. It works on a direct connection too; only **Go** needs Lich running.
+
+**When the maps update.** Lich's map, Lich's data files and the Genie maps all get updated often. An open map notices: when Lich loads a new map, when you switch map views, when you come back to the window, and (for the Graph map's Find) when you click into the Find box. It re-reads only what changed. Lich updates its files from its repository as it starts, which can be after the map has already read them; if something new doesn't show up yet, press **↺** on the map toolbar. It re-reads everything from disk: Lich's map, and on Genie Maps and Graph the Genie maps and Lich's data files too. **↻ Refresh maps** is different: it downloads the latest Genie maps.
+
+Everything you click is in two rows above the map: the top row picks the map and what's drawn on it, the second is for finding things. What it reports (room counts, what Find found, a Genie walk in progress) is in the line under the map. It has two levels, switched at the left of the top row:
+
+- **Zone** is one map, drawn exactly like the Genie map, with more on top:
+  - **Your marker is placed by room number**, so it can't land on the wrong one of forty rooms with the same name.
+  - **Find.** Type what you're after ("jadice flower", "rats", "bank", "gem shop crossing") and pick it from the list. Every room that has it lights up, the rest of the map dims, and the line under the map says how many there are and which is nearest. It knows forage items, hunting grounds (with rank ranges where Lich's files give them), town services, shrines, mining and lumber areas, and climbing and swimming spots. Click the ✕ on the name to stop.
+  - **Go ▸** (beside the name you found) has Lich walk you there with `go2`: to the nearest one if there are several, judged by Lich's own route times. It needs a Lich connection, and Lich has to know where you are (move or LOOK if it's greyed out). Type `;k go2` to stop.
+  - **Show: Lich links** draws dashed lines for ways Lich knows that Genie doesn't draw. **Show: Beyond** frames a room that leads to rooms Lich has mapped past the edge of this Genie map and puts how many on its corner. A tick means it's on.
+  - The zone list, ◆ (follow me), ⊡ (fit) and ▤ (legend) are the Genie map's, on the same bar. To change the Genie maps folder or refresh the maps, use the **Genie Maps** view.
+  - **Point at a room** for its Lich room number and what's there.
+  - **Right-click a room to go there.** If you're connected through Lich, Lich's `go2` walks you, across maps too (type `;k go2` to stop it). Without Lich, or for a room Lich doesn't know, the Genie map's own walk is used.
+- **World** shows every map as a bubble where it really sits in Elanthia, on a drawing of the five provinces.
+  - **The circles.** Each bubble is one Genie map: the more rooms it has, the bigger it is, and its colour is its province. The big faint circles are islands, with the island's town on top. The green rings are you.
+  - **The lines** are roads between towns, one line for each pair. A town's own gates, tunnels and temple count as part of the town, so the roads inside a town only appear once you zoom in. Boats and other rides (named, like the *Skirr'lolasu*) are thin dashed curves; a swim or climb that needs Athletics is a blue dashed line. Point at a map to see every one of its own connections, portals included.
+  - **The key** along the bottom says what each circle and line means.
+  - **Layers ▾** (top right) turns parts of the world off and on: Roads, Boats & rides, Side maps, Town names, Map names, Water & regions, Provinces and the Key. Turn off **Side maps** for a clean picture of just the towns and the big maps. Everything starts on, and your choices are kept for that character.
+  - Point at a map to see how many zones away it is and in which direction, and click it to open it. The Find box lights up the maps that have what you're looking for. Scroll to zoom (zooming in spreads the maps apart, town names appear, and further in each map shows its name), drag to move, and click a place name to open its Elanthipedia page. Maps with no place on the land (event grounds, arenas) are under **Elsewhere**.
+
+Lich's map doesn't have every room the Genie maps do (about one in six is missing, mostly places Lich hasn't mapped and mazes of identical rooms). Those rooms still work the way they do on the Genie map. The world's layout follows Elanthipedia's Zone map and Travel map; it's a picture of the world, not a survey, so treat "3 zones away" as a guide.
 
 *(Both views rely on Lich map data. Coming from Genie? The Genie XML maps often live in your Lich `maps` folder already — point the Genie view there.)*
 
@@ -648,7 +681,8 @@ Lich is the **recommended** way to play — it unlocks the map, timers, variable
 | Import wizard · Transfer | ✅ | ✅ |
 | Moons Experience | ✅ (with `;moonwatch`) | ❌ waits for the moonwatch feed |
 | Spell Monitor Experience | ✅ | ✅ |
-| Lich Map · Genie Maps | ✅ | ❌ (needs Lich map data) |
+| Genie Maps (with map walking) | ✅ | ✅ (download the Genie maps from the map) |
+| Lich Map · Graph map | ✅ | ⚠️ need Lich installed for its map; Graph's Go needs Lich running |
 | Variables · Scripts · Profiles (Lich Dashboard) | ✅ | ❌ (Lich only) |
 | Spell/buff timers, `go2` walking, repository | ✅ | ❌ (Lich only) |
 
@@ -819,7 +853,7 @@ Lichborne keeps a clean, dated **plain-text log** of every session — the game 
 - **Lich won't launch and says the Ruby and Lich paths look swapped (or, in older builds, `spawn EFTYPE`)?** The Ruby path must point at the Ruby program (`rubyw.exe` or `ruby.exe` on Windows) and the Lich path at `lich.rbw`. Wherever a pair is reversed, the editor shows a warning and a **Swap them** button: the default install and each **Lich install by game** row in **⚙ Lich Setup**, and a character's own install under its tile's **⋯ → Edit profile… → Lich install**. The launch message says which of those the character uses.
 - **Windows: "Ruby was not found at …\current\bin\ruby.exe"?** `current` is the shortcut the Ruby for Lich installer keeps to your newest Ruby, and it's missing (installs older than the 4.0.9 installer don't have it) or points at a Ruby that was removed. Open **⚙ Lich Setup** and click **↺ Auto-detect**, which picks your newest Ruby folder instead, or reinstall Ruby for Lich to put the shortcut back. If Auto-detect finds nothing, its warning links the Lich install guide.
 - **Linux/Mac: Lich won't launch from Lichborne but runs in a terminal?** Point the Ruby path at the **full rbenv path** (`~/.rbenv/shims/ruby`) — apps launched from the desktop don't see your shell's PATH. Auto-detect does this for you.
-- **Map marker stuck?** The Lich Map tracks by room id and is most reliable — turn on DR's room-number display so titles show a number like `[Town Square] (12345)`. The Genie Map matches by room name + description (its data has no ids), so in areas full of identically-named rooms it can briefly lag. A **`LOOK`** resyncs either map.
+- **Map marker stuck?** The Lich Map tracks by room id and is most reliable — turn on DR's room-number display so titles show a number like `[Town Square] (12345)`. The Genie Map matches by room name + description (its data has no ids), so in areas full of identically-named rooms it can briefly lag. The **Graph** map places you by room number on the Genie layout, which settles those areas when Lich knows the room. A **`LOOK`** resyncs any of them.
 - **Hand bar says "Empty" but you're holding something?** The common cause was fixed in v0.13.3. For rare genuine gaps (e.g. spell-summoned items DR doesn't announce), a **`GLANCE`** always resyncs your hands.
 - **Room descriptions came back after updating Lich to 5.23.0?** Lichborne follows your `FLAG DESCRIPTION` setting on either stream, but it learns it from the game's answer — type `FLAG` (or `FLAG DESCRIPTION OFF`) once after logging in and they stay off. Lich's `;display descflag on` also works, and the two don't fight.
 - **A door, a sign or a moon offered "Add as a contact"?** Fixed in v0.21.0: only players get the people items; everything else gets Look.

@@ -8,11 +8,11 @@
 [![Discord](https://img.shields.io/badge/Discord-join%20for%20help-5865F2?logo=discord&logoColor=white)](https://discord.gg/ZDkXCeR72J)
 
 > [!NOTE]
-> **Lichborne 1.0 is out, and it now plays GemStone IV as well as DragonRealms.** Your characters from both games live in one launcher, side by side.
+> **Lichborne 1.1 is out, with the Graph map:** the Genie maps and Lich's map joined into one, and the whole of Elanthia on a single view. Since 1.0, Lichborne plays GemStone IV as well as DragonRealms, with your characters from both games side by side in one launcher.
 
 Free, open source, and built by players who've used Wrayth, Genie and Frostbite for years. It works great with [Lich5](https://github.com/elanthia-online/lich-5), and it also connects straight to the game if you don't use Lich.
 
-**[⬇ Download Lichborne 1.0](https://github.com/elanthia-online/Lichborne/releases/latest)** · [Install steps](#install) · [User Guide](docs/Lichborne-User-Guide.md)
+**[⬇ Download Lichborne 1.1](https://github.com/elanthia-online/Lichborne/releases/latest)** · [Install steps](#install) · [User Guide](docs/Lichborne-User-Guide.md)
 
 <!-- A screenshot belongs here: a real layout with game text, a few panels and
      the vitals bar says more than anything below. -->
@@ -41,6 +41,7 @@ Free, open source, and built by players who've used Wrayth, Genie and Frostbite 
 - **Slash commands.** Type `/` to see them all. Add a highlight mid-hunt with `/highlight add "goblin" red`, or hide spam with `/mute add "swirling fog"`.
 - **Lich, out in the open.** See and control your running scripts, edit your Lich variables, and follow yourself on the Lich Map.
 - **Genie Maps** (DragonRealms). Lichborne downloads the Genie maps team's maps for you. Right-click a room to walk there one step at a time, or type `#goto bank`.
+- **The Graph map** (DragonRealms). The Genie maps and Lich's map, joined. Type "jadice flower" or "bank" and every room that has it lights up, and **Go** walks you to the nearest one with Lich. Zoom out and see the whole of Elanthia, with the roads, boats and swims between its maps.
 - **Your setup is just files.** Layouts, highlights, macros and themes save per character as plain files you can back up or move. **Transfer** copies a whole setup to another character.
 - **Catch Me Up (optional AI).** Back from a break? Ask what you missed: who talked to you, what you fought, what you learned. Uses your own Anthropic key, is off until you turn it on, and never sends commands to the game. [What it sends](AINOTICE.md).
 
@@ -139,7 +140,7 @@ On a Mac, use `Cmd` for zoom. Set your own macro keys in **Automations**.
 
 - **No code signing yet.** That's why Windows shows SmartScreen and macOS needs the one-time command.
 - **macOS builds are for Apple Silicon only.** Need Intel? Ask on [Discord](https://discord.gg/ZDkXCeR72J).
-- **A few views are DragonRealms-only:** Moons, Spell Monitor and Genie Maps. The [User Guide](docs/Lichborne-User-Guide.md#dragonrealms-and-gemstone-iv) lists what each game gets.
+- **A few views are DragonRealms-only:** Moons, Spell Monitor, Genie Maps and the Graph map. The [User Guide](docs/Lichborne-User-Guide.md#dragonrealms-and-gemstone-iv) lists what each game gets.
 - **Maps follow what the game sends.** The Lich Map is the most accurate. If a map loses you, type `LOOK`.
 
 ---
@@ -162,7 +163,7 @@ Made with the DragonRealms and GemStone IV communities.
 
 **Testers** — Cirostar, Tirost, Wilhellm
 
-Special thanks to **Tysong**, who brought GemStone IV to Lichborne, to [Thires](https://github.com/Thires/SimuCoins), whose Genie SimuCoins plugin showed how that feature works, and to the Genie maps team, whose maps the Genie map view draws.
+Special thanks to **Tysong**, who brought GemStone IV to Lichborne, to [Thires](https://github.com/Thires/SimuCoins), whose Genie SimuCoins plugin showed how that feature works, and to the Genie maps team, whose maps the Genie map view draws. The Graph map's picture of the world follows [Elanthipedia](https://elanthipedia.play.net/)'s Zone map, Travel map and Ranik maps.
 
 <details>
 <summary><b>🛠 Building from source</b></summary>

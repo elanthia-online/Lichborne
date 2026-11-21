@@ -12,7 +12,11 @@
 // comments (`Augmentation # Also Utility`), and a naive line scrape would fold
 // the comment into the value.
 import { readFileSync, writeFileSync } from 'node:fs'
-import yaml from 'js-yaml'
+// js-yaml 5 has no default export (pitfall #201). The file is Ruby (Psych,
+// YAML 1.1), so it is read with the 1.1 schema plus merges, as lichMapData.ts
+// and the Lich Dashboard read Lich's YAML.
+import * as yaml from 'js-yaml'
+const SCHEMA = yaml.YAML11_SCHEMA.withTags(yaml.mergeTag)
 
 const SRC = process.argv[2] || 'C:/Ruby4Lich5/Lich5/scripts/data/base-spells.yaml'
 const OUT = 'src/renderer/spellData.ts'
@@ -35,7 +39,7 @@ const TYPE = {
   scream:     ['S', 'Scream'],
 }
 
-const doc = yaml.load(readFileSync(SRC, 'utf8'))
+const doc = yaml.load(readFileSync(SRC, 'utf8'), { schema: SCHEMA })
 const out = {}
 let skipped = []
 

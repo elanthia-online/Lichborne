@@ -39,7 +39,8 @@
 //     on) and only for the `EFFECT_CAP` nearest rooms; the pan group wears
 //     ONE of two freeze classes — `genie-anim-off` (setting off) or
 //     `genie-pan-dragging` (drag / motion / zoom).
-import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react'
+import { Fragment, useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import type { GenieZone, GenieNode } from './mapTypes'
 import { noteAliases, COLOR_LEGEND, normalizeDesc, normalizeMatchKey } from './mapTypes'
 import { useGenieWalk, type GotoResult } from '../../GenieWalkContext'
@@ -104,7 +105,7 @@ interface Props {
   /** Survives the Lich/Genie view switch, which unmounts this component.
    *  Owned by MapPanel (one per character — never share across sessions);
    *  mutated in place, so writing to it never triggers a render. */
-  persist?: { zoneId: string; level: number; prev: GenieMatch | null }
+  persist?: { zoneId: string; level: number; prev: GenieMatch | null; scale?: number }
   // Genie folder picker — surfaced inline so the view is usable standalone
   // when no folder is configured yet.
   genieMapsDir:        string
@@ -122,6 +123,52 @@ interface Props {
   // permanently wears the animation pause, so the room effects stop. The
   // camera never glides either way (v0.20.5).
   mapAnimations?:      boolean
+  /** The Graph map's extra layers (v1.1.0). Absent on the plain Genie map,
+   *  where nothing below is drawn or consulted. */
+  overlay?:            GenieOverlay
+}
+
+export type GenieMapViewProps = Props
+
+/** What the Graph map (GraphMapView) adds on top of this view. Every field is
+ *  optional and every layer is its own memo over the existing ones, so the node
+ *  layer and its stable callbacks are untouched (pitfall #106).
+ *
+ *  `zoneId` says which zone `tints` / `links` / `beyond` were built for; they
+ *  are ignored while another zone is showing, so a stale set can never paint on
+ *  the wrong map. Callbacks are read through a ref: they may change identity
+ *  every render without rebuilding anything here. */
+export interface GenieOverlay {
+  /** The player's room by the GAME's room number, when Lich knows it and the
+   *  bridge maps it to one node. Replaces the title/description/exits matching
+   *  while present; the same object must be passed for the same room. */
+  exact?:   GenieMatch | null
+  zoneId?:  string
+  /** Lens colours: node id → CSS colour. */
+  tints?:   Map<number, string> | null
+  /** Dim everything the lens didn't colour. */
+  fade?:    boolean
+  /** Links Lich has that Genie doesn't draw. */
+  links?:   readonly { from: number; to: number; conditional: boolean }[] | null
+  /** Rooms Lich knows beyond this map: node id → how many hang off it. */
+  beyond?:  Map<number, number> | null
+  /** Right-click on a room. Return true when handled (the Graph map sends
+   *  `;go2`); false falls through to the Genie walker. */
+  walkTo?:  (zone: GenieZone, node: GenieNode) => boolean
+  /** Extra facts for a room's hover card, each a short label and its value
+   *  (drawn as a second labelled block under the Genie facts). */
+  hoverLines?: (zone: GenieZone, node: GenieNode) => { label: string; text: string }[]
+  /** What right-click does, when it isn't the Genie walk ("Lich walks you here…"). */
+  walkHint?: (zone: GenieZone, node: GenieNode) => string | null
+  /** Told which zone and level are showing, so the layers can be built for it. */
+  onZone?:  (zoneId: string, level: number) => void
+  /** Ask the view to show a zone (the world view's click). A new `seq` repeats the ask. */
+  showZone?: { zoneId: string; seq: number } | null
+  /** Drawn inside the Graph map: no toolbar, subbar or footer of our own. The
+   *  zone list and navigation buttons are portaled into `navSlot` (the Graph
+   *  map's bar) once it exists. */
+  embedded?: boolean
+  navSlot?:  HTMLElement | null
 }
 
 interface Transform { x: number; y: number; scale: number }
@@ -445,15 +492,42 @@ function getMoteContrastColor(hex: string): string {
     : `color-mix(in srgb, ${hex} 25%, #ffffff)`  // dark bg → light motes
 }
 
-// Tool glyphs — small centered icon rendered on the rect for gathering
-// rooms. The trailing U+FE0E ("text variation selector") forces text
-// presentation in browsers that might otherwise render these as colored
-// emoji. Stubs always win — a stub-AND-mining room shows ↗, not the
-// pickaxe, because the cross-zone identity is more important than the
-// resource category.
-const TOOL_GLYPHS: Record<string, string> = {
-  '#993300': '⛏︎', // Mining — pickaxe (U+26CF)
-  '#008000': '🪓︎', // Lumberjacking — axe (U+1FA93)
+// Tool icons — a small centred icon on the rect of a gathering room: a pickaxe
+// for Mining, an axe for Lumberjacking. Stubs always win — a stub-AND-mining
+// room shows ↗, not the pickaxe, because the cross-zone identity is more
+// important than the resource category.
+//
+// DRAWN AS SHAPES, NEVER AS CHARACTERS (v1.1.0, pitfall #204). They used to be
+// the text '⛏︎' and '🪓︎' (U+26CF / U+1FA93 + the text-presentation selector).
+// No ordinary text font has an axe, and Chromium re-shapes SVG text whenever
+// the zoom scale changes, so on every wheel step it searched the system fonts
+// for one, and that dragged every other piece of text on the map down with it:
+// zooming the Shard to Gondola map (25 axes) cost about 250 ms a frame against
+// 17 ms with the axes gone (tmp-graph-map/perf, "svg text" probe). A path has
+// no font to look for, and looks the same on every platform.
+type ToolKind = 'pickaxe' | 'axe'
+const TOOL_OF_COLOR: Record<string, ToolKind> = {
+  '#993300': 'pickaxe', // Mining
+  '#008000': 'axe',     // Lumberjacking
+}
+// In a box about 5 units across, centred on 0,0 (the size the glyphs were).
+// A handle from bottom-left to top-right, and the head across its top end.
+const TOOL_PATHS: Record<ToolKind, { stroke: string; fill?: string }> = {
+  // The head is a curve across the handle's top end, bowed away from it.
+  pickaxe: { stroke: 'M-2.1,2.1L1.1,-1.1 M-0.5,-2.6Q1.9,-1.9 2.6,0.5' },
+  // A blade on the upper-left of the handle's top: narrow where it meets the
+  // handle, flaring out to a curved cutting edge.
+  axe:     { stroke: 'M-2.1,2.1L1.4,-1.4', fill: 'M0.3,-0.3L-1.8,-1.2Q-1.6,-2.6 -0.2,-2.9L1.0,-1.0Z' },
+}
+/** One tool icon at x,y, in map units. Hoisted (UX #4) and memo-free: static. */
+function ToolIcon({ kind, x, y, color }: { kind: ToolKind; x: number; y: number; color: string }) {
+  const p = TOOL_PATHS[kind]
+  return (
+    <g transform={`translate(${x} ${y})`} pointerEvents="none">
+      <path d={p.stroke} fill="none" stroke={color} strokeWidth={0.75} strokeLinecap="round" />
+      {p.fill && <path d={p.fill} fill={color} stroke={color} strokeWidth={0.3} strokeLinejoin="round" />}
+    </g>
+  )
 }
 
 // Aura modifiers — applied as a class on the aura rect itself,
@@ -597,7 +671,11 @@ export default function GenieMapView({
   genieMapsDir, genieLoading, genieReady, genieProgress,
   onPickGenieFolder, onClearGenieFolder, mapAnimations = false, persist,
   managedMaps = null, usingManagedMaps = false, genieJob = null, onDownloadGenieMaps,
+  overlay,
 }: Props) {
+  // The overlay's callbacks, read at call time (see GenieOverlay).
+  const overlayRef = useRef(overlay)
+  useEffect(() => { overlayRef.current = overlay })
   // SEEDED FROM MapPanel's persist ref, not from nothing. Switching to the Lich
   // map UNMOUNTS this view (MapPanel renders it conditionally), so a fresh
   // mount used to lose both the displayed zone and — worse — the resolver's
@@ -614,7 +692,9 @@ export default function GenieMapView({
   // would add ~1000 SVG nodes per CHARACTER for anyone parked on the Lich map.
   const [currentZoneId, setCurrentZoneId] = useState<string>(() => persist?.zoneId ?? '')
   const [currentLevel,  setCurrentLevel]  = useState<number>(() => persist?.level ?? 0)
-  const [transform,     setTransform]     = useState<Transform>({ x: 0, y: 0, scale: 1 })
+  // The zoom comes back from the persist ref too (centring on you on mount keeps
+  // it; only browsing a zone you're not in fits that zone).
+  const [transform,     setTransform]     = useState<Transform>(() => ({ x: 0, y: 0, scale: persist?.scale ?? 1 }))
   const [selectedId,    setSelectedId]    = useState<number | null>(null)
   const [hoveredId,     setHoveredId]     = useState<number | null>(null)
   const [tooltipPos,    setTooltipPos]    = useState<{ x: number; y: number } | null>(null)
@@ -647,6 +727,9 @@ export default function GenieMapView({
   // v1.0.2: walks run in this character's GameWindow (genieWalk.ts), not here,
   // so closing the map or browsing another zone doesn't stop one.
   const walkApi = useGenieWalk()
+  // Read by the right-click handler, whose identity must not change (pitfall #106).
+  const walkApiRef = useRef(walkApi)
+  useEffect(() => { walkApiRef.current = walkApi })
 
   useEffect(() => {
     // Clear UI selection state — without this, a node id selected
@@ -666,6 +749,12 @@ export default function GenieMapView({
   useEffect(() => {
     if (persist) { persist.zoneId = currentZoneId; persist.level = currentLevel }
   }, [currentZoneId, currentLevel, persist])
+  // And the zoom (a plain write to a ref, so nothing re-renders for it).
+  useEffect(() => { if (persist) persist.scale = transform.scale }, [transform.scale, persist])
+
+  // Graph map: say which zone is showing. (The other half, showing a zone it
+  // asks for, sits after the auto-switch effect below: order matters there.)
+  useEffect(() => { overlayRef.current?.onZone?.(currentZoneId, currentLevel) }, [currentZoneId, currentLevel])
 
   // UI hover/selection reset on level change. Selection or hover may
   // point to a room that's no longer visible on the new floor; if that
@@ -793,27 +882,33 @@ export default function GenieMapView({
   // twice for one room. Re-resolve only when an input actually changed (pool
   // identity, desc, or exits). pool/desc/exits all derive from the same
   // roomState, so they're coherent per render.
-  const lastResolveRef = useRef<{ pool: GenieMatch[]; desc: string; exits: string } | null>(null)
+  const lastResolveRef = useRef<{ pool: GenieMatch[]; desc: string; exits: string; exact: GenieMatch | null } | null>(null)
+  // Graph map only: the room number settled which node this is, so the ladder
+  // below isn't asked. When Lich doesn't know the room it is null again and the
+  // ladder resumes from the breadcrumb the exact matches left behind.
+  const exactMatch = overlay?.exact ?? null
   useEffect(() => {
     const exitsKey = (roomExits ?? []).join(',')
     const last = lastResolveRef.current
-    if (last && last.pool === pool && last.desc === roomDesc && last.exits === exitsKey) return
-    lastResolveRef.current = { pool, desc: roomDesc, exits: exitsKey }
-    const { match, staleCount } = resolveGenieRoom(
-      pool,
-      normalizeDesc(roomDesc),
-      liveExitSet(roomExits),
-      prevLocationRef.current,
-      sourceFileToZoneId,
-      staleCountRef.current,
-    )
+    if (last && last.pool === pool && last.desc === roomDesc && last.exits === exitsKey && last.exact === exactMatch) return
+    lastResolveRef.current = { pool, desc: roomDesc, exits: exitsKey, exact: exactMatch }
+    const { match, staleCount } = exactMatch
+      ? { match: exactMatch, staleCount: 0 }
+      : resolveGenieRoom(
+          pool,
+          normalizeDesc(roomDesc),
+          liveExitSet(roomExits),
+          prevLocationRef.current,
+          sourceFileToZoneId,
+          staleCountRef.current,
+        )
     staleCountRef.current = staleCount
     // Advance the breadcrumb only on a real (non-null) match so a transient
     // unmatched title (unmapped zone) doesn't wipe it.
     if (match) prevLocationRef.current = match
     if (match && persist) persist.prev = match
     setCurrentLocation(curr => (curr === match ? curr : match))
-  }, [pool, roomDesc, roomExits, sourceFileToZoneId, persist])
+  }, [pool, roomDesc, roomExits, sourceFileToZoneId, persist, exactMatch])
 
   // SELF-HEAL. Two ways the displayed zone can end up pointing at nothing: a
   // fresh mount before the first resolve lands, and a cross-zone stub whose
@@ -846,13 +941,33 @@ export default function GenieMapView({
   // location, so the first time we see any non-null `currentLocation` it
   // differs and we apply it.
   const lastLocationRef = useRef<typeof currentLocation>(null)
+  // Graph map: a zone was asked for before the player's own room was first
+  // found. That first find must not pull the view away from the asked zone.
+  const askHoldRef = useRef(false)
   useEffect(() => {
     if (!currentLocation) return
     if (currentLocation === lastLocationRef.current) return
     lastLocationRef.current = currentLocation
+    if (askHoldRef.current) { askHoldRef.current = false; return }
     setCurrentZoneId(currentLocation.zone.id)
     setCurrentLevel(currentLocation.node.z)
   }, [currentLocation])
+
+  // Graph map: show the zone the world view asked for. Declared AFTER the
+  // auto-switch effect on purpose: effects run in order, so on a fresh mount
+  // the player's zone is applied first and the asked zone lands on top of it.
+  // Walking afterwards switches back to your own zone, the same as it does
+  // when you browse a zone from the list.
+  const askedZone = overlay?.showZone?.zoneId, askedSeq = overlay?.showZone?.seq
+  useEffect(() => {
+    if (!askedZone) return
+    const z = zones.get(askedZone)
+    if (!z) return
+    if (lastLocationRef.current === null) askHoldRef.current = true
+    setCurrentZoneId(askedZone)
+    const levels = z.nodes.map(n => n.z)
+    setCurrentLevel(levels.length ? Math.min(...levels) : 0)
+  }, [askedSeq]) // eslint-disable-line react-hooks/exhaustive-deps -- a new seq is the ask; the zone rides with it
 
   // Motion-detect: while the player is travelling, `inMotion` is true and the
   // animated per-category effects are not rendered at all (see `showEffects`).
@@ -1137,6 +1252,10 @@ export default function GenieMapView({
   // way a drag does (see `showEffects` and the freeze classes). It once also
   // switched off the camera glide, which no longer exists (v0.20.5).
   const [zooming, setZooming] = useState(false)
+  // The same fact as a ref, for the hover handler (which must stay `[]`-stable,
+  // pitfall #106), and the map's screen position measured once per wheel burst.
+  const zoomingRef = useRef(false)
+  const zoomRectRef = useRef<DOMRect | null>(null)
   // The SVG's layout size, cached by the ResizeObserver below so a memo that
   // culls by viewport never reads clientWidth during render (B551 rework: that
   // read forced a layout on every wheel tick and made zooming stutter).
@@ -1184,17 +1303,27 @@ export default function GenieMapView({
     if (!el) return
     const handler = (e: WheelEvent) => {
       e.preventDefault()
-      const rect = el.getBoundingClientRect()
+      // Measure the map's position once per burst, not per notch:
+      // getBoundingClientRect is a forced layout whenever React has committed
+      // since the last frame, which during a zoom is every frame (pitfall #203).
+      // The map doesn't move on screen while the wheel turns.
+      const rect = zoomRectRef.current ?? (zoomRectRef.current = el.getBoundingClientRect())
       const mx = e.clientX - rect.left
       const my = e.clientY - rect.top
-      // Manual zoom disables follow-mode — same reasoning as drag. Both of
-      // these are idempotent: React bails out of a re-render when the value is
+      // Manual zoom disables follow-mode — same reasoning as drag. These are
+      // idempotent: React bails out of a re-render when the value is
       // unchanged, so re-setting them per event during a burst is free after
-      // the first one.
+      // the first one. Hover ends with the zoom (the card would otherwise sit
+      // at a stale spot while rooms slide past under the cursor).
       setFollowPlayer(false)
       setZooming(true)
+      if (!zoomingRef.current) { zoomingRef.current = true; setHoveredId(null); setTooltipPos(null) }
       if (zoomQuietRef.current) clearTimeout(zoomQuietRef.current)
-      zoomQuietRef.current = setTimeout(() => setZooming(false), 180)
+      zoomQuietRef.current = setTimeout(() => {
+        zoomingRef.current = false
+        zoomRectRef.current = null
+        setZooming(false)
+      }, 180)
 
       // Fold this notch into the pending accumulator (see the ref decls).
       const step = e.deltaY < 0 ? 1.15 : 1 / 1.15
@@ -1391,6 +1520,13 @@ export default function GenieMapView({
     e.stopPropagation()
     const { activeZone: zone, currentLocation: loc, currentZoneId: zoneId, sendWalkPath: walk } =
       walkCtxRef.current
+    // Graph map: Lich walks it (`;go2`) when it knows the room. That works from
+    // anywhere, so it is asked before the "are you on this map" checks below.
+    // A Genie walk already running is stopped: two walkers must not both steer.
+    if (zone && overlayRef.current?.walkTo?.(zone, node)) {
+      if (walkApiRef.current?.status) walkApiRef.current.stop()
+      return
+    }
     if (!loc) return
     if (loc.zone.id !== zoneId) return
     if (loc.node.id === node.id) return
@@ -1410,7 +1546,7 @@ export default function GenieMapView({
     // scrolls under a stationary cursor, firing a storm of enter/leave events
     // (the `pointerout` cost in profiling); processing them just churns
     // re-renders for hover state the player isn't actually driving.
-    if (dragRef.current || inMotionRef.current) return
+    if (dragRef.current || inMotionRef.current || zoomingRef.current) return
     const svg = svgRef.current
     if (!svg) return
     const rect = svg.getBoundingClientRect()
@@ -2200,29 +2336,98 @@ export default function GenieMapView({
               style={{ userSelect: 'none' }}
             >↗</text>
           )}
-          {!stub && node.color && TOOL_GLYPHS[node.color] && (
-            // Tool glyph — pickaxe for Mining, axe for Lumberjacking.
-            // Sized roughly half the stub glyph (5px vs 10px) so the
-            // tool reads as a small inset marker, not a dominant
-            // category banner like the cross-zone arrow. White fill
-            // so it reads on both the sienna and green room colors.
-            // Stubs preempt this slot so a cross-zone exit in a
-            // mining cluster shows ↗, not the pickaxe.
-            <text
-              x={node.x}
-              y={node.y}
-              fontSize={5}
-              fill="#ffffff"
-              textAnchor="middle"
-              dominantBaseline="central"
-              pointerEvents="none"
-              style={{ userSelect: 'none' }}
-            >{TOOL_GLYPHS[node.color]}</text>
+          {!stub && node.color && TOOL_OF_COLOR[node.color] && (
+            // Tool icon — pickaxe for Mining, axe for Lumberjacking.
+            // About half the stub glyph's size so the tool reads as a
+            // small inset marker, not a dominant category banner like
+            // the cross-zone arrow. White so it reads on both the sienna
+            // and green room colours (baked, like the room colours).
+            // Stubs preempt this slot so a cross-zone exit in a mining
+            // cluster shows ↗, not the pickaxe. Shapes, not text: see
+            // TOOL_PATHS.
+            <ToolIcon kind={TOOL_OF_COLOR[node.color]} x={node.x} y={node.y} color="#ffffff" />
           )}
         </g>
       )
     })
   ), [visibleNodes, isStubNode, onNodeClick, onNodeContextMenu, onNodeHoverEnter, onNodeHoverLeave])
+
+  // ── Graph map layers (v1.1.0) ───────────────────────────────────────────
+  // Drawn only for the zone they were built for, each as its own memo ABOVE
+  // or below the node layer, never inside it. None takes pointer events, so
+  // hover, pin and walk still land on the room underneath. Nothing here
+  // animates. With no overlay all three are null.
+  const ov = overlay && overlay.zoneId === currentZoneId ? overlay : undefined
+  const ovLinks = ov?.links, ovTints = ov?.tints, ovBeyond = ov?.beyond, ovFade = !!ov?.fade
+  const graphLinks = useMemo(() => {
+    if (!ovLinks?.length) return null
+    let plain = '', cond = ''
+    for (const l of ovLinks) {
+      const a = visibleById.get(l.from), b = visibleById.get(l.to)
+      if (!a || !b) continue
+      const seg = `M${a.x},${a.y}L${b.x},${b.y}`
+      if (l.conditional) cond += seg; else plain += seg
+    }
+    if (!plain && !cond) return null
+    return (
+      <g pointerEvents="none">
+        {plain && <path d={plain} className="genie-graph-link" vectorEffect="non-scaling-stroke" />}
+        {cond && <path d={cond} className="genie-graph-link genie-graph-link--cond" vectorEffect="non-scaling-stroke" />}
+      </g>
+    )
+  }, [ovLinks, visibleById])
+  const graphTints = useMemo(() => {
+    if (!ovTints && !ovFade) return null
+    const rects: React.ReactNode[] = []
+    if (ovTints) for (const [id, colour] of ovTints) {
+      const n = visibleById.get(id)
+      if (!n) continue
+      rects.push(
+        <rect key={id} className="genie-graph-tint" x={n.x - NODE_RADIUS} y={n.y - NODE_RADIUS}
+          width={NODE_SIZE} height={NODE_SIZE} style={{ fill: colour }} vectorEffect="non-scaling-stroke" />
+      )
+    }
+    // The veil covers the drawn map and a margin, nothing more: the pan group is
+    // its own compositor layer, and a veil thousands of map-widths across made
+    // that layer (and its re-raster on every zoom step) as big as the veil.
+    const pad = 60
+    const veil = ovFade && zoneBbox
+      ? { x: zoneBbox.minX - pad, y: zoneBbox.minY - pad, w: zoneBbox.maxX - zoneBbox.minX + pad * 2, h: zoneBbox.maxY - zoneBbox.minY + pad * 2 }
+      : null
+    return (
+      <g pointerEvents="none">
+        {/* One veil dims the whole map under the lens: a single element, where
+            fading a thousand rooms one by one would restyle each of them. */}
+        {veil && <rect className="genie-graph-veil" x={veil.x} y={veil.y} width={veil.w} height={veil.h} rx={8} />}
+        {rects}
+      </g>
+    )
+  }, [ovTints, ovFade, visibleById, zoneBbox])
+  const graphBeyond = useMemo(() => {
+    if (!ovBeyond?.size) return null
+    const marks: React.ReactNode[] = []
+    for (const [id, count] of ovBeyond) {
+      const n = visibleById.get(id)
+      if (!n) continue
+      // The badge sits ON the room's top-right corner (mostly over the room),
+      // and the room gets a frame in the same colour, so it can't be read as
+      // belonging to a neighbour across the gap (Sekmeht's report: a badge
+      // centred in the gap between rooms pointed at four of them at once).
+      const bx = n.x + NODE_RADIUS - 1
+      const by = n.y - NODE_RADIUS + 1
+      marks.push(
+        <g key={id} className="genie-graph-beyond">
+          <rect className="genie-graph-beyond-frame" x={n.x - NODE_RADIUS - 1} y={n.y - NODE_RADIUS - 1}
+            width={NODE_SIZE + 2} height={NODE_SIZE + 2} rx={1.5} vectorEffect="non-scaling-stroke" />
+          <circle cx={bx} cy={by} r={2.6} vectorEffect="non-scaling-stroke" />
+          <text x={bx} y={by} fontSize={3.2} textAnchor="middle" dominantBaseline="central">
+            {count > 9 ? '+' : count}
+          </text>
+        </g>
+      )
+    }
+    return marks.length ? <g pointerEvents="none">{marks}</g> : null
+  }, [ovBeyond, visibleById])
 
   // Selected-room outline — a single overlay <rect> drawn on top of
   // nodeRects. Re-renders only when `selectedId` or the underlying node
@@ -2521,6 +2726,88 @@ export default function GenieMapView({
     )
   }
 
+  // The zone list and the navigation buttons, drawn in this view's own toolbar
+  // and subbar, or in the Graph map's bar when embedded (see the return).
+  const embedded = !!overlay?.embedded
+  const zoneSelect = (
+    <select
+      className={embedded ? 'map-select gx-zone-select' : 'map-select'}
+      aria-label="Zone"
+      title="Zone — follows you automatically as you move; pick one to browse it"
+      value={currentZoneId}
+      onChange={e => {
+        setCurrentZoneId(e.target.value)
+        const z = zones.get(e.target.value)
+        if (z) {
+          const levels = new Set(z.nodes.map(n => n.z))
+          setCurrentLevel(levels.size > 0 ? Math.min(...levels) : 0)
+        }
+      }}
+      style={embedded ? undefined : { minWidth: 200 }}
+    >
+      <option value="">— Browse a zone —</option>
+      {sortedZones.map(z => (
+        <option key={z.id} value={z.id}>{z.id}: {z.name}</option>
+      ))}
+    </select>
+  )
+  const navButtons = (
+    <>
+      <button
+        className={`map-btn${followPlayer && currentLocation ? ' map-btn--active' : ''}`}
+        onClick={centerOnCurrent}
+        disabled={!currentLocation}
+        // B336: a disabled button says WHY it's disabled.
+        title={!currentLocation
+          ? 'Take me to my current room — unavailable until your room is matched on these Genie maps (move or LOOK)'
+          : followPlayer ? 'Following — manual pan or zoom to release' : 'Take me to my current room (enables follow)'}
+      >◆</button>
+      <button className="map-btn" onClick={fitToView} title="Fit zone to view">⊡</button>
+      <button
+        className={`map-btn${showLegend ? ' map-btn--active' : ''}`}
+        onClick={() => setShowLegend(s => !s)}
+        disabled={zoneColors.length === 0 && arcCategories.length === 0 && !hasStubs}
+        title={zoneColors.length === 0 && arcCategories.length === 0 && !hasStubs
+          ? 'Legend — nothing to explain on this level (no coloured rooms, path types or cross-zone exits)'
+          : showLegend ? 'Hide the legend' : 'Show the legend (room colours, path types, cross-zone exits)'}
+      >▤</button>
+      {/* Embedded in the Graph map the walk status sits in its footer instead:
+          a bar must not change width as a walk starts and ends (pitfall #170). */}
+      {!embedded && walkApi?.status && (
+        <span className="genie-walk-status"
+              title={`Walking to ${walkApi.status.label}. Each step waits for the game to show the next room.`}>
+          <span className="genie-walk-label">→ {walkApi.status.label}</span>
+          <span className="genie-walk-count">{walkApi.status.done}/{walkApi.status.total}</span>
+        </span>
+      )}
+      {!embedded && walkApi?.status && (
+        <button className="map-btn" onClick={walkApi.stop} title="Stop the walk">■</button>
+      )}
+      {/* Embedded, a one-level zone keeps the chips' place (hidden), so the
+          Graph map's bar is the same width in every zone. */}
+      {embedded && zoneLevels.length <= 1 && (
+        <span className="map-level-chips map-level-chips--placeholder" aria-hidden="true">
+          z:<button className="map-chip" tabIndex={-1}>0</button><button className="map-chip" tabIndex={-1}>1</button>
+        </span>
+      )}
+      {zoneLevels.length > 1 && (
+        <span className="map-level-chips"
+          title="Map levels — this zone stacks some areas (upstairs, underground) on separate levels">
+          z:
+          {zoneLevels.map(z => (
+            <button
+              key={z}
+              className={`map-chip${z === currentLevel ? ' map-chip--active' : ''}`}
+              onClick={() => setCurrentLevel(z)}
+              title={z === currentLevel ? `Showing level ${z}` : `Show level ${z} of this zone`}
+              aria-pressed={z === currentLevel}
+            >{z}</button>
+          ))}
+        </span>
+      )}
+    </>
+  )
+
   return (
     // `flex: 1; min-height: 0` is inherited from `.map-canvas-wrap` —
     // we add `display: flex; flex-direction: column` to lay out the
@@ -2530,8 +2817,17 @@ export default function GenieMapView({
     // off-screen because the wrap tries to be 100% of the *parent*
     // before the parent has subtracted its own children's heights.
     <div className="map-canvas-wrap" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* Inside the Graph map (overlay.embedded) the toolbar, the subbar and
+          the footer are not drawn: the zone list and the navigation buttons go
+          into the Graph map's one bar (overlay.navSlot), and the Graph map
+          draws its own footer. The folder and Refresh buttons stay on the Genie
+          Maps view: managing the maps folder isn't this view's job. */}
+      {embedded && overlay?.navSlot && createPortal(<>{zoneSelect}{navButtons}</>, overlay.navSlot)}
       {/* Toolbar */}
-      <div className="map-toolbar genie-map-toolbar" style={{ flexShrink: 0 }}>
+      {/* One row (Sekmeht, v1.1.0): the folder, Refresh and the zone list, then
+          ◆ ⊡ ▤, the level chips and a walk's status at the right. They had a
+          second row of their own. Wraps in a narrow panel rather than clipping. */}
+      {!embedded && <div className="map-toolbar genie-map-toolbar" style={{ flexShrink: 0, flexWrap: 'wrap', rowGap: 4 }}>
         <button className="map-btn" onClick={onPickGenieFolder}
           title={`Choose the Genie maps folder (current: ${genieMapsDir})`}
           aria-label="Choose the Genie maps folder">📁</button>
@@ -2556,80 +2852,15 @@ export default function GenieMapView({
               : (genieJob ? (/\d/.test(genieJob) ? `⇩ ${genieJob}` : '⇩…') : '⇩')}
           </button>
         )}
-        <select
-          className="map-select"
-          aria-label="Zone"
-          title="Zone — follows you automatically as you move; pick one to browse it"
-          value={currentZoneId}
-          onChange={e => {
-            setCurrentZoneId(e.target.value)
-            const z = zones.get(e.target.value)
-            if (z) {
-              const levels = new Set(z.nodes.map(n => n.z))
-              setCurrentLevel(levels.size > 0 ? Math.min(...levels) : 0)
-            }
-          }}
-          style={{ minWidth: 200 }}
-        >
-          <option value="">— Browse a zone —</option>
-          {sortedZones.map(z => (
-            <option key={z.id} value={z.id}>{z.id}: {z.name}</option>
-          ))}
-        </select>
-        <span className="map-toolbar-location">
-          {currentLocation
-            ? `📍 ${currentLocation.zone.name === activeZone?.name ? 'here' : currentLocation.zone.name}`
-            : ''}
-        </span>
-      </div>
-
-      {/* Subbar — level chips + fit / center / stop-walk + legend toggle */}
-      <div className="map-subbar" style={{ flexShrink: 0 }}>
-        <button
-          className={`map-btn${followPlayer && currentLocation ? ' map-btn--active' : ''}`}
-          onClick={centerOnCurrent}
-          disabled={!currentLocation}
-          // B336: a disabled button says WHY it's disabled.
-          title={!currentLocation
-            ? 'Take me to my current room — unavailable until your room is matched on these Genie maps (move or LOOK)'
-            : followPlayer ? 'Following — manual pan or zoom to release' : 'Take me to my current room (enables follow)'}
-        >◆</button>
-        <button className="map-btn" onClick={fitToView} title="Fit zone to view">⊡</button>
-        <button
-          className={`map-btn${showLegend ? ' map-btn--active' : ''}`}
-          onClick={() => setShowLegend(s => !s)}
-          disabled={zoneColors.length === 0 && arcCategories.length === 0 && !hasStubs}
-          title={zoneColors.length === 0 && arcCategories.length === 0 && !hasStubs
-            ? 'Legend — nothing to explain on this level (no coloured rooms, path types or cross-zone exits)'
-            : showLegend ? 'Hide the legend' : 'Show the legend (room colours, path types, cross-zone exits)'}
-        >▤</button>
-        {walkApi?.status && (
-          <span className="genie-walk-status"
-                title={`Walking to ${walkApi.status.label}. Each step waits for the game to show the next room.`}>
-            <span className="genie-walk-label">→ {walkApi.status.label}</span>
-            <span className="genie-walk-count">{walkApi.status.done}/{walkApi.status.total}</span>
-          </span>
-        )}
-        {walkApi?.status && (
-          <button className="map-btn" onClick={walkApi.stop} title="Stop the walk">■</button>
-        )}
-        {zoneLevels.length > 1 && (
-          <span className="map-level-chips"
-            title="Map levels — this zone stacks some areas (upstairs, underground) on separate levels">
-            z:
-            {zoneLevels.map(z => (
-              <button
-                key={z}
-                className={`map-chip${z === currentLevel ? ' map-chip--active' : ''}`}
-                onClick={() => setCurrentLevel(z)}
-                title={z === currentLevel ? `Showing level ${z}` : `Show level ${z} of this zone`}
-                aria-pressed={z === currentLevel}
-              >{z}</button>
-            ))}
-          </span>
-        )}
+        {zoneSelect}
+        {/* No "📍 here" text (removed v1.1.0, Sekmeht): it repeated the zone
+            list, and its pin matched nothing drawn on the map. The ring marks
+            you, and ◆ takes you back to it from another zone. */}
         <span style={{ flex: 1 }} />
-      </div>
+        {/* One unit, so a narrow panel wraps the group whole instead of
+            leaving ◆ on one row and ⊡ ▤ on the next. */}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>{navButtons}</span>
+      </div>}
 
       {/* Canvas */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
@@ -2708,6 +2939,8 @@ export default function GenieMapView({
                 you ever see. Inside clusters the rects hide this layer —
                 that's where the over-pass takes over. */}
             {arcPathsUnder}
+            {/* Graph map: links Lich has that Genie doesn't draw (dashed). */}
+            {graphLinks}
             {/* Floating labels — landmark names like "Temple of Light",
                 "Barber", etc. Below nodes so room markers paint on top. */}
             {labelTexts}
@@ -2719,6 +2952,10 @@ export default function GenieMapView({
                 perceptible; inside clusters it answers "which room does
                 this arc actually connect to?" */}
             {arcPathsOver}
+            {/* Graph map: the lens (a veil, then the rooms it colours) and the
+                markers for rooms Lich knows beyond this map. */}
+            {graphTints}
+            {graphBeyond}
             {/* Healer heartbeats — PRIORITY effect: rendered whenever map
                 animations are on at all (even mid-travel), zone-wide, so a
                 healer is always findable. Cheap (healers are rare). */}
@@ -2761,6 +2998,14 @@ export default function GenieMapView({
             {selectedIndicator}
             {currentIndicator}
           </g>
+          {/* While the wheel turns, a transparent cover sits over the map.
+              Chromium re-checks what is under the cursor after every zoom step,
+              and without the cover that search walks every room in the zone
+              (measured about 9 ms a frame on a big zone); the cover is the
+              topmost thing, so the search stops at it. It also ends the hover,
+              which would otherwise fire room by room as the map slides under a
+              still cursor. Gone 180 ms after the last notch. */}
+          {zooming && <rect className="genie-zoom-cover" x={0} y={0} width="100%" height="100%" fill="transparent" />}
         </svg>
 
         {/* Hover tooltip. Floats at cursor in screen pixels (not SVG world
@@ -2813,92 +3058,71 @@ export default function GenieMapView({
           // clipping it.
           const left = Math.max(EDGE_PAD, Math.min(idealLeft, canvasW - ttW - EDGE_PAD))
           const top  = Math.max(EDGE_PAD, idealTop)
+          // The card has three blocks, split by hairlines (Sekmeht, v1.1.0: it
+          // read as "a blob of text"): the Genie facts, Lich's facts (Graph
+          // map only), and what a click does. Facts are a two-column grid, a
+          // small muted label beside its value, so the eye can scan the labels.
+          const lichFacts = activeZone ? overlay?.hoverLines?.(activeZone, hoveredNode) ?? [] : []
+          // Graph map: right-click may be Lich's `;go2`, which works from
+          // anywhere, so its hint shows even when you aren't on this map.
+          const graphHint = activeZone && !stub ? overlay?.walkHint?.(activeZone, hoveredNode) ?? null : null
+          const onThisMap = !!currentLocation && currentLocation.zone.id === currentZoneId && currentLocation.node.id !== hoveredNode.id
+          const clicks: [string, string][] = graphHint
+            ? [['Left-click', 'pin path'], ['Right-click', graphHint]]
+            : !onThisMap ? []
+            : stub ? [['Left-click', `go to ${stubZone?.name ?? stubXml ?? 'next zone'}`], ['Right-click', 'walk to boundary']]
+            : [['Left-click', 'pin path'], ['Right-click', 'walk here']]
           return (
-            <div
-              style={{
-                position: 'absolute',
-                left,
-                top,
-                maxWidth: ttW,
-                padding: '6px 9px',
-                background: 'var(--map-chrome-bg, rgba(20, 20, 22, 0.95))',
-                border: '1px solid var(--map-border, #555)',
-                borderRadius: 4,
-                fontSize: PANEL_FONT,
-                color: 'var(--map-text, #ddd)',
-                pointerEvents: 'none',
-                zIndex: 10,
-                lineHeight: 1.4,
-              }}
-            >
-              {/* Room name — primary heading */}
-              <div style={{ fontWeight: 'bold', marginBottom: 2 }}>
-                {hoveredNode.name || '(unnamed room)'}
-              </div>
-
-              {/* Map / room ID — Genie's per-zone numeric ID; useful for
-                  scripts that target specific rooms. Zone ID is the Genie
-                  XML zone attribute (e.g., 67 for Shard). */}
-              <div style={{ color: 'var(--map-text-muted, #888)', fontSize: '0.91em', marginBottom: 2 }}>
+            <div className="genie-card" style={{ left, top, maxWidth: ttW, fontSize: PANEL_FONT }}>
+              {/* Room name, then Genie's map and per-zone room number (useful
+                  for scripts that target a room; the zone id is the XML's). */}
+              <div className="genie-card-title">{hoveredNode.name || '(unnamed room)'}</div>
+              <div className="genie-card-sub">
                 Map {hoveredNode.zoneId || '?'}: {hoveredNode.zoneName || '?'} · Room #{hoveredNode.id}
               </div>
 
-              {/* Stub: amber callout naming where the boundary leads. The
-                  "what happens on click" guidance lives at the bottom of
-                  the tooltip with the regular click-to-walk hint, so this
-                  line stays purely descriptive. */}
+              {/* Stub: amber callout naming where the boundary leads. What a
+                  click does is in the last block, with the other hints. */}
               {stub && (
-                <div style={{ color: 'var(--map-arc-special, #ffb74d)', fontSize: '0.91em', marginBottom: 2 }}>
+                <div className="genie-card-stub">
                   ↗ Cross-zone exit{stubZone ? ` → ${stubZone.name}` : stubXml ? ` → ${stubXml}` : ''}
                 </div>
               )}
 
-              {/* Color category — what the Genie maps team's color
-                  convention says this room is (shop, healer, etc.). Only
-                  shown when the room has a recognized legend color. */}
-              {colorEntry && (
-                <div style={{ fontSize: '0.91em', marginBottom: 2 }}>
-                  <span style={{
-                    display: 'inline-block', width: 8, height: 8,
-                    background: hoveredNode.color, marginRight: 5,
-                    border: '1px solid var(--map-border, #555)',
-                    verticalAlign: 'middle',
-                  }} />
-                  <span style={{ color: 'var(--map-text, #ddd)' }}>{colorEntry.name}</span>
-                  <span style={{ color: 'var(--map-text-muted, #888)' }}> — {colorEntry.desc}</span>
-                </div>
-              )}
-
-              {/* Aliases — note-field entries that aren't xml stub markers.
-                  These are the alternate names Genie indexes the room by
-                  ("First Land Herald|Herald|newspaper|news stand"). */}
-              {aliasNotes.length > 0 && (
-                <div style={{ color: 'var(--map-text-muted, #888)', fontSize: '0.91em', marginBottom: 2 }}>
-                  Aliases: {aliasNotes.join(', ')}
-                </div>
-              )}
-
-              {/* Exits list — direction names from the room's arcs. Includes
-                  hidden arcs (they're walkable; we just don't draw their
-                  lines on the canvas). */}
-              {exitsLine && (
-                <div style={{ color: 'var(--map-text-muted, #888)', fontSize: '0.91em' }}>
-                  Exits: {exitsLine}
-                </div>
-              )}
-
-              {/* Action hint — what each click button does. Left-click is
-                  zone-switch for stubs and pin-a-path for regular rooms;
-                  right-click walks. Pinning doesn't teleport the displayed
-                  view across zone boundaries either — the auto-zone-switch
-                  on title change is the authoritative trigger. */}
-              {currentLocation && currentLocation.zone.id === currentZoneId && currentLocation.node.id !== hoveredNode.id && (
-                <div style={{ color: 'var(--map-text-muted, #888)', fontSize: '0.91em', marginTop: 2, fontStyle: 'italic' }}>
-                  {stub
-                    ? <>Left-click: go to {stubZone?.name ?? stubXml ?? 'next zone'}<br/>Right-click: walk to boundary</>
-                    : <>Left-click: pin path<br/>Right-click: walk here</>}
-                </div>
-              )}
+              {/* ONE grid for all three blocks, so every value starts at the
+                  same column; a hairline row (spanning both columns) sits
+                  between blocks. Blocks: the Genie facts (Type: the Genie maps
+                  team's colour convention; Aliases: note-field names that aren't
+                  xml stub markers; Exits: from the room's arcs, hidden ones too),
+                  Lich's facts (Graph map), and what a click does (left-click
+                  pins a path or opens the next zone from a stub; right-click
+                  walks; pinning never moves the view across zones, arriving does). */}
+              {(() => {
+                const genie: [string, React.ReactNode][] = []
+                if (colorEntry) genie.push(['Type', <>
+                  <span className="genie-card-swatch" style={{ background: hoveredNode.color }} />
+                  {colorEntry.name}<span className="genie-card-muted"> · {colorEntry.desc}</span>
+                </>])
+                if (aliasNotes.length > 0) genie.push(['Aliases', aliasNotes.join(', ')])
+                if (exitsLine) genie.push(['Exits', exitsLine])
+                const blocks: { rows: [string, React.ReactNode][]; quiet?: boolean }[] = [
+                  { rows: genie },
+                  { rows: lichFacts.map(f => [f.label, f.text] as [string, React.ReactNode]) },
+                  { rows: clicks, quiet: true },
+                ].filter(b => b.rows.length > 0)
+                if (blocks.length === 0) return null
+                return (
+                  <div className="genie-card-grid">
+                    {blocks.map((b, bi) => <Fragment key={bi}>
+                      {bi > 0 && <span className="genie-card-sep" />}
+                      {b.rows.map(([k, v]) => <Fragment key={k}>
+                        <span className="genie-card-k">{k}</span>
+                        <span className={`genie-card-v${b.quiet ? ' genie-card-muted' : ''}`}>{v}</span>
+                      </Fragment>)}
+                    </Fragment>)}
+                  </div>
+                )
+              })()}
             </div>
           )
         })()}
@@ -3022,10 +3246,9 @@ export default function GenieMapView({
                   </div>
                   {showPickaxe && (
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 3 }}>
-                      <span style={{
-                        flexShrink: 0, width: 12, textAlign: 'center',
-                        fontWeight: 'bold', alignSelf: 'center',
-                      }}>{TOOL_GLYPHS['#993300']}</span>
+                      <svg width={12} height={12} viewBox="-3 -3 6 6" style={{ flexShrink: 0, alignSelf: 'center' }} aria-hidden="true">
+                        <ToolIcon kind="pickaxe" x={0} y={0} color="var(--map-text, #ddd)" />
+                      </svg>
                       <span style={{ flex: 1, minWidth: 0, lineHeight: 1.35 }}>
                         <span style={{ fontWeight: 'bold' }}>Pickaxe</span>
                         <span style={{ color: 'var(--map-text-muted, #888)' }}> — Mining room</span>
@@ -3034,10 +3257,9 @@ export default function GenieMapView({
                   )}
                   {showAxe && (
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 3 }}>
-                      <span style={{
-                        flexShrink: 0, width: 12, textAlign: 'center',
-                        fontWeight: 'bold', alignSelf: 'center',
-                      }}>{TOOL_GLYPHS['#008000']}</span>
+                      <svg width={12} height={12} viewBox="-3 -3 6 6" style={{ flexShrink: 0, alignSelf: 'center' }} aria-hidden="true">
+                        <ToolIcon kind="axe" x={0} y={0} color="var(--map-text, #ddd)" />
+                      </svg>
                       <span style={{ flex: 1, minWidth: 0, lineHeight: 1.35 }}>
                         <span style={{ fontWeight: 'bold' }}>Axe</span>
                         <span style={{ color: 'var(--map-text-muted, #888)' }}> — Lumberjacking room</span>
@@ -3054,14 +3276,14 @@ export default function GenieMapView({
       {/* Footer status. fontSize is deliberately fixed px (B201) — toolbar
           chrome, not reading text; the reading surfaces (tooltip, legend) sit
           on the panel font via PANEL_FONT. Don't "fix" this to em. */}
-      <div style={{
+      {!embedded && <div style={{
         flexShrink: 0, padding: '4px 8px', fontSize: 11,
         color: 'var(--map-text-muted, #888)',
         borderTop: '1px solid var(--map-border-subtle, #333)',
       }}>
         {activeZone ? `${activeZone.name} · ${visibleNodes.length} rooms` : ''}
         {zones.size > 0 && ` · ${zones.size} zones loaded`}
-      </div>
+      </div>}
     </div>
   )
 }

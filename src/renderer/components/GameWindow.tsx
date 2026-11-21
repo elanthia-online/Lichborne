@@ -99,7 +99,7 @@ import ThemePicker from './ThemePicker'
 import SettingsPanel from './SettingsPanel'
 import SessionLogModal from './SessionLogModal'
 import ContextMenu, { type CtxItem } from './ContextMenu'
-import { SessionLichPathContext, sessionLichPath } from '../sessionLich'
+import { SessionLichPathContext, SessionUsesLichContext, sessionLichPath } from '../sessionLich'
 import { profileKey } from '../../shared/profileKey'
 import { GameLinkContext, buildLinkMenu, buildPlayerMenu, linkAtElement, hasOwnClick, noteSelectionEnded, selectionJustEnded, type GameLinkActions, type GameLinkMenu } from '../gameLinks'
 // B391: the one text context-menu builder, shared with every stream panel.
@@ -3406,7 +3406,12 @@ export default function GameWindow({
             if (stream !== 'raw' && !ROOM_STREAMS.has(stream) && lineText.trim() && !suppressSync) {
               logRecords.push({ ts: Date.now(), stream, text: lineText })
             }
-            if (/^--- Map loaded .+\.json$/i.test(lineText.trim())) setLichMapVersion(v => v + 1)
+            // Lich announces a (re)loaded map database. Since Lich 5.20.0
+            // (lich-5 #1495, map_base.rb `map_loaded_message`) a load started by
+            // a script names it: "--- go2 Map loaded …/map-1234.json". Before,
+            // DR always said "--- Map loaded …", which is all this matched, so
+            // on current Lich an open map almost never noticed a new database.
+            if (/^--- (?:\S+ )?Map loaded .+\.json$/i.test(lineText.trim())) setLichMapVersion(v => v + 1)
             // G1 Combat HUD facet: combat status (position + closest incoming
             // range) rides DR's balance/engagement lines, which arrive on the
             // `combat` stream (falling back to main only when it's unwatched) —
@@ -6956,6 +6961,7 @@ export default function GameWindow({
     <HighlightsContext.Provider value={highlightsCtxValue}>
     <ContactsContext.Provider value={contactsCtxValue}>
     <SessionLichPathContext.Provider value={lichPath}>
+    <SessionUsesLichContext.Provider value={!!session.useLich}>
     <GameLinkContext.Provider value={linkMenu}>
     <GenieWalkContext.Provider value={genieWalkCtx}>
     <div ref={gameLayoutRef} className={`game-layout${layoutMode === 'free' ? ' game-layout--free' : ''}${expAnyOpen ? ' game-layout--has-exp' : ''}`}>
@@ -7445,6 +7451,7 @@ export default function GameWindow({
     </div>
     </GenieWalkContext.Provider>
     </GameLinkContext.Provider>
+    </SessionUsesLichContext.Provider>
     </SessionLichPathContext.Provider>
     </ContactsContext.Provider>
     </HighlightsContext.Provider>
