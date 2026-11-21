@@ -751,6 +751,14 @@ export default function GenieMapView({
   }, [currentZoneId, currentLevel, persist])
   // And the zoom (a plain write to a ref, so nothing re-renders for it).
   useEffect(() => { if (persist) persist.scale = transform.scale }, [transform.scale, persist])
+  // Is there a real zoom to keep (the Graph map's "open another map at your
+  // zoom")? Not just "persist.scale is set": the effect above writes it on the
+  // very first render, from the default 1. A zoom is real once one was carried
+  // over from an earlier mount, or the scale has changed since this mount (a
+  // fit, a wheel turn). Until then a map you open is fitted.
+  const zoomKnownRef = useRef(persist?.scale !== undefined)
+  const firstScaleRef = useRef(transform.scale)
+  if (transform.scale !== firstScaleRef.current) zoomKnownRef.current = true
 
   // Graph map: say which zone is showing. (The other half, showing a zone it
   // asks for, sits after the auto-switch effect below: order matters there.)
@@ -873,6 +881,9 @@ export default function GenieMapView({
   // (`prevLocationRef`) and the cross-zone hold counter (`staleCountRef`) are
   // advanced in exactly ONE place here, deterministically, after the resolve.
   const [currentLocation, setCurrentLocation] = useState<GenieMatch | null>(() => persist?.prev ?? null)
+  // For click handlers that must keep a stable identity (pitfall #106).
+  const currentLocationRef = useRef(currentLocation)
+  currentLocationRef.current = currentLocation
   // Seeded too — this is the breadcrumb the resolution ladder walks from, and
   // losing it across a view switch is what left the map unrecoverable.
   const prevLocationRef = useRef<GenieMatch | null>(persist?.prev ?? null)
@@ -958,15 +969,40 @@ export default function GenieMapView({
   // the player's zone is applied first and the asked zone lands on top of it.
   // Walking afterwards switches back to your own zone, the same as it does
   // when you browse a zone from the list.
-  const askedZone = overlay?.showZone?.zoneId, askedSeq = overlay?.showZone?.seq
-  useEffect(() => {
-    if (!askedZone) return
-    const z = zones.get(askedZone)
-    if (!z) return
-    if (lastLocationRef.current === null) askHoldRef.current = true
-    setCurrentZoneId(askedZone)
+  // OPENING A MAP: one rule for every way in (the zone list, the world view's
+  // bubbles and "Elsewhere", an exit marker that leads to your own map), so the
+  // camera never depends on which control you used (Sekmeht: "standardize the
+  // experience"):
+  //   - your own map → your level, following you, centred on you at your zoom;
+  //   - any other map → its lowest level; the fit/center effect frames it
+  //     (Graph: your zoom, centred on its middle room; plain Genie: fitted).
+  // ⊡ fits the whole map; ◆ takes you back to yourself. A ref, so the click
+  // handlers that call it keep a stable identity (pitfall #106).
+  const openZoneRef = useRef<(zoneId: string) => void>(() => {})
+  openZoneRef.current = (zoneId: string) => {
+    const z = zones.get(zoneId)
+    if (!z) { setCurrentZoneId(zoneId); return }
+    const here = currentLocation ?? lastLocationRef.current
+    if (here && here.zone.id === zoneId) {
+      // Already showing your map and level: the effect won't run again, so
+      // centre here (the ◆ button's job, which also turns following back on).
+      if (zoneId === currentZoneId && here.node.z === currentLevel) { centerOnCurrentRef.current(); return }
+      setCurrentZoneId(zoneId)
+      setCurrentLevel(here.node.z)
+      setFollowPlayer(true)
+      return
+    }
+    setCurrentZoneId(zoneId)
     const levels = z.nodes.map(n => n.z)
     setCurrentLevel(levels.length ? Math.min(...levels) : 0)
+  }
+  const centerOnCurrentRef = useRef<() => void>(() => {})
+
+  const askedZone = overlay?.showZone?.zoneId, askedSeq = overlay?.showZone?.seq
+  useEffect(() => {
+    if (!askedZone || !zones.has(askedZone)) return
+    if (lastLocationRef.current === null) askHoldRef.current = true
+    openZoneRef.current(askedZone)
   }, [askedSeq]) // eslint-disable-line react-hooks/exhaustive-deps -- a new seq is the ask; the zone rides with it
 
   // Motion-detect: while the player is travelling, `inMotion` is true and the
@@ -1105,6 +1141,24 @@ export default function GenieMapView({
     setTransform({ scale, x: w / 2 - cx * scale, y: h / 2 - cy * scale })
   }, [zoneBbox])
 
+  // Centre the shown map at the CURRENT zoom (Graph map, see the fit/center
+  // effect below): on the room nearest the middle of the map, not the middle
+  // itself, which on a sprawling map can be empty space with no room in view.
+  const centerZoneKeepScale = useCallback(() => {
+    const svg = svgRef.current
+    if (!svg || !zoneBbox) return
+    const w = svg.clientWidth, h = svg.clientHeight
+    if (!w || !h) return
+    const mx = (zoneBbox.minX + zoneBbox.maxX) / 2
+    const my = (zoneBbox.minY + zoneBbox.maxY) / 2
+    let cx = mx, cy = my, best = Infinity
+    for (const n of visibleNodes) {
+      const d = (n.x - mx) ** 2 + (n.y - my) ** 2
+      if (d < best) { best = d; cx = n.x; cy = n.y }
+    }
+    setTransform(prev => ({ ...prev, x: w / 2 - cx * prev.scale, y: h / 2 - cy * prev.scale }))
+  }, [zoneBbox, visibleNodes])
+
   // ◆ button — "take me to my location." Switches to the player's zone if
   // we're browsing somewhere else, then centers the viewport on the player's
   // node. Also re-enables follow-mode so subsequent walks auto-track.
@@ -1139,18 +1193,38 @@ export default function GenieMapView({
       y: h / 2 - cy * prev.scale,
     }))
   }, [currentLocation, currentZoneId, currentLevel])
+  centerOnCurrentRef.current = centerOnCurrent
 
   // Fit / center when the zone or level changes. Prefer centering on the
   // player's current room (more useful "I see myself") and fall back to
   // fitting the whole zone when the player isn't in the visible zone
   // (manual zone-browsing).
   const lastFitRef = useRef<string>('')
+  const frameLaterRef = useRef(false)
+  // The same choice as the effect below, for the ResizeObserver to run once
+  // the map has a size (latest closure, so setSvgRef stays []-stable).
+  const frameNowRef = useRef<() => void>(() => {})
+  frameNowRef.current = () => {
+    const playerHere = currentLocation
+      && currentLocation.zone.id === currentZoneId
+      && currentLocation.node.z === currentLevel
+    if (playerHere) centerOnCurrent()
+    else if (overlay && zoomKnownRef.current) centerZoneKeepScale()
+    else fitToView()
+  }
   useEffect(() => {
     const key = `${currentZoneId}:${currentLevel}`
     if (lastFitRef.current === key) return
     lastFitRef.current = key
     // Wait a frame so the SVG has its layout dimensions.
     const t = setTimeout(() => {
+      // Still no size (the map view just mounted, e.g. coming from the Graph
+      // map's world view): frame it when the size arrives (the ResizeObserver
+      // in setSvgRef), or the camera stays at 0,0, somewhere off to one side
+      // of the map, and every pan/zoom is from there (Sekmeht).
+      const svg = svgRef.current
+      if (!svg || !svg.clientWidth || !svg.clientHeight) { frameLaterRef.current = true; return }
+      frameLaterRef.current = false
       // "Here" means the player is on the DISPLAYED LEVEL, not merely in the
       // displayed zone. `centerOnCurrent` is the ◆ button's "take me to my
       // location", and part of its job there is to snap the level to the
@@ -1161,11 +1235,14 @@ export default function GenieMapView({
       // (Sekmeht, on 69: Shard West Gate — "I can see the z level 1 map for a
       // second"). Browsing a level the player is not on now fits that level's
       // own content, which is what the user asked to see.
-      const playerHere = currentLocation
-        && currentLocation.zone.id === currentZoneId
-        && currentLocation.node.z === currentLevel
-      if (playerHere) centerOnCurrent()
-      else            fitToView()
+      //
+      // Graph map: browsing another map keeps your zoom and centres the map,
+      // instead of fitting it, which zoomed far out on every big map you
+      // opened from the world view (Sekmeht). Only once a zoom is known (the
+      // first map you ever open is still fitted); ⊡ fits on request. The plain
+      // Genie map keeps fitting, unchanged. The choice is `frameNowRef`
+      // (latest closure, shared with the ResizeObserver's retry).
+      frameNowRef.current()
     }, 0)
     return () => clearTimeout(t)
   }, [currentZoneId, currentLevel, fitToView, centerOnCurrent, currentLocation])
@@ -1362,7 +1439,8 @@ export default function GenieMapView({
     const ro = new ResizeObserver(() => {
       if (el.clientWidth > 0 && el.clientHeight > 0) {
         svgSizeRef.current = { w: el.clientWidth, h: el.clientHeight }
-        recenterRef.current()
+        if (frameLaterRef.current) { frameLaterRef.current = false; frameNowRef.current() }
+        else recenterRef.current()
       }
     })
     ro.observe(el)
@@ -1419,6 +1497,9 @@ export default function GenieMapView({
       if (!target) return
       const targetZone = zones.get(target)
       if (!targetZone) return
+      // A marker that leads back to the map you're standing on: show where
+      // you are, the same as opening your own map any other way.
+      if (currentLocationRef.current?.zone.id === target) { setSelectedId(null); openZoneRef.current(target); return }
 
       // Find the reciprocal entry room — the target zone's stub
       // pointing back to OUR zone — so we can position the new view
@@ -2735,14 +2816,7 @@ export default function GenieMapView({
       aria-label="Zone"
       title="Zone — follows you automatically as you move; pick one to browse it"
       value={currentZoneId}
-      onChange={e => {
-        setCurrentZoneId(e.target.value)
-        const z = zones.get(e.target.value)
-        if (z) {
-          const levels = new Set(z.nodes.map(n => n.z))
-          setCurrentLevel(levels.size > 0 ? Math.min(...levels) : 0)
-        }
-      }}
+      onChange={e => openZoneRef.current(e.target.value)}
       style={embedded ? undefined : { minWidth: 200 }}
     >
       <option value="">— Browse a zone —</option>

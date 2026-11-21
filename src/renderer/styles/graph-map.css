@@ -57,9 +57,22 @@
    zone (pitfall #170: a bar's height must not follow its content). So the chips
    keep their place in a one-level zone (hidden, see GenieMapView's navButtons),
    a Genie walk's status goes to the footer, and the group never wraps inside. */
-.gx-nav { display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap; min-width: 0; }
+/* `flex: 1 1 0` with a floor: a wrapping row decides to wrap from each item's
+   BASIS, so with a zero basis the zone list shrinks (down to its own 8em)
+   before Layers ▾ is pushed onto a second line; the floor (the zone list at
+   its smallest plus ◆ ⊡ ▤ and the level chips) still wraps a panel too narrow
+   for all of it. */
+.gx-nav { display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap; flex: 1 1 0; min-width: 210px; }
 .gx-nav:empty { display: none; }
-.gx-zone-select { flex: 0 1 15em; min-width: 8em; max-width: 15em; }
+.gx-zone-select { flex: 0 1 15em; min-width: 7em; max-width: 15em; }
+/* The layers ⚙ says a layer is hidden with a dot (tooltip gives the count). */
+.gx-layers-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--map-bg);
+  background: color-mix(in srgb, var(--accent) 60%, var(--map-text));
+}
 .gx-nav .map-level-chips--placeholder { visibility: hidden; }
 .gx-nav .map-level-chips { margin-left: 2px; }
 /* Go: the one action in the bar that sends something, so it gets the accent
@@ -79,14 +92,6 @@
 .gx-toggle::before { content: '✓'; display: inline-block; width: 1em; opacity: 0; }
 .gx-toggle--on { color: var(--map-text); }
 .gx-toggle--on::before { opacity: 1; }
-.gx-show-label {
-  margin-right: 1px;
-  font-size: 10px;
-  line-height: 1;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--map-text-muted);
-}
 .gx-seg .map-btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .gx-seg .map-btn:last-child  { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; }
 
@@ -179,6 +184,36 @@
    (--bg-raised) the off colour is --text-secondary, not the bar's muted
    --map-text-muted, which fades out on light themes there (pitfall #150). */
 .gx-layers { position: relative; display: inline-flex; }
+/* The map area. */
+.gx-stage { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* THE LAYERS ⚙ (Sekmeht: "sit down with the A− and A+").
+   Docked in a panel it is rendered INTO the panel's A− / A+ column
+   (panel-frame.css `.panel-font-controls`, a portal), so the column decides
+   its width, gap and faintness: it can't drift out of line. `order: -1` puts
+   it on top. An earlier version floated beside the column and guessed its
+   height, which came out narrower and out of line. While its list is open the
+   column stays fully visible and clickable (the list is inside it, and
+   pointing at the map would otherwise fade it to 60%).
+   In the Maps window there is no A− / A+, so it takes their corner on its own,
+   with their faintness. */
+.gx-layers--ctl { order: -1; display: flex; flex-direction: column; }
+.gx-layers--ctl .gx-cog { width: 100%; }
+.panel-font-controls:has(.gx-layers--open) { opacity: 1; pointer-events: auto; }
+.gx-root { position: relative; }
+.gx-layers--float {
+  position: absolute;
+  right: 18px;
+  bottom: 4px;
+  z-index: 6;
+  opacity: 0.15;
+  transition: opacity 0.15s ease;
+}
+.gx-root:hover .gx-layers--float { opacity: 0.6; }
+.gx-layers--float:hover, .gx-layers--float.gx-layers--open, .gx-layers--float:focus-within { opacity: 1; }
+.gx-cog { position: relative; }
+.gx-cog .gx-layers-dot { position: absolute; top: -3px; right: -3px; margin: 0; }
+/* The list opens UP, right-aligned with the button. */
+.gx-layers--float .gx-layers-list, .gx-layers--ctl .gx-layers-list { top: auto; bottom: calc(100% + 3px); }
 .gx-layers-list { left: auto; right: 0; min-width: 12em; padding: 2px 0; }
 .gx-layers-item {
   display: block;
@@ -199,25 +234,34 @@
 
 /* The footer: the Graph map's one line of REPORTS (counts, the Find results),
    the same quiet strip the Genie map keeps under itself. */
+/* Right padding clears the A− / A+ / ⚙ column in the corner above it. */
 .gx-footer {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
+  gap: 6px;
+  padding: 3px 44px 3px 6px;
   font-size: 11px;
   line-height: 1.35;
   color: var(--map-text-muted);
   border-top: 1px solid var(--map-border-subtle);
 }
+/* ONE line, always, so the footer is the same height whatever it reports
+   (pitfall #170): trimmed with "…", whole in its tooltip. */
 .gx-foot-main {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 2px 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
+.gx-foot-main .gx-foot-sep { margin: 0 6px; }
+/* Find in the footer: the box, its chip and Go, ahead of the reports. The
+   list opens UPWARD from here, over the map. */
+.gx-footer .gx-find { flex: 1 1 15em; min-width: 8em; max-width: 30em; }
+.gx-footer .gx-find-list { top: auto; bottom: calc(100% + 2px); }
+.gx-footer .gx-pill, .gx-footer .gx-go { flex-shrink: 0; }
+.gx-footer .gx-pill { max-width: 10em; }
 .gx-foot-place { color: var(--map-text); }
 .gx-foot-walk { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; }
 .gx-foot-walk .map-btn { font-size: 10px; padding: 0 5px; line-height: 1.3; }

@@ -182,6 +182,21 @@ function loadLichBundle(jsonPath: string, force: boolean, stamp = ''): Promise<L
   return p
 }
 
+/** The Lich room for a room NUMBER from the game. The game's uid first; then
+ *  Lich's own id, which `display_lichid` puts in the same subtitle slot, but
+ *  only when that room's title is the room you're in. An unmapped room's game
+ *  number can be some other room's Lich id: Metal Repair in the Crossing
+ *  matched a room in Qi'Reshalia, and the toolbar and the Lich Map's marker
+ *  went there (v1.1.0, Sekmeht). With display_lichid the number IS this
+ *  room's id, so its title always agrees. One rule for every lookup by number:
+ *  the Lich Map, the toolbar label and the Graph map's marker. */
+function roomForNumber(byUid: Map<number, LichRoom>, db: Map<number, LichRoom>, id: number, title: string): LichRoom | undefined {
+  const byGame = byUid.get(id)
+  if (byGame) return byGame
+  const r = db.get(id)
+  return r && normalizeMatchKey(lichTitle(r)) === normalizeMatchKey(title) ? r : undefined
+}
+
 let genieCache:    { key: string; data: Map<string, GenieZone> } | null = null
 let genieInflight: { key: string; p: Promise<Map<string, GenieZone> | null> } | null = null
 
@@ -509,7 +524,7 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
       setDbStatus('ready')
       setCurrentRoom(
         roomIdRef.current !== undefined
-          ? (byUid.get(roomIdRef.current) ?? db.get(roomIdRef.current)
+          ? (roomForNumber(byUid, db, roomIdRef.current, roomTitleRef.current)
              ?? findRoom(ti, roomTitleRef.current, roomDescRef.current, tn))
           : findRoom(ti, roomTitleRef.current, roomDescRef.current, tn)
       )
@@ -578,7 +593,7 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
     // in the same place, and nothing in the text distinguishes them. Trying both
     // maps makes the lookup correct either way instead of guessing.
     const found = roomId !== undefined
-      ? (uidIndex.current.get(roomId) ?? lichDb.get(roomId)
+      ? (roomForNumber(uidIndex.current, lichDb, roomId, roomTitle)
          ?? findRoom(titleIndex.current, roomTitle, roomDesc, normTitleIndex.current))
       : findRoom(titleIndex.current, roomTitle, roomDesc, normTitleIndex.current)
     if (found) {
@@ -972,10 +987,8 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
   // equal some other room's Lich id, and a wrong room here puts the marker in
   // another town and ranks Go from there. With display_lichid the number IS
   // this room's id, so its title always agrees.
-  const byLichId = dbStatus === 'ready' && roomId !== undefined ? lichDb.get(roomId) : undefined
   const roomByNumber = dbStatus === 'ready' && roomId !== undefined
-    ? (uidIndex.current.get(roomId)
-       ?? (byLichId && normalizeMatchKey(lichTitle(byLichId)) === normalizeMatchKey(roomTitle) ? byLichId : undefined))
+    ? roomForNumber(uidIndex.current, lichDb, roomId, roomTitle)
     : undefined
 
   // One set of props for the Genie map, whether it is shown plain (Genie Maps)

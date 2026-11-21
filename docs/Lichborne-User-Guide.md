@@ -81,7 +81,7 @@ A few ideas shape everything:
 - **Smoother zooming** on the Genie maps, most of all in maps with lumberjacking rooms like
   Shard to Gondola.
 - **The whole world on one screen.** Switch the Graph map to **World** to see every map where
-  it sits in Elanthia, joined by roads, boats and swims. Click one to open it. **Layers ▾**
+  it sits in Elanthia, joined by roads, boats and swims. Click one to open it. The **⚙** in the bottom-right corner
   turns roads, boats, side maps, names, provinces and the key off and on.
 - **Maps keep up with updates.** A new Lich map, new Lich data files or changed Genie maps are
   picked up without a restart, and **↺** on the map toolbar re-reads them all whenever you like.
@@ -404,21 +404,22 @@ Open the **Maps** button for three map views. All of them track your current roo
 
 **When the maps update.** Lich's map, Lich's data files and the Genie maps all get updated often. An open map notices: when Lich loads a new map, when you switch map views, when you come back to the window, and (for the Graph map's Find) when you click into the Find box. It re-reads only what changed. Lich updates its files from its repository as it starts, which can be after the map has already read them; if something new doesn't show up yet, press **↺** on the map toolbar. It re-reads everything from disk: Lich's map, and on Genie Maps and Graph the Genie maps and Lich's data files too. **↻ Refresh maps** is different: it downloads the latest Genie maps.
 
-Everything you click is in two rows above the map: the top row picks the map and what's drawn on it, the second is for finding things. What it reports (room counts, what Find found, a Genie walk in progress) is in the line under the map. It has two levels, switched at the left of the top row:
+The row above the map picks which map you see. The line under the map is for finding things: the Find box, then **Go ▸** and what Find found (and a Genie walk in progress). What's drawn on the map is under the small **⚙** in the bottom-right corner, with the A− / A+ text size buttons; like them, it stays faint until you point at the map. It has two levels, switched at the left of the top row:
 
 - **Zone** is one map, drawn exactly like the Genie map, with more on top:
   - **Your marker is placed by room number**, so it can't land on the wrong one of forty rooms with the same name.
   - **Find.** Type what you're after ("jadice flower", "rats", "bank", "gem shop crossing") and pick it from the list. Every room that has it lights up, the rest of the map dims, and the line under the map says how many there are and which is nearest. It knows forage items, hunting grounds (with rank ranges where Lich's files give them), town services, shrines, mining and lumber areas, and climbing and swimming spots. Click the ✕ on the name to stop.
   - **Go ▸** (beside the name you found) has Lich walk you there with `go2`: to the nearest one if there are several, judged by Lich's own route times. It needs a Lich connection, and Lich has to know where you are (move or LOOK if it's greyed out). Type `;k go2` to stop.
-  - **Show: Lich links** draws dashed lines for ways Lich knows that Genie doesn't draw. **Show: Beyond** frames a room that leads to rooms Lich has mapped past the edge of this Genie map and puts how many on its corner. A tick means it's on.
+  - The **⚙** in the bottom-right corner (it brightens when you point at the map) has two switches. **Lich links** draws dashed lines for ways Lich knows that Genie doesn't draw. **Rooms beyond the map** frames a room that leads to rooms Lich has mapped past the edge of this Genie map and puts how many on its corner. A tick means it's on.
   - The zone list, ◆ (follow me), ⊡ (fit) and ▤ (legend) are the Genie map's, on the same bar. To change the Genie maps folder or refresh the maps, use the **Genie Maps** view.
+  - **Opening a map** works the same however you do it (the zone list, a bubble on World, **Elsewhere**, or an exit marker to another map). Your own map shows where you are and follows you. Any other map keeps the zoom you were using and centres on its rooms (the very first map you open fits the whole map). **⊡** fits a map whenever you want to see all of it, and **◆** brings you back to yourself.
   - **Point at a room** for its Lich room number and what's there.
   - **Right-click a room to go there.** If you're connected through Lich, Lich's `go2` walks you, across maps too (type `;k go2` to stop it). Without Lich, or for a room Lich doesn't know, the Genie map's own walk is used.
 - **World** shows every map as a bubble where it really sits in Elanthia, on a drawing of the five provinces.
   - **The circles.** Each bubble is one Genie map: the more rooms it has, the bigger it is, and its colour is its province. The big faint circles are islands, with the island's town on top. The green rings are you.
   - **The lines** are roads between towns, one line for each pair. A town's own gates, tunnels and temple count as part of the town, so the roads inside a town only appear once you zoom in. Boats and other rides (named, like the *Skirr'lolasu*) are thin dashed curves; a swim or climb that needs Athletics is a blue dashed line. Point at a map to see every one of its own connections, portals included.
   - **The key** along the bottom says what each circle and line means.
-  - **Layers ▾** (top right) turns parts of the world off and on: Roads, Boats & rides, Side maps, Town names, Map names, Water & regions, Provinces and the Key. Turn off **Side maps** for a clean picture of just the towns and the big maps. Everything starts on, and your choices are kept for that character.
+  - The **⚙** in the bottom-right corner turns parts of the world off and on: Roads, Boats & rides, Side maps, Town names, Map names, Water & regions, Provinces and the Key. Turn off **Side maps** for a clean picture of just the towns and the big maps. Everything starts on, and your choices are kept for that character.
   - Point at a map to see how many zones away it is and in which direction, and click it to open it. The Find box lights up the maps that have what you're looking for. Scroll to zoom (zooming in spreads the maps apart, town names appear, and further in each map shows its name), drag to move, and click a place name to open its Elanthipedia page. Maps with no place on the land (event grounds, arenas) are under **Elsewhere**.
 
 Lich's map doesn't have every room the Genie maps do (about one in six is missing, mostly places Lich hasn't mapped and mazes of identical rooms). Those rooms still work the way they do on the Genie map. The world's layout follows Elanthipedia's Zone map and Travel map; it's a picture of the world, not a survey, so treat "3 zones away" as a guide.

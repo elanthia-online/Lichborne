@@ -30,6 +30,7 @@
 //     when one actually changes (pitfall #191).
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import GenieMapView, { type GenieMapViewProps, type GenieOverlay, type GenieMatch } from './GenieMapView'
 import GraphWorldView, { DEFAULT_WORLD_LAYERS, WORLD_LAYER_LIST, type WorldLayers } from './GraphWorldView'
 import type { GenieNode, GenieZone, LichRoom } from './mapTypes'
@@ -101,7 +102,19 @@ function loadPrefs(character: string): Prefs {
  *  closes the list and is consumed, so it can't also close the Maps window
  *  behind it (pitfall #141); Space is handled here, or the type-anywhere key
  *  handler would send it to the command bar (pitfall #165). */
-function LayersMenu({ layers, onChange }: { layers: WorldLayers; onChange: (l: WorldLayers) => void }) {
+function LayersMenu<K extends string>({ items, values, onFlip, what, aria, host }: {
+  items: readonly { id: K; label: string; title: string }[]
+  values: Record<K, boolean>
+  onFlip: (id: K) => void
+  /** "What … draws", for the button's tooltip. */
+  what: string
+  aria: string
+  /** The panel's A− / A+ column, when the map is docked in a panel: the ⚙ is
+   *  rendered INTO it (a portal), so it takes the column's width, gap and
+   *  faintness exactly, like an Experience tab's ⚙. Absent (the Maps window
+   *  has no A− / A+), it floats in that corner on its own. */
+  host?: HTMLElement | null
+}) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLSpanElement | null>(null)
   const firstRef = useRef<HTMLButtonElement | null>(null)
@@ -112,21 +125,26 @@ function LayersMenu({ layers, onChange }: { layers: WorldLayers; onChange: (l: W
     firstRef.current?.focus()
     return () => document.removeEventListener('mousedown', onDown)
   }, [open])
-  const off = WORLD_LAYER_LIST.filter(l => !layers[l.id]).length
-  const flip = (id: keyof WorldLayers) => onChange({ ...layers, [id]: !layers[id] })
-  return (
-    <span className="gx-layers" ref={wrapRef}
+  const off = items.filter(l => !values[l.id]).length
+  const flip = onFlip
+  const menu = (
+    <span className={`gx-layers ${host ? 'gx-layers--ctl' : 'gx-layers--float'}${open ? ' gx-layers--open' : ''}`} ref={wrapRef}
       onKeyDown={e => { if (e.key === 'Escape' && open) { e.preventDefault(); e.stopPropagation(); setOpen(false) } }}>
-      <button className={`map-btn gx-layers-btn${open ? ' map-btn--active' : ''}`} aria-haspopup="true" aria-expanded={open}
+      {/* The ⚙ sits with the panel's A− / A+ (Sekmeht), the same button as
+          an Experience tab's ⚙ (plain "⚙", `panel-font-btn`). It costs the
+          bar nothing, which a narrow panel needs. A dot on it says a layer is
+          hidden; the tooltip says how many. */}
+      <button type="button" className="panel-font-btn gx-cog" aria-haspopup="true" aria-expanded={open}
+        aria-label={`Layers${off ? `, ${off} hidden` : ''}`}
         onClick={() => setOpen(o => !o)}
-        title={off ? `What the world view draws: ${off} of ${WORLD_LAYER_LIST.length} layers are hidden` : 'What the world view draws: roads, boats, side maps, names and provinces'}>
-        Layers{off ? ` (${WORLD_LAYER_LIST.length - off}/${WORLD_LAYER_LIST.length})` : ''} ▾
+        title={off ? `Layers: what ${what} draws. ${off} of ${items.length} are hidden.` : `Layers: what ${what} draws (${items.map(l => l.label.toLowerCase()).join(', ')})`}>
+        ⚙{off ? <span className="gx-layers-dot" aria-hidden="true" /> : null}
       </button>
       {open && (
-        <div className="gx-find-list gx-layers-list" role="menu" aria-label="World layers">
-          {WORLD_LAYER_LIST.map((l, i) => (
-            <button key={l.id} ref={i === 0 ? firstRef : undefined} type="button" role="menuitemcheckbox" aria-checked={layers[l.id]}
-              className={`gx-layers-item gx-toggle${layers[l.id] ? ' gx-toggle--on' : ''}`} title={l.title}
+        <div className="gx-find-list gx-layers-list" role="menu" aria-label={aria}>
+          {items.map((l, i) => (
+            <button key={l.id} ref={i === 0 ? firstRef : undefined} type="button" role="menuitemcheckbox" aria-checked={values[l.id]}
+              className={`gx-layers-item gx-toggle${values[l.id] ? ' gx-toggle--on' : ''}`} title={l.title}
               onClick={() => flip(l.id)}
               onKeyDown={e => {
                 if (e.key === ' ') { e.preventDefault(); flip(l.id) }
@@ -142,6 +160,7 @@ function LayersMenu({ layers, onChange }: { layers: WorldLayers; onChange: (l: W
       )}
     </span>
   )
+  return host ? createPortal(menu, host) : menu
 }
 
 const SETTLE_MS = 500   // stand still this long before the nearest room is worked out again
@@ -170,18 +189,28 @@ export default memo(function GraphMapView({ genie, lichDb, currentRoom, graph, g
   // The map on screen, reported by the Genie view (declared here because the
   // match below reads it).
   const [shown, setShown] = useState<{ zoneId: string; level: number }>({ zoneId: '', level: 0 })
-  const exact = useMemo<GenieMatch | null>(() => {
-    if (!graph || !currentRoom) return null
+  // Two steps, so the match OBJECT only changes when the room does. The Genie
+  // view treats a new match object as you walking, and a walk switches it to
+  // your own map. Picking which copy of a room depends on the map on screen,
+  // so with one memo, opening another map from the world view (which changes
+  // the map on screen) rebuilt the match and pulled the view straight back to
+  // where you stand (Sekmeht: clicking the Crossing Temple opened the Crossing).
+  const exactKey = useMemo(() => {
+    if (!graph || !currentRoom) return ''
     // A room drawn on two maps: the copy on the map ON SCREEN first (the Genie
     // view may have followed you there while room numbers weren't arriving, so
     // the last exact match can be a map behind), then the last exact match's.
     const onShown = shown.zoneId ? nodeForLichRoom(graph.bridge, currentRoom.id, shown.zoneId) : undefined
     const hit = onShown?.zoneId === shown.zoneId ? onShown : nodeForLichRoom(graph.bridge, currentRoom.id, lastZoneRef.current)
-    if (!hit) return null
-    const zone = zones.get(hit.zoneId)
-    const node = zone?.nodes.find(n => n.id === hit.nodeId)
+    return hit ? `${hit.zoneId}\u0000${hit.nodeId}` : ''
+  }, [graph, currentRoom, shown.zoneId])
+  const exact = useMemo<GenieMatch | null>(() => {
+    if (!exactKey) return null
+    const [zoneId, nodeId] = exactKey.split('\u0000')
+    const zone = zones.get(zoneId)
+    const node = zone?.nodes.find(n => String(n.id) === nodeId)
     return zone && node ? { zone, node, isStub: false } : null
-  }, [graph, currentRoom, zones, shown.zoneId])
+  }, [exactKey, zones])
   useEffect(() => { if (exact) lastZoneRef.current = exact.zone.id }, [exact])
 
   // The room "nearest" is measured from: yours, once you stop moving.
@@ -309,6 +338,14 @@ export default memo(function GraphMapView({ genie, lichDb, currentRoom, graph, g
     return lines
   }, [graph, lichDb, atlas])
 
+  // The zone view's layers. Their tooltips carry this map's counts.
+  const zoneLayerItems = useMemo(() => [
+    { id: 'links' as const, label: 'Lich links',
+      title: `Dashed lines for ways Lich knows that Genie doesn't draw${zoneBridge ? ` (${zoneBridge.extraLinks.length} on this map; dotted ones depend on your character)` : ''}` },
+    { id: 'beyond' as const, label: 'Rooms beyond the map',
+      title: `A framed room with a count on its corner leads to rooms Lich has and Genie doesn't${zoneBridge ? ` (${zoneBridge.beyond.size} here)` : ''}. Point at the room to see them.` },
+  ], [zoneBridge])
+
   // Where the Genie map puts its zone list and navigation buttons: a span in
   // our bar, so the Graph map has ONE row of controls instead of three.
   const [navSlot, setNavSlot] = useState<HTMLElement | null>(null)
@@ -387,20 +424,32 @@ export default memo(function GraphMapView({ genie, lichDb, currentRoom, graph, g
           {found.targetZoneId && (found.targetZoneId !== shown.zoneId || !isZone) ? ` (${graph.world.zones.get(found.targetZoneId)?.name ?? ''})` : ''}
         </span>}
     </>
-  } else if (isZone && zoneBridge) {
-    status = <span title="How many of this map's rooms were matched to a room in Lich's map. The rest are rooms Lich hasn't mapped, or look-alikes it couldn't tell apart.">
-      Lich knows {zoneBridge.matched} of {zoneBridge.rooms} rooms
-    </span>
-  } else if (showing === 'world') {
-    status = 'Point at a map to see how far it is and how you get there; click it to open it.'
   }
-  const footerPlace = isZone ? zones.get(shown.zoneId)?.name : 'Elanthia'
+  // No place name, "Lich knows N of M rooms" or world hint any more (Sekmeht:
+  // the room goes to Find). The line reports only what Find found and the
+  // "matching…" messages; the zone list already names the map.
+  // The panel's A− / A+ column (PanelFrame's `.panel-font-controls`), when
+  // the map is docked in a panel: the layers ⚙ is rendered into it. Looked up
+  // after each render (one querySelector), since PanelFrame can re-create it.
+  const [ctlHost, setCtlHost] = useState<HTMLElement | null>(null)
+  useLayoutEffect(() => {
+    const el = rootRef.current?.closest('.panel-frame-body')?.querySelector<HTMLElement>('.panel-font-controls') ?? null
+    if (el !== ctlHost) setCtlHost(el)
+  })
+  // The status line can be trimmed in a narrow panel: its tooltip is its own
+  // whole text, read back after every render (it is built from several spans).
+  const footRef = useRef<HTMLSpanElement | null>(null)
+  useLayoutEffect(() => {
+    const el = footRef.current
+    if (el && el.title !== (el.textContent ?? '')) el.title = el.textContent ?? ''
+  })
 
   return (
     <div className="gx-root" ref={rootRef}>
-      {/* Two rows, each with one job, instead of one row that wraps wherever
-          it runs out of room (which split Go from the chip it belongs to).
-          Row 1: which map, and what's drawn on it. Row 2: finding things. */}
+      {/* ONE row: which map, and what's drawn on it. Finding things (the box,
+          its chip, Go) sits in the footer beside the reports, which gives a
+          narrow panel a row of map back (Sekmeht). It used to be a second row
+          here, and before that one wrapping row that split Go from its chip. */}
       <div className="map-subbar gx-bar">
        <div className="gx-row">
         <span className="gx-seg" role="group" aria-label="World or zone">
@@ -413,96 +462,81 @@ export default memo(function GraphMapView({ genie, lichDb, currentRoom, graph, g
         </span>
         {/* The Genie map's zone list, ◆ ⊡ ▤ and levels land here (zone only). */}
         {isZone && <span className="gx-nav" ref={setNavSlot} />}
-        {/* Layers: quiet chips, on or off, under a "Show" label, at the right. */}
-        {isZone && (
-          <span className="gx-show" role="group" aria-label="Show on the map">
-            <span className="gx-show-label">Show</span>
-            <button className={`map-btn gx-toggle${prefs.links ? ' gx-toggle--on' : ''}`} aria-pressed={prefs.links}
-              onClick={() => patch({ links: !prefs.links })}
-              title={`Lich links: dashed lines for ways Lich knows that Genie doesn't draw${zoneBridge ? ` (${zoneBridge.extraLinks.length} on this map; dotted ones depend on your character)` : ''}`}>Lich links</button>
-            <button className={`map-btn gx-toggle${prefs.beyond ? ' gx-toggle--on' : ''}`} aria-pressed={prefs.beyond}
-              onClick={() => patch({ beyond: !prefs.beyond })}
-              title={`Rooms beyond the map: a framed room with a count on its corner leads to rooms Lich has and Genie doesn't${zoneBridge ? ` (${zoneBridge.beyond.size} here)` : ''}. Point at the room to see them.`}>Beyond</button>
-          </span>
-        )}
-        {showing === 'world' && (
-          <span className="gx-show" role="group" aria-label="Show on the world">
-            <LayersMenu layers={prefs.world} onChange={world => patch({ world })} />
-          </span>
-        )}
-       </div>
-       <div className="gx-row gx-row--find">
-        <span className="gx-find" ref={findRef}>
-          <input className="gx-find-input" type="text" value={query} placeholder={thing && lens === 'find' ? 'Find something else…' : 'Find: jadice, rats, bank…'} disabled={!atlas}
-            title={findTitle} aria-label="Find things on the map" spellCheck={false}
-            onChange={e => { setQuery(e.target.value); setOpen(true); setCursor(0) }}
-            onFocus={() => { setOpen(true); onFindStart?.() }} onBlur={() => setTimeout(() => setOpen(false), 120)} onKeyDown={onFindKey} />
-          {listShown && (
-            <div className="gx-find-list gx-find-results" role="listbox" ref={listRef} style={listMax ? { maxWidth: listMax } : undefined}>
-              {results.length === 0 && <div className="gx-find-none">Nothing by that name</div>}
-              {/* Four fixed columns (name · detail · kind · rooms) so every row
-                  lines up; anything too long is trimmed and the row's tooltip
-                  carries the whole of it. */}
-              {results.map((t, i) => {
-                const detail = [t.town, t.note].filter(Boolean).join(' · ')
-                const kind = CATEGORY_LABEL[t.category]
-                const rooms = `${t.rooms.length} room${t.rooms.length === 1 ? '' : 's'}`
-                return (
-                  <button key={t.id} role="option" aria-selected={i === cursor} className={`gx-find-row${i === cursor ? ' gx-find-row--on' : ''}`}
-                    title={[t.name, detail, kind, rooms].filter(Boolean).join(' · ')}
-                    onMouseDown={e => { e.preventDefault(); pick(t) }} onMouseEnter={() => setCursor(i)}>
-                    <span className="gx-find-name">{t.name}</span>
-                    <span className="gx-find-detail">{detail}</span>
-                    <span className="gx-find-kind">{kind}</span>
-                    <span className="gx-find-count">{t.rooms.length}</span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </span>
-        {/* What is being looked for, as a chip beside the box; ✕ stops looking. */}
-        {lens === 'find' && thing && (
-          <span className="gx-pill" title={`${CATEGORY_LABEL[thing.category]}: ${thingLabel(thing)}`}>
-            <span className="gx-pill-name">{thing.name}</span>
-            <button className="gx-pill-x" onClick={() => patch({ find: null, lens: 'none' })} title="Stop looking for this" aria-label={`Stop looking for ${thing.name}`}>✕</button>
-          </span>
-        )}
-        {/* Go: Lich walks you to the room (the nearest one when there are several). */}
-        {lens === 'find' && thing && (() => {
-          const why = !usesLich ? 'Go needs this character connected through Lich (it sends ;go2). Right-click a lit room to walk there with the Genie map instead.'
-            : !found ? 'Still matching this map to Lich\'s…'
-            : found.standingIn ? 'You are standing in one already'
-            : found.noRoute ? 'Lich\'s map has no route from here to any of these rooms'
-            : found.target == null ? 'To pick the nearest, Lich has to know your room: move or LOOK'
-            : null
-          return (
-            <button className="map-btn map-btn--sm gx-go" onClick={goToFound} disabled={!!why}
-              title={why ?? `Lich walks you to ${thing.rooms.length > 1 ? 'the nearest' : 'it'}: ;go2 ${found!.target}. Type ;k go2 to stop.`}>Go ▸</button>
-          )
-        })()}
        </div>
       </div>
 
-      {/* The world needs the match. With no Genie maps at all, or a failed
-          match, the Genie view is shown: it has the setup screen, and it still
-          works as a plain map. */}
-      {showing === 'world' && graph
-        ? <GraphWorldView world={graph.world} layers={prefs.world} hereZoneId={exact?.zone.id ?? lastZoneRef.current}
-            lit={found?.perZone ?? null} litLabel={thing ? thing.name : undefined}
-            onOpenZone={zoneId => { setAsk(a => ({ zoneId, seq: (a?.seq ?? 0) + 1 })); patch({ level: 'zone' }) }} />
-        : showing === 'matching'
-          ? <div className="map-canvas-wrap"><div className="map-overlay"><span className="map-loading">Matching the Genie maps to Lich's map…</span></div></div>
-          : <GenieMapView {...genie} overlay={overlay} />}
+      {/* The map. (The layers ⚙ is at the end: in the panel's A− / A+ column,
+          or that corner on its own; it used to be "Show" chips, then a Layers
+          ▾ button, on the bar.) The world needs the match. With no Genie maps at all, or a
+          failed match, the Genie view is shown: it has the setup screen, and
+          it still works as a plain map. */}
+      <div className="gx-stage">
+        {showing === 'world' && graph
+          ? <GraphWorldView world={graph.world} layers={prefs.world} hereZoneId={exact?.zone.id ?? lastZoneRef.current}
+              lit={found?.perZone ?? null} litLabel={thing ? thing.name : undefined}
+              onOpenZone={zoneId => { setAsk(a => ({ zoneId, seq: (a?.seq ?? 0) + 1 })); patch({ level: 'zone' }) }} />
+          : showing === 'matching'
+            ? <div className="map-canvas-wrap"><div className="map-overlay"><span className="map-loading">Matching the Genie maps to Lich's map…</span></div></div>
+            : <GenieMapView {...genie} overlay={overlay} />}
+      </div>
 
       {/* No footer over the setup screen (no Genie maps yet): it speaks for itself. */}
       {hasMaps && (
         <div className="gx-footer">
-          <span className="gx-foot-main">
-            {footerPlace && <span className="gx-foot-place">{footerPlace}</span>}
-            {footerPlace && status && <span className="gx-foot-sep" aria-hidden="true">·</span>}
-            {status}
+          {/* Finding things lives in the footer (Sekmeht: one row less at
+              the top in a narrow panel). Its list opens upward. */}
+          <span className="gx-find" ref={findRef}>
+            <input className="gx-find-input" type="text" value={query} placeholder={thing && lens === 'find' ? 'Find something else…' : 'Find: jadice, rats, bank…'} disabled={!atlas}
+              title={findTitle} aria-label="Find things on the map" spellCheck={false}
+              onChange={e => { setQuery(e.target.value); setOpen(true); setCursor(0) }}
+              onFocus={() => { setOpen(true); onFindStart?.() }} onBlur={() => setTimeout(() => setOpen(false), 120)} onKeyDown={onFindKey} />
+            {listShown && (
+              <div className="gx-find-list gx-find-results" role="listbox" ref={listRef} style={listMax ? { maxWidth: listMax } : undefined}>
+                {results.length === 0 && <div className="gx-find-none">Nothing by that name</div>}
+                {/* Four fixed columns (name · detail · kind · rooms) so every row
+                    lines up; anything too long is trimmed and the row's tooltip
+                    carries the whole of it. */}
+                {results.map((t, i) => {
+                  const detail = [t.town, t.note].filter(Boolean).join(' · ')
+                  const kind = CATEGORY_LABEL[t.category]
+                  const rooms = `${t.rooms.length} room${t.rooms.length === 1 ? '' : 's'}`
+                  return (
+                    <button key={t.id} role="option" aria-selected={i === cursor} className={`gx-find-row${i === cursor ? ' gx-find-row--on' : ''}`}
+                      title={[t.name, detail, kind, rooms].filter(Boolean).join(' · ')}
+                      onMouseDown={e => { e.preventDefault(); pick(t) }} onMouseEnter={() => setCursor(i)}>
+                      <span className="gx-find-name">{t.name}</span>
+                      <span className="gx-find-detail">{detail}</span>
+                      <span className="gx-find-kind">{kind}</span>
+                      <span className="gx-find-count">{t.rooms.length}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </span>
+          {/* What is being looked for, as a chip beside the box; ✕ stops looking. */}
+          {lens === 'find' && thing && (
+            <span className="gx-pill" title={`${CATEGORY_LABEL[thing.category]}: ${thingLabel(thing)}`}>
+              <span className="gx-pill-name">{thing.name}</span>
+              <button className="gx-pill-x" onClick={() => patch({ find: null, lens: 'none' })} title="Stop looking for this" aria-label={`Stop looking for ${thing.name}`}>✕</button>
+            </span>
+          )}
+          {/* Go: Lich walks you to the room (the nearest one when there are several). */}
+          {lens === 'find' && thing && (() => {
+            const why = !usesLich ? 'Go needs this character connected through Lich (it sends ;go2). Right-click a lit room to walk there with the Genie map instead.'
+              : !found ? 'Still matching this map to Lich\'s…'
+              : found.standingIn ? 'You are standing in one already'
+              : found.noRoute ? 'Lich\'s map has no route from here to any of these rooms'
+              : found.target == null ? 'To pick the nearest, Lich has to know your room: move or LOOK'
+              : null
+            return (
+              <button className="map-btn map-btn--sm gx-go" onClick={goToFound} disabled={!!why}
+                title={why ?? `Lich walks you to ${thing.rooms.length > 1 ? 'the nearest' : 'it'}: ;go2 ${found!.target}. Type ;k go2 to stop.`}>Go ▸</button>
+            )
+          })()}
+          {/* One line, trimmed with "…" when the panel is narrow; its tooltip
+              carries all of it (set from the text below, footTitle). */}
+          <span className="gx-foot-main" ref={footRef}>{status}</span>
           {/* A Genie walk in progress: status, so the footer and not the bar. */}
           {walker?.status && (
             <span className="gx-foot-walk">
@@ -515,6 +549,15 @@ export default memo(function GraphMapView({ genie, lichDb, currentRoom, graph, g
             </span>
           )}
         </div>
+      )}
+      {/* The layers ⚙, in the bottom-right corner with the panel's A− / A+. */}
+      {isZone && hasMaps && (
+        <LayersMenu items={zoneLayerItems} values={{ links: prefs.links, beyond: prefs.beyond }}
+          onFlip={id => patch({ [id]: !prefs[id] })} what="the map" aria="Map layers" host={ctlHost} />
+      )}
+      {showing === 'world' && (
+        <LayersMenu items={WORLD_LAYER_LIST} values={prefs.world}
+          onFlip={id => patch({ world: { ...prefs.world, [id]: !prefs.world[id] } })} what="the world view" aria="World layers" host={ctlHost} />
       )}
     </div>
   )
