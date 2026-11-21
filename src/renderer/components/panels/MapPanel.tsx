@@ -597,7 +597,10 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
   // augmentation pipeline (which has been removed along with that view).
 
   const loadGenie = useCallback(async (dir: string) => {
-    if (!dir) return
+    // GemStone uses Lich's map only (no Genie maps exist for it, Tysong): a GS4
+    // panel never shows the Genie or Graph views, so it never loads them, even
+    // with the app-wide Genie folder set by a DragonRealms character.
+    if (!dir || isGS4) return
     const gen = ++genieGenRef.current
     setGenieStatus('loading')
     setGenieProgress(null)
