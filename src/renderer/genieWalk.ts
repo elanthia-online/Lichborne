@@ -246,6 +246,8 @@ const RETRY_CAP = 12
 export class GenieWalker {
   private plan: WalkPlan | null = null
   private label = ''
+  /** Told how the walk ended: true when every step arrived. */
+  private onEnd: ((arrived: boolean) => void) | null = null
   private opts: WalkOptions = { ahead: 1, retryOnce: false, pauseMs: 0 }
   /** Next step to be confirmed by an arrival. */
   private pos = 0
@@ -266,12 +268,14 @@ export class GenieWalker {
 
   get active(): boolean { return this.plan !== null }
 
-  start(plan: WalkPlan, label: string, opts: WalkOptions): void {
+  start(plan: WalkPlan, label: string, opts: WalkOptions, onEnd?: (arrived: boolean) => void): void {
     this.stop()
     if (plan.steps.length === 0 && plan.manual) {
       this.io.say(`Can't walk to ${label}: the first step needs you. ${capitalize(plan.manual.hint)}.`)
+      onEnd?.(false)
       return
     }
+    this.onEnd = onEnd ?? null
     this.plan = plan
     this.label = label
     this.opts = { ahead: Math.max(1, Math.min(3, Math.round(opts.ahead))), retryOnce: opts.retryOnce, pauseMs: Math.max(0, opts.pauseMs) }
@@ -290,6 +294,7 @@ export class GenieWalker {
     if (!this.plan) return
     this.clearTimers()
     this.plan = null
+    this.ended(false)
     this.io.status(null)
     if (reason) this.io.say(`Walk to ${this.label} stopped: ${reason}.`)
   }
@@ -390,6 +395,13 @@ export class GenieWalker {
     this.io.status(null)
     if (manualStep) this.io.say(`Walk to ${label} paused: ${manualStep.hint}. Then right-click the room again.`)
     else this.io.say(`Arrived at ${label}.`)
+    this.ended(!manualStep)
+  }
+
+  private ended(arrived: boolean): void {
+    const cb = this.onEnd
+    this.onEnd = null
+    cb?.(arrived)
   }
 
   /** Send steps until `ahead` are in flight. Only plain steps are pipelined. */

@@ -750,7 +750,9 @@ function createWindow(opts?: { secondary?: boolean; stateKey?: string; inactive?
     win.loadFile(rendererPath)
   }
 
-  if (!app.isPackaged) win.webContents.openDevTools()
+  // Dev builds open DevTools; LICHBORNE_DEVTOOLS=0 turns that off (the
+  // Da'Maps test launcher sets it).
+  if (!app.isPackaged && process.env.LICHBORNE_DEVTOOLS !== '0') win.webContents.openDevTools()
 
   // Push the current roster once the window's renderer is live so it starts
   // synced (also covers a dev hot-reload, which keeps the same webContents id).

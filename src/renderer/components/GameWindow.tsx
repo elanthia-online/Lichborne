@@ -91,6 +91,7 @@ import { resolvePlace, type PlaceKey } from './experiences/tableauPlaces'
 import { EXPERIENCES, experienceById, experienceAvailable, defaultHiddenMap, loadExperiences, saveExperiences, deriveSpellState, parseGroupLines, type GroupState, parseMoonLine, mergeMoonReport, parseTimeLine, SUN_RISE_RE, SUN_SET_RE, WEATHER_GLANCE_RE, type ExperienceInstance, type SceneCast, type SceneSpeechItem, type SceneMoveItem, type MoonsState, type WeatherInfo, type CalendarInfo, type SpellState, type SceneMoment, type SpellPulse, emptySpellPulse, recordSpellPulse, SPELL_ENDED_TTL_MS, type FaceTurn } from '../experiences'
 import { parseCombatPosition, parseCombatBalance, parseCombatRange, parseAssessLine, RANGE_ORDER, parseFaceReply, mayBeEngagementLine, parseEngagementLine, applyEngagement, stepOutRange, balanceFromAssessStatus, mayBeStrikeLine, parseStrikeLine, type CombatRange, type AssessEntity, type Engagement, type EngagementEvent, type StrikeEvent } from '../../shared/combatExtract'
 import { guildToFocusOption } from '../focusTemplates'
+import { daMapsObserveCommand, daMapsObserveLine } from './panels/damaps/daMapsData'
 import { showToast } from '../toasts'
 import { nanoid } from 'nanoid'
 import { loadFreeWindows, saveFreeWindows, freeLayoutSignatures, seedDefaultWindows, newFloatWindow, defaultWindowTitle, isDebugWindow, type FloatWindow, type FloatRect, type WinKind, type LayoutMode } from '../freeLayout'
@@ -1167,6 +1168,7 @@ export default function GameWindow({
   const walkerRef = useRef<GenieWalker | null>(null)
   const walkSendingRef = useRef(false)
   const noteSentRef = useRef((cmd: string) => {
+    daMapsObserveCommand(profile, cmd)   // Da'Maps: FORAGE capture
     const m = /^\s*face\s+(?:#(\d+)|\S.*)$/i.exec(cmd)
     if (m) pendingFaceRef.current = { id: m[1] ?? null, at: Date.now() }
     // Every send path comes through here (typed, macros, aliases, exit clicks,
@@ -3495,6 +3497,7 @@ export default function GameWindow({
               // the TOP of this case — before the log push — via suppressSync.)
               if (!suppressSync) {
                 processLineRef.current('main', lineText)
+                daMapsObserveLine(profile, lineText)   // Da'Maps: FORAGE capture
                 processHighlightSoundsRef.current(lineText)
                 logHighlightFiresRef.current(lineText, 'main')
               }
@@ -5977,10 +5980,10 @@ export default function GameWindow({
       walkerRef.current?.stop()
     }
   }, [session.sessionId])
-  const startGenieWalk = useCallback((moves: string[], label: string) => {
+  const startGenieWalk = useCallback((moves: string[], label: string, onEnd?: (arrived: boolean) => void) => {
     const s = walkSettingsRef.current
     walkerRef.current!.start(planGenieWalk(moves), label,
-      { ahead: s.mapWalkAhead, retryOnce: s.mapWalkRetry, pauseMs: s.mapWalkPauseMs })
+      { ahead: s.mapWalkAhead, retryOnce: s.mapWalkRetry, pauseMs: s.mapWalkPauseMs }, onEnd)
   }, [])
   const stopGenieWalk = useCallback(() => walkerRef.current?.stop('you stopped it'), [])
   // Every mounted Genie map registers; the newest answers. A list, not one
