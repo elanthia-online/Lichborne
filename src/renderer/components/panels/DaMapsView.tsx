@@ -43,6 +43,11 @@ const MIN_SCALE = 0.05
 const MAX_SCALE = 8
 /** At or above this zoom, indoor rooms are drawn; below it, buildings are outlines. */
 const INDOOR_SCALE = 1.4
+/** The zoom a map opens at when you're on it, centred on you (Kaesken: a set
+ *  zoom rather than fitting the whole map). You can zoom from there. */
+const OPEN_SCALE = 2
+/** A map's floors share one set of coordinates, so they're one map to the camera. */
+const mapOf = (areaKey: string) => areaKey.replace(/@-?\d+$/, '')
 const PANEL_W = 270
 // Global view layout (world units): each area is a thumbnail in a grid cell,
 // grouped by province.
@@ -377,11 +382,12 @@ function DaMapsCanvas({ world: daWorld, lichDb, currentRoom, character, roomTitl
     })
   }, [area])
 
-  const centerOn = useCallback((room: DaRoom, minScale = 0) => {
+  /** Centre on a room. `scale` is a floor for the zoom, or the exact zoom with `exact`. */
+  const centerOn = useCallback((room: DaRoom, minScale = 0, exact = false) => {
     const svg = svgRef.current
     if (!svg) return
     setTransform(t => {
-      const scale = Math.max(t.scale, minScale)
+      const scale = exact ? minScale : Math.max(t.scale, minScale)
       return { scale, x: svg.clientWidth / 2 - room.x * scale, y: svg.clientHeight / 2 - room.y * scale }
     })
   }, [])
@@ -396,11 +402,19 @@ function DaMapsCanvas({ world: daWorld, lichDb, currentRoom, character, roomTitl
   const fittedFor = useRef('')
   useEffect(() => {
     if (mode !== 'local' || !area || fittedFor.current === area.image) return
+    const sameMap = !!fittedFor.current && mapOf(fittedFor.current) === mapOf(area.image)
     fittedFor.current = area.image
-    // A new area: fit it, then (if we're in it) centre on the player.
+    // Another floor of the same map: the floors are drawn in the same place,
+    // so keep the zoom and position (Kaesken: switching floors used to re-fit
+    // each one and jump about). While following, just slide to keep you in view.
+    if (sameMap) {
+      if (followPlayer && hereRoom) centerOn(hereRoom)
+      return
+    }
+    // A new map: centre on you at the opening zoom; if you're not on it, show it all.
     requestAnimationFrame(() => {
-      fitToView()
-      if (followPlayer && hereRoom) requestAnimationFrame(() => centerOn(hereRoom))
+      if (followPlayer && hereRoom) centerOn(hereRoom, OPEN_SCALE, true)
+      else fitToView()
     })
   }, [area, fitToView, followPlayer, hereRoom, centerOn, mode])
   useEffect(() => {
@@ -579,6 +593,7 @@ function DaMapsCanvas({ world: daWorld, lichDb, currentRoom, character, roomTitl
     setAreaImage(image)
     setFollowPlayer(image === hereImage)
     localTfRef.current = null
+    fittedFor.current = ''        // from Global: frame it afresh, even another floor of the last map
     setMode('local')
   }
 
