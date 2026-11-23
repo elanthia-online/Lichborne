@@ -10,19 +10,21 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 import type { GenieZone, LichRoom } from '../../src/renderer/components/panels/mapTypes'
 import { areaProvince } from '../../src/renderer/components/panels/damaps/daMapsData'
 import {
   DA_WORLD_VERSION, type DaWorldArea, type DaWorldFile, type DaWorldRoom,
 } from '../../src/renderer/components/panels/damaps/damapsWorld'
-import { readGenieXml } from './readGenieXml'
+import { readGenieXml, decodeMapFile } from './readGenieXml'
+import { parseDamap, damapToZone } from './damapFormat'
 import { mergeSubMaps } from './genieMerge'
 import { matchGenieToLich } from './genieMatch'
 import { buildGenieArea, genieAreaKey, genieLevels, zoneIdByFile } from './genieArea'
 
-const [mapsDir, lichFile, outFile] = process.argv.slice(2)
-if (!mapsDir || !lichFile || !outFile) {
-  console.error('usage: build-damaps <Genie maps folder> <Lich map-NNNN.json> <out.json>')
+const [mapsDir, lichFile, outFile, damapArg] = process.argv.slice(2)
+if (!lichFile || !outFile) {
+  console.error('usage: build-damaps <Genie maps folder> <Lich map-NNNN.json> <out.json> [.damap folder]')
   process.exit(1)
 }
 
@@ -30,26 +32,74 @@ if (!mapsDir || !lichFile || !outFile) {
 const lichRooms: LichRoom[] = JSON.parse(fs.readFileSync(lichFile, 'utf8'))
 const lichDb = new Map(lichRooms.map(r => [r.id, r]))
 
-const files = fs.readdirSync(mapsDir).filter(f => f.toLowerCase().endsWith('.xml')).sort()
-const zones = new Map<string, GenieZone>()
+const files = mapsDir ? fs.readdirSync(mapsDir).filter(f => f.toLowerCase().endsWith('.xml')).sort() : []
+
+// Da'Maps' own maps (.damap, made in the DaMaps Editor) live in the repo, in
+// tools/damaps/maps/. One whose `file` names a Genie map replaces that map;
+// any other is added.
+const damapDir = damapArg ?? ''
+// .damap maps are already whole (side maps folded in), so they skip the fold.
+const damaps: { zone: GenieZone; includes: string[] }[] = []
+const covered = new Set<string>()        // link names a .damap answers to
+if (damapDir && fs.existsSync(damapDir)) {
+  for (const f of fs.readdirSync(damapDir).filter(f => f.toLowerCase().endsWith('.damap')).sort()) {
+    try {
+      const m = parseDamap(fs.readFileSync(path.join(damapDir, f), 'utf8'))
+      const names = [m.file, ...(m.includes ?? [])].map(x => x.toLowerCase())
+      if (names.some(n => covered.has(n))) { console.warn(`skipped ${f}: another .damap is already ${m.file}`); continue }
+      names.forEach(n => covered.add(n))
+      damaps.push({ zone: damapToZone(m), includes: m.includes ?? [] })
+    } catch (e) { console.warn(`skipped ${f}: ${(e as Error).message}`) }
+  }
+}
+
+const genie = new Map<string, GenieZone>()
+let replaced = 0
 for (const f of files) {
+  if (covered.has(f.toLowerCase())) { replaced++; continue }
   let z: GenieZone
-  try { z = readGenieXml(fs.readFileSync(path.join(mapsDir, f), 'utf8'), f) }
+  try { z = readGenieXml(decodeMapFile(fs.readFileSync(path.join(mapsDir, f))), f) }
   catch (e) { console.warn(`skipped ${f}: ${(e as Error).message}`); continue }
   if (!z.nodes.length) continue
   // the same id in two files (an old event copy beside the current map) gets a suffix
   let id = z.id || f
-  for (let k = 1; zones.has(id); k++) id = `${z.id || f}~${k}`
+  for (let k = 1; genie.has(id); k++) id = `${z.id || f}~${k}`
   z.id = id
   for (const n of z.nodes) n.zoneId = id
-  zones.set(id, z)
+  genie.set(id, z)
 }
 
 // ── Fold, match ──────────────────────────────────────────────────────────────
-const merged = mergeSubMaps(zones)
+const folded = mergeSubMaps(genie)
+// One list, in link-name order (the matcher breaks ties by order).
+const all = [...folded.zones.values()]
+for (const { zone } of damaps) {
+  if (!zone.nodes.length) continue
+  let id = zone.id
+  for (let k = 1; all.some(z => z.id === id); k++) id = `${zone.id}~${k}`
+  zone.id = id
+  for (const n of zone.nodes) n.zoneId = id
+  all.push(zone)
+}
+all.sort((a, b) => (a.sourceFile < b.sourceFile ? -1 : a.sourceFile > b.sourceFile ? 1 : 0))
+const merged = { zones: new Map(all.map(z => [z.id, z])) }
 const match = matchGenieToLich(merged.zones, lichDb)
-const fileToZone = zoneIdByFile(zones)
-for (const [file, id] of fileToZone) { const p = merged.parentOf.get(id); if (p) fileToZone.set(file, p) }
+const fileToZone = zoneIdByFile(genie)
+for (const [file, id] of fileToZone) { const p = folded.parentOf.get(id); if (p) fileToZone.set(file, p) }
+for (const { zone, includes } of damaps) {
+  fileToZone.set(zone.sourceFile.toLowerCase(), zone.id)
+  for (const f of includes) fileToZone.set(f.toLowerCase(), zone.id)
+}
+if (damaps.length) console.log(`.damap maps: ${damaps.length} (${replaced} Genie files they cover were skipped)`)
+// index.json beside the maps: their names and git blob ids, read by the DaMaps
+// Editor's "Get latest maps" from GitHub's file server (no API rate limit).
+if (damapDir && fs.existsSync(damapDir)) {
+  const maps = fs.readdirSync(damapDir).filter(f => f.toLowerCase().endsWith('.damap')).sort().map(name => {
+    const buf = fs.readFileSync(path.join(damapDir, name))
+    return { name, sha: createHash('sha1').update(`blob ${buf.length}\0`).update(buf).digest('hex') }
+  })
+  fs.writeFileSync(path.join(damapDir, 'index.json'), JSON.stringify({ about: 'Written by tools/damaps/build-damaps.mjs; read by the DaMaps Editor.', maps }, null, 1) + '\n')
+}
 
 const keysOf = new Map<number, string>()
 for (const [lid, nodes] of match.nodesOf) {
@@ -108,12 +158,12 @@ for (const a of areas) for (const r of a.rooms) {
 const out: DaWorldFile = {
   version: DA_WORLD_VERSION,
   made: new Date().toISOString().slice(0, 10),
-  sources: { maps: `${files.length} Genie map files`, lich: path.basename(lichFile) },
+  sources: { maps: [files.length ? `${files.length} Genie map files` : '', damaps.length ? `${damaps.length} .damap maps` : ''].filter(Boolean).join(' + '), lich: path.basename(lichFile) },
   stats: { areas: areas.length, squares, matched },
   areas,
 }
 fs.mkdirSync(path.dirname(outFile), { recursive: true })
 fs.writeFileSync(outFile, JSON.stringify(out))
 console.log(`Da'Maps: ${areas.length} areas, ${squares} squares, ${matched} matched to Lich (${(100 * matched / squares).toFixed(1)}%), ${lone} without a line`)
-console.log(`folded in: ${[...merged.parentOf].map(([c, p]) => `${c}→${p}`).join(' ')}`)
+if (folded.parentOf.size) console.log(`folded in: ${[...folded.parentOf].map(([c, p]) => `${c}→${p}`).join(' ')}`)
 console.log(`wrote ${outFile} (${(fs.statSync(outFile).size / 1e6).toFixed(2)} MB)`)

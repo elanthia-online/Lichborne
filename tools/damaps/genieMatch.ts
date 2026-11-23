@@ -107,6 +107,7 @@ export function matchGenieToLich(zones: Map<string, GenieZone>, lichDb: Map<numb
         stubs++
         // A marker carries its room's name and description: match it the same
         // way, but only as a go2 target (it isn't drawn as that room).
+        if (node.lichId && lichDb.has(node.lichId)) { stubLichOf.set(nodeKey(zone.id, node.id), node.lichId); continue }
         // Description exact, then its opening, then the name alone if it's unique.
         const nd = new Set(node.descriptions.map(descKey))
         const nh = new Set([...nd].map(head))
@@ -119,6 +120,8 @@ export function matchGenieToLich(zones: Map<string, GenieZone>, lichDb: Map<numb
         continue
       }
       total++
+      // A Lich room number set by hand in a .damap file wins over any guess.
+      if (node.lichId && lichDb.has(node.lichId)) { lichOf.set(nodeKey(zone.id, node.id), node.lichId); continue }
       const nd = new Set(node.descriptions.map(descKey))
       const nh = new Set([...nd].map(head))
       let cands = byTitle.get(normalizeMatchKey(node.name)) ?? []

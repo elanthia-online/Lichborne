@@ -70,6 +70,9 @@ export interface GenieNode {
   zoneName:     string
   zoneId:       string
   arcs:         GenieArc[]
+  /** Da'Maps build only: a Lich room number set by hand in a .damap file
+   *  (tools/damaps/damapFormat.ts), used instead of the automatic match */
+  lichId?:      number
 }
 
 // Free-floating text label on the map. Genie XML scatters these across

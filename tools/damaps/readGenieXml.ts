@@ -9,6 +9,7 @@ const NAMED: Record<string, string> = {
   aqua: '#00FFFF', blue: '#0000FF', lime: '#00FF00', red: '#FF0000', white: '#FFFFFF',
   yellow: '#FFFF00', fuchsia: '#FF00FF', magenta: '#FF00FF', orange: '#FF8000', purple: '#800080',
   navy: '#000080', green: '#008000', black: '#000000', gray: '#808080', grey: '#808080',
+  silver: '#C0C0C0', olive: '#808000', maroon: '#800000', teal: '#008080',
 }
 const ENT: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
 const decode = (s: string) => s.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (m, e: string) =>
@@ -22,6 +23,19 @@ function attrs(s: string): Record<string, string> {
 const color = (raw?: string) => {
   if (!raw) return undefined
   return NAMED[raw.toLowerCase()] ?? raw.replace(/^#+/, '#').toUpperCase()
+}
+
+/**
+ * A Genie map file's bytes as text. Genie saves some maps as UTF-16 (41 of the
+ * community maps folder's files); read as UTF-8 those come out empty, which
+ * silently dropped them from Da'Maps until 2026-11-23. Goes by the byte-order
+ * mark, else UTF-8.
+ */
+export function decodeMapFile(bytes: Uint8Array): string {
+  if (bytes[0] === 0xFF && bytes[1] === 0xFE) return new TextDecoder('utf-16le').decode(bytes.subarray(2))
+  if (bytes[0] === 0xFE && bytes[1] === 0xFF) return new TextDecoder('utf-16be').decode(bytes.subarray(2))
+  if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) return new TextDecoder('utf-8').decode(bytes.subarray(3))
+  return new TextDecoder('utf-8').decode(bytes)
 }
 
 export function readGenieXml(xml: string, sourceFile: string): GenieZone {

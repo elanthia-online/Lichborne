@@ -1,0 +1,22 @@
+{
+ "format": "damap",
+ "version": 1,
+ "id": "1e",
+ "name": "Crossing Estate HQ",
+ "file": "Map1e_Crossing_Estate_Headquarters.xml",
+ "rooms": [
+  {"id":1,"x":160,"y":160,"z":0,"title":"Estate Holders' Headquarters, Foyer","descriptions":["This tasteful entry hall is paneled with a variety of exotic woods.  The parquet floor is patterned in alternately light and dark diamond shapes, surrounding the Estate Holder crest in the center of the room.  Lining the walls are several plush couches for the comfort of those awaiting appointments."],"exits":[{"to":2,"exit":"go","move":"go business hallway"},{"to":7,"exit":"go","move":"mahogany door"}]},
+  {"id":2,"x":200,"y":160,"z":0,"title":"Estate Holders' Headquarters, Office Hallway","descriptions":["This wide hallway is somewhat less opulent than the entry foyer and the rooms dedicated to council meetings, reflecting the fact that this is where the day-to-day business takes place.  Several offices open off from here, with frequent visitors coming and going.  The walls display portraits of prominent estate holders, past and present."],"exits":[{"to":1,"exit":"go","move":"go entry foyer"},{"to":3,"exit":"go","move":"go housing doorway"},{"to":4,"exit":"go","move":"go exchange doorway"},{"to":5,"exit":"go","move":"go acquisitions doorway"},{"to":6,"exit":"go","move":"go expansions doorway"}]},
+  {"id":3,"x":240,"y":200,"z":0,"title":"Estate Holders' Headquarters, Housing Office","descriptions":["This is a large office with a well-worn counter, several windows each with a Use Next Window, Please sign and apparently one clerk actually working.  Every town in the land seems cursed with lines and waiting and fees.  This office is for the obtaining of permits, licenses and similar matters."],"exits":[{"to":2,"exit":"go","move":"go pine doorway"}]},
+  {"id":4,"x":240,"y":120,"z":0,"title":"Estate Holders' Headquarters, Home Exchange Office","descriptions":["Tiny, stuffed with old, dusty furniture, and smelling like yesterday's laundry, this office is anything but a testimony to bureaucratic efficiency.  Large piles of yellowing papers spill from cracked file cabinets and lie scattered upon the floor, fallen from large, ungainly stacks on what little desk space is not taken up by piles of mouldering food."],"exits":[{"to":2,"exit":"go","move":"go oak doorway"}]},
+  {"id":5,"x":200,"y":200,"z":0,"title":"Estate Holders' Headquarters, Office of Acquisitions","descriptions":["Maps cover practically every inch of available wall space, with overview maps covering all of Kermoria ranging down to ones detailing individual neighborhoods.  Trays labeled IN and OUT are filled to overflowing, although the IN box is piled deeper by far.  Government officials, landowners and couriers seem to form a parade of traffic through the office."],"exits":[{"to":2,"exit":"go","move":"go deobar doorway"}]},
+  {"id":6,"x":200,"y":120,"z":0,"title":"Estate Holders' Headquarters, Office of Expansions","descriptions":["This office is like a cousin to the Acquisitions Office without all the hubbub.  There are a handful of maps on the wall, with pushpins marking areas for development.  A few office workers are engaged in conversation with merchants and artisans, discussing potential development opportunities."],"exits":[{"to":2,"exit":"go","move":"go maple doorway"}]},
+  {"id":7,"x":160,"y":140,"z":0,"title":"The Crossing, Ustial Road","descriptions":["The two-story dwellings on the north side of the street are sequestered by high town walls.  Shade trees from the inner yards of the houses hang over into the street.  Surrounding one well-kept gate, a colorful wall mural relieves the dun-colored monotony of the protective ramparts.  To the south, the equally humdrum back wall of a warehouse looms."],"exits":[{"to":0,"exit":"west","move":""},{"to":0,"exit":"east","move":""}],"aliases":["Crossing"],"linksTo":"Map1_Crossing.xml"}
+ ],
+ "labels": [
+  {"text":"Expansions","x":150,"y":100,"z":0},
+  {"text":"Exchange","x":240,"y":100,"z":0},
+  {"text":"Housing","x":240,"y":210,"z":0},
+  {"text":"Acquistions","x":150,"y":210,"z":0}
+ ]
+}
