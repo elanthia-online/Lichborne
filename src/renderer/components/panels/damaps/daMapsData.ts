@@ -1,7 +1,7 @@
 // Da'Maps — data layer.
 //
-// Da'Maps draws its OWN map (damapsWorld.ts / public/damaps-world.json), made
-// once by tools/damaps/build-damaps.mjs. Each square on it carries a Lich room
+// Da'Maps draws its OWN map (damapsWorld.ts), built in the app from the .damap
+// maps downloaded from the Da'Maps repository. Each square on it carries a Lich room
 // id, so everything about a room comes from Lich's map database at run time:
 //   - identity, travel and "you are here" = Lich room ids (+ `;go2`)
 //   - room categories / forage / hunting = Lich `tags`

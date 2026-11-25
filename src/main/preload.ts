@@ -33,6 +33,7 @@ import type {
   AICapability, AIKeyStatus, AITestResult, AIChatRequest, AIChatChunk, AIChatDone, AIChatError,
   SimuCoinStatus, UserTextPayload, LaunchUrlPayload, CharacterNotice, RoutedToast,
   GenieMapsStatus, GenieMapsProgress, GenieMapsResult, MapDataResult,
+  DaMapsStatus, DaMapsProgress, DaMapsResult, DaMapsFiles,
 } from '../shared/types'
 
 // One shared list — see the note on IPC in shared/types.ts.
@@ -399,6 +400,21 @@ contextBridge.exposeInMainWorld('api', {
     const h = (_e: unknown, s: GenieMapsStatus) => cb(s)
     ipcRenderer.on('genie-maps:updated', h)
     return () => ipcRenderer.removeListener('genie-maps:updated', h)
+  },
+  // Da'Maps download — the Lichborne-managed `{userData}/DaMaps` (.damap files
+  // from github.com/Kaesken/Da-Maps). Broadcast to every window, like the Genie maps.
+  daMapsStatus: (): Promise<DaMapsStatus> => ipcRenderer.invoke('damaps:status'),
+  daMapsInstall: (): Promise<DaMapsResult> => ipcRenderer.invoke('damaps:install'),
+  daMapsRead: (): Promise<DaMapsFiles> => ipcRenderer.invoke('damaps:read'),
+  onDaMapsProgress: (cb: (p: DaMapsProgress) => void) => {
+    const h = (_e: unknown, p: DaMapsProgress) => cb(p)
+    ipcRenderer.on('damaps:progress', h)
+    return () => ipcRenderer.removeListener('damaps:progress', h)
+  },
+  onDaMapsUpdated: (cb: (s: DaMapsStatus) => void) => {
+    const h = (_e: unknown, s: DaMapsStatus) => cb(s)
+    ipcRenderer.on('damaps:updated', h)
+    return () => ipcRenderer.removeListener('damaps:updated', h)
   },
 
   findLichMapFile: (lichPath: string, family?: 'DR' | 'GS4'): Promise<{ jsonPath: string; mapsDir: string; stamp?: string } | { missing: 'lich' } | null> =>

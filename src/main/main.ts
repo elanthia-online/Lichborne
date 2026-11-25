@@ -60,6 +60,7 @@
 //    the LOGIN handler. Don't describe the boundary as stricter than it is.
 import { app, BrowserWindow, ipcMain, dialog, Menu, shell, session, clipboard, safeStorage, powerMonitor, net } from 'electron'
 import { installGenieMaps, readGenieMapsStatus, type GenieMapsStatus, type GenieMapsResult } from './genieMapsDownload'
+import { installDaMaps, readDaMapsStatus, readDaMapsFiles, type DaMapsStatus, type DaMapsResult, type DaMapsFiles } from './damapsDownload'
 import { readLichMapData, lichMapDataStamp } from './lichMapData'
 import type { MapDataResult } from '../shared/types'
 import * as path from 'path'
@@ -2022,6 +2023,34 @@ ipcMain.handle('genie-maps:install', async (): Promise<GenieMapsResult> => {
   if (result.ok) broadcastAll('genie-maps:updated', result.status)
   else console.error('Genie maps download failed:', result.error)
   broadcastAll('genie-maps:progress', { phase: 'done' })
+  return result
+})
+
+// ── Da'Maps download ──────────────────────────────────────────────────────────
+// The .damap files from github.com/Kaesken/Da-Maps, in `{userData}/DaMaps`
+// (damapsDownload.ts). Same shape as the Genie maps: app-wide, so progress and
+// the finished status go to every window. The renderer builds Da'Maps' map
+// from the files (damaps/damapsWorld.ts), so main only fetches and reads them.
+
+ipcMain.handle('damaps:status', (): DaMapsStatus => readDaMapsStatus(app.getPath('userData')))
+
+ipcMain.handle('damaps:read', (): Promise<DaMapsFiles> => readDaMapsFiles(app.getPath('userData')))
+
+ipcMain.handle('damaps:install', async (): Promise<DaMapsResult> => {
+  let lastSent = 0
+  const result = await installDaMaps({
+    userData: app.getPath('userData'),
+    fetchImpl: (url, init) => net.fetch(url, init),
+    onProgress: p => {
+      const now = Date.now()
+      if (p.phase === 'download' && now - lastSent < 100) return
+      lastSent = now
+      broadcastAll('damaps:progress', p)
+    },
+  })
+  if (result.ok) broadcastAll('damaps:updated', result.status)
+  else console.error("Da'Maps download failed:", result.error)
+  broadcastAll('damaps:progress', { phase: 'done' })
   return result
 })
 

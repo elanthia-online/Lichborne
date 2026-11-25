@@ -7,8 +7,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { GenieZone } from '../../src/renderer/components/panels/mapTypes'
 import { readGenieXml, decodeMapFile } from './readGenieXml'
-import { mergeSubMaps } from './genieMerge'
-import { zoneToDamap, stringifyDamap, parseDamap } from './damapFormat'
+import { mergeSubMaps } from '../../src/renderer/components/panels/damaps/build/genieMerge'
+import { zoneToDamap, stringifyDamap, parseDamap } from '../../src/renderer/components/panels/damaps/build/damapFormat'
 
 const [mapsDir, outDir] = process.argv.slice(2)
 if (!mapsDir || !outDir) { console.error('usage: export-damaps <Genie maps folder> <out folder>'); process.exit(1) }

@@ -8,12 +8,12 @@
 //
 // Area keys are `g:<zoneId>@<level>`; Genie maps can have several floors.
 
-import type { GenieZone, GenieNode, LichRoom } from '../../src/renderer/components/panels/mapTypes'
-import { lichTitle, normalizeMatchKey } from '../../src/renderer/components/panels/mapTypes'
+import type { GenieZone, GenieNode, LichRoom } from '../../mapTypes'
+import { lichTitle, normalizeMatchKey } from '../../mapTypes'
 import {
   type DaArea, type DaArc, type DaBuilding, type DaRoom,
   classifyMove, splitTags, isIndoor, buildingName, placeLabelsAndOutlines,
-} from '../../src/renderer/components/panels/damaps/daMapsData'
+} from '../daMapsData'
 import { isStub, nodeKey, type GenieMatch } from './genieMatch'
 
 export const GENIE_ROOM_SIZE = 8
@@ -249,17 +249,38 @@ export function buildGenieArea(
   // No square on top of another. A few Genie squares share a spot (a marker
   // drawn over its door, two ferry decks, a copy-pasted room); the later one,
   // markers first, moves to the nearest free spot. Its lines follow it.
+  // A grid of cells one spacing wide, so "is anything within a spacing of
+  // here" looks at nine cells instead of every square (the big maps have over
+  // a thousand squares; checking each against all was most of the build).
   const S = GENIE_ROOM_SIZE
-  const clash = (r: DaRoom, x: number, y: number) =>
-    rooms.some(o => o !== r && Math.abs(o.x - x) < S + 2 && Math.abs(o.y - y) < S + 2)
+  const CELL = S + 2
+  const grid = new Map<string, DaRoom[]>()
+  const cellOf = (x: number, y: number) => `${Math.floor(x / CELL)},${Math.floor(y / CELL)}`
+  for (const o of rooms) { const k = cellOf(o.x, o.y); const c = grid.get(k); if (c) c.push(o); else grid.set(k, [o]) }
+  const within = (r: DaRoom, x: number, y: number, d: number) => {
+    const cx = Math.floor(x / CELL), cy = Math.floor(y / CELL)
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      for (const o of grid.get(`${cx + i},${cy + j}`) ?? []) {
+        if (o !== r && Math.abs(o.x - x) < d && Math.abs(o.y - y) < d) return true
+      }
+    }
+    return false
+  }
+  const clash = (r: DaRoom, x: number, y: number) => within(r, x, y, S + 2)
   const order = [...rooms].sort((p, q) => Number(!!q.stubTo) - Number(!!p.stubTo))
   for (const r of order) {
-    if (!rooms.some(o => o !== r && Math.abs(o.x - r.x) < S && Math.abs(o.y - r.y) < S)) continue
+    if (!within(r, r.x, r.y, S)) continue
     search: for (let ring = 1; ring <= 30; ring++) {
       for (let dx = -ring; dx <= ring; dx++) for (const dy of [-ring, ring]) {
         for (const [px, py] of [[dx, dy], [dy, dx]]) {
           const x = r.x + px * (S + 2), y = r.y + py * (S + 2)
-          if (!clash(r, x, y)) { r.x = x; r.y = y; break search }
+          if (!clash(r, x, y)) {
+            const from = grid.get(cellOf(r.x, r.y))!
+            from.splice(from.indexOf(r), 1)
+            r.x = x; r.y = y
+            const k = cellOf(x, y); const c = grid.get(k); if (c) c.push(r); else grid.set(k, [r])
+            break search
+          }
         }
       }
     }

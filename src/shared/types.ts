@@ -1153,6 +1153,21 @@ export type GenieMapsResult =
   | { ok: true; status: GenieMapsStatus }
   | { ok: false; error: string }
 
+// ── Da'Maps download ──────────────────────────────────────────────────────────
+// The Lichborne-managed copy of the Da'Maps maps (.damap files from
+// github.com/Kaesken/Da-Maps) in `{userData}/DaMaps` (main/damapsDownload.ts).
+// Same shapes as the Genie maps download; `maps` counts the .damap files.
+export type DaMapsStatus = GenieMapsStatus
+export type DaMapsProgress = GenieMapsProgress
+export type DaMapsResult =
+  | { ok: true; status: DaMapsStatus }
+  | { ok: false; error: string }
+/** The installed maps' text, read for the app's build of Da'Maps' map. */
+export interface DaMapsFiles {
+  status: DaMapsStatus
+  files: { name: string; text: string }[]
+}
+
 // What Lich's own data files say is WHERE (main/lichMapData.ts), for the Graph
 // map's Find lens (v1.1.0). One row is one named thing and the Lich room ids
 // that have it. `rooms` are LICH ids (the map's `id`, not the game's uid).

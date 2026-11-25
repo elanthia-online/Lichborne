@@ -21,8 +21,9 @@
 //
 // Pure and React-free.
 
-import type { GenieZone, GenieNode, LichRoom } from '../../src/renderer/components/panels/mapTypes'
-import { lichTitle, normalizeMatchKey } from '../../src/renderer/components/panels/mapTypes'
+import type { GenieZone, GenieNode, LichRoom } from '../../mapTypes'
+import { lichTitle, normalizeMatchKey } from '../../mapTypes'
+import { runSync, type Steps } from '../../../../timeSlice'
 
 export interface GenieMatch {
   /** `${zoneId}:${nodeId}` → Lich room id */
@@ -67,12 +68,20 @@ function genieExits(n: GenieNode): string {
 }
 
 export function matchGenieToLich(zones: Map<string, GenieZone>, lichDb: Map<number, LichRoom>): GenieMatch {
+  return runSync(matchSteps(zones, lichDb))
+}
+
+/** The same match as steps that `yield` every few hundred rooms, so the app can
+ *  run it time-sliced (timeSlice.ts) without freezing the window. */
+export function* matchSteps(zones: Map<string, GenieZone>, lichDb: Map<number, LichRoom>): Steps<GenieMatch> {
+  let tick = 0
   const byTitle = new Map<string, LichRoom[]>()
   for (const r of lichDb.values()) {
     const t = normalizeMatchKey(lichTitle(r))
     if (!t) continue
     if (!byTitle.has(t)) byTitle.set(t, [])
     byTitle.get(t)!.push(r)
+    if ((++tick & 1023) === 0) yield
   }
   const lichDesc = new Map<number, Set<string>>()
   const descOf = (r: LichRoom) => {
@@ -90,6 +99,7 @@ export function matchGenieToLich(zones: Map<string, GenieZone>, lichDb: Map<numb
   const head = (d: string) => d.slice(0, 60)
   const byDescHead = new Map<string, LichRoom[]>()
   for (const r of lichDb.values()) for (const d of descOf(r)) {
+    if ((++tick & 511) === 0) yield
     if (d.length < 30) continue
     const h = head(d)
     if (!byDescHead.has(h)) byDescHead.set(h, [])
@@ -103,6 +113,7 @@ export function matchGenieToLich(zones: Map<string, GenieZone>, lichDb: Map<numb
 
   for (const zone of zones.values()) {
     for (const node of zone.nodes) {
+      if ((++tick & 127) === 0) yield
       if (isStub(node)) {
         stubs++
         // A marker carries its room's name and description: match it the same
@@ -161,6 +172,7 @@ export function matchGenieToLich(zones: Map<string, GenieZone>, lichDb: Map<numb
   for (let pass = 0; pass < 6 && pending.length; pass++) {
     let progress = false
     for (let i = pending.length - 1; i >= 0; i--) {
+      if ((++tick & 255) === 0) yield
       const { zone, node, cands } = pending[i]
       const nbrLich: number[] = []
       for (const a of node.arcs) {
@@ -188,6 +200,7 @@ export function matchGenieToLich(zones: Map<string, GenieZone>, lichDb: Map<numb
 
   const nodesOf = new Map<number, { zoneId: string; nodeId: number }[]>()
   for (const [k, lid] of lichOf) {
+    if ((++tick & 1023) === 0) yield
     const i = k.lastIndexOf(':')
     const entry = { zoneId: k.slice(0, i), nodeId: Number(k.slice(i + 1)) }
     if (!nodesOf.has(lid)) nodesOf.set(lid, [])

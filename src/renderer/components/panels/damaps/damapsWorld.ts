@@ -1,11 +1,17 @@
 // Da'Maps — its own map.
 //
-// `damaps-world.json` (in src/renderer/public, shipped beside the app) is Da'Maps' map of the world: every area, every room
-// square with its position, colour and Lich room id, the lines between them,
-// the place names and the building outlines. It is made once, offline, by
-// tools/damaps/build-damaps.mjs (from a folder of Genie map files, matched to
-// Lich's map database) and committed, so while you play Da'Maps reads no other
-// map: not Genie's, not Lich's tiles.
+// Da'Maps' map of the world (a DaWorldFile, worldFile.ts) holds every area,
+// every room square with its position, colour and Lich room id, the lines
+// between them, the place names and the building outlines. It is built here,
+// in the app, from two things:
+//   - the .damap maps, downloaded from the Da'Maps repository on GitHub into
+//     Lichborne's own data folder (main/damapsDownload.ts), so a map fix
+//     reaches players without a new Lichborne release;
+//   - the player's own Lich map, which every square is matched against.
+// The build (build/buildWorld.ts) is time-sliced so the window keeps drawing,
+// and the result is kept until either input changes: a new download (the
+// maps' commit or install time) or a reloaded Lich map (a new lichDb object).
+// Every Da'Maps view asks for it with the same two, so they share one build.
 //
 // At run time each square is filled in from the Lich room it carries (indoor,
 // forage, hunting, services, exits), which is also what the forage notes
@@ -17,43 +23,16 @@ import {
   type DaArea, type DaArc, type DaArcCategory, type DaBuilding, type DaRoom,
   splitTags, isIndoor,
 } from './daMapsData'
+import type { DaWorldArea, DaWorldFile } from './worldFile'
+import { buildWorldSteps, type BuildResult } from './build/buildWorld'
+import { runSliced } from '../../../timeSlice'
+
+export * from './worldFile'
 
 /** square size on Da'Maps' map, in map units */
 export const DA_ROOM_SIZE = 8
 
-export const DA_WORLD_VERSION = 1
 const CATS: DaArcCategory[] = ['cardinal', 'climb', 'go']
-
-/** [id, lich id (0 = none), x, y, fill ('' = none), marker target area ('' = none), title, marker's go2 Lich room (0 = none)] */
-export type DaWorldRoom = [number, number, number, number, string, string, string, number?]
-/** [from id, to id, 0 cardinal | 1 climb | 2 go] */
-export type DaWorldLine = [number, number, number]
-/** [name, x1, y1, x2, y2, room ids, 1 = draw its dotted outline] */
-export type DaWorldBuilding = [string, number, number, number, number, number[], number]
-
-export interface DaWorldArea {
-  key:       string
-  name:      string
-  province:  string
-  /** all floors of this map, ground floor first (keys); [key] for one floor */
-  floors:    string[]
-  rooms:     DaWorldRoom[]
-  lines:     DaWorldLine[]
-  texts:     [string, number, number][]
-  buildings: DaWorldBuilding[]
-  /** [from id, to id, Genie move] where either end is a "?" square (optional:
-   *  files made before 2026-11-22 have none, and then those rooms can't be walked) */
-  moves?:    [number, number, string][]
-}
-
-export interface DaWorldFile {
-  version: number
-  made:    string
-  /** where it was built from, for the record */
-  sources: { maps: string; lich: string }
-  stats:   { areas: number; squares: number; matched: number }
-  areas:   DaWorldArea[]
-}
 
 export interface DaWorld {
   file: DaWorldFile
@@ -63,9 +42,6 @@ export interface DaWorld {
   /** one area per map for Global: each map's ground floor */
   globalKeys: string[]
 }
-
-/** shipped beside the app (src/renderer/public), so it is read only when Da'Maps opens */
-const WORLD_URL = './damaps-world.json'
 
 function readJson(url: string): Promise<unknown> {
   // XHR, not fetch: fetch of a file:// resource is unreliable in Electron.
@@ -82,27 +58,51 @@ function readJson(url: string): Promise<unknown> {
   })
 }
 
-let loading: Promise<DaWorld> | null = null
-/** Load Da'Maps' map, once, the first time Da'Maps opens. */
-export function loadDaWorld(): Promise<DaWorld> {
-  if (!loading) {
-    loading = readJson(WORLD_URL).then(raw => {
-      const file = raw as DaWorldFile
-      if (file?.version !== DA_WORLD_VERSION || !Array.isArray(file.areas)) throw new Error('unknown map file version')
-      const byKey = new Map(file.areas.map(a => [a.key, a]))
-      const keysOf = new Map<number, string[]>()
-      for (const a of file.areas) for (const r of a.rooms) {
-        if (!r[1]) continue
-        if (!keysOf.has(r[1])) keysOf.set(r[1], [])
-        const ks = keysOf.get(r[1])!
-        if (!ks.includes(a.key)) ks.push(a.key)
-      }
-      const globalKeys = file.areas.filter(a => a.floors[0] === a.key).map(a => a.key)
-      return { file, byKey, keysOf, globalKeys }
+let built: { lichDb: Map<number, LichRoom>; stamp: string; promise: Promise<DaWorld | null> } | null = null
+
+/** Which download the maps are. */
+function statusStamp(s: { installed: boolean; commit: string | null; installedAt: number | null; maps: number | null }): string {
+  // The commit when the download had one (an Update that found nothing new
+  // then rebuilds nothing), else the install time.
+  return s.installed ? `${s.commit ?? s.installedAt ?? ''}|${s.maps ?? ''}` : ''
+}
+
+/**
+ * Da'Maps' map, built from the downloaded maps and this Lich map. Null when no
+ * maps are downloaded yet. Built once per (maps, Lich map); every Da'Maps view
+ * shares it.
+ */
+export function loadDaWorld(lichDb: Map<number, LichRoom>): Promise<DaWorld | null> {
+  return window.api.daMapsStatus().then(status => {
+    const stamp = statusStamp(status)
+    if (built && built.lichDb === lichDb && built.stamp === stamp) return built.promise
+    const promise = !status.installed ? Promise.resolve(null) : window.api.daMapsRead().then(async ({ status: s, files }) => {
+      if (!files.length) return null
+      const r: BuildResult = await runSliced(buildWorldSteps({
+        damaps: files, lichDb,
+        sources: { maps: `${files.length} .damap maps${s.commit ? ` (${s.commit.slice(0, 7)})` : ''}`, lich: `${lichDb.size} rooms` },
+      }))
+      for (const line of r.log) console.warn(`[Da'Maps] ${line}`)
+      return indexWorld(r.file)
     })
-    loading.catch(() => { loading = null })
+    const entry = { lichDb, stamp, promise }
+    built = entry
+    promise.catch(() => { if (built === entry) built = null })
+    return promise
+  })
+}
+
+function indexWorld(file: DaWorldFile): DaWorld {
+  const byKey = new Map(file.areas.map(a => [a.key, a]))
+  const keysOf = new Map<number, string[]>()
+  for (const a of file.areas) for (const r of a.rooms) {
+    if (!r[1]) continue
+    if (!keysOf.has(r[1])) keysOf.set(r[1], [])
+    const ks = keysOf.get(r[1])!
+    if (!ks.includes(a.key)) ks.push(a.key)
   }
-  return loading
+  const globalKeys = file.areas.filter(a => a.floors[0] === a.key).map(a => a.key)
+  return { file, byKey, keysOf, globalKeys }
 }
 
 /** One area of Da'Maps' map, filled in from the Lich rooms its squares carry. */

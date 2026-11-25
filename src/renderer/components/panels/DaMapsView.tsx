@@ -1,8 +1,10 @@
-// Da'Maps view — the third map mode behind MapPanel ("Lich Map" / "Genie Maps"
-// / "Da'Maps"). Draws Da'Maps' OWN map (damaps/damapsWorld.ts, built once by
-// tools/damaps/build-damaps.mjs); it reads no other map while you play. Every
-// square carries a Lich room id, which supplies the room details, the
-// forage notes (damaps/daMapsData.ts) and `;go2`.
+// Da'Maps view — a map mode behind MapPanel ("Lich Map" / "Genie Maps" /
+// "Graph" / "Da'Maps"). Draws Da'Maps' OWN map (damaps/damapsWorld.ts), built
+// in the app from the .damap maps downloaded from the Da'Maps repository on
+// GitHub (main/damapsDownload.ts) and the player's Lich map. Until the maps
+// are downloaded it shows a Download button; after that, an Update button in
+// the toolbar fetches the latest. Every square carries a Lich room id, which
+// supplies the room details, the forage notes (damaps/daMapsData.ts) and `;go2`.
 //
 // Interaction model:
 //   - hover a room        → the side panel's "Room" tab shows it
@@ -14,6 +16,7 @@
 //   - drag to pan, wheel to zoom
 import { useState, useRef, useEffect, useMemo, useCallback, type CSSProperties } from 'react'
 import type { LichRoom } from './mapTypes'
+import type { DaMapsStatus, DaMapsProgress } from '../../../shared/types'
 import { COLOR_LEGEND } from './mapTypes'
 import { loadDaWorld, loadDaArt, hydrateArea, DA_ROOM_SIZE, type DaWorld, type DaArt } from './damaps/damapsWorld'
 import { lichTitle, normalizeMatchKey } from './mapTypes'
@@ -183,28 +186,114 @@ function HerePing({ x, y, size }: { x: number; y: number; size: number }) {
   )
 }
 
+/** The download's progress in a few words, for the button. */
+function jobText(p: DaMapsProgress): string {
+  if (p.phase === 'download') return p.total ? `${Math.round(p.received / p.total * 100)}%` : `${(p.received / 1048576).toFixed(1)} MB`
+  if (p.phase === 'extract') return 'unpacking'
+  return 'finishing'
+}
+
+/** When the maps were downloaded, for the Update button's tooltip. */
+function installedText(s: DaMapsStatus): string {
+  const when = s.installedAt ? new Date(s.installedAt).toLocaleString() : 'an unknown time'
+  return `${s.maps ?? 'The'} maps, downloaded ${when}${s.commit ? ` (version ${s.commit.slice(0, 7)})` : ''}`
+}
+
 export default function DaMapsView({ lichDb, currentRoom, character, roomTitle, roomId, onSendCommand }: Props) {
-  // Da'Maps' own map, loaded once (a separate chunk).
+  // The downloaded maps (main/damapsDownload.ts). Main broadcasts progress and
+  // the finished status to every window, so every Da'Maps view shows the job
+  // and rebuilds when the maps under it are replaced.
+  const [status, setStatus] = useState<DaMapsStatus | null>(null)
+  const [job, setJob] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    window.api.daMapsStatus().then(s => { if (live) setStatus(s) }).catch(e => { if (live) setStatus({ dir: '', installed: false, commit: null, installedAt: null, maps: null }); console.error(e) })
+    const offProgress = window.api.onDaMapsProgress(p => setJob(p.phase === 'done' ? null : jobText(p)))
+    const offUpdated = window.api.onDaMapsUpdated(s => setStatus(s))
+    return () => { live = false; offProgress(); offUpdated() }
+  }, [])
+
+  // Da'Maps' map, built from those maps and this Lich map. A rebuild after an
+  // update keeps showing the old map until the new one is ready.
   const [daWorld, setDaWorld] = useState<DaWorld | null>(null)
   const [worldError, setWorldError] = useState<string | null>(null)
   useEffect(() => {
+    if (!status?.installed) return
     let live = true
-    loadDaWorld().then(w => { if (live) setDaWorld(w) }, e => { if (live) setWorldError(String(e?.message ?? e)) })
+    setWorldError(null)
+    loadDaWorld(lichDb).then(
+      w => { if (!live) return; if (w) setDaWorld(w); else setWorldError('No maps were found in the download.') },
+      e => { if (live) setWorldError(String(e?.message ?? e)) })
     return () => { live = false }
-  }, [])
+  }, [lichDb, status])
+
+  const download = useCallback(async () => {
+    const wasInstalled = !!status?.installed
+    setJob('starting')
+    let r: Awaited<ReturnType<typeof window.api.daMapsInstall>>
+    try { r = await window.api.daMapsInstall() }
+    catch (e) { r = { ok: false, error: String((e as Error)?.message ?? e) } }
+    if (!r.ok) {
+      setJob(null)
+      showToast({
+        kind: 'error',
+        title: `Couldn't download ${DA_MAPS_NAME}`,
+        message: r.error
+          ? `${r.error[0].toUpperCase()}${r.error.slice(1).replace(/\.\s*$/, '')}. Nothing was changed.`
+          : 'Nothing was changed.',
+      })
+      return
+    }
+    setStatus(r.status)
+    showToast({
+      kind: 'success',
+      title: wasInstalled ? `${DA_MAPS_NAME} updated` : `${DA_MAPS_NAME} downloaded`,
+      message: `${r.status.maps ?? 'The'} maps from GitHub are ready.`,
+    })
+  }, [status])
+
+  if (status && !status.installed) {
+    return (
+      <div className="map-canvas-wrap">
+        <div className="map-empty">
+          <div className="map-empty-icon">🗺</div>
+          <div className="map-empty-msg">{DA_MAPS_NAME} needs its maps</div>
+          <div className="map-empty-sub">
+            They're kept on GitHub so they can be fixed without a new Lichborne.
+            About 3 MB. Lichborne keeps its own copy and matches it to your Lich map.
+          </div>
+          <div className="genie-maps-actions">
+            <button className="map-btn map-btn--primary" onClick={download} disabled={!!job}
+              title={`Download the ${DA_MAPS_NAME} maps from github.com/Kaesken/Da-Maps into Lichborne's own folder`}>
+              {job ? `Downloading… ${/\d/.test(job) ? job : ''}`.trim() : `⇩ Download ${DA_MAPS_NAME}`}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
   if (!daWorld) {
     return (
       <div className="map-overlay">
         <div className="map-empty">
           <div className="map-empty-icon">🗺</div>
-          <div className="map-empty-msg">{worldError ? `Couldn't load ${DA_MAPS_NAME}'s map` : `Loading ${DA_MAPS_NAME}…`}</div>
+          <div className="map-empty-msg">{worldError ? `Couldn't build ${DA_MAPS_NAME}'s map` : `Matching ${DA_MAPS_NAME} to Lich's map…`}</div>
           {worldError && <div className="map-empty-sub">{worldError}</div>}
+          {worldError && (
+            <div className="genie-maps-actions">
+              <button className="map-btn" onClick={download} disabled={!!job}>
+                {job ? `Downloading… ${/\d/.test(job) ? job : ''}`.trim() : '⇩ Download again'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     )
   }
+  const updateTitle = status ? `${installedText(status)}. Click to get the latest maps from GitHub.` : 'Get the latest maps from GitHub'
   return <DaMapsCanvas world={daWorld} lichDb={lichDb} currentRoom={currentRoom} character={character}
-    roomTitle={roomTitle ?? ''} roomId={roomId} onSendCommand={onSendCommand} />
+    roomTitle={roomTitle ?? ''} roomId={roomId} onSendCommand={onSendCommand}
+    update={{ job, title: updateTitle, run: download }} />
 }
 
 // ── The province map (Global's first view) ──────────────────────────────────
@@ -311,8 +400,10 @@ function seenFor(character: string) {
 /** how long go2 gets to reach the end of its leg */
 const GO2_LEG_MS = 10 * 60_000
 
-function DaMapsCanvas({ world: daWorld, lichDb, currentRoom, character, roomTitle, roomId, onSendCommand }: {
+function DaMapsCanvas({ world: daWorld, lichDb, currentRoom, character, roomTitle, roomId, onSendCommand, update }: {
   world: DaWorld; lichDb: Map<number, LichRoom>; currentRoom?: LichRoom; character: string
+  /** the toolbar's Update button: the running download's progress, its tooltip, and the action */
+  update: { job: string | null; title: string; run: () => void }
   roomTitle: string; roomId?: number; onSendCommand: (cmd: string) => void
 }) {
   // ── Areas ──────────────────────────────────────────────────────────────────
@@ -976,6 +1067,9 @@ function DaMapsCanvas({ world: daWorld, lichDb, currentRoom, character, roomTitl
             ? (province === 'Other' ? 'Elsewhere' : province ?? 'Provinces')
             : area ? `${area.name}${hereRoom ? ' · 📍 here' : ''}` : ''}
         </span>
+        <button className="map-btn map-btn--sm" onClick={update.run} disabled={!!update.job} title={update.title}>
+          {update.job ? `Updating… ${/\d/.test(update.job) ? update.job : ''}`.trim() : '⇩ Update'}
+        </button>
       </div>
 
       <div className="map-subbar" style={{ flexShrink: 0 }}>

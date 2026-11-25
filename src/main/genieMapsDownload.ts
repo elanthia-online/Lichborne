@@ -243,7 +243,7 @@ export async function extractGenieZip(
 
 // ── Download ──────────────────────────────────────────────────────────────────
 
-async function download(fetchImpl: FetchLike, url: string, onProgress: (received: number, total: number | null) => void): Promise<Buffer> {
+export async function download(fetchImpl: FetchLike, url: string, onProgress: (received: number, total: number | null) => void): Promise<Buffer> {
   const ctrl = new AbortController()
   let idle: ReturnType<typeof setTimeout> | null = null
   const arm = () => {
@@ -287,7 +287,7 @@ async function download(fetchImpl: FetchLike, url: string, onProgress: (received
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
 /** Rename with a few retries: on Windows a virus scanner can hold a just-written file. */
-async function renameRetrying(from: string, to: string): Promise<void> {
+export async function renameRetrying(from: string, to: string): Promise<void> {
   for (let i = 0; ; i++) {
     try { await fsp.rename(from, to); return } catch (e) {
       const code = (e as NodeJS.ErrnoException).code
@@ -297,7 +297,7 @@ async function renameRetrying(from: string, to: string): Promise<void> {
   }
 }
 
-async function removeDir(dir: string): Promise<void> {
+export async function removeDir(dir: string): Promise<void> {
   await fsp.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 }
 

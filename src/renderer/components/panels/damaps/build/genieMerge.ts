@@ -19,7 +19,7 @@
 //
 // Pure; returns new zone objects and leaves the input untouched.
 
-import type { GenieZone, GenieNode, GenieArc } from '../../src/renderer/components/panels/mapTypes'
+import type { GenieZone, GenieNode, GenieArc } from '../../mapTypes'
 import { isStub } from './genieMatch'
 
 const SUBMAP_ID = /^(\d+)([a-z]+)$/i
