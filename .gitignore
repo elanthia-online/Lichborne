@@ -52,3 +52,5 @@ Thumbs.db
 
 # Claude Code local config
 .claude/
+tools/damaps/.build-damaps.cjs
+tools/damaps/.export-damaps.cjs

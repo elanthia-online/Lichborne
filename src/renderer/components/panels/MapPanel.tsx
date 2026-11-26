@@ -19,7 +19,7 @@
 // resolver breadcrumb alive across a view switch — one ref per instance, never
 // module scope (pitfall #6). `memo`'d (B172): props are room primitives +
 // stable callbacks, so it renders on room change, not every GameWindow render.
-import { memo, useState, useRef, useEffect, useCallback } from 'react'
+import { memo, useState, useRef, useEffect, useCallback, Component, type ReactNode } from 'react'
 import type { LichRoom, GenieZone } from './mapTypes'
 import { findRoom, parseGenieZone, lichTitle, normalizeMatchKey } from './mapTypes'
 import { scheduleSharedProfileSave } from '../../profile'
@@ -28,6 +28,8 @@ import { useCharacter } from '../../CharacterContext'
 import { useProfileSaver } from '../../hooks/useProfileSaver'
 import MapImageView from './MapImageView'
 import GenieMapView, { type GenieMatch } from './GenieMapView'
+import DaMapsView from './DaMapsView'
+import { DA_MAPS_NAME, daMapsSetRoom } from './damaps/daMapsData'
 import GraphMapView, { type GraphData } from './GraphMapView'
 import { buildGraphBridgeAsync } from '../../graphBridge'
 import { buildGraphWorldAsync } from '../../graphWorld'
@@ -401,6 +403,26 @@ export function GraphNeeds({ lich, lichError, lichRooms, genie, genieMaps, genie
   )
 }
 
+// Da'Maps is experimental: if it ever throws while rendering, show the error
+// inside the map panel instead of taking the whole window down with it.
+class DaMapsBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
+  state = { error: null as string | null }
+  static getDerivedStateFromError(e: unknown) { return { error: String((e as Error)?.stack ?? e) } }
+  render() {
+    if (!this.state.error) return this.props.children
+    return (
+      <div className="map-canvas-wrap">
+        <div className="map-empty" style={{ pointerEvents: 'auto' }}>
+          <div className="map-empty-icon">⚠</div>
+          <div className="map-empty-msg">Da'Maps hit an error</div>
+          <pre className="map-empty-sub" style={{ whiteSpace: 'pre-wrap', textAlign: 'left', maxHeight: 200, overflow: 'auto', userSelect: 'text' }}>{this.state.error}</pre>
+          <button className="map-btn" onClick={() => this.setState({ error: null })}>Try again</button>
+        </div>
+      </div>
+    )
+  }
+}
+
 // B172: memoized — the map re-renders when the room actually changes (its
 // props are room primitives + stable callbacks), not on every GameWindow
 // render (vitals ticks, main-text batches).
@@ -429,11 +451,11 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
   // Maps, which needs no Lich (Sekmeht: a new player without Lich gets the map
   // that works for them). Nothing is drawn before then anyway (every view waits
   // for dbStatus), and null is never saved, so "never picked" stays knowable.
-  const [viewMode, setViewMode] = useState<'image' | 'genie' | 'combined' | null>(() => {
+  const [viewMode, setViewMode] = useState<'image' | 'genie' | 'combined' | 'damaps' | null>(() => {
     if (isGS4) return 'image'
     try {
       const v = localStorage.getItem(scopedKey(character, 'mapViewMode'))
-      if (v === 'image' || v === 'genie' || v === 'combined') return v
+      if (v === 'image' || v === 'genie' || v === 'combined' || v === 'damaps') return v
       if (v === 'graph' || v === 'lich-graph') return 'genie'  // migrate legacy selection
       return null
     } catch { return 'image' }
@@ -603,6 +625,12 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
     const h = setTimeout(() => setCurrentRoom(undefined), 400)
     return () => clearTimeout(h)
   }, [roomTitle, roomDesc, roomId, dbStatus, lichDb])
+
+  // Da'Maps: tell the PERCEIVE / FORAGE capture which Lich room this character
+  // is standing in, so a reading is filed under the right room.
+  useEffect(() => {
+    daMapsSetRoom(character, currentRoom?.id)
+  }, [character, currentRoom])
 
   // ── Load Genie XML progressively ─────────────────────────────────────────────
   //
@@ -1052,6 +1080,16 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
                   : `Graph — the Genie maps and Lich's map joined. Needs ${graphMissingText(lichNeed, genieNeed)}: click to see how to add ${lichNeed !== 'ready' && genieNeed !== 'ready' ? 'them' : 'it'}.`}
               >Graph</button>
             )}
+            {!isGS4 && (
+              <button
+                className={`map-btn map-btn--sm${viewMode === 'damaps' ? ' map-btn--active' : ''}`}
+                onClick={() => setViewMode('damaps')}
+                disabled={dbStatus !== 'ready'}
+                title={dbStatus === 'ready'
+                  ? `${DA_MAPS_NAME} — Lich map data in the Genie style, with forage and painted maps`
+                  : `${DA_MAPS_NAME} needs the Lich map database`}
+              >{DA_MAPS_NAME}</button>
+            )}
             <button
               className="map-btn map-btn--sm"
               // force — this is the user explicitly asking for a re-read, so it
@@ -1090,7 +1128,7 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
       )}
 
       {/* Image tab error (Lich not available) */}
-      {dbStatus === 'error' && viewMode === 'image' && (
+      {dbStatus === 'error' && (viewMode === 'image' || viewMode === 'damaps') && (
         <div className="map-canvas-wrap">
           {/* The Lich Map is drawn from Lich's own files, so without Lich it
               says so and points at the two ways forward: tell Lichborne where
@@ -1143,6 +1181,18 @@ export default memo(function MapPanel({ roomTitle = '', roomDesc = '', roomExits
           onSendCommand={onSendCommand}
           onShowGenie={() => setViewMode('genie')}
         />
+      )}
+      {dbStatus === 'ready' && viewMode === 'damaps' && (
+        <DaMapsBoundary>
+          <DaMapsView
+            lichDb={lichDb}
+            currentRoom={currentRoom}
+            character={character}
+            roomTitle={roomTitle}
+            roomId={roomId}
+            onSendCommand={onSendCommand}
+          />
+        </DaMapsBoundary>
       )}
       {viewMode === 'genie' && (dbStatus === 'ready' || dbStatus === 'error') && (
         <GenieMapView {...genieViewProps} />

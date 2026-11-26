@@ -24,6 +24,7 @@ import type {
   AICapability, AIKeyStatus, AITestResult, AIChatRequest, AIChatChunk, AIChatDone, AIChatError,
   SimuCoinStatus, CharacterNotice, RoutedToast,
   GenieMapsStatus, GenieMapsProgress, GenieMapsResult, MapDataResult,
+  DaMapsStatus, DaMapsProgress, DaMapsResult, DaMapsFiles,
 } from '../shared/types'
 
 declare global {
@@ -145,6 +146,14 @@ declare global {
       genieMapsInstall: () => Promise<GenieMapsResult>
       onGenieMapsProgress: (cb: (p: GenieMapsProgress) => void) => () => void
       onGenieMapsUpdated: (cb: (s: GenieMapsStatus) => void) => () => void
+      // Da'Maps download — the Lichborne-managed {userData}/DaMaps
+      daMapsStatus: () => Promise<DaMapsStatus>
+      daMapsInstall: () => Promise<DaMapsResult>
+      daMapsRead: () => Promise<DaMapsFiles>
+      /** a floor's picture from the Da'Maps repository's art/ folder (fetched once, then kept); null if unavailable */
+      daMapsArt: (file: string) => Promise<Uint8Array | null>
+      onDaMapsProgress: (cb: (p: DaMapsProgress) => void) => () => void
+      onDaMapsUpdated: (cb: (s: DaMapsStatus) => void) => () => void
       // Lich file-system
       findLichMapFile: (lichPath: string, family?: 'DR' | 'GS4') => Promise<{ jsonPath: string; mapsDir: string; stamp?: string } | { missing: 'lich' } | null>
       readMapImage: (mapsDir: string, imageName: string) => Promise<string | null>

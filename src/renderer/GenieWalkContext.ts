@@ -20,8 +20,9 @@ export type GotoResult = { moves: string[]; label: string } | { error: string }
 export type GotoPlanner = (query: string) => GotoResult
 
 export interface GenieWalkApi {
-  /** Walk a route of Genie arc `move=` texts to the room named `label`. */
-  start(moves: string[], label: string): void
+  /** Walk a route of Genie arc `move=` texts to the room named `label`.
+   *  `onEnd` hears how it ended (true: every step arrived). */
+  start(moves: string[], label: string, onEnd?: (arrived: boolean) => void): void
   stop(): void
   status: WalkStatus | null
   /** Returns the function that unregisters it. */
