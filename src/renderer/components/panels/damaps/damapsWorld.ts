@@ -43,21 +43,6 @@ export interface DaWorld {
   globalKeys: string[]
 }
 
-function readJson(url: string): Promise<unknown> {
-  // XHR, not fetch: fetch of a file:// resource is unreliable in Electron.
-  return new Promise((resolve, reject) => {
-    const x = new XMLHttpRequest()
-    x.open('GET', url)
-    x.responseType = 'text'
-    x.onload = () => {
-      if (x.status !== 0 && x.status !== 200) { reject(new Error(`HTTP ${x.status}`)); return }
-      try { resolve(JSON.parse(x.responseText)) } catch (e) { reject(e) }
-    }
-    x.onerror = () => reject(new Error(`couldn't read ${url}`))
-    x.send()
-  })
-}
-
 let built: { lichDb: Map<number, LichRoom>; stamp: string; promise: Promise<DaWorld | null> } | null = null
 
 /** Which download the maps are. */
@@ -140,29 +125,30 @@ export function hydrateArea(a: DaWorldArea, lichDb: Map<number, LichRoom>): DaAr
   const bbox = rooms.length
     ? { x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) }
     : { x1: 0, y1: 0, x2: 100, y2: 100 }
-  return { image: a.key, name: a.name, rooms, byId, byLich, arcs, buildings, bbox, texts, moves }
+  return { image: a.key, name: a.name, rooms, byId, byLich, arcs, buildings, bbox, texts, moves, ...(a.art ? { art: a.art } : {}) }
 }
 
-// ── Map art (painted backgrounds) ────────────────────────────────────────────
-// Kaesken paints a background for each map over the guide PNGs that
-// tools/damaps/export-map-art.py makes. The finished PNGs live in
-// src/renderer/public/damaps-art/, and tools/damaps/sync-map-art.mjs writes
-// damaps-art/art.json listing only the maps that have one. Each entry says
-// where its image sits on the map: its top-left (x, y) in map units and its
-// pixel size at `scale` pixels per map unit.
+// ── Pictures (painted backgrounds) ───────────────────────────────────────────
+// A floor's picture is made by the DaMaps Editor and lives in the Da'Maps
+// repository's art/ folder; the map file says where it sits (DaWorldArea.art).
+// Main fetches it the first time it's shown and keeps it (damapsDownload.ts).
 
-export interface DaArt { key: string; file: string; x: number; y: number; scale: number; width: number; height: number }
-
-let artLoading: Promise<Map<string, DaArt>> | null = null
-/** The painted backgrounds, by area key. Empty when there are none. */
-export function loadDaArt(): Promise<Map<string, DaArt>> {
-  if (!artLoading) {
-    artLoading = readJson('./damaps-art/art.json')
-      .then(raw => {
-        const maps = (raw as { maps?: DaArt[] })?.maps
-        return new Map((Array.isArray(maps) ? maps : []).map(m => [m.key, m]))
-      })
-      .catch(() => new Map<string, DaArt>())
+const artUrls = new Map<string, Promise<string | null>>()
+/** A floor's picture as an object URL, or null when it can't be had. Fetched once per file. */
+export function loadDaPicture(file: string): Promise<string | null> {
+  let p = artUrls.get(file)
+  if (!p) {
+    p = window.api.daMapsArt(file).then(bytes => {
+      if (!bytes) { artUrls.delete(file); return null }
+      const type = /\.webp$/i.test(file) ? 'image/webp' : /\.jpe?g$/i.test(file) ? 'image/jpeg' : 'image/png'
+      return URL.createObjectURL(new Blob([bytes as BlobPart], { type }))
+    }, () => { artUrls.delete(file); return null })
+    artUrls.set(file, p)
   }
-  return artLoading
+  return p
+}
+/** Forget the pictures (the maps were updated, so a picture may have changed). */
+export function forgetDaPictures() {
+  for (const p of artUrls.values()) p.then(u => { if (u) URL.revokeObjectURL(u) })
+  artUrls.clear()
 }

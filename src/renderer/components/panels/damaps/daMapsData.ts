@@ -120,6 +120,8 @@ export interface DaBuilding {
 
 export interface DaArea {
   image:     string
+  /** the floor's painted picture, a file in the Da'Maps repository's art/ folder */
+  art?:      { file: string; x: number; y: number; scale: number; width: number; height: number }
   name:      string
   rooms:     DaRoom[]
   byId:      Map<number, DaRoom>

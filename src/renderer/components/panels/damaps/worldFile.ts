@@ -26,7 +26,12 @@ export interface DaWorldArea {
   /** [from id, to id, Genie move] where either end is a "?" square (optional:
    *  files made before 2026-11-22 have none, and then those rooms can't be walked) */
   moves?:    [number, number, string][]
+  /** the floor's painted picture (DaMaps Editor), a file in the Da'Maps
+   *  repository's art/ folder; x/y in map units, scale in pixels per unit */
+  art?:      DaWorldArt
 }
+
+export interface DaWorldArt { file: string; x: number; y: number; scale: number; width: number; height: number }
 
 export interface DaWorldFile {
   version: number

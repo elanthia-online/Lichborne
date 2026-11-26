@@ -60,7 +60,7 @@
 //    the LOGIN handler. Don't describe the boundary as stricter than it is.
 import { app, BrowserWindow, ipcMain, dialog, Menu, shell, session, clipboard, safeStorage, powerMonitor, net } from 'electron'
 import { installGenieMaps, readGenieMapsStatus, type GenieMapsStatus, type GenieMapsResult } from './genieMapsDownload'
-import { installDaMaps, readDaMapsStatus, readDaMapsFiles, type DaMapsStatus, type DaMapsResult, type DaMapsFiles } from './damapsDownload'
+import { installDaMaps, readDaMapsStatus, readDaMapsFiles, readDaMapsArt, type DaMapsStatus, type DaMapsResult, type DaMapsFiles } from './damapsDownload'
 import { readLichMapData, lichMapDataStamp } from './lichMapData'
 import type { MapDataResult } from '../shared/types'
 import * as path from 'path'
@@ -2035,6 +2035,8 @@ ipcMain.handle('genie-maps:install', async (): Promise<GenieMapsResult> => {
 ipcMain.handle('damaps:status', (): DaMapsStatus => readDaMapsStatus(app.getPath('userData')))
 
 ipcMain.handle('damaps:read', (): Promise<DaMapsFiles> => readDaMapsFiles(app.getPath('userData')))
+ipcMain.handle('damaps:art', async (_e, file: string): Promise<Uint8Array | null> =>
+  readDaMapsArt(app.getPath('userData'), String(file ?? ''), (url, init) => net.fetch(url, init) as never))
 
 ipcMain.handle('damaps:install', async (): Promise<DaMapsResult> => {
   let lastSent = 0

@@ -31,6 +31,8 @@ import {
 } from './genieMapsDownload'
 
 export const DAMAPS_ZIP_URL = 'https://github.com/Kaesken/Da-Maps/archive/refs/heads/main.zip'
+/** A file in the repository at a commit (or 'main'): the floors' pictures are fetched from here. */
+export const DAMAPS_RAW_URL = 'https://raw.githubusercontent.com/Kaesken/Da-Maps'
 export const DAMAPS_SOURCE  = 'https://github.com/Kaesken/Da-Maps'
 export const DAMAPS_DIRNAME = 'DaMaps'
 export const DAMAPS_MARKER  = '.lichborne-damaps.json'
@@ -183,4 +185,49 @@ async function runInstall({ userData, fetchImpl, url = DAMAPS_ZIP_URL, onProgres
     await removeDir(staging).catch(() => {})
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
+}
+
+// ── Pictures ────────────────────────────────────────────────────────────────
+// A floor's painted picture (made by the DaMaps Editor) is NOT part of the
+// download: a full set would be many times the size of the maps, and most
+// players never open most maps. Each is fetched the first time someone opens
+// its map with pictures turned on, from the same commit as the maps they have,
+// and kept in DaMaps/art. An Update replaces the whole folder, art included, so
+// a changed picture is fetched again next time.
+
+const ART_NAME = /^[^\\/:*?"<>|]+\.(png|webp|jpe?g)$/i
+const artInflight = new Map<string, Promise<Buffer | null>>()
+
+/** The bytes of a floor's picture, from the cache or GitHub. Null when it can't be had. */
+export function readDaMapsArt(userData: string, file: string, fetchImpl: FetchLike): Promise<Buffer | null> {
+  if (!ART_NAME.test(file) || file.startsWith('.')) return Promise.resolve(null)
+  const key = file.toLowerCase()
+  const running = artInflight.get(key)
+  if (running) return running
+  const job = fetchArt(userData, file, fetchImpl).finally(() => artInflight.delete(key))
+  artInflight.set(key, job)
+  return job
+}
+
+async function fetchArt(userData: string, file: string, fetchImpl: FetchLike): Promise<Buffer | null> {
+  const status = readDaMapsStatus(userData)
+  if (!status.installed) return null
+  const cached = path.join(status.dir, 'art', file)
+  try { return await fsp.readFile(cached) } catch { /* not fetched yet */ }
+  const url = `${DAMAPS_RAW_URL}/${status.commit ?? 'main'}/art/${encodeURIComponent(file)}`
+  let bytes: Buffer
+  try { bytes = await download(fetchImpl, url, () => {}) } catch (e) {
+    console.warn(`[Da'Maps] picture ${file}: ${(e as Error).message}`)
+    return null
+  }
+  // keep it, unless the maps were updated meanwhile (then it may be the old picture)
+  if (readDaMapsStatus(userData).commit === status.commit) {
+    try {
+      await fsp.mkdir(path.dirname(cached), { recursive: true })
+      const tmp = `${cached}.${process.pid}.tmp`
+      await fsp.writeFile(tmp, bytes)
+      await fsp.rename(tmp, cached)
+    } catch { /* cache only: it's fetched again next time */ }
+  }
+  return bytes
 }

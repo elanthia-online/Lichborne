@@ -22,7 +22,7 @@ import type { GenieZone, LichRoom } from '../../mapTypes'
 import { areaProvince } from '../daMapsData'
 import { DA_WORLD_VERSION, type DaWorldArea, type DaWorldFile, type DaWorldRoom } from '../worldFile'
 import type { Steps } from '../../../../timeSlice'
-import { parseDamap, damapToZone } from './damapFormat'
+import { parseDamap, damapToZone, type DaMapArt } from './damapFormat'
 import { mergeSubMaps } from './genieMerge'
 import { matchSteps } from './genieMatch'
 import { buildGenieArea, genieAreaKey, genieLevels, zoneIdByFile } from './genieArea'
@@ -66,7 +66,7 @@ export function* buildWorldSteps({ damaps: texts, lichDb, genie: genieIn = [], s
   // ── .damap maps ──
   // Already whole (side maps folded in), so they skip the fold. Sorted by file
   // name so the result doesn't depend on the order the files were read in.
-  const damaps: { zone: GenieZone; includes: string[] }[] = []
+  const damaps: { zone: GenieZone; includes: string[]; art: DaMapArt[] }[] = []
   const covered = new Set<string>()        // link names a .damap answers to
   for (const { name, text } of [...texts].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
     try {
@@ -74,7 +74,7 @@ export function* buildWorldSteps({ damaps: texts, lichDb, genie: genieIn = [], s
       const names = [m.file, ...(m.includes ?? [])].map(x => x.toLowerCase())
       if (names.some(n => covered.has(n))) { log.push(`skipped ${name}: another .damap is already ${m.file}`); continue }
       names.forEach(n => covered.add(n))
-      damaps.push({ zone: damapToZone(m), includes: m.includes ?? [] })
+      damaps.push({ zone: damapToZone(m), includes: m.includes ?? [], art: m.art ?? [] })
     } catch (e) { log.push(`skipped ${name}: ${(e as Error).message}`) }
     yield
   }
@@ -160,6 +160,12 @@ export function* buildWorldSteps({ damaps: texts, lichDb, genie: genieIn = [], s
   }
   // A marker naming a floor that has no rooms points at the map's first floor.
   const keys = new Set(areas.map(a => a.key))
+  // Each floor's picture (DaMaps Editor), by the key of the area it belongs to.
+  // The zone id is final here (a clash above can add "~k").
+  for (const { zone, art } of damaps) for (const pic of art) {
+    const a = areas.find(x => x.key === genieAreaKey(zone.id, pic.z))
+    if (a) a.art = { file: pic.file, x: pic.x, y: pic.y, scale: pic.scale, width: pic.width, height: pic.height }
+  }
   for (const a of areas) for (const r of a.rooms) {
     if (r[5] && !keys.has(r[5])) {
       const zoneOf = r[5].replace(/@-?\d+$/, '')

@@ -150,6 +150,8 @@ declare global {
       daMapsStatus: () => Promise<DaMapsStatus>
       daMapsInstall: () => Promise<DaMapsResult>
       daMapsRead: () => Promise<DaMapsFiles>
+      /** a floor's picture from the Da'Maps repository's art/ folder (fetched once, then kept); null if unavailable */
+      daMapsArt: (file: string) => Promise<Uint8Array | null>
       onDaMapsProgress: (cb: (p: DaMapsProgress) => void) => () => void
       onDaMapsUpdated: (cb: (s: DaMapsStatus) => void) => () => void
       // Lich file-system

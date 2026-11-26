@@ -406,6 +406,7 @@ contextBridge.exposeInMainWorld('api', {
   daMapsStatus: (): Promise<DaMapsStatus> => ipcRenderer.invoke('damaps:status'),
   daMapsInstall: (): Promise<DaMapsResult> => ipcRenderer.invoke('damaps:install'),
   daMapsRead: (): Promise<DaMapsFiles> => ipcRenderer.invoke('damaps:read'),
+  daMapsArt: (file: string): Promise<Uint8Array | null> => ipcRenderer.invoke('damaps:art', file),
   onDaMapsProgress: (cb: (p: DaMapsProgress) => void) => {
     const h = (_e: unknown, p: DaMapsProgress) => cb(p)
     ipcRenderer.on('damaps:progress', h)

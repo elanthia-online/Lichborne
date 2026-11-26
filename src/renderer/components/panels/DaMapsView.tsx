@@ -18,7 +18,7 @@ import { useState, useRef, useEffect, useMemo, useCallback, type CSSProperties }
 import type { LichRoom } from './mapTypes'
 import type { DaMapsStatus, DaMapsProgress } from '../../../shared/types'
 import { COLOR_LEGEND } from './mapTypes'
-import { loadDaWorld, loadDaArt, hydrateArea, DA_ROOM_SIZE, type DaWorld, type DaArt } from './damaps/damapsWorld'
+import { loadDaWorld, loadDaPicture, forgetDaPictures, hydrateArea, DA_ROOM_SIZE, type DaWorld } from './damaps/damapsWorld'
 import { lichTitle, normalizeMatchKey } from './mapTypes'
 import { planDaRoute, locateUnmapped, legEnd, isUnmapped, type DaLeg } from './damaps/daMapsWalk'
 import { useGenieWalk } from '../../GenieWalkContext'
@@ -52,6 +52,8 @@ const OPEN_SCALE = 2
 /** A map's floors share one set of coordinates, so they're one map to the camera. */
 const mapOf = (areaKey: string) => areaKey.replace(/@-?\d+$/, '')
 const PANEL_W = 270
+/** Painted pictures on or off (all characters, this computer). */
+const PICTURES_KEY = 'lichborne.damaps.pictures'
 // Global view layout (world units): each area is a thumbnail in a grid cell,
 // grouped by province.
 const G_COLS = 10, G_CELL = 240, G_THUMB = 200, G_HEAD = 70
@@ -209,7 +211,8 @@ export default function DaMapsView({ lichDb, currentRoom, character, roomTitle, 
     let live = true
     window.api.daMapsStatus().then(s => { if (live) setStatus(s) }).catch(e => { if (live) setStatus({ dir: '', installed: false, commit: null, installedAt: null, maps: null }); console.error(e) })
     const offProgress = window.api.onDaMapsProgress(p => setJob(p.phase === 'done' ? null : jobText(p)))
-    const offUpdated = window.api.onDaMapsUpdated(s => setStatus(s))
+    // an update replaced the maps and their pictures: fetch pictures again as they're shown
+    const offUpdated = window.api.onDaMapsUpdated(s => { forgetDaPictures(); setStatus(s) })
     return () => { live = false; offProgress(); offUpdated() }
   }, [])
 
@@ -445,11 +448,23 @@ function DaMapsCanvas({ world: daWorld, lichDb, currentRoom, character, roomTitl
   const [followPlayer, setFollowPlayer] = useState(true)
   const hereProvince = hereImage ? src.province(src.floors(hereImage)[0] ?? hereImage) : null
   const area = useMemo(() => src.area(areaImage), [src, areaImage])
-  // The painted background for this map, if one has been made (map art).
-  const [artByKey, setArtByKey] = useState<Map<string, DaArt> | null>(null)
-  useEffect(() => { let live = true; loadDaArt().then(m => { if (live) setArtByKey(m) }); return () => { live = false } }, [])
-  const art = area ? artByKey?.get(area.image) : undefined
-  const hasArt = !!art
+  // The floor's painted picture (DaMaps Editor), fetched from the Da'Maps
+  // repository the first time it's shown, when pictures are turned on.
+  const [pictures, setPictures] = useState(() => { try { return localStorage.getItem(PICTURES_KEY) !== 'off' } catch { return true } })
+  const togglePictures = () => setPictures(v => {
+    try { localStorage.setItem(PICTURES_KEY, v ? 'off' : 'on') } catch { /* this window only */ }
+    return !v
+  })
+  const art = pictures && mode === 'local' ? area?.art : undefined
+  const [artUrl, setArtUrl] = useState<{ file: string; url: string } | null>(null)
+  useEffect(() => {
+    if (!art) return
+    let live = true
+    loadDaPicture(art.file).then(url => { if (live) setArtUrl(url ? { file: art.file, url } : null) })
+    return () => { live = false }
+  }, [art?.file]) // eslint-disable-line react-hooks/exhaustive-deps
+  const artHref = art && artUrl?.file === art.file ? artUrl.url : null
+  const hasArt = !!artHref
   useEffect(() => { if (!areaImage && hereImage) setAreaImage(hereImage) }, [areaImage, hereImage])
   // A different source (Genie maps just loaded) uses different area keys.
   useEffect(() => { setAreaImage(currentRoom ? src.areaOf(currentRoom.id) : '') }, [src]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1067,6 +1082,13 @@ function DaMapsCanvas({ world: daWorld, lichDb, currentRoom, character, roomTitl
             ? (province === 'Other' ? 'Elsewhere' : province ?? 'Provinces')
             : area ? `${area.name}${hereRoom ? ' · 📍 here' : ''}` : ''}
         </span>
+        <button className={`map-btn map-btn--sm${pictures ? ' map-btn--active' : ''}`} onClick={togglePictures}
+          disabled={mode !== 'local'}
+          title={pictures
+            ? `Painted pictures are on${area?.art ? '' : ' (this map has none yet)'}. Click to turn them off: just the rooms, nothing more to download.`
+            : 'Painted pictures are off. Click to show them: roads, bridges and roofs under the rooms, downloaded for each map the first time you open it.'}>
+          🖼
+        </button>
         <button className="map-btn map-btn--sm" onClick={update.run} disabled={!!update.job} title={update.title}>
           {update.job ? `Updating… ${/\d/.test(update.job) ? update.job : ''}`.trim() : '⇩ Update'}
         </button>
@@ -1157,8 +1179,8 @@ function DaMapsCanvas({ world: daWorld, lichDb, currentRoom, character, roomTitl
               </>
             ) : (
               <>
-                {art && (
-                  <image href={'./damaps-art/' + art.file.split('/').map(encodeURIComponent).join('/')}
+                {art && artHref && (
+                  <image href={artHref}
                     x={art.x} y={art.y} width={art.width / art.scale} height={art.height / art.scale}
                     preserveAspectRatio="none" pointerEvents="none" />
                 )}
