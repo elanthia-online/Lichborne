@@ -35,7 +35,15 @@ export interface DaMapExit {
   move:    string
   /** a real path that isn't drawn as a line (it would cross the map) */
   hidden?: boolean
+  /** what the path between the two rooms is drawn as in the map's picture (SURFACES) */
+  surface?: string
 }
+
+/** What a link can be drawn as in a map's picture (DaMaps Editor). */
+export const SURFACES = [
+  ['road', 'Road'], ['dirt', 'Dirt path'], ['bridge', 'Bridge (wood)'], ['bridge-stone', 'Bridge (stone)'], ['river', 'River'],
+] as const
+const SURFACE_IDS = new Set<string>(SURFACES.map(s => s[0]))
 
 export interface DaMapRoom {
   id:           number
@@ -54,7 +62,25 @@ export interface DaMapRoom {
   linksTo?:     string
   /** Lich room number, when the automatic match gets it wrong or can't find one */
   lich?:        number
+  /** part of a building in the map's picture: joined rooms with the same name share one roof */
+  building?:    string
   exits:        DaMapExit[]
+}
+
+/** A painted picture of one floor, made by the DaMaps Editor. It lives in the
+ *  Da'Maps repository's `art/` folder; x/y are where its top-left corner sits
+ *  in map units, `scale` is its pixels per map unit. */
+export interface DaMapArt {
+  z:      number
+  file:   string
+  x:      number
+  y:      number
+  scale:  number
+  width:  number
+  height: number
+  /** artStamp() of the floor when the picture was made: a different stamp now
+   *  means rooms or paths moved since, and the picture should be made again */
+  stamp?: string
 }
 
 export interface DaMapLabel {
@@ -78,6 +104,8 @@ export interface DaMapFile {
   includes?: string[]
   rooms:   DaMapRoom[]
   labels:  DaMapLabel[]
+  /** the floors' pictures, when they have been made */
+  art?:    DaMapArt[]
 }
 
 export function emptyDamap(name = 'New map'): DaMapFile {
@@ -113,6 +141,7 @@ export function parseDamap(text: string): DaMapFile {
           const e = e0 as Record<string, unknown>
           const ex: DaMapExit = { to: Math.trunc(num(e.to)), exit: str(e.exit) || 'go', move: str(e.move) }
           if (e.hidden === true) ex.hidden = true
+          if (SURFACE_IDS.has(str(e.surface))) ex.surface = str(e.surface)
           return ex
         }),
       }
@@ -124,6 +153,7 @@ export function parseDamap(text: string): DaMapFile {
       }
       if (str(r.linksTo).trim()) room.linksTo = str(r.linksTo).trim()
       if (num(r.lich) > 0) room.lich = Math.trunc(num(r.lich))
+      if (str(r.building).trim()) room.building = str(r.building).trim()
       return room
     }),
     labels: labels.map((l0): DaMapLabel => {
@@ -136,7 +166,44 @@ export function parseDamap(text: string): DaMapFile {
     const inc = o.includes.filter((x): x is string => typeof x === 'string' && !!x.trim()).map(x => x.trim())
     if (inc.length) out.includes = inc
   }
+  if (Array.isArray(o.art)) {
+    const art = o.art.map((a0): DaMapArt | null => {
+      const a = a0 as Record<string, unknown>
+      const file = str(a.file).trim()
+      // a bare file name inside art/, nothing that climbs out of it
+      if (!file || /[\\/]|^\.\.?$/.test(file) || !/\.(png|webp|jpe?g)$/i.test(file)) return null
+      const scale = num(a.scale), width = Math.trunc(num(a.width)), height = Math.trunc(num(a.height))
+      if (!(scale > 0) || width <= 0 || height <= 0) return null
+      const art: DaMapArt = { z: Math.trunc(num(a.z)), file, x: num(a.x), y: num(a.y), scale, width, height }
+      if (str(a.stamp)) art.stamp = str(a.stamp)
+      return art
+    }).filter((a): a is DaMapArt => !!a)
+    if (art.length) out.art = art
+  }
   return out
+}
+
+/**
+ * A short fingerprint of everything a floor's picture is drawn from: where its
+ * rooms are, which are buildings, and which paths have a surface. The editor
+ * stores it with a picture; when it no longer matches, the picture is out of date.
+ */
+export function artStamp(m: DaMapFile, z: number): string {
+  const parts: string[] = []
+  for (const r of m.rooms) {
+    if (r.z !== z) continue
+    const surf = r.exits.filter(e => e.surface && e.to).map(e => `${e.to}:${e.surface}`).sort().join(',')
+    parts.push(`${r.id}@${r.x},${r.y}${r.building ? `#${r.building}` : ''}${surf ? `[${surf}]` : ''}`)
+  }
+  parts.sort()
+  // FNV-1a, 32-bit, twice with different seeds: short, and stable everywhere
+  let a = 0x811c9dc5, b = 0x01000193 ^ 0x5bd1e995
+  for (const ch of parts.join(';')) {
+    const c = ch.charCodeAt(0)
+    a = Math.imul(a ^ c, 0x01000193) >>> 0
+    b = Math.imul(b ^ c, 0x01000193 + 2) >>> 0
+  }
+  return a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0')
 }
 
 /** Problems worth telling the person about before they share a map. Empty = fine. */
@@ -165,11 +232,20 @@ export function stringifyDamap(m: DaMapFile): string {
   const clean: DaMapFile = {
     format: DAMAP_FORMAT, version: DAMAP_VERSION, id: m.id, name: m.name, file: m.file,
     rooms: m.rooms.map(r => {
-      const o: DaMapRoom = { id: r.id, x: r.x, y: r.y, z: r.z, title: r.title, descriptions: r.descriptions, exits: r.exits.map(e => (e.hidden ? { to: e.to, exit: e.exit, move: e.move, hidden: true } : { to: e.to, exit: e.exit, move: e.move })) }
+      const o: DaMapRoom = {
+        id: r.id, x: r.x, y: r.y, z: r.z, title: r.title, descriptions: r.descriptions,
+        exits: r.exits.map(e => {
+          const x: DaMapExit = { to: e.to, exit: e.exit, move: e.move }
+          if (e.hidden) x.hidden = true
+          if (e.surface) x.surface = e.surface
+          return x
+        }),
+      }
       if (r.color) o.color = r.color
       if (r.aliases?.length) o.aliases = r.aliases
       if (r.linksTo) o.linksTo = r.linksTo
       if (r.lich) o.lich = r.lich
+      if (r.building) o.building = r.building
       return o
     }),
     labels: m.labels,
@@ -178,7 +254,8 @@ export function stringifyDamap(m: DaMapFile): string {
   // shows up as a one-line diff.
   const head = JSON.stringify({ format: clean.format, version: clean.version, id: clean.id, name: clean.name, file: clean.file, ...(m.includes?.length ? { includes: m.includes } : {}) }, null, 1).slice(0, -2)
   const list = (xs: unknown[]) => xs.length ? '[\n' + xs.map(x => '  ' + JSON.stringify(x)).join(',\n') + '\n ]' : '[]'
-  return `${head},\n "rooms": ${list(clean.rooms)},\n "labels": ${list(clean.labels)}\n}\n`
+  const art = m.art?.length ? `,\n "art": ${list(m.art.map(a => ({ z: a.z, file: a.file, x: a.x, y: a.y, scale: a.scale, width: a.width, height: a.height, ...(a.stamp ? { stamp: a.stamp } : {}) })))}` : ''
+  return `${head},\n "rooms": ${list(clean.rooms)},\n "labels": ${list(clean.labels)}${art}\n}\n`
 }
 
 // ── Genie zone <-> .damap ───────────────────────────────────────────────────
